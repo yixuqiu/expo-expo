@@ -29,6 +29,11 @@ export declare class VideoPlayer extends SharedObject<VideoPlayerEvents> {
      */
     currentTime: number;
     /**
+     * Float value indicating the duration of the current video in seconds.
+     * > This property is get-only
+     */
+    duration: number;
+    /**
      * Float value between 0 and 1 representing the current volume.
      * Muting the player doesn't affect the volume. In other words, when the player is muted, the volume is the same as
      * when unmuted. Similarly, setting the volume doesn't unmute the player.
@@ -48,6 +53,11 @@ export declare class VideoPlayer extends SharedObject<VideoPlayerEvents> {
      * @default 1.0
      */
     playbackRate: number;
+    /**
+     * Boolean value indicating whether the player is currently playing a live stream.
+     * > This property is get-only
+     */
+    isLive: boolean;
     /**
      * Indicates the current status of the player.
      * > This property is get-only
@@ -97,7 +107,7 @@ export type VideoPlayerEvents = {
     /**
      * Handler for an event emitted when the status of the player changes.
      */
-    statusChange(newStatus: VideoPlayerStatus, oldStatus: VideoPlayerStatus, error: PlayerError): void;
+    statusChange(newStatus: VideoPlayerStatus, oldStatus: VideoPlayerStatus, error?: PlayerError): void;
     /**
      * Handler for an event emitted when the player starts or stops playback.
      */
@@ -141,6 +151,13 @@ export type VideoSource = string | {
      * When undefined the player will display information contained in the video metadata.
      */
     metadata?: VideoMetadata;
+    /**
+     * Specifies headers sent with the video request.
+     * > For DRM license headers use the `headers` field of [`DRMOptions`](#drmoptions).
+     * @platform android
+     * @platform ios
+     */
+    headers?: Record<string, string>;
 } | null;
 /**
  * Contains information about any errors that the player encountered during the playback
@@ -187,9 +204,7 @@ export type DRMOptions = {
     /**
      * Determines headers sent to the license server on license requests.
      */
-    headers?: {
-        [key: string]: string;
-    };
+    headers?: Record<string, string>;
     /**
      * Specifies whether the DRM is a multi-key DRM.
      * @platform android
@@ -205,5 +220,11 @@ export type DRMOptions = {
      * @platform ios
      */
     certificateUrl?: string;
+    /**
+     * Specifies the base64 encoded certificate data for the FairPlay DRM.
+     * When this property is set, the `certificateUrl` property is ignored.
+     * @platform ios
+     */
+    base64CertificateData?: string;
 };
 //# sourceMappingURL=VideoPlayer.types.d.ts.map

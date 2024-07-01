@@ -9,11 +9,14 @@ import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.graphics.drawable.ColorDrawable
 import android.hardware.camera2.CameraCharacteristics
+import android.media.AudioManager
 import android.media.MediaActionSound
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.Size
+import android.view.OrientationEventListener
+import android.view.Surface
 import android.view.View
 import android.view.WindowManager
 import androidx.annotation.OptIn
@@ -45,14 +48,15 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import expo.modules.camera.analyzers.BarcodeAnalyzer
+import expo.modules.camera.analyzers.toByteArray
 import expo.modules.camera.common.BarcodeScannedEvent
 import expo.modules.camera.common.CameraMountErrorEvent
 import expo.modules.camera.common.PictureSavedEvent
-import expo.modules.camera.analyzers.BarcodeAnalyzer
-import expo.modules.camera.analyzers.toByteArray
 import expo.modules.camera.records.BarcodeSettings
 import expo.modules.camera.records.BarcodeType
 import expo.modules.camera.records.CameraMode
+import expo.modules.camera.records.CameraRatio
 import expo.modules.camera.records.CameraType
 import expo.modules.camera.records.FlashMode
 import expo.modules.camera.records.FocusMode
@@ -76,6 +80,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.roundToInt
+import kotlin.properties.Delegates
 
 const val ANIMATION_FAST_MILLIS = 50L
 const val ANIMATION_SLOW_MILLIS = 100L
@@ -89,6 +94,26 @@ class ExpoCameraView(
   private val currentActivity
     get() = appContext.currentActivity as? AppCompatActivity
       ?: throw Exceptions.MissingActivity()
+
+  val orientationEventListener by lazy {
+    object : OrientationEventListener(currentActivity) {
+      override fun onOrientationChanged(orientation: Int) {
+        if (orientation == ORIENTATION_UNKNOWN) {
+          return
+        }
+
+        val rotation = when (orientation) {
+          in 45 until 135 -> Surface.ROTATION_270
+          in 135 until 225 -> Surface.ROTATION_180
+          in 225 until 315 -> Surface.ROTATION_90
+          else -> Surface.ROTATION_0
+        }
+
+        imageAnalysisUseCase?.targetRotation = rotation
+        imageCaptureUseCase?.targetRotation = rotation
+      }
+    }
+  }
 
   var camera: Camera? = null
   var activeRecording: Recording? = null
@@ -104,7 +129,7 @@ class ExpoCameraView(
   private val scope = CoroutineScope(Dispatchers.Main)
   private var shouldCreateCamera = false
 
-  var lenFacing = CameraType.BACK
+  var lensFacing = CameraType.BACK
     set(value) {
       field = value
       shouldCreateCamera = true
@@ -134,6 +159,12 @@ class ExpoCameraView(
       shouldCreateCamera = true
     }
 
+  var ratio: CameraRatio = CameraRatio.FOUR_THREE
+    set(value) {
+      field = value
+      shouldCreateCamera = true
+    }
+
   var pictureSize: String = ""
     set(value) {
       field = value
@@ -142,6 +173,9 @@ class ExpoCameraView(
 
   var mute: Boolean = false
   var animateShutter: Boolean = true
+  var enableTorch: Boolean by Delegates.observable(false) { _, _, newValue ->
+    setTorchEnabled(newValue)
+  }
 
   private val onCameraReady by EventDispatcher<Unit>()
   private val onMountError by EventDispatcher<CameraMountErrorEvent>()
@@ -183,11 +217,16 @@ class ExpoCameraView(
   }
 
   fun takePicture(options: PictureOptions, promise: Promise, cacheDirectory: File) {
+    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    val volume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+
     imageCaptureUseCase?.takePicture(
       ContextCompat.getMainExecutor(context),
       object : ImageCapture.OnImageCapturedCallback() {
         override fun onCaptureStarted() {
-          MediaActionSound().play(MediaActionSound.SHUTTER_CLICK)
+          if (volume != 0) {
+            MediaActionSound().play(MediaActionSound.SHUTTER_CLICK)
+          }
           if (!animateShutter) {
             return
           }
@@ -229,7 +268,7 @@ class ExpoCameraView(
     }
   }
 
-  fun setTorchEnabled(enabled: Boolean) {
+  private fun setTorchEnabled(enabled: Boolean) {
     if (camera?.cameraInfo?.hasFlashUnit() == true) {
       camera?.cameraControl?.enableTorch(enabled)
     }
@@ -239,10 +278,11 @@ class ExpoCameraView(
     val file = FileSystemUtils.generateOutputFile(cacheDirectory, "Camera", ".mp4")
     val fileOutputOptions = FileOutputOptions.Builder(file)
       .setFileSizeLimit(options.maxFileSize.toLong())
-      .setDurationLimitMillis(options.maxDuration.toLong())
+      .setDurationLimitMillis(options.maxDuration.toLong() * 1000)
       .build()
     recorder?.let {
-      if (ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+      if (!mute && ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        promise.reject(Exceptions.MissingPermissions(Manifest.permission.RECORD_AUDIO))
         return
       }
       activeRecording = it.prepareRecording(context, fileOutputOptions)
@@ -254,20 +294,23 @@ class ExpoCameraView(
         .start(ContextCompat.getMainExecutor(context)) { event ->
           when (event) {
             is VideoRecordEvent.Finalize -> {
-              if (event.error > 0) {
-                promise.reject(
+              when (event.error) {
+                VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED,
+                VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED,
+                VideoRecordEvent.Finalize.ERROR_NONE -> {
+                  promise.resolve(
+                    Bundle().apply {
+                      putString("uri", event.outputResults.outputUri.toString())
+                    }
+                  )
+                }
+                else -> promise.reject(
                   CameraExceptions.VideoRecordingFailed(
                     event.cause?.message
-                      ?: "Video recording Failed: Unknown error"
+                      ?: "Video recording Failed: ${event.cause?.message ?: "Unknown error"}"
                   )
                 )
-                return@start
               }
-              promise.resolve(
-                Bundle().apply {
-                  putString("uri", event.outputResults.outputUri.toString())
-                }
-              )
             }
           }
         }
@@ -288,11 +331,11 @@ class ExpoCameraView(
         val preview = Preview.Builder()
           .build()
           .also {
-            it.setSurfaceProvider(previewView.surfaceProvider)
+            it.surfaceProvider = previewView.surfaceProvider
           }
 
         val cameraSelector = CameraSelector.Builder()
-          .requireLensFacing(lenFacing.mapToCharacteristic())
+          .requireLensFacing(lensFacing.mapToCharacteristic())
           .build()
 
         imageCaptureUseCase = ImageCapture.Builder()
@@ -303,6 +346,7 @@ class ExpoCameraView(
             } else {
               setResolutionSelector(
                 ResolutionSelector.Builder()
+                  .setAspectRatioStrategy(ratio.mapToStrategy())
                   .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
                   .build()
               )
@@ -357,7 +401,7 @@ class ExpoCameraView(
         if (shouldScanBarcodes) {
           analyzer.setAnalyzer(
             ContextCompat.getMainExecutor(context),
-            BarcodeAnalyzer(lenFacing, barcodeFormats) {
+            BarcodeAnalyzer(lensFacing, barcodeFormats) {
               onBarcodeScanned(it)
             }
           )
@@ -401,6 +445,7 @@ class ExpoCameraView(
       when (it.type) {
         CameraState.Type.OPEN -> {
           onCameraReady(Unit)
+          setTorchEnabled(enableTorch)
         }
         else -> {}
       }
@@ -430,10 +475,8 @@ class ExpoCameraView(
     (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
   }
 
-  fun releaseCamera() {
-    appContext.mainQueue.launch {
-      cameraProvider?.unbindAll()
-    }
+  fun releaseCamera() = appContext.mainQueue.launch {
+    cameraProvider?.unbindAll()
   }
 
   private fun transformBarcodeScannerResultToViewCoordinates(barcode: BarCodeScannerResult) {
@@ -441,7 +484,7 @@ class ExpoCameraView(
     val previewWidth = previewView.width
     val previewHeight = previewView.height
 
-    val facingFront = lenFacing == CameraType.FRONT
+    val facingFront = lensFacing == CameraType.FRONT
     val portrait = getDeviceOrientation() % 2 == 0
     val landscape = getDeviceOrientation() % 2 != 0
 
@@ -507,7 +550,7 @@ class ExpoCameraView(
           target = id,
           data = barcode.value,
           raw = barcode.raw,
-          type = barcode.type,
+          type = BarcodeType.mapFormatToString(barcode.type),
           cornerPoints = cornerPoints,
           boundingBox = boundingBox
         )
@@ -520,6 +563,7 @@ class ExpoCameraView(
   override fun getPreviewSizeAsArray() = intArrayOf(previewView.width, previewView.height)
 
   init {
+    orientationEventListener.enable()
     previewView.setOnHierarchyChangeListener(object : OnHierarchyChangeListener {
       override fun onChildViewRemoved(parent: View?, child: View?) = Unit
       override fun onChildViewAdded(parent: View?, child: View?) {
@@ -537,11 +581,9 @@ class ExpoCameraView(
     onPictureSaved(PictureSavedEvent(response.getInt("id"), response.getBundle("data")!!))
   }
 
-  fun cancelCoroutineScope() {
-    try {
-      scope.cancel(ModuleDestroyedException())
-    } catch (e: Exception) {
-      Log.e(CameraViewModule.TAG, "The scope does not have a job in it")
-    }
+  fun cancelCoroutineScope() = try {
+    scope.cancel(ModuleDestroyedException())
+  } catch (e: Exception) {
+    Log.e(CameraViewModule.TAG, "The scope does not have a job in it")
   }
 }

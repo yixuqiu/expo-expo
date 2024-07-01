@@ -8,7 +8,19 @@
 
 ### 🐛 Bug fixes
 
+- [Android] Fix `disableOnboarding=1` wasn't working when using the dev-client. ([#29697](https://github.com/expo/expo/pull/29697) by [@lukmccall](https://github.com/lukmccall))
+
 ### 💡 Others
+
+## 5.0.15 - 2024-06-06
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.14 — 2024-05-09
+
+### 🐛 Bug fixes
+
+- Fixed build errors with use_frameworks on iOS. ([#28702](https://github.com/expo/expo/pull/28702) by [@kudo](https://github.com/kudo))
 
 ## 5.0.13 — 2024-05-08
 

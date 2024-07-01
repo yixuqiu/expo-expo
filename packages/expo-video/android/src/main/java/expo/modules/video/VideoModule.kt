@@ -3,6 +3,7 @@
 package expo.modules.video
 
 import android.app.Activity
+import android.content.Context
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player.REPEAT_MODE_OFF
 import androidx.media3.common.Player.REPEAT_MODE_ONE
@@ -24,6 +25,8 @@ import kotlinx.coroutines.runBlocking
 class VideoModule : Module() {
   private val activity: Activity
     get() = appContext.activityProvider?.currentActivity ?: throw Exceptions.MissingActivity()
+  private val reactContext: Context
+    get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
 
   override fun definition() = ModuleDefinition {
     Name("ExpoVideo")
@@ -138,7 +141,7 @@ class VideoModule : Module() {
     }
 
     Class(VideoPlayer::class) {
-      Constructor { source: VideoSource ->
+      Constructor { source: VideoSource? ->
         VideoPlayer(activity.applicationContext, appContext, source)
       }
 
@@ -183,6 +186,11 @@ class VideoModule : Module() {
           }
         }
 
+      Property("duration")
+        .get { ref: VideoPlayer ->
+          ref.duration
+        }
+
       Property("playbackRate")
         .get { ref: VideoPlayer ->
           ref.playbackParameters.speed
@@ -192,6 +200,11 @@ class VideoModule : Module() {
             val pitch = if (ref.preservesPitch) 1f else playbackRate
             ref.playbackParameters = PlaybackParameters(playbackRate, pitch)
           }
+        }
+
+      Property("isLive")
+        .get { ref: VideoPlayer ->
+          ref.isLive
         }
 
       Property("preservesPitch")
@@ -253,18 +266,20 @@ class VideoModule : Module() {
         }
       }
 
-      Function("replace") { ref: VideoPlayer, source: Either<String, VideoSource> ->
-        val videoSource = if (source.`is`(VideoSource::class)) {
-          source.get(VideoSource::class)
-        } else {
-          VideoSource(source.get(String::class))
+      Function("replace") { ref: VideoPlayer, source: Either<String, VideoSource>? ->
+        val videoSource = source?.let {
+          if (it.`is`(VideoSource::class)) {
+            it.get(VideoSource::class)
+          } else {
+            VideoSource(it.get(String::class))
+          }
         }
-        val mediaItem = videoSource.toMediaItem()
-        VideoManager.registerVideoSourceToMediaItem(mediaItem, videoSource)
 
         appContext.mainQueue.launch {
-          ref.videoSource = videoSource
-          ref.player.setMediaItem(mediaItem)
+          ref.uncommittedSource = videoSource
+          if (VideoManager.isVideoPlayerAttachedToView(ref)) {
+            ref.prepare()
+          }
         }
       }
 

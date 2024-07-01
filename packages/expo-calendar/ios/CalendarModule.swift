@@ -45,7 +45,7 @@ public class CalendarModule: Module {
       guard let defaultCalendar = eventStore.defaultCalendarForNewEvents else {
         throw DefaultCalendarNotFoundException()
       }
-      return serializeCalendar(calendar: defaultCalendar)
+      return serializeCalendar(calendar: defaultCalendar) as [String: Any]
     }
 
     AsyncFunction("saveCalendarAsync") { (details: CalendarRecord) -> String in
@@ -140,6 +140,9 @@ public class CalendarModule: Module {
         calendarEvent.endDate = parse(date: endDate)
       }
 
+      calendarEvent.title = event.title
+      calendarEvent.location = event.location
+      calendarEvent.notes = event.notes
       calendarEvent.isAllDay = event.allDay
       calendarEvent.availability = getAvailability(availability: event.availability)
 
@@ -257,6 +260,17 @@ public class CalendarModule: Module {
       if let completionDate {
         reminder.completionDate = completionDate
       }
+
+      if let notes = details.notes {
+        reminder.notes = notes
+      }
+
+      if let isCompleted = details.completed {
+        reminder.isCompleted = isCompleted
+      }
+
+      reminder.title = details.title
+      reminder.location = details.location
 
       try eventStore.save(reminder, commit: true)
       return reminder.calendarItemIdentifier

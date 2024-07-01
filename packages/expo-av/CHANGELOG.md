@@ -8,7 +8,26 @@
 
 ### 🐛 Bug fixes
 
+- [iOS] `loadAsync()` promise never settled when given an invalid file uri ([#30020](https://github.com/expo/expo/pull/30020) by [@vonovak](https://github.com/vonovak))
+
+- Fixed putting app to background stops non-mixable audio playback in other apps on iOS ([#20380](https://github.com/expo/expo/pull/20380) by [@de1acr0ix](https://github.com/de1acr0ix))
+- [iOS] Fixed broken Video view on New Architecture mode. ([#30030](https://github.com/expo/expo/pull/30030) by [@kudo](https://github.com/kudo))
+
 ### 💡 Others
+
+- Keep using the legacy event emitter as the module is not fully migrated to Expo Modules API. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
+
+## 14.0.5 — 2024-05-15
+
+### 🐛 Bug fixes
+
+- [Web] Fix `shouldCorrectPitch` being ignored on web. ([#28837](https://github.com/expo/expo/pull/28837) by [@behenate](https://github.com/behenate))
+
+## 14.0.4 — 2024-05-09
+
+### 🐛 Bug fixes
+
+- [Android] Fix events being sent using a wrong event emitter. ([#28716](https://github.com/expo/expo/pull/28716) by [@behenate](https://github.com/behenate))
 
 ## 14.0.3 — 2024-05-01
 

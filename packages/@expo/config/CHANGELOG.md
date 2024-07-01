@@ -6,9 +6,15 @@
 
 ### 🎉 New features
 
+- Automatically write an `app.json` when attempting to modify a config and no file exists. ([#30026](https://github.com/expo/expo/pull/30026) by [@EvanBacon](https://github.com/EvanBacon))
+
 ### 🐛 Bug fixes
 
 ### 💡 Others
+
+## 9.0.2 — 2024-05-16
+
+_This version does not introduce any user-facing changes._
 
 ## 9.0.1 — 2024-04-24
 

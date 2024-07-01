@@ -1,10 +1,11 @@
-import { PermissionResponse, PermissionStatus, PermissionExpiration, PermissionHookOptions } from 'expo-modules-core';
-import { Ref } from 'react';
+import { PermissionResponse, PermissionStatus, PermissionExpiration, PermissionHookOptions, EventSubscription } from 'expo-modules-core';
+import type { Ref } from 'react';
 import type { ViewProps } from 'react-native';
 export type CameraType = 'front' | 'back';
 export type FlashMode = 'off' | 'on' | 'auto';
 export type ImageType = 'png' | 'jpg';
 export type CameraMode = 'picture' | 'video';
+export type CameraRatio = '4:3' | '16:9';
 /**
  * This option specifies the mode of focus on the device.
  * - `on` - Indicates that the device should autofocus once and then lock the focus.
@@ -293,8 +294,8 @@ export type CameraProps = ViewProps & {
      */
     animateShutter?: boolean;
     /**
-     * A string representing the size of pictures [`takePictureAsync`](#takepictureasync) will take.
-     * Available sizes can be fetched with [`getAvailablePictureSizes`](#getavailablepicturesizes).
+     * A string representing the size of pictures [`takePictureAsync`](#takepictureasyncoptions) will take.
+     * Available sizes can be fetched with [`getAvailablePictureSizesAsync`](#getavailablepicturesizesasync).
      */
     pictureSize?: string;
     /**
@@ -303,20 +304,11 @@ export type CameraProps = ViewProps & {
      */
     enableTorch?: boolean;
     /**
-     * Callback invoked when camera preview has been set.
-     */
-    onCameraReady?: () => void;
-    /**
      * The video stabilization mode used for a video recording. Use one of [`VideoStabilization.<value>`](#videostabilization).
      * You can read more about each stabilization type in [Apple Documentation](https://developer.apple.com/documentation/avfoundation/avcapturevideostabilizationmode).
      * @platform ios
      */
     videoStabilizationMode?: VideoStabilization;
-    /**
-     * Callback invoked when camera preview could not been started.
-     * @param event Error object that contains a `message`.
-     */
-    onMountError?: (event: CameraMountError) => void;
     /**
      * @example
      * ```tsx
@@ -329,15 +321,6 @@ export type CameraProps = ViewProps & {
      */
     barcodeScannerSettings?: BarcodeSettings;
     /**
-     * Callback that is invoked when a barcode has been successfully scanned. The callback is provided with
-     * an object of the [`BarcodeScanningResult`](#barcodescanningresult) shape, where the `type`
-     * refers to the barcode type that was scanned and the `data` is the information encoded in the barcode
-     * (in this case of QR codes, this is often a URL). See [`BarcodeType`](#barcodetype) for supported values.
-     * for supported values.
-     * @param scanningResult
-     */
-    onBarcodeScanned?: (scanningResult: BarcodeScanningResult) => void;
-    /**
      * A URL for an image to be shown while the camera is loading.
      * @platform web
      */
@@ -348,6 +331,30 @@ export type CameraProps = ViewProps & {
      * @platform ios
      */
     responsiveOrientationWhenOrientationLocked?: boolean;
+    /**
+     * A string representing the aspect ratio of the preview. For example, `4:3` and `16:9`.
+     * @default 4:3
+     * @platform android
+     */
+    ratio?: CameraRatio;
+    /**
+     * Callback invoked when camera preview has been set.
+     */
+    onCameraReady?: () => void;
+    /**
+     * Callback invoked when camera preview could not start.
+     * @param event Error object that contains a `message`.
+     */
+    onMountError?: (event: CameraMountError) => void;
+    /**
+     * Callback that is invoked when a barcode has been successfully scanned. The callback is provided with
+     * an object of the [`BarcodeScanningResult`](#barcodescanningresult) shape, where the `type`
+     * refers to the barcode type that was scanned, and the `data` is the information encoded in the barcode
+     * (in this case of QR codes, this is often a URL). See [`BarcodeType`](#barcodetype) for supported values.
+     * for supported values.
+     * @param scanningResult
+     */
+    onBarcodeScanned?: (scanningResult: BarcodeScanningResult) => void;
     /**
      * Callback invoked when responsive orientation changes. Only applicable if `responsiveOrientationWhenOrientationLocked` is `true`
      * @param event result object that contains updated orientation of camera
@@ -388,6 +395,7 @@ export type CameraNativeProps = {
     autoFocus?: FocusMode;
     mute?: boolean;
     zoom?: number;
+    ratio?: CameraRatio;
     barcodeScannerSettings?: BarcodeSettings;
     barcodeScannerEnabled?: boolean;
     poster?: string;
@@ -395,7 +403,6 @@ export type CameraNativeProps = {
 };
 export type BarcodeSettings = {
     barcodeTypes: BarcodeType[];
-    interval?: number;
 };
 /**
  * @platform ios
@@ -425,5 +432,5 @@ export type ScanningOptions = {
  * The available barcode types that can be scanned.
  */
 export type BarcodeType = 'aztec' | 'ean13' | 'ean8' | 'qr' | 'pdf417' | 'upc_e' | 'datamatrix' | 'code39' | 'code93' | 'itf14' | 'codabar' | 'code128' | 'upc_a';
-export { PermissionResponse, PermissionStatus, PermissionExpiration, PermissionHookOptions };
+export { PermissionResponse, PermissionStatus, PermissionExpiration, PermissionHookOptions, EventSubscription as Subscription, };
 //# sourceMappingURL=Camera.types.d.ts.map
