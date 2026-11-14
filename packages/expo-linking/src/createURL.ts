@@ -1,11 +1,28 @@
 import Constants from 'expo-constants';
+import { getBundleOrigin } from 'expo/internal/bundle-origin';
 
-import { CreateURLOptions, ParsedURL } from './Linking.types';
+import type { CreateURLOptions, ParsedURL } from './Linking.types';
 import { hasCustomScheme, resolveScheme } from './Schemes';
 import { validateURL } from './validateURL';
 
-function getHostUri(): string | null {
-  if (Constants.expoConfig?.hostUri) {
+function getDevServerLocation(): { authority: string; isSecure: boolean } | null {
+  // A published app in Expo Go also loads its bundle from a server, so its origin is not a
+  // development server to link back to.
+  if (!Constants.expoGoConfig?.developer) {
+    return null;
+  }
+  const bundleOrigin = getBundleOrigin();
+  if (!bundleOrigin) {
+    return null;
+  }
+  const { host, protocol } = new URL(bundleOrigin);
+  return { authority: host, isSecure: protocol === 'https:' };
+}
+
+function getHostUri(devServer = getDevServerLocation()): string | null {
+  if (devServer) {
+    return devServer.authority;
+  } else if (Constants.expoConfig?.hostUri) {
     return Constants.expoConfig.hostUri;
   } else if (!hasCustomScheme()) {
     // we're probably not using up-to-date xdl, so just fake it for now
@@ -16,8 +33,7 @@ function getHostUri(): string | null {
   }
 }
 
-function isExpoHosted(): boolean {
-  const hostUri = getHostUri();
+function isExpoHosted(hostUri = getHostUri()): boolean {
   return !!(
     hostUri &&
     (/^(.*\.)?(expo\.io|exp\.host|exp\.direct|expo\.test|expo\.dev)(:.*)?(\/.*)?$/.test(hostUri) ||
@@ -56,12 +72,12 @@ function ensureLeadingSlash(input: string, shouldAppend: boolean): string {
  * Helper method for constructing a deep link into your app, given an optional path and set of query
  * parameters. Creates a URI scheme with two slashes by default.
  *
- * The scheme must be defined in the Expo config (`app.config.js` or `app.json`) under `expo.scheme`
+ * The scheme must be defined in the [app config](./../config/app) under `expo.scheme`
  * or `expo.{android,ios}.scheme`. Platform-specific schemes defined under `expo.{android,ios}.scheme`
  * take precedence over universal schemes defined under `expo.scheme`.
  *
  * # Examples
- * - Development and production builds: `<scheme>://path` - uses the optional `scheme` property if provided, and otherwise uses the first scheme defined by your Expo config
+ * - Development and production builds: `<scheme>://path` - uses the optional `scheme` property if provided, and otherwise uses the first scheme defined by your app config
  * - Web (dev): `https://localhost:19006/path`
  * - Web (prod): `https://myapp.com/path`
  * - Expo Go (dev): `exp://128.0.0.1:8081/--/path`
@@ -71,7 +87,7 @@ function ensureLeadingSlash(input: string, shouldAppend: boolean): string {
  * If a stable URL is needed, for example in authorization callbacks, a build (or development build)
  * of your application should be used and the scheme provided.
  *
- * @param path Addition path components to append to the base URL.
+ * @param path Additional path components to append to the base URL.
  * @param namedParameters Additional options object.
  * @return A URL string which points to your app with the given deep link information.
  */
@@ -79,16 +95,24 @@ export function createURL(
   path: string,
   { scheme, queryParams = {}, isTripleSlashed = false }: CreateURLOptions = {}
 ): string {
-  const resolvedScheme = resolveScheme({ scheme });
+  const devServer = getDevServerLocation();
+  let resolvedScheme = resolveScheme({ scheme });
 
-  let hostUri = getHostUri() || '';
+  // Expo Go maps the `exps` scheme to HTTPS, which `exp` can't express, so an HTTPS development
+  // server needs it to be reached over the scheme it's actually served on.
+  if (!scheme && resolvedScheme === 'exp' && devServer?.isSecure) {
+    resolvedScheme = 'exps';
+  }
 
-  if (hasCustomScheme() && isExpoHosted()) {
+  let hostUri = getHostUri(devServer) || '';
+  const expoHosted = isExpoHosted(hostUri);
+
+  if (hasCustomScheme() && expoHosted) {
     hostUri = '';
   }
 
   if (path) {
-    if (isExpoHosted() && hostUri) {
+    if (expoHosted && hostUri) {
       path = `/--/${removeLeadingSlash(path)}`;
     }
     if (isTripleSlashed && !path.startsWith('/')) {
@@ -103,8 +127,8 @@ export function createURL(
   let queryString = '';
   const queryStringMatchResult = hostUri.match(/(.*)\?(.+)/);
   if (queryStringMatchResult) {
-    hostUri = queryStringMatchResult[1];
-    queryString = queryStringMatchResult[2];
+    hostUri = queryStringMatchResult[1] ?? '';
+    queryString = queryStringMatchResult[2] ?? '';
     let paramsFromHostUri = {};
     try {
       paramsFromHostUri = Object.fromEntries(
@@ -129,15 +153,15 @@ export function createURL(
 
   hostUri = ensureLeadingSlash(hostUri, !isTripleSlashed);
 
-  return encodeURI(
-    `${resolvedScheme}:${isTripleSlashed ? '/' : ''}/${hostUri}${path}${queryString}`
-  );
+  // URLSearchParams.stringify already encodes query parameters, so we only need to encode the remaining part of the URL.
+  const encodedURI = encodeURI(`${resolvedScheme}:${isTripleSlashed ? '/' : ''}/${hostUri}${path}`);
+  return `${encodedURI}${queryString}`;
 }
 
 // @needsAudit
 /**
  * Helper method for parsing out deep link information from a URL.
- * @param url A URL that points to the currently running experience (e.g. an output of `Linking.createURL()`).
+ * @param url A URL that points to the currently running experience (for example, an output of `Linking.createURL()`).
  * @return A `ParsedURL` object.
  */
 export function parse(url: string): ParsedURL {
@@ -152,7 +176,7 @@ export function parse(url: string): ParsedURL {
     const parsed = new URL(url);
 
     parsed.searchParams.forEach((value, key) => {
-      queryParams[key] = decodeURIComponent(value);
+      queryParams[key] = value;
     });
     path = parsed.pathname || null;
     hostname = parsed.hostname || null;

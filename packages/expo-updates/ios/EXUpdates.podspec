@@ -1,10 +1,27 @@
 require 'json'
 
 package = JSON.parse(File.read(File.join(__dir__, '..', 'package.json')))
+podfile_properties = JSON.parse(File.read("#{Pod::Config.instance.installation_root}/Podfile.properties.json")) rescue {}
+
+if ENV['EX_UPDATES_NATIVE_DEBUG'] != '1'
+  ENV['EX_UPDATES_NATIVE_DEBUG'] = podfile_properties['updatesNativeDebug'] == 'true' ? '1' : '0'
+end
+if ENV['EX_UPDATES_CUSTOM_INIT'] != '1'
+  ENV['EX_UPDATES_CUSTOM_INIT'] = podfile_properties['updatesCustomInit'] == 'true' ? '1' : '0'
+end
+if ENV['EX_UPDATES_COPY_EMBEDDED_ASSETS'] != '1'
+  ENV['EX_UPDATES_COPY_EMBEDDED_ASSETS'] = podfile_properties['updatesCopyEmbeddedAssets'] == 'true' ? '1' : '0'
+end
 
 use_dev_client = false
 begin
-  use_dev_client = `node --print "require('expo-dev-client/package.json').version" 2>/dev/null`.length > 0
+  # No dev client if we are using native debug
+  if ENV['EX_UPDATES_NATIVE_DEBUG'] != '1'
+    project_root = ENV['PROJECT_ROOT'] || Pod::Config.instance.installation_root.to_s
+    dev_client_package = podfile_properties['expo.updates.devClientPackage'] || 'expo-dev-client'
+    dev_client_package_json_path = `node --print "require.resolve('#{dev_client_package}/package.json', { paths: ['#{__dir__}', '#{project_root}'] })" 2>/dev/null`.strip
+    use_dev_client = !dev_client_package_json_path.empty?
+  end
 rescue
   use_dev_client = false
 end
@@ -17,8 +34,12 @@ Pod::Spec.new do |s|
   s.license        = package['license']
   s.author         = package['author']
   s.homepage       = package['homepage']
-  s.platforms      = { :ios => '13.4', :tvos => '13.4' }
-  s.swift_version  = '5.4'
+  s.platforms      = {
+    :ios => '16.4',
+    :tvos => '16.4',
+    :osx => '13.4'
+  }
+  s.swift_version  = '5.9'
   s.source         = { git: 'https://github.com/expo/expo.git' }
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
@@ -28,7 +49,19 @@ Pod::Spec.new do |s|
   s.dependency 'EXManifests'
   s.dependency 'EASClient'
   s.dependency 'ReachabilitySwift'
-  s.dependency 'sqlite3', '~> 3.45.3+1'
+  if podfile_properties['expo.updates.useThirdPartySQLitePod'] === 'true'
+    s.dependency 'sqlite3'
+  end
+  s.libraries = 'bz2'
+  
+  def s.vendor_bsdiff_src!
+    vendor_dir = File.join(__dir__, '..', 'ios', 'EXUpdates', 'BSPatch')
+    FileUtils.rm_rf(vendor_dir)
+    FileUtils.mkdir_p(vendor_dir)
+
+    vendor_src_dir = File.join(__dir__, '..', 'vendor', 'bspatch')
+    FileUtils.cp(File.join(vendor_src_dir, 'bspatch.c'), vendor_dir)
+  end
 
   unless defined?(install_modules_dependencies)
     # `install_modules_dependencies` is defined from react_native_pods.rb.
@@ -37,45 +70,86 @@ Pod::Spec.new do |s|
   end
   install_modules_dependencies(s)
 
-  other_c_flags = '$(inherited)'
-  other_swift_flags = '$(inherited)'
+  other_debug_c_flags = '$(inherited)'
+  other_debug_swift_flags = '$(inherited)'
+  other_release_c_flags = '$(inherited)'
+  other_release_swift_flags = '$(inherited)'
 
   ex_updates_native_debug = ENV['EX_UPDATES_NATIVE_DEBUG'] == '1'
+  ex_updates_custom_init = ENV['EX_UPDATES_CUSTOM_INIT'] == '1'
+  ex_updates_copy_embedded_assets = ENV['EX_UPDATES_COPY_EMBEDDED_ASSETS'] == '1'
+  # If set, the state machine traps when it drops an event that is not allowed from the current
+  # state, instead of only logging a warning. E2E tests turn this on so an invalid transition fails
+  # the test run rather than passing unnoticed. Both '1' and 'true' are accepted, so the same value
+  # works here and in the Android Gradle build.
+  ex_updates_assert_invalid_state = ['1', 'true'].include?(ENV['EX_UPDATES_ASSERT_INVALID_STATE'].to_s.downcase)
   if ex_updates_native_debug
-    other_c_flags << ' -DEX_UPDATES_NATIVE_DEBUG=1'
-    other_swift_flags << ' -DEX_UPDATES_NATIVE_DEBUG'
+    other_debug_c_flags << ' -DEX_UPDATES_NATIVE_DEBUG=1'
+    other_debug_swift_flags << ' -DEX_UPDATES_NATIVE_DEBUG'
+  end
+  if ex_updates_custom_init
+    other_debug_c_flags << ' -DEX_UPDATES_CUSTOM_INIT=1'
+    other_debug_swift_flags << ' -DEX_UPDATES_CUSTOM_INIT'
+    other_release_c_flags << ' -DEX_UPDATES_CUSTOM_INIT=1'
+    other_release_swift_flags << ' -DEX_UPDATES_CUSTOM_INIT'
+  end
+  if ex_updates_copy_embedded_assets
+    other_debug_c_flags << ' -DEX_UPDATES_COPY_EMBEDDED_ASSETS=1'
+    other_debug_swift_flags << ' -DEX_UPDATES_COPY_EMBEDDED_ASSETS'
+    other_release_c_flags << ' -DEX_UPDATES_COPY_EMBEDDED_ASSETS=1'
+    other_release_swift_flags << ' -DEX_UPDATES_COPY_EMBEDDED_ASSETS'
+  end
+  if ex_updates_assert_invalid_state
+    other_debug_c_flags << ' -DEX_UPDATES_ASSERT_INVALID_STATE=1'
+    other_debug_swift_flags << ' -DEX_UPDATES_ASSERT_INVALID_STATE'
+    other_release_c_flags << ' -DEX_UPDATES_ASSERT_INVALID_STATE=1'
+    other_release_swift_flags << ' -DEX_UPDATES_ASSERT_INVALID_STATE'
   end
   if use_dev_client
-    other_c_flags << ' -DUSE_DEV_CLIENT=1'
-    other_swift_flags << ' -DUSE_DEV_CLIENT'
+    other_debug_c_flags << ' -DUSE_DEV_CLIENT=1'
+    other_debug_swift_flags << ' -DUSE_DEV_CLIENT'
   end
 
   s.pod_target_xcconfig = {
+    'HEADER_SEARCH_PATHS' => '$(inherited) "$(PODS_TARGET_SRCROOT)/EXUpdates/BSPatch"',
     'GCC_TREAT_INCOMPATIBLE_POINTER_TYPE_WARNINGS_AS_ERRORS' => 'YES',
     'GCC_TREAT_IMPLICIT_FUNCTION_DECLARATIONS_AS_ERRORS' => 'YES',
     'DEFINES_MODULE' => 'YES',
     'SWIFT_COMPILATION_MODE' => 'wholemodule',
-    'OTHER_CFLAGS[config=Debug]' => other_c_flags,
-    'OTHER_SWIFT_FLAGS[config=Debug]' => other_swift_flags
+    'OTHER_CFLAGS[config=*Debug*]' => other_debug_c_flags,
+    'OTHER_SWIFT_FLAGS[config=*Debug*]' => other_debug_swift_flags,
+    'OTHER_CFLAGS[config=*Release*]' => other_release_c_flags,
+    'OTHER_SWIFT_FLAGS[config=*Release*]' => other_release_swift_flags
   }
   s.user_target_xcconfig = {
     'HEADER_SEARCH_PATHS' => '"${PODS_CONFIGURATION_BUILD_DIR}/EXUpdates/Swift Compatibility Header"',
   }
+  s.vendor_bsdiff_src!
 
   if !ex_updates_native_debug && !$ExpoUseSources&.include?(package['name']) && ENV['EXPO_USE_SOURCE'].to_i == 0 && File.exist?("#{s.name}.xcframework") && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.10.0')
-    s.source_files = "#{s.name}/**/*.h"
+    s.source_files = "#{s.name}/**/*.h", "EXUpdates/BSPatch/*.{c,h}"
     s.vendored_frameworks = "#{s.name}.xcframework"
   else
-    s.source_files = "#{s.name}/**/*.{h,m,swift}"
+    s.source_files = "#{s.name}/**/*.{h,m,swift}", "EXUpdates/BSPatch/*.{c}"
   end
 
   if $expo_updates_create_updates_resources != false
+    # `bash -l -c` re-parses its argument as a fresh command line, so the script path has to stay
+    # quoted through that second round of parsing - otherwise a project path containing a space is
+    # word-split and the phase fails.
+    project_root_env_var = ENV['PROJECT_ROOT'] ? "export PROJECT_ROOT=\"#{ENV['PROJECT_ROOT']}\"\n" : ""
     force_bundling_flag = ex_updates_native_debug ? "export FORCE_BUNDLING=1\n" : ""
-    s.script_phase = {
+    script_phase = {
       :name => 'Generate updates resources for expo-updates',
-      :script => force_bundling_flag + 'bash -l -c "$PODS_TARGET_SRCROOT/../scripts/create-updates-resources-ios.sh"',
+      :script => project_root_env_var + force_bundling_flag + 'bash -l -c "\"$PODS_TARGET_SRCROOT/../scripts/create-updates-resources-ios.sh\""',
       :execution_position => :before_compile
     }
+    # :always_out_of_date is only available in CocoaPods 1.13.0 and later
+    if Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.13.0')
+      # always run the script without warning
+      script_phase[:always_out_of_date] = "1"
+    end
+    s.script_phase = script_phase
 
     # Generate EXUpdates.bundle without existing resources
     # `create-updates-resources-ios.sh` will generate updates resources in EXUpdates.bundle
@@ -93,6 +167,7 @@ Pod::Spec.new do |s|
     test_spec.dependency 'ExpoModulesTestCore'
 
     test_spec.pod_target_xcconfig = {
+      'OTHER_LDFLAGS' => '$(inherited) -lc++',
       'USER_HEADER_SEARCH_PATHS' => '"${CONFIGURATION_TEMP_DIR}/EXUpdates.build/DerivedSources"',
       'GCC_TREAT_INCOMPATIBLE_POINTER_TYPE_WARNINGS_AS_ERRORS' => 'YES',
       'GCC_TREAT_IMPLICIT_FUNCTION_DECLARATIONS_AS_ERRORS' => 'YES',

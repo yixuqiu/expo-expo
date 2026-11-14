@@ -1,26 +1,88 @@
 // Copyright 2022-present 650 Industries. All rights reserved.
 
-#import <objc/runtime.h>
 #import <ExpoModulesCore/ExpoFabricViewObjC.h>
-
-#import <react/renderer/componentregistry/ComponentDescriptorProvider.h>
-#import <ExpoModulesCore/EXJSIConversions.h>
 #import <ExpoModulesCore/ExpoViewComponentDescriptor.h>
-#import <ExpoModulesCore/Swift.h>
+#import <ExpoModulesCore/EXJSIConversions.h>
 
-#ifdef RN_FABRIC_ENABLED
-#import <React/RCTSurfacePresenter.h>
-#import <React/RCTMountingManager.h>
-#import <React/RCTComponentViewRegistry.h>
-#endif
+#import <React/RCTAssert.h>
+#import <React/RCTComponentViewFactory.h>
+#import <react/renderer/componentregistry/ComponentDescriptorProvider.h>
 
-#ifdef __cplusplus
-#import <string.h>
-#endif
+#include <cmath>
+#include <optional>
 
 using namespace expo;
 
 namespace {
+
+#if REACT_NATIVE_TARGET_VERSION >= 82
+
+/**
+ How many synchronous (`unstable_Immediate`) size commits a single view may issue per
+ main-queue turn. The synchronous mode lets a self-sizing view adopt its measured content
+ size within the current frame, but it is only safe while the measured size and the Yoga
+ layout that results from committing it converge. When they persistently disagree (e.g. the
+ Button Shapes accessibility setting changes how SwiftUI content re-measures under the frame
+ it was granted), every synchronous commit re-triggers a measurement in the same run-loop
+ turn and the feedback becomes an unbounded main-thread loop that freezes the app until the
+ watchdog kills it. Updates over the budget are coalesced locally and committed
+ asynchronously on the next turn, so a non-convergent layout settles across frames instead.
+ */
+constexpr NSUInteger kImmediateSizeUpdateBudgetPerTurn = 2;
+
+/**
+ Size deltas below this threshold (in points) are considered noise (e.g. rounding jitter
+ between the pixel grid and SwiftUI's floating point sizes) and are not re-committed.
+ */
+constexpr float kSizeEpsilon = 0.05f;
+
+struct SizePair {
+  float width;
+  float height;
+};
+
+bool nearlyEqualSize(float a, float b)
+{
+  if (std::isnan(a) || std::isnan(b)) {
+    return std::isnan(a) && std::isnan(b);
+  }
+  if (a == b) {
+    return true;
+  }
+  return std::fabs(a - b) <= kSizeEpsilon;
+}
+
+bool nearlyEqualSize(const SizePair &a, const SizePair &b)
+{
+  return nearlyEqualSize(a.width, b.width) && nearlyEqualSize(a.height, b.height);
+}
+
+/**
+ A pending size update. Each channel maps to the corresponding pair of `ExpoViewState`
+ fields; merging keeps the latest value per channel so deferred updates cannot erase
+ the other channel (unlike replacing the whole state).
+ */
+struct SizeStatePatch {
+  std::optional<SizePair> shadowDimensions;
+  std::optional<SizePair> styleDimensions;
+
+  bool empty() const
+  {
+    return !shadowDimensions && !styleDimensions;
+  }
+
+  void merge(const SizeStatePatch &newer)
+  {
+    if (newer.shadowDimensions) {
+      shadowDimensions = newer.shadowDimensions;
+    }
+    if (newer.styleDimensions) {
+      styleDimensions = newer.styleDimensions;
+    }
+  }
+};
+
+#endif // REACT_NATIVE_TARGET_VERSION >= 82
 
 id convertFollyDynamicToId(const folly::dynamic &dyn)
 {
@@ -82,10 +144,18 @@ static NSString *normalizeEventName(NSString *eventName)
  Cache for component flavors, where the key is a view class name and value is the flavor.
  Flavors must be cached in order to keep using the same component handle after app reloads.
  */
-static std::unordered_map<std::string, ExpoViewComponentDescriptor::Flavor> _componentFlavorsCache;
+static std::unordered_map<std::string, ExpoViewComponentDescriptor<>::Flavor> _componentFlavorsCache;
 
 @implementation ExpoFabricViewObjC {
-  ExpoViewEventEmitter::Shared _eventEmitter;
+  ExpoViewShadowNode<>::ConcreteState::Shared _state;
+#if REACT_NATIVE_TARGET_VERSION >= 82
+  NSUInteger _immediateSizeUpdatesInTurn;
+  BOOL _sizeGuardResetScheduled;
+  uint64_t _sizeGuardGeneration;
+  std::optional<SizePair> _lastShadowSizeRequestInTurn;
+  std::optional<SizePair> _lastStyleSizeRequestInTurn;
+  SizeStatePatch _deferredSizePatch;
+#endif
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -93,8 +163,6 @@ static std::unordered_map<std::string, ExpoViewComponentDescriptor::Flavor> _com
   if (self = [super initWithFrame:frame]) {
     static const auto defaultProps = std::make_shared<const expo::ExpoViewProps>();
     _props = defaultProps;
-
-    self.contentView = [[UIView alloc] initWithFrame:CGRectZero];
   }
   return self;
 }
@@ -107,66 +175,56 @@ static std::unordered_map<std::string, ExpoViewComponentDescriptor::Flavor> _com
 
   // We're caching the flavor pointer so that the component handle stay the same for the same class name.
   // Otherwise, the component handle would change after reload which may cause memory leaks and unexpected view recycling behavior.
-  ExpoViewComponentDescriptor::Flavor flavor = _componentFlavorsCache[className];
+  ExpoViewComponentDescriptor<>::Flavor flavor = _componentFlavorsCache[className];
 
   if (flavor == nullptr) {
     flavor = _componentFlavorsCache[className] = std::make_shared<std::string const>(className);
   }
 
-  ComponentName componentName = ComponentName { flavor->c_str() };
-  ComponentHandle componentHandle = reinterpret_cast<ComponentHandle>(componentName);
+  react::ComponentName componentName = react::ComponentName { flavor->c_str() };
+  react::ComponentHandle componentHandle = reinterpret_cast<react::ComponentHandle>(componentName);
 
-  return ComponentDescriptorProvider {
+  return react::ComponentDescriptorProvider {
     componentHandle,
     componentName,
     flavor,
-    &facebook::react::concreteComponentDescriptorConstructor<expo::ExpoViewComponentDescriptor>
+    &facebook::react::concreteComponentDescriptorConstructor<expo::ExpoViewComponentDescriptor<>>
   };
 }
 
-- (void)mountChildComponentView:(UIView<RCTComponentViewProtocol> *)childComponentView index:(NSInteger)index
+- (void)finalizeUpdates:(RNComponentViewUpdateMask)updateMask
 {
-  // The `contentView` should always be at the back. Shifting the index makes sure that child components are mounted on top of it.
-  [super mountChildComponentView:childComponentView index:index + 1];
-}
+  [super finalizeUpdates:updateMask];
 
-- (void)unmountChildComponentView:(UIView<RCTComponentViewProtocol> *)childComponentView index:(NSInteger)index
-{
-  // All child components are mounted on top of `contentView`, so the index needs to be shifted by one.
-  [super unmountChildComponentView:childComponentView index:index + 1];
-}
+  if (updateMask & RNComponentViewUpdateMaskProps) {
+    const auto &newProps = static_cast<const ExpoViewProps &>(*_props);
+    NSMutableDictionary<NSString *, id> *propsMap = [[NSMutableDictionary alloc] init];
 
-- (void)updateProps:(const facebook::react::Props::Shared &)props oldProps:(const facebook::react::Props::Shared &)oldProps
-{
-  const auto &newViewProps = *std::static_pointer_cast<ExpoViewProps const>(props);
-  NSMutableDictionary<NSString *, id> *propsMap = [[NSMutableDictionary alloc] init];
+    for (const auto &item : newProps.propsMap) {
+      NSString *propName = [NSString stringWithUTF8String:item.first.c_str()];
 
-  for (const auto &item : newViewProps.propsMap) {
-    NSString *propName = [NSString stringWithUTF8String:item.first.c_str()];
-
-    // Ignore props inherited from the base view and Yoga.
-    if ([self supportsPropWithName:propName]) {
-      propsMap[propName] = convertFollyDynamicToId(item.second);
+      // Ignore props inherited from the base view and Yoga.
+      if ([self supportsPropWithName:propName]) {
+        propsMap[propName] = convertFollyDynamicToId(item.second);
+      }
     }
+
+    [self updateProps:propsMap];
+    [self viewDidUpdateProps];
   }
-
-  [self updateProps:propsMap];
-  [super updateProps:props oldProps:oldProps];
-  [self viewDidUpdateProps];
-}
-
-- (void)updateEventEmitter:(const react::EventEmitter::Shared &)eventEmitter
-{
-  [super updateEventEmitter:eventEmitter];
-  _eventEmitter = std::static_pointer_cast<const ExpoViewEventEmitter>(eventEmitter);
 }
 
 #pragma mark - Events
 
 - (void)dispatchEvent:(nonnull NSString *)eventName payload:(nullable id)payload
 {
-  _eventEmitter->dispatch([normalizeEventName(eventName) UTF8String], [payload](jsi::Runtime &runtime) {
-    return jsi::Value(runtime, expo::convertObjCObjectToJSIValue(runtime, payload));
+  if (!_eventEmitter) {
+    return;
+  }
+  const auto &eventEmitter = static_cast<const ExpoViewEventEmitter &>(*_eventEmitter);
+
+  eventEmitter.dispatch([normalizeEventName(eventName) UTF8String], [payload](jsi::Runtime &runtime) {
+    return expo::convertObjCObjectToJSIValue(runtime, payload);
   });
 }
 
@@ -177,10 +235,152 @@ static std::unordered_map<std::string, ExpoViewComponentDescriptor::Flavor> _com
   // Implemented in `ExpoFabricView.swift`
 }
 
+- (void)updateState:(react::State::Shared const &)state oldState:(react::State::Shared const &)oldState
+{
+  _state = std::static_pointer_cast<const ExpoViewShadowNode<>::ConcreteState>(state);
+}
+
 - (void)viewDidUpdateProps
 {
   // Implemented in `ExpoFabricView.swift`
 }
+
+- (void)setShadowNodeSize:(float)width height:(float)height
+{
+#if REACT_NATIVE_TARGET_VERSION >= 82
+  SizeStatePatch patch;
+  patch.shadowDimensions = SizePair{
+    width >= 0 ? width : std::numeric_limits<float>::quiet_NaN(),
+    height >= 0 ? height : std::numeric_limits<float>::quiet_NaN()
+  };
+  [self submitSizePatch:patch];
+#else
+  if (_state) {
+    _state->updateState(ExpoViewState(width, height));
+  }
+#endif
+}
+
+#if REACT_NATIVE_TARGET_VERSION >= 82
+
+- (void)submitSizePatch:(const SizeStatePatch &)patch
+{
+  RCTAssertMainQueue();
+
+  if (!_state) {
+    return;
+  }
+
+  // Transient per-turn dedup: prevents re-entrant same-size requests from
+  // committing again before `updateState` returns. Cleared every turn, so it
+  // can never go stale across turns.
+  if (patch.shadowDimensions) {
+    if (_lastShadowSizeRequestInTurn && nearlyEqualSize(*_lastShadowSizeRequestInTurn, *patch.shadowDimensions)) {
+      return;
+    }
+    _lastShadowSizeRequestInTurn = *patch.shadowDimensions;
+  }
+  if (patch.styleDimensions) {
+    if (_lastStyleSizeRequestInTurn && nearlyEqualSize(*_lastStyleSizeRequestInTurn, *patch.styleDimensions)) {
+      return;
+    }
+    _lastStyleSizeRequestInTurn = *patch.styleDimensions;
+  }
+
+  if (!_sizeGuardResetScheduled) {
+    _sizeGuardResetScheduled = YES;
+    const uint64_t generation = _sizeGuardGeneration;
+    __weak ExpoFabricViewObjC *weakSelf = self;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+      ExpoFabricViewObjC *strongSelf = weakSelf;
+      if (strongSelf == nil || strongSelf->_sizeGuardGeneration != generation) {
+        return;
+      }
+      strongSelf->_sizeGuardResetScheduled = NO;
+      strongSelf->_immediateSizeUpdatesInTurn = 0;
+      strongSelf->_lastShadowSizeRequestInTurn.reset();
+      strongSelf->_lastStyleSizeRequestInTurn.reset();
+
+      SizeStatePatch pending = strongSelf->_deferredSizePatch;
+      strongSelf->_deferredSizePatch = {};
+
+      if (!pending.empty()) {
+        // Deliberately entered into React Native's event queue only now: an
+        // `unstable_Immediate` update from any other view flushes the whole
+        // shared queue synchronously, which would pull an "asynchronous"
+        // update enqueued during the previous turn right back into the
+        // feedback loop this guard is breaking.
+        [strongSelf dispatchSizePatch:pending updateMode:react::EventQueue::UpdateMode::Asynchronous];
+      }
+    });
+  }
+
+  if (_immediateSizeUpdatesInTurn < kImmediateSizeUpdateBudgetPerTurn) {
+    _immediateSizeUpdatesInTurn++;
+    [self dispatchSizePatch:patch updateMode:react::EventQueue::UpdateMode::unstable_Immediate];
+  } else {
+    _deferredSizePatch.merge(patch);
+  }
+}
+
+- (void)dispatchSizePatch:(const SizeStatePatch &)patch updateMode:(react::EventQueue::UpdateMode)updateMode
+{
+  const auto state = _state;
+  if (!state) {
+    return;
+  }
+
+  state->updateState(
+    [patch](const ExpoViewState &oldData) -> ExpoViewShadowNode<>::ConcreteState::SharedData {
+      ExpoViewState newData = oldData;
+      bool changed = false;
+
+      if (patch.shadowDimensions &&
+          !(nearlyEqualSize(oldData._width, patch.shadowDimensions->width) &&
+            nearlyEqualSize(oldData._height, patch.shadowDimensions->height))) {
+        newData._width = patch.shadowDimensions->width;
+        newData._height = patch.shadowDimensions->height;
+        changed = true;
+      }
+      if (patch.styleDimensions &&
+          !(nearlyEqualSize(oldData._styleWidth, patch.styleDimensions->width) &&
+            nearlyEqualSize(oldData._styleHeight, patch.styleDimensions->height))) {
+        newData._styleWidth = patch.styleDimensions->width;
+        newData._styleHeight = patch.styleDimensions->height;
+        changed = true;
+      }
+
+      // Returning nullptr cancels the commit before any layout work happens,
+      // so a no-op size update cannot dirty the tree.
+      return changed ? std::make_shared<const ExpoViewState>(newData) : nullptr;
+    },
+    updateMode);
+}
+
+- (void)resetSizeUpdateGuard
+{
+  _sizeGuardGeneration++;
+  _immediateSizeUpdatesInTurn = 0;
+  _sizeGuardResetScheduled = NO;
+  _lastShadowSizeRequestInTurn.reset();
+  _lastStyleSizeRequestInTurn.reset();
+  _deferredSizePatch = {};
+}
+
+- (void)prepareForRecycle
+{
+  [super prepareForRecycle];
+  [self resetSizeUpdateGuard];
+}
+
+- (void)invalidate
+{
+  [super invalidate];
+  [self resetSizeUpdateGuard];
+}
+
+#endif // REACT_NATIVE_TARGET_VERSION >= 82
 
 - (BOOL)supportsPropWithName:(nonnull NSString *)name
 {
@@ -188,17 +388,42 @@ static std::unordered_map<std::string, ExpoViewComponentDescriptor::Flavor> _com
   return NO;
 }
 
-#pragma mark - Methods to override in the subclass
-
-- (nullable EXAppContext *)__injectedAppContext
+- (void)setStyleSize:(nullable NSNumber *)width height:(nullable NSNumber *)height
 {
-  [NSException raise:@"UninjectedException" format:@"The AppContext must be injected in the subclass of 'ExpoFabricView'"];
-  return nil;
+  float widthValue = width ? [width floatValue] : std::numeric_limits<float>::quiet_NaN();
+  float heightValue = height ? [height floatValue] : std::numeric_limits<float>::quiet_NaN();
+#if REACT_NATIVE_TARGET_VERSION >= 82
+  SizeStatePatch patch;
+  patch.styleDimensions = SizePair{
+    widthValue >= 0 ? widthValue : std::numeric_limits<float>::quiet_NaN(),
+    heightValue >= 0 ? heightValue : std::numeric_limits<float>::quiet_NaN()
+  };
+  [self submitSizePatch:patch];
+#else
+  if (_state) {
+    _state->updateState(expo::ExpoViewState::withStyleDimensions(widthValue, heightValue));
+  }
+#endif
 }
 
-- (nonnull NSString *)__injectedModuleName
+#pragma mark - Component registration
+
++ (void)registerComponentViewClass:(nonnull Class)viewClass
 {
-  [NSException raise:@"UninjectedException" format:@"The module name must be injected in the subclass of 'ExpoFabricView'"];
+  [[RCTComponentViewFactory currentComponentViewFactory] registerComponentViewClass:viewClass];
+}
+
++ (instancetype)new
+{
+  // `RCTComponentViewFactory` creates component views with `[viewClass new]` and gives no other way
+  // to customize it. The created view doesn't have to be an instance of the registered class.
+  id componentView = [self createComponentView];
+  return componentView ?: [super new];
+}
+
++ (nullable id)createComponentView
+{
+  // Implemented in `ExpoFabricView.swift`
   return nil;
 }
 

@@ -39,7 +39,7 @@ it('creates a full basic project by default', async () => {
   await executePassing([projectName]);
 
   expectFileExists(projectName, 'package.json');
-  expectFileExists(projectName, 'app/_layout.tsx');
+  expectFileExists(projectName, 'src/app/_layout.tsx');
   expectFileExists(projectName, '.gitignore');
   expectFileExists(projectName, 'app.json');
   // expect(fileExists(projectName, 'node_modules')).toBeTruthy();
@@ -58,6 +58,25 @@ it('creates a full basic project by default', async () => {
   expect(packageJson.name).toBe('defaults-to-basic');
 });
 
+// TODO: drop this test when the oldest supported Node version is >=23
+const [nodeMajor] = process.versions.node.split('.').map(Number);
+(nodeMajor != null && nodeMajor >= 23 ? it.skip : it)('throws when fetch is disabled', async () => {
+  const projectName = 'throws-when-fetch-disabled';
+  let result: Awaited<ReturnType<typeof execute>>;
+
+  try {
+    result = await execute([projectName, '--example', 'with-router'], {
+      env: { NODE_OPTIONS: '--no-experimental-fetch', NODE_ENV: 'test', EXPO_PUBLIC_TEST: '' },
+    });
+  } catch (error: any) {
+    result = error;
+  }
+
+  expect(result).toMatchObject({
+    stderr: expect.stringContaining('Node.js built-in fetch is required to continue'),
+  });
+});
+
 it('uses pnpm', async () => {
   const projectName = 'uses-pnpm';
   const results = await executePassing([projectName, '--no-install'], {
@@ -70,17 +89,10 @@ it('uses pnpm', async () => {
   expect(results.stdout).toMatch(/pnpm install/);
 
   expectFileExists(projectName, 'package.json');
-  expectFileExists(projectName, 'app/_layout.tsx');
+  expectFileExists(projectName, 'src/app/_layout.tsx');
   expectFileExists(projectName, '.gitignore');
   // Check if it skipped install
   expectFileNotExists(projectName, 'node_modules');
-
-  // Check if `pnpm` node linker is set
-  expectFileExists(projectName, '.npmrc');
-  const { stdout } = expectExecutePassing(
-    await spawnAsync('pnpm', ['config', 'get', 'node-linker'], { cwd: getTestPath(projectName) })
-  );
-  expect(stdout).toContain('hoisted');
 });
 
 it('uses Bun', async () => {
@@ -95,7 +107,7 @@ it('uses Bun', async () => {
   expect(results.stdout).toMatch(/bun install/);
 
   expectFileExists(projectName, 'package.json');
-  expectFileExists(projectName, 'app/_layout.tsx');
+  expectFileExists(projectName, 'src/app/_layout.tsx');
   expectFileExists(projectName, '.gitignore');
   // Check if it skipped install
   expectFileNotExists(projectName, 'node_modules');
@@ -113,7 +125,7 @@ it('uses npm', async () => {
   expect(results.stdout).toMatch(/npm install/);
 
   expectFileExists(projectName, 'package.json');
-  expectFileExists(projectName, 'App.js');
+  expectFileExists(projectName, 'src/app/_layout.tsx');
   expectFileExists(projectName, '.gitignore');
   // Check if it skipped install
   expectFileNotExists(projectName, 'node_modules');
@@ -131,7 +143,7 @@ it('uses yarn', async () => {
   expect(results.stdout).toMatch(/yarn install/);
 
   expectFileExists(projectName, 'package.json');
-  expectFileExists(projectName, 'app/_layout.tsx');
+  expectFileExists(projectName, 'src/app/_layout.tsx');
   expectFileExists(projectName, '.gitignore');
   // Check if it skipped install
   expectFileNotExists(projectName, 'node_modules');
@@ -144,7 +156,7 @@ describe('yes', () => {
     await executePassing([projectName, '--no-install', '--yes']);
 
     expectFileExists(projectName, 'package.json');
-    expectFileExists(projectName, 'app/_layout.tsx');
+    expectFileExists(projectName, 'src/app/_layout.tsx');
     expectFileExists(projectName, '.gitignore');
     expectFileNotExists(projectName, 'node_modules');
   });
@@ -155,7 +167,7 @@ describe('yes', () => {
     await executePassing([projectName, '--no-install', '-y']);
 
     expectFileExists(projectName, 'package.json');
-    expectFileExists(projectName, 'app/_layout.tsx');
+    expectFileExists(projectName, 'src/app/_layout.tsx');
     expectFileExists(projectName, '.gitignore');
     expectFileNotExists(projectName, 'node_modules');
   });
@@ -166,7 +178,7 @@ describe('yes', () => {
     await executePassing([projectName, '--no-install', '--yes', '--template', 'blank']);
 
     expectFileExists(projectName, 'package.json');
-    expectFileExists(projectName, 'app/_layout.tsx');
+    expectFileExists(projectName, 'src/app/_layout.tsx');
     expectFileExists(projectName, '.gitignore');
     // Check if it skipped install
     expectFileNotExists(projectName, 'node_modules');
@@ -274,7 +286,27 @@ xdescribe('templates', () => {
     }
 
     expectFileExists(projectName, 'package.json');
-    expectFileExists(projectName, 'app/_layout.tsx');
+    expectFileExists(projectName, 'src/app/_layout.tsx');
+    expectFileExists(projectName, '.gitignore');
+    // Check if it skipped install
+    expectFileNotExists(projectName, 'node_modules');
+  });
+
+  it('downloads a github repo with shorthand', async () => {
+    const projectName = 'github-shorthand-url';
+    const results = await executePassing([
+      projectName,
+      '--no-install',
+      '--template',
+      'expo/examples/tree/master/blank',
+    ]);
+
+    // Test that the user was warned about deps
+    expect(results.stdout).toMatch(/make sure you have modules installed/);
+    expect(results.stdout).toMatch(/yarn/);
+    expectFileExists(projectName, 'package.json');
+    expectFileExists(projectName, 'App.js');
+    expectFileExists(projectName, 'README.md');
     expectFileExists(projectName, '.gitignore');
     // Check if it skipped install
     expectFileNotExists(projectName, 'node_modules');

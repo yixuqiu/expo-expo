@@ -4,6 +4,15 @@ import plist from '..';
 
 describe('plist', function () {
   describe('build()', function () {
+    it.each([1, 2, 3, 256, 1024 * 1024])(
+      'should encode an ArrayBuffer containing %i bytes',
+      function (length) {
+        const bytes = Uint8Array.from({ length }, (_, index) => index % 256);
+        const xml = plist.build(bytes.buffer);
+        assert(xml.includes(`<data>${Buffer.from(bytes).toString('base64')}</data>`));
+      }
+    );
+
     it('should create a plist XML string from a String', function () {
       const xml = plist.build('test');
       assert.strictEqual(
@@ -145,6 +154,14 @@ describe('plist', function () {
   <dict/>
 </plist>`
       );
+    });
+
+    it('should serialize null-prototype dicts (as produced by parse)', function () {
+      const inner = Object.create(null);
+      inner.a1 = true;
+      const outer = Object.create(null);
+      outer.a = inner;
+      assert.doesNotThrow(() => plist.build(outer));
     });
   });
 });

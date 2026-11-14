@@ -1,19 +1,22 @@
 package expo.modules.updates
 
 import android.os.Bundle
-import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.devsupport.interfaces.DevSupportManager
-import expo.modules.kotlin.AppContext
-import expo.modules.kotlin.exception.CodedException
+import expo.modules.core.logging.localizedMessageWithCauseLocalizedMessage
 import expo.modules.updates.db.entity.AssetEntity
 import expo.modules.updates.db.entity.UpdateEntity
+import expo.modules.updates.events.IUpdatesEventManager
 import expo.modules.updates.loader.LoaderTask
 import expo.modules.updates.manifest.Update
+import expo.modules.updates.reloadscreen.ReloadScreenManager
 import expo.modules.updates.statemachine.UpdatesStateContext
 import java.io.File
 import java.lang.ref.WeakReference
 import java.util.Date
+import kotlin.time.Duration
+import kotlin.time.DurationUnit
 
 interface IUpdatesController {
   /**
@@ -36,14 +39,20 @@ interface IUpdatesController {
   val bundleAssetName: String?
 
   /**
+   * The current [ReactHost], populated automatically by `ReactNativeHostHandler.onDidCreateReactHost`.
+   */
+  var reactHost: WeakReference<ReactHost>
+
+  val reloadScreenManager: ReloadScreenManager?
+
+  /**
    * Public for E2E tests.
    */
   val updatesDirectory: File?
 
-  /**
-   * The [AppContext] assigned from [UpdatesModule]
-   */
-  var appContext: WeakReference<AppContext>?
+  val eventManager: IUpdatesEventManager
+
+  fun onEventListenerStartObserving()
 
   fun onDidCreateDevSupportManager(devSupportManager: DevSupportManager)
 
@@ -61,19 +70,12 @@ interface IUpdatesController {
    * Starts the update process to launch a previously-loaded update and (if configured to do so)
    * check for a new update from the server. This method should be called as early as possible in
    * the application's lifecycle.
-   * @param context the base context of the application, ideally a [ReactApplication]
    */
   fun start()
 
-  var shouldEmitJsEvents: Boolean
-
-  interface ModuleCallback<T> {
-    fun onSuccess(result: T)
-    fun onFailure(exception: CodedException)
-  }
-
   data class UpdatesModuleConstants(
     val launchedUpdate: UpdateEntity?,
+    val launchDuration: Duration?,
     val embeddedUpdate: UpdateEntity?,
     val emergencyLaunchException: Exception?,
     val isEnabled: Boolean,
@@ -97,13 +99,41 @@ interface IUpdatesController {
      * or a Dev Client, which have their own controller/JS API implementations, we want the JS API
      * calls to go through.
      */
-    val shouldDeferToNativeForAPIMethodAvailabilityInDevelopment: Boolean
-  )
+    val shouldDeferToNativeForAPIMethodAvailabilityInDevelopment: Boolean,
+
+    val initialContext: UpdatesStateContext
+  ) {
+    fun toModuleConstantsMap(): Map<String, Any?> = mutableMapOf<String, Any?>().apply {
+      this["isEmergencyLaunch"] = emergencyLaunchException != null
+      this["emergencyLaunchReason"] = emergencyLaunchException?.localizedMessageWithCauseLocalizedMessage()
+      this["isEmbeddedLaunch"] = embeddedUpdate !== null && launchedUpdate?.id?.equals(embeddedUpdate.id) ?: false
+      this["isEnabled"] = isEnabled
+      this["launchDuration"] = launchDuration?.toLong(DurationUnit.MILLISECONDS)
+      this["isUsingEmbeddedAssets"] = isUsingEmbeddedAssets
+      this["runtimeVersion"] = runtimeVersion ?: ""
+      this["checkAutomatically"] = checkOnLaunch.toJSString()
+      this["channel"] = requestHeaders["expo-channel-name"] ?: ""
+      this["shouldDeferToNativeForAPIMethodAvailabilityInDevelopment"] = shouldDeferToNativeForAPIMethodAvailabilityInDevelopment || UpdatesPackage.isUsingNativeDebug
+      this["initialContext"] = initialContext.bundle
+
+      if (launchedUpdate != null) {
+        this["updateId"] = launchedUpdate.id.toString()
+        this["commitTime"] = launchedUpdate.commitTime.time
+        this["manifestString"] = launchedUpdate.manifest.toString()
+      }
+      val localAssetFiles = localAssetFiles
+      if (localAssetFiles != null) {
+        val localAssets = mutableMapOf<String, String>()
+        for (asset in localAssetFiles.keys) {
+          if (asset.key != null) {
+            localAssets[asset.key!!] = localAssetFiles[asset]!!
+          }
+        }
+        this["localAssets"] = localAssets
+      }
+    }
+  }
   fun getConstantsForModule(): UpdatesModuleConstants
-
-  fun relaunchReactApplicationForModule(callback: ModuleCallback<Unit>)
-
-  fun getNativeStateMachineContext(callback: ModuleCallback<UpdatesStateContext>)
 
   sealed class CheckForUpdateResult(private val status: Status) {
     private enum class Status {
@@ -116,9 +146,8 @@ interface IUpdatesController {
     class NoUpdateAvailable(val reason: LoaderTask.RemoteCheckResultNotAvailableReason) : CheckForUpdateResult(Status.NO_UPDATE_AVAILABLE)
     class UpdateAvailable(val update: Update) : CheckForUpdateResult(Status.UPDATE_AVAILABLE)
     class RollBackToEmbedded(val commitTime: Date) : CheckForUpdateResult(Status.ROLL_BACK_TO_EMBEDDED)
-    class ErrorResult(val error: Exception, val message: String) : CheckForUpdateResult(Status.ERROR)
+    class ErrorResult(val error: Exception) : CheckForUpdateResult(Status.ERROR)
   }
-  fun checkForUpdate(callback: ModuleCallback<CheckForUpdateResult>)
 
   sealed class FetchUpdateResult(private val status: Status) {
     private enum class Status {
@@ -133,9 +162,19 @@ interface IUpdatesController {
     class RollBackToEmbedded : FetchUpdateResult(Status.ROLL_BACK_TO_EMBEDDED)
     class ErrorResult(val error: Exception) : FetchUpdateResult(Status.ERROR)
   }
-  fun fetchUpdate(callback: ModuleCallback<FetchUpdateResult>)
 
-  fun getExtraParams(callback: ModuleCallback<Bundle>)
+  suspend fun relaunchReactApplicationForModule()
 
-  fun setExtraParam(key: String, value: String?, callback: ModuleCallback<Unit>)
+  suspend fun checkForUpdate(): CheckForUpdateResult
+
+  suspend fun fetchUpdate(): FetchUpdateResult
+
+  suspend fun getExtraParams(): Bundle
+
+  suspend fun setExtraParam(key: String, value: String?)
+
+  fun setUpdateURLAndRequestHeadersOverride(configOverride: UpdatesConfigurationOverride?)
+  fun setUpdateRequestHeadersOverride(requestHeaders: Map<String, String>?)
+
+  fun shutdown()
 }

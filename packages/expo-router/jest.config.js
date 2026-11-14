@@ -1,3 +1,6 @@
+const path = require('node:path');
+
+const createJestPreset = require('@expo/internal-scripts/createJestPreset');
 const {
   getWebPreset,
   getNodePreset,
@@ -12,15 +15,44 @@ function withDefaults({ watchPlugins, ...config }) {
     roots: ['src'],
     clearMocks: true,
     setupFilesAfterEnv: ['./build/testing-library/mocks.js'],
+    // Map CSS modules to a proxy object so Jest doesn't attempt to parse them.
+    moduleNameMapper: {
+      // Existing mappings (if any) should come first so users can override if needed.
+      ...(config.moduleNameMapper || {}),
+      // CSS Modules: treat class names as keys for predictable snapshots.
+      '^.+\\.module\\.css$': '<rootDir>/__mocks__/styleMock.js',
+      // Plain CSS (and other style files) can be stubbed with an empty object.
+      '^.+\\.(css|less|sass|scss)$': '<rootDir>/__mocks__/styleMock.js',
+    },
+    transform: {
+      ...(config.transform || {}),
+      '^.+\\.(png|jpg|jpeg|gif|svg)$': '<rootDir>/__mocks__/imageTransformer.js',
+    },
   };
 }
 
-module.exports = withWatchPlugins({
-  projects: [
-    // Create a new project for each platform.
-    getWebPreset(),
-    getNodePreset(),
-    getIOSPreset(),
-    getAndroidPreset(),
-  ].map(withDefaults),
+const projects = [
+  // Create a new project for each platform.
+  getNodePreset(),
+  getWebPreset(),
+  getIOSPreset(),
+  getAndroidPreset(),
+]
+  .map(createJestPreset)
+  .map(withDefaults);
+
+// Run the config plugin's tests as their own project so a single `jest` covers the package.
+// `watchPlugins` is root-only, so strip it from the sub-project.
+const { watchPlugins, ...pluginProject } = require('./plugin/jest.config.js');
+projects.push({ ...pluginProject, rootDir: path.join(__dirname, 'plugin') });
+
+// Run the RSC `__rsc_tests__` as their own per-platform projects (`rsc/<platform>`) so a single
+// `jest` covers them too. These match only `**/__rsc_tests__/**`, separate from the projects above.
+projects.push(...require('jest-expo/rsc/jest-preset').projects.map(createJestPreset));
+
+const config = withWatchPlugins({
+  ...require('jest-expo/config/maxWorkers'),
+  projects,
 });
+
+module.exports = config;

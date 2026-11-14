@@ -1,14 +1,101 @@
 # Changelog
 
-## Unpublished
+## 58.0.1
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
 
 ### 🛠 Breaking changes
 
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.1.6 - 2026-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 55.1.5 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.1.4 - 2026-04-02
+
 ### 🎉 New features
+
+- Native interface access to state machine context. ([#44361](https://github.com/expo/expo/pull/44361) by [@douglowder](https://github.com/douglowder))
+
+## 55.1.3 — 2026-02-25
+
+### ⚠️ Notices
+
+- Documentation for new native interface. ([#43230](https://github.com/expo/expo/pull/43230) by [@douglowder](https://github.com/douglowder))
+
+## 55.1.2 — 2026-02-16
+
+### 🎉 New features
+
+- Full native interface for updates. ([#42981](https://github.com/expo/expo/pull/42981) by [@douglowder](https://github.com/douglowder))
+
+## 55.1.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.1.0 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+_This version does not introduce any user-facing changes._
+
+## 2.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- Add support for macOS. ([#37629](https://github.com/expo/expo/pull/37629) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 1.1.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+
+## 1.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
 
 ### 🐛 Bug fixes
 
+- Use expo-updates as source of truth for runtime version in dev client ([#31453](https://github.com/expo/expo/pull/31453) by [@wschurman](https://github.com/wschurman))
+
 ### 💡 Others
+
+- Refactor context injection ([#31951](https://github.com/expo/expo/pull/31951) by [@wschurman](https://github.com/wschurman))
+- [ios] Remove appContext property ([#32103](https://github.com/expo/expo/pull/32103) by [@wschurman](https://github.com/wschurman))
 
 ## 0.16.2 — 2024-05-09
 

@@ -29,6 +29,7 @@ private const val SECURITY_LEVEL_SECRET = 1
 private const val SECURITY_LEVEL_BIOMETRIC_WEAK = 2
 private const val SECURITY_LEVEL_BIOMETRIC_STRONG = 3
 private const val DEVICE_CREDENTIAL_FALLBACK_CODE = 6
+private const val DEFAULT_FALLBACK_LABEL = "Use screen lock"
 
 class LocalAuthenticationModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -75,7 +76,7 @@ class LocalAuthenticationModule : Module() {
     }
 
     AsyncFunction("authenticateAsync") { options: AuthOptions, promise: Promise ->
-      val fragmentActivity = currentActivity as? FragmentActivity
+      val fragmentActivity = appContext.throwingActivity as? FragmentActivity
       if (fragmentActivity == null) {
         promise.reject(Exceptions.MissingActivity())
         return@AsyncFunction
@@ -90,8 +91,6 @@ class LocalAuthenticationModule : Module() {
         return@AsyncFunction
       }
 
-      this@LocalAuthenticationModule.authOptions = options
-
       // BiometricPrompt callbacks are invoked on the main thread so also run this there to avoid
       // having to do locking.
       appContext.mainQueue.launch {
@@ -100,16 +99,22 @@ class LocalAuthenticationModule : Module() {
     }
 
     AsyncFunction<Unit>("cancelAuthenticate") {
-      biometricPrompt?.cancelAuthentication()
+      val current = activePromise
+      val currentPrompt = biometricPrompt
+      activePromise = null
+      biometricPrompt = null
       isAuthenticating = false
+      isRetryingWithDeviceCredentials = false
+      currentPrompt?.cancelAuthentication()
+      current?.resolve(createResponse(error = "user_cancel"))
     }.runOnQueue(Queues.MAIN)
 
     OnActivityResult { activity, (requestCode, resultCode, data) ->
       if (requestCode == DEVICE_CREDENTIAL_FALLBACK_CODE) {
         if (resultCode == Activity.RESULT_OK) {
-          promise?.resolve(createResponse())
+          activePromise?.resolve(createResponse())
         } else {
-          promise?.resolve(
+          activePromise?.resolve(
             createResponse(
               error = "user_cancel",
               warning = "Device Credentials canceled"
@@ -120,8 +125,7 @@ class LocalAuthenticationModule : Module() {
         isAuthenticating = false
         isRetryingWithDeviceCredentials = false
         biometricPrompt = null
-        promise = null
-        authOptions = null
+        activePromise = null
       } else if (activity is FragmentActivity) {
         // If the user uses PIN as an authentication method, the result will be passed to the `onActivityResult`.
         // Unfortunately, react-native doesn't pass this value to the underlying fragment - we won't resolve the promise.
@@ -138,147 +142,149 @@ class LocalAuthenticationModule : Module() {
   private val keyguardManager: KeyguardManager
     get() = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
 
-  private val currentActivity: Activity?
-    get() = appContext.currentActivity
-
   private val biometricManager by lazy { BiometricManager.from(context) }
   private val packageManager by lazy { context.packageManager }
   private var biometricPrompt: BiometricPrompt? = null
-  private var promise: Promise? = null
-  private var authOptions: AuthOptions? = null
+  private var activePromise: Promise? = null
   private var isRetryingWithDeviceCredentials = false
   private var isAuthenticating = false
 
-  private val authenticationCallback: BiometricPrompt.AuthenticationCallback = object : BiometricPrompt.AuthenticationCallback() {
+  private fun buildAuthenticationCallback(
+    callPromise: Promise,
+    callOptions: AuthOptions,
+    usesDeviceCredentialButton: Boolean = false
+  ): BiometricPrompt.AuthenticationCallback = object : BiometricPrompt.AuthenticationCallback() {
     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-      isAuthenticating = false
-      isRetryingWithDeviceCredentials = false
-      biometricPrompt = null
-      promise?.resolve(
-        Bundle().apply {
-          putBoolean("success", true)
-        }
-      )
-      promise = null
-      authOptions = null
+      finishCall(callPromise) {
+        callPromise.resolve(
+          Bundle().apply {
+            putBoolean("success", true)
+          }
+        )
+      }
     }
 
     override fun onAuthenticationError(errMsgId: Int, errString: CharSequence) {
-      // Make sure to fallback to the Device Credentials if the Biometrics hardware is unavailable.
-      if (isBiometricUnavailable(errMsgId) && isDeviceSecure && !isRetryingWithDeviceCredentials) {
-        val options = authOptions
-
-        if (options != null) {
-          val disableDeviceFallback = options.disableDeviceFallback
-
-          // Don't run the device credentials fallback if it's disabled.
-          if (!disableDeviceFallback) {
-            promise?.let {
-              isRetryingWithDeviceCredentials = true
-              promptDeviceCredentialsFallback(options, it)
-              return
-            }
-          }
-        }
+      if (
+        shouldFallBackToDeviceCredential(errMsgId, callOptions.disableDeviceFallback, usesDeviceCredentialButton) &&
+        isDeviceSecure &&
+        !isRetryingWithDeviceCredentials &&
+        activePromise === callPromise
+      ) {
+        isRetryingWithDeviceCredentials = true
+        promptDeviceCredentialsFallback(callOptions, callPromise)
+        return
       }
-
-      isAuthenticating = false
-      isRetryingWithDeviceCredentials = false
-      biometricPrompt = null
-      promise?.resolve(
-        createResponse(
-          error = convertErrorCode(errMsgId),
-          warning = errString.toString()
+      finishCall(callPromise) {
+        callPromise.resolve(
+          createResponse(
+            error = convertErrorCode(errMsgId),
+            warning = errString.toString()
+          )
         )
-      )
-      promise = null
-      authOptions = null
+      }
     }
+  }
+
+  // Drop late callbacks for a call whose promise was already settled by another path (e.g. cancelAuthenticate).
+  private inline fun finishCall(callPromise: Promise, resolve: () -> Unit) {
+    if (activePromise !== callPromise) {
+      return
+    }
+    activePromise = null
+    biometricPrompt = null
+    isAuthenticating = false
+    isRetryingWithDeviceCredentials = false
+    resolve()
   }
 
   @UiThread
   private fun authenticate(fragmentActivity: FragmentActivity, options: AuthOptions, promise: Promise) {
     if (isAuthenticating) {
-      this.promise?.resolve(
-        createResponse(
-          error = "app_cancel"
-        )
-      )
-      this.promise = promise
+      // Reject the new call rather than supersede. AndroidX `BiometricPrompt` won't show a
+      // replacement prompt while the previous fragment is still detaching
+      promise.resolve(createResponse(error = "app_cancel"))
       return
     }
 
-    val promptMessage = options.promptMessage
-    val cancelLabel = options.cancelLabel
-    val requireConfirmation = options.requireConfirmation
-    val allowedAuthenticators = if (options.disableDeviceFallback) {
-      options.biometricsSecurityLevel.toNativeBiometricSecurityLevel()
-    } else {
-      options.biometricsSecurityLevel.toNativeBiometricSecurityLevel() or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-    }
+    val selection = selectAuthenticators(
+      securityLevel = options.biometricsSecurityLevel,
+      disableDeviceFallback = options.disableDeviceFallback,
+      apiLevel = Build.VERSION.SDK_INT
+    )
 
     isAuthenticating = true
-    this.promise = promise
+    activePromise = promise
     val executor: Executor = Executors.newSingleThreadExecutor()
-    biometricPrompt = BiometricPrompt(fragmentActivity, executor, authenticationCallback)
+    val localBiometricPrompt = BiometricPrompt(fragmentActivity, executor, buildAuthenticationCallback(promise, options, selection.usesDeviceCredentialButton))
+    biometricPrompt = localBiometricPrompt
     val promptInfoBuilder = PromptInfo.Builder().apply {
-      setTitle(promptMessage)
-      setAllowedAuthenticators(allowedAuthenticators)
-      if (options.disableDeviceFallback) {
-        setNegativeButtonText(cancelLabel)
-      }
-      setConfirmationRequired(requireConfirmation)
+      setTitle(options.promptMessage)
+      setSubtitle(options.promptSubtitle)
+      setDescription(options.promptDescription)
+      setAllowedAuthenticators(selection.allowedAuthenticators)
+      negativeButtonText(selection, options.disableDeviceFallback, options.cancelLabel, options.fallbackLabel, ::defaultFallbackLabel)
+        ?.let { setNegativeButtonText(it) }
+      setConfirmationRequired(options.requireConfirmation)
     }
 
     val promptInfo = promptInfoBuilder.build()
     try {
-      biometricPrompt!!.authenticate(promptInfo)
+      localBiometricPrompt.authenticate(promptInfo)
     } catch (e: NullPointerException) {
-      promise.reject(UnexpectedException("Canceled authentication due to an internal error", e))
+      finishCall(promise) {
+        promise.reject(UnexpectedException("Canceled authentication due to an internal error", e))
+      }
     }
   }
 
   private fun promptDeviceCredentialsFallback(options: AuthOptions, promise: Promise) {
-    val fragmentActivity = currentActivity as FragmentActivity?
+    val fragmentActivity = appContext.throwingActivity as FragmentActivity?
     if (fragmentActivity == null) {
-      promise.resolve(
-        createResponse(
-          error = "not_available",
-          warning = "getCurrentActivity() returned null"
+      finishCall(promise) {
+        promise.resolve(
+          createResponse(
+            error = "not_available",
+            warning = "getCurrentActivity() returned null"
+          )
         )
-      )
+      }
       return
     }
 
     val promptMessage = options.promptMessage
-    val requireConfirmation = options.requireConfirmation
+    val promptDescription = options.promptDescription
 
     // BiometricPrompt callbacks are invoked on the main thread so also run this there to avoid
     // having to do locking.
     appContext.mainQueue.launch {
       // On Android devices older than 11, we need to use Keyguard to unlock by Device Credentials.
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-        val credentialConfirmationIntent = keyguardManager.createConfirmDeviceCredentialIntent(promptMessage, "")
+        val credentialConfirmationIntent = keyguardManager.createConfirmDeviceCredentialIntent(promptMessage, promptDescription)
         fragmentActivity.startActivityForResult(credentialConfirmationIntent, DEVICE_CREDENTIAL_FALLBACK_CODE)
         return@launch
       }
 
       val executor: Executor = Executors.newSingleThreadExecutor()
-      val localBiometricPrompt = BiometricPrompt(fragmentActivity, executor, authenticationCallback)
+      val localBiometricPrompt = BiometricPrompt(fragmentActivity, executor, buildAuthenticationCallback(promise, options))
 
       biometricPrompt = localBiometricPrompt
 
       val promptInfoBuilder = PromptInfo.Builder().apply {
         setTitle(promptMessage)
+        setSubtitle(options.promptSubtitle)
+        setDescription(promptDescription)
         setAllowedAuthenticators(BiometricManager.Authenticators.DEVICE_CREDENTIAL)
-        setConfirmationRequired(requireConfirmation)
+        setConfirmationRequired(options.requireConfirmation)
       }
 
       val promptInfo = promptInfoBuilder.build()
       try {
         localBiometricPrompt.authenticate(promptInfo)
       } catch (e: NullPointerException) {
-        promise.reject(UnexpectedException("Canceled authentication due to an internal error", e))
+        finishCall(promise) {
+          promise.reject(UnexpectedException("Canceled authentication due to an internal error", e))
+        }
       }
     }
   }
@@ -289,7 +295,7 @@ class LocalAuthenticationModule : Module() {
   // but it will be ignored on falling-back to device credential on biometric authentication.
   // That means, setting level to `SECURITY_LEVEL_SECRET` might be misleading for some users.
   // But there is no equivalent APIs prior to M.
-  // `andriodx.biometric.BiometricManager#canAuthenticate(int)` looks like an alternative,
+  // `androidx.biometric.BiometricManager#canAuthenticate(int)` looks like an alternative,
   // but specifying `BiometricManager.Authenticators.DEVICE_CREDENTIAL` alone is not
   // supported prior to API 30.
   // https://developer.android.com/reference/androidx/biometric/BiometricManager#canAuthenticate(int)
@@ -308,17 +314,9 @@ class LocalAuthenticationModule : Module() {
     }
   }
 
-  private fun isBiometricUnavailable(code: Int): Boolean {
-    return when (code) {
-      BiometricPrompt.ERROR_HW_NOT_PRESENT,
-      BiometricPrompt.ERROR_HW_UNAVAILABLE,
-      BiometricPrompt.ERROR_NO_BIOMETRICS,
-      BiometricPrompt.ERROR_UNABLE_TO_PROCESS,
-      BiometricPrompt.ERROR_NO_SPACE -> true
-
-      else -> false
-    }
-  }
+  // AndroidX's localized label for a button that opens the device credential.
+  private fun defaultFallbackLabel(): CharSequence =
+    biometricManager.getStrings(BiometricManager.Authenticators.DEVICE_CREDENTIAL)?.buttonLabel ?: DEFAULT_FALLBACK_LABEL
 
   private fun canAuthenticateUsingWeakBiometrics(): Int =
     biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)

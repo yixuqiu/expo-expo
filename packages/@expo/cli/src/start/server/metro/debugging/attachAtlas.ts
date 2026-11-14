@@ -1,11 +1,24 @@
+import { events } from '2g';
+import type { SerializedError } from '2g';
+import type { ConfigT as MetroConfig } from '@expo/metro/metro-config';
 import type { Server as ConnectServer } from 'connect';
-import type { ConfigT as MetroConfig } from 'metro-config';
 
-import { AtlasPrerequisite } from './AtlasPrerequisite';
 import { env } from '../../../../utils/env';
-import { type EnsureDependenciesOptions } from '../../../doctor/dependencies/ensureDependenciesAsync';
+import type { EnsureDependenciesOptions } from '../../../doctor/dependencies/ensureDependenciesAsync';
+import { AtlasPrerequisite } from './AtlasPrerequisite';
 
-const debug = require('debug')('expo:metro:debugging:attachAtlas') as typeof console.log;
+declare module '2g' {
+  interface EventRegistry {
+    'atlas:attached': { path: string };
+    'atlas:load_failed': { error: SerializedError };
+    'atlas:file_reset': { path: string };
+    'atlas:export_not_loaded': Record<string, never>;
+    'atlas:export_outdated': Record<string, never>;
+  }
+}
+
+const event = events('atlas');
+const debugEvent = events.debug('atlas');
 
 type AttachAtlasOptions = Pick<EnsureDependenciesOptions, 'exp'> & {
   isExporting: boolean;
@@ -18,11 +31,10 @@ type AttachAtlasOptions = Pick<EnsureDependenciesOptions, 'exp'> & {
 export async function attachAtlasAsync(
   options: AttachAtlasOptions
 ): Promise<void | ReturnType<typeof import('expo-atlas/cli').createExpoAtlasMiddleware>> {
-  if (!env.EXPO_UNSTABLE_ATLAS) {
+  if (!env.EXPO_ATLAS) {
     return;
   }
 
-  debug('Atlas is enabled, initializing for this project...');
   await new AtlasPrerequisite(options.projectRoot).bootstrapAsync({ exp: options.exp });
 
   return !options.isExporting
@@ -45,12 +57,13 @@ function attachAtlasToDevServer(
 
   const atlas = importAtlasForDev(options.projectRoot);
   if (!atlas) {
-    return debug('Atlas is not installed in the project, skipping initialization');
+    return;
   }
 
-  const instance = atlas.createExpoAtlasMiddleware(options.metroConfig);
+  // TODO(@kitten): Atlas' typings don't match @expo/metro yet
+  const instance = atlas.createExpoAtlasMiddleware(options.metroConfig as any);
   options.middleware.use('/_expo/atlas', instance.middleware);
-  debug('Attached Atlas middleware for development on: /_expo/atlas');
+  event('attached', { path: '/_expo/atlas' });
   return instance;
 }
 
@@ -58,7 +71,7 @@ function importAtlasForDev(projectRoot: string): null | typeof import('expo-atla
   try {
     return require(require.resolve('expo-atlas/cli', { paths: [projectRoot] }));
   } catch (error: any) {
-    debug('Failed to load Atlas from project:', error);
+    debugEvent('load_failed', { error: debugEvent.error(error as Error) });
     return null;
   }
 }
@@ -72,23 +85,45 @@ async function attachAtlasToExport(
 ): Promise<void> {
   const atlas = importAtlasForExport(options.projectRoot);
   if (!atlas) {
-    return debug('Atlas is not installed in the project, skipping initialization');
+    return;
   }
 
   if (options.resetAtlasFile) {
     const filePath = await atlas.resetExpoAtlasFile(options.projectRoot);
-    debug('(Re)created Atlas file at:', filePath);
+    debugEvent('file_reset', { path: debugEvent.path(filePath) });
   }
 
-  atlas.withExpoAtlas(options.metroConfig);
-  debug('Attached Atlas to Metro config for exporting');
+  // TODO(@kitten): Atlas' typings don't match @expo/metro yet
+  atlas.withExpoAtlas(options.metroConfig as any);
 }
 
 function importAtlasForExport(projectRoot: string): null | typeof import('expo-atlas/metro') {
   try {
     return require(require.resolve('expo-atlas/metro', { paths: [projectRoot] }));
   } catch (error: any) {
-    debug('Failed to load Atlas from project:', error);
+    debugEvent('load_failed', { error: debugEvent.error(error as Error) });
     return null;
   }
+}
+
+/**
+ * Wait until the Atlas file has all data written.
+ * Note, this is a workaround whenever `process.exit` is required, avoid if possible.
+ * @internal
+ */
+export async function waitUntilAtlasExportIsReadyAsync(projectRoot: string) {
+  if (!env.EXPO_ATLAS) return;
+
+  const atlas = importAtlasForExport(projectRoot);
+
+  if (!atlas) {
+    debugEvent('export_not_loaded', {});
+    return;
+  }
+  if (typeof atlas.waitUntilAtlasFileReady !== 'function') {
+    debugEvent('export_outdated', {});
+    return;
+  }
+
+  await atlas.waitUntilAtlasFileReady();
 }

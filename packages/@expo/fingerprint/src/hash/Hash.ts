@@ -1,8 +1,8 @@
 import { createHash } from 'crypto';
 import { createReadStream } from 'fs';
 import fs from 'fs/promises';
-import pLimit from 'p-limit';
 import path from 'path';
+import { pipeline, type Readable } from 'stream';
 
 import type {
   DebugInfoDir,
@@ -13,13 +13,18 @@ import type {
   HashResultContents,
   HashResultDir,
   HashResultFile,
+  HashResultPackage,
   HashSource,
   HashSourceContents,
+  HashSourcePackage,
   NormalizedOptions,
 } from '../Fingerprint.types';
-import { isIgnoredPath } from '../utils/Path';
+import { createLimiter, type Limiter } from '../utils/Concurrency';
+import { isIgnoredPathWithMatchObjects, toPosixPath } from '../utils/Path';
 import { nonNullish } from '../utils/Predicates';
 import { profile } from '../utils/Profile';
+import { FileHookTransform } from './FileHookTransform';
+import { ReactImportsPatchTransform } from './ReactImportsPatcher';
 
 /**
  * Create a `Fingerprint` from `HashSources` array
@@ -29,7 +34,7 @@ export async function createFingerprintFromSourcesAsync(
   projectRoot: string,
   options: NormalizedOptions
 ): Promise<Fingerprint> {
-  const limiter = pLimit(options.concurrentIoLimit);
+  const limiter = createLimiter(options.concurrentIoLimit);
   const fingerprintSources = await Promise.all(
     sources.map((source) => createFingerprintSourceAsync(source, limiter, projectRoot, options))
   );
@@ -55,7 +60,7 @@ export async function createFingerprintFromSourcesAsync(
  */
 export async function createFingerprintSourceAsync(
   source: HashSource,
-  limiter: pLimit.Limit,
+  limiter: Limiter,
   projectRoot: string,
   options: NormalizedOptions
 ): Promise<FingerprintSource> {
@@ -74,6 +79,9 @@ export async function createFingerprintSourceAsync(
         `createDirHashResultsAsync(${source.filePath})`
       )(source.filePath, limiter, projectRoot, options);
       break;
+    case 'package':
+      result = await createPackageHashResultsAsync(source, options);
+      break;
     default:
       throw new Error('Unsupported source type');
   }
@@ -90,14 +98,14 @@ export async function createFingerprintSourceAsync(
  */
 export async function createFileHashResultsAsync(
   filePath: string,
-  limiter: pLimit.Limit,
+  limiter: Limiter,
   projectRoot: string,
   options: NormalizedOptions
 ): Promise<HashResultFile | null> {
   // Backup code for faster hashing
   /*
   return limiter(async () => {
-    if (isIgnoredPath(filePath, options.ignorePaths)) {
+    if (isIgnoredPathWithMatchObjects(filePath, options.ignorePathMatchObjects)) {
       return null;
     }
 
@@ -118,21 +126,56 @@ export async function createFileHashResultsAsync(
 
   return limiter(() => {
     return new Promise<HashResultFile | null>((resolve, reject) => {
-      if (isIgnoredPath(filePath, options.ignorePaths)) {
+      if (isIgnoredPathWithMatchObjects(filePath, options.ignorePathMatchObjects)) {
         return resolve(null);
       }
 
       let resolved = false;
       const hasher = createHash(options.hashAlgorithm);
-      const stream = createReadStream(path.join(projectRoot, filePath));
+      const fileHookTransform: FileHookTransform | null = options.fileHookTransform
+        ? new FileHookTransform(
+            { type: 'file', filePath },
+            options.fileHookTransform,
+            options.debug
+          )
+        : null;
+      let stream: Readable = createReadStream(path.join(projectRoot, filePath), {
+        highWaterMark: 1024,
+      });
+      if (
+        options.enableReactImportsPatcher &&
+        (filePath.endsWith('.h') || filePath.endsWith('.m') || filePath.endsWith('.mm'))
+      ) {
+        const transform = new ReactImportsPatchTransform();
+        stream = pipeline(stream, transform, (err) => {
+          if (err) {
+            reject(err);
+          }
+        });
+      }
+      if (fileHookTransform) {
+        stream = pipeline(stream, fileHookTransform, (err) => {
+          if (err) {
+            reject(err);
+          }
+        });
+      }
       stream.on('close', () => {
         if (!resolved) {
           const hex = hasher.digest('hex');
+          const isTransformed = fileHookTransform?.isTransformed;
+          const debugInfo = options.debug
+            ? {
+                path: filePath,
+                hash: hex,
+                ...(isTransformed ? { isTransformed } : undefined),
+              }
+            : undefined;
           resolve({
             type: 'file',
             id: filePath,
             hex,
-            ...(options.debug ? { debugInfo: { path: filePath, hash: hex } } : undefined),
+            ...(debugInfo ? { debugInfo } : undefined),
           });
           resolved = true;
         }
@@ -153,12 +196,13 @@ export async function createFileHashResultsAsync(
  */
 export async function createDirHashResultsAsync(
   dirPath: string,
-  limiter: pLimit.Limit,
+  limiter: Limiter,
   projectRoot: string,
   options: NormalizedOptions,
   depth: number = 0
 ): Promise<HashResultDir | null> {
-  if (isIgnoredPath(dirPath, options.ignorePaths)) {
+  // Using `ignoreDirMatchObjects` as an optimization to skip the whole directory
+  if (isIgnoredPathWithMatchObjects(dirPath, options.ignoreDirMatchObjects)) {
     return null;
   }
   const dirents = (await fs.readdir(path.join(projectRoot, dirPath), { withFileTypes: true })).sort(
@@ -169,7 +213,11 @@ export async function createDirHashResultsAsync(
     await Promise.all(
       dirents.map(async (dirent) => {
         if (dirent.isDirectory()) {
-          const filePath = path.join(dirPath, dirent.name);
+          // Skip nested node_modules inside a package.
+          if (dirent.name === 'node_modules') {
+            return null;
+          }
+          const filePath = toPosixPath(path.join(dirPath, dirent.name));
           return await createDirHashResultsAsync(
             filePath,
             limiter,
@@ -178,7 +226,7 @@ export async function createDirHashResultsAsync(
             depth + 1
           );
         } else if (dirent.isFile()) {
-          const filePath = path.join(dirPath, dirent.name);
+          const filePath = toPosixPath(path.join(dirPath, dirent.name));
           return await createFileHashResultsAsync(filePath, limiter, projectRoot, options);
         }
 
@@ -215,12 +263,63 @@ export async function createContentsHashResultsAsync(
   source: HashSourceContents,
   options: NormalizedOptions
 ): Promise<HashResultContents> {
+  let isTransformed = undefined;
+  if (options.fileHookTransform) {
+    const transformedContents =
+      options.fileHookTransform(
+        {
+          type: 'contents',
+          id: source.id,
+        },
+        source.contents,
+        true /* isEndOfFile */,
+        'utf8'
+      ) ?? '';
+    if (options.debug) {
+      isTransformed = transformedContents !== source.contents;
+    }
+    source.contents = transformedContents;
+  }
+
   const hex = createHash(options.hashAlgorithm).update(source.contents).digest('hex');
+  const debugInfo = options.debug
+    ? {
+        hash: hex,
+        ...(isTransformed ? { isTransformed } : undefined),
+      }
+    : undefined;
   return {
     type: 'contents',
     id: source.id,
     hex,
-    ...(options.debug ? { debugInfo: { hash: hex } } : undefined),
+    ...(debugInfo ? { debugInfo } : undefined),
+  };
+}
+
+/**
+ * Create a `HashResult` for a package from its embedded `name` and `version`.
+ * The sourcer reads these from the `package.json`, so the hash depends on the package identity
+ * rather than its resolved path or unrelated contents.
+ * Returns null when the package is ignored.
+ */
+export async function createPackageHashResultsAsync(
+  source: HashSourcePackage,
+  options: NormalizedOptions
+): Promise<HashResultPackage | null> {
+  if (isIgnoredPathWithMatchObjects(source.filePath, options.ignorePathMatchObjects)) {
+    return null;
+  }
+
+  const { name, version } = source;
+  const hex = createHash(options.hashAlgorithm)
+    .update(JSON.stringify({ name, version }))
+    .digest('hex');
+  const debugInfo = options.debug ? { path: source.filePath, name, version, hash: hex } : undefined;
+  return {
+    type: 'package',
+    id: createSourceId(source),
+    hex,
+    ...(debugInfo ? { debugInfo } : undefined),
   };
 }
 
@@ -232,9 +331,11 @@ export function createSourceId(source: HashSource): string {
     case 'contents':
       return source.id;
     case 'file':
-      return source.filePath;
+      return source.overrideHashKey ?? source.filePath;
     case 'dir':
-      return source.filePath;
+      return source.overrideHashKey ?? source.filePath;
+    case 'package':
+      return source.overrideHashKey ?? `${source.name}@${source.version}`;
     default:
       throw new Error('Unsupported source type');
   }

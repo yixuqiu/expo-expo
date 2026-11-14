@@ -1,51 +1,80 @@
-import { Asset } from 'expo-asset';
-import { Audio } from 'expo-av';
-import React from 'react';
-import { PixelRatio, ScrollView, StyleSheet } from 'react-native';
+import { preload } from 'expo-audio';
 
-import Player from './AudioPlayer';
-import HeadingText from '../../components/HeadingText';
-import ListButton from '../../components/ListButton';
-import AudioModeSelector from '../AV/AudioModeSelector.android';
+import { optionalRequire } from '../../navigation/routeBuilder';
+import ComponentListScreen, { apiScreensToListElements } from '../ComponentListScreen';
+import { sfx1, sfx2 } from './AudioPreloadScreen';
 
-export default function AudioScreen(props: any) {
-  React.useLayoutEffect(() => {
-    props.navigation.setOptions({
-      title: 'Audio (expo-audio)',
-    });
-  });
+preload(sfx1);
+preload(sfx2);
 
-  const setAudioActive = (active: boolean) => () => Audio.setIsEnabledAsync(active);
+export const AudioScreens = [
+  {
+    name: 'Expo Audio Player',
+    route: 'audio/expo-audio',
+    options: {},
+    getComponent() {
+      return optionalRequire(() => require('./AudioPlayerScreen'));
+    },
+  },
+  {
+    name: 'Expo Audio Playlist',
+    route: 'audio/expo-audio-playlist',
+    options: {},
+    getComponent() {
+      return optionalRequire(() => require('./AudioPlaylistScreen'));
+    },
+  },
+  {
+    name: 'Expo Audio Recording',
+    route: 'audio/expo-audio-recording',
+    options: {},
+    getComponent() {
+      return optionalRequire(() => require('./RecordingScreen'));
+    },
+  },
+  {
+    name: 'Expo Audio createAudioPlayer',
+    route: 'audio/expo-audio-createAudioPlayer',
+    options: {},
+    getComponent() {
+      return optionalRequire(() => require('./CreateAudioPlayerScreen'));
+    },
+  },
+  {
+    name: 'Expo Audio Lock Screen Controls',
+    route: 'audio/expo-audio-controls',
+    options: {},
+    getComponent() {
+      return optionalRequire(() => require('./AudioControlsScreen'));
+    },
+  },
+  {
+    name: 'Expo Audio Events',
+    route: 'audio/expo-audio-events',
+    options: {},
+    getComponent() {
+      return optionalRequire(() => require('./AudioEventsScreen'));
+    },
+  },
+  {
+    name: 'Expo Audio Preloading',
+    route: 'audio/expo-audio-preload',
+    options: {},
+    getComponent() {
+      return optionalRequire(() => require('./AudioPreloadScreen'));
+    },
+  },
+  {
+    name: 'Expo Audio Recording Stream',
+    route: 'audio/expo-audio-recording-stream',
+    options: {},
+    getComponent() {
+      return optionalRequire(() => require('./RecordingStreamScreen'));
+    },
+  },
+];
 
-  return (
-    <ScrollView contentContainerStyle={styles.contentContainer}>
-      <HeadingText>Audio state</HeadingText>
-      <ListButton title="Activate Audio" onPress={() => setAudioActive(true)} />
-      <ListButton title="Deactivate Audio" onPress={() => setAudioActive(false)} />
-      <HeadingText>Audio mode</HeadingText>
-      <AudioModeSelector />
-      <HeadingText>HTTP player</HeadingText>
-      <Player
-        source={{
-          uri: 'https://p.scdn.co/mp3-preview/f7a8ab9c5768009b65a30e9162555e8f21046f46?cid=162b7dc01f3a4a2ca32ed3cec83d1e02',
-        }}
-        style={styles.player}
-      />
-      <HeadingText>Local asset player</HeadingText>
-      <Player
-        source={Asset.fromModule(require('../../../assets/sounds/polonez.mp3'))}
-        style={styles.player}
-      />
-    </ScrollView>
-  );
+export default function AudioScreen() {
+  const apis = apiScreensToListElements(AudioScreens);
+  return <ComponentListScreen apis={apis} sort={false} />;
 }
-
-const styles = StyleSheet.create({
-  contentContainer: {
-    padding: 10,
-  },
-  player: {
-    borderBottomWidth: 1.0 / PixelRatio.get(),
-    borderBottomColor: '#cccccc',
-  },
-});

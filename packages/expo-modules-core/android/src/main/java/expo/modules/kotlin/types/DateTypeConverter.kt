@@ -14,8 +14,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @RequiresApi(Build.VERSION_CODES.O)
-class DateTypeConverter(isOptional: Boolean) : DynamicAwareTypeConverters<LocalDate>(isOptional) {
-  override fun convertFromDynamic(value: Dynamic): LocalDate {
+class DateTypeConverter : DynamicAwareTypeConverters<LocalDate>() {
+  override fun convertFromDynamic(value: Dynamic, context: ConverterContext, forceConversion: Boolean): LocalDate {
     return when (value.type) {
       ReadableType.String -> LocalDate.parse(value.asString(), DateTimeFormatter.ISO_DATE_TIME)
       ReadableType.Number -> convertFromLong(value.asDouble().toLong())
@@ -23,7 +23,7 @@ class DateTypeConverter(isOptional: Boolean) : DynamicAwareTypeConverters<LocalD
     }
   }
 
-  override fun convertFromAny(value: Any): LocalDate {
+  override fun convertFromAny(value: Any, context: ConverterContext, forceConversion: Boolean): LocalDate {
     return when (value) {
       is String -> LocalDate.parse(value, DateTimeFormatter.ISO_DATE_TIME)
       is Long -> convertFromLong(value)

@@ -1,24 +1,24 @@
-apply plugin: 'com.android.library'
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
 
 group = 'host.exp.exponent'
-version = '11.8.1'
-
-def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
-apply from: expoModulesCorePlugin
-applyKotlinExpoModulesCorePlugin()
-useCoreDependencies()
-useDefaultAndroidSdkVersions()
-useExpoPublishing()
+version = '58.0.12'
 
 android {
-  namespace "expo.modules.taskManager"
+  namespace "expo.modules.taskmanager"
   defaultConfig {
     versionCode 23
-    versionName "11.8.1"
+    versionName "58.0.12"
+    consumerProguardFiles 'proguard-rules.pro'
   }
 }
 
 dependencies {
-  implementation project(':unimodules-app-loader')
-  api "androidx.core:core:1.0.0"
+  implementation expoModule.getExpoDependency("unimodules-app-loader")
+  api "androidx.core:core:1.17.0"
+  compileOnly "com.facebook.react:react-android"
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.robolectric:robolectric:4.16'
 }

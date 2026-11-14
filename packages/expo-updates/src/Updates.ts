@@ -1,15 +1,18 @@
 import { CodedError } from 'expo-modules-core';
+import { Image } from 'react-native';
 
 import ExpoUpdates from './ExpoUpdates';
-import {
+import type { UpdatesCheckAutomaticallyNativeValue } from './ExpoUpdatesModule.types';
+import type {
   LocalAssets,
   Manifest,
   UpdateCheckResult,
   UpdateFetchResult,
-  UpdatesCheckAutomaticallyValue,
   UpdatesLogEntry,
-  UpdatesNativeStateMachineContext,
+  ReloadScreenOptions,
+  ReloadScreenImageSource,
 } from './Updates.types';
+import { UpdatesCheckAutomaticallyValue } from './Updates.types';
 
 /**
  * Whether `expo-updates` is enabled. This may be false in a variety of cases including:
@@ -35,7 +38,7 @@ export const updateId: string | null =
     : null;
 
 /**
- * The channel name of the current build, if configured for use with EAS Update. `null` otherwise.
+ * The channel name of the current build, if configured for use with Expo Update. `null` otherwise.
  *
  * Expo Go and development builds are not set to a specific channel and can run any updates compatible with their native runtime. Therefore, this value will always be `null` when running an update on Expo Go or a development build.
  */
@@ -46,11 +49,14 @@ export const channel: string | null = ExpoUpdates.channel ?? null;
  */
 export const runtimeVersion: string | null = ExpoUpdates.runtimeVersion ?? null;
 
-const _checkAutomaticallyMapNativeToJS = {
-  ALWAYS: 'ON_LOAD',
-  ERROR_RECOVERY_ONLY: 'ON_ERROR_RECOVERY',
-  NEVER: 'NEVER',
-  WIFI_ONLY: 'WIFI_ONLY',
+const _checkAutomaticallyMapNativeToJS: Record<
+  UpdatesCheckAutomaticallyNativeValue,
+  UpdatesCheckAutomaticallyValue
+> = {
+  ALWAYS: UpdatesCheckAutomaticallyValue.ON_LOAD,
+  ERROR_RECOVERY_ONLY: UpdatesCheckAutomaticallyValue.ON_ERROR_RECOVERY,
+  NEVER: UpdatesCheckAutomaticallyValue.NEVER,
+  WIFI_ONLY: UpdatesCheckAutomaticallyValue.WIFI_ONLY,
 };
 
 /**
@@ -83,6 +89,11 @@ export const isEmergencyLaunch = ExpoUpdates.isEmergencyLaunch;
 export const emergencyLaunchReason = ExpoUpdates.emergencyLaunchReason;
 
 /**
+ * Number of milliseconds it took to launch.
+ */
+export const launchDuration = ExpoUpdates.launchDuration;
+
+/**
  * This will be true if the currently running update is the one embedded in the build,
  * and not one downloaded from the updates server.
  */
@@ -96,9 +107,8 @@ export const isUsingEmbeddedAssets: boolean = ExpoUpdates.isUsingEmbeddedAssets 
 
 /**
  * If `expo-updates` is enabled, this is the
- * [manifest](/versions/latest/sdk/constants/#manifest) (or
- * [classic manifest](/versions/latest/sdk/constants/#appmanifest))
- * object for the update that's currently running.
+ * [manifest](/versions/latest/sdk/constants/#manifest) object for the update
+ * that's currently running.
  *
  * In development mode, or any other environment in which `expo-updates` is disabled, this object is
  * empty.
@@ -135,6 +145,42 @@ const manualUpdatesInstructions =
   'To test usage of the expo-updates JS API in your app, make a release build with `npx expo run:ios --configuration Release` or ' +
   '`npx expo run:android --variant Release`.';
 
+function resolveImageSource(
+  source?: string | number | ReloadScreenImageSource | null
+): ReloadScreenImageSource | null {
+  if (typeof source === 'string') {
+    return { url: source };
+  }
+  if (typeof source === 'number') {
+    const resolved = Image.resolveAssetSource(source);
+    if (resolved) {
+      return {
+        url: resolved.uri,
+        width: resolved.width,
+        height: resolved.height,
+        scale: resolved.scale,
+      };
+    }
+    return null;
+  }
+  if (typeof source === 'object' && source !== null) {
+    return source;
+  }
+  return null;
+}
+
+function resolveReloadScreenOptions(options: ReloadScreenOptions): ReloadScreenOptions {
+  if (!options.image) {
+    return options;
+  }
+
+  const resolvedImage = resolveImageSource(options.image);
+  return {
+    ...options,
+    image: resolvedImage || undefined,
+  };
+}
+
 /**
  * Instructs the app to reload using the most recently downloaded version. This is useful for
  * triggering a newly downloaded update to launch without the user needing to manually restart the
@@ -161,7 +207,9 @@ const manualUpdatesInstructions =
  * `ReactApplication` you want to reload, or call `UpdatesController.setReactNativeHost` with the
  * proper instance of `ReactNativeHost`.
  */
-export async function reloadAsync(): Promise<void> {
+export async function reloadAsync(options?: {
+  reloadScreenOptions?: ReloadScreenOptions;
+}): Promise<void> {
   if (
     (__DEV__ || isUsingDeveloperTool) &&
     !shouldDeferToNativeForAPIMethodAvailabilityInDevelopment
@@ -171,7 +219,11 @@ export async function reloadAsync(): Promise<void> {
       `You cannot use the Updates module in development mode in a production app. ${manualUpdatesInstructions}`
     );
   }
-  await ExpoUpdates.reload();
+  if (options?.reloadScreenOptions) {
+    const resolvedOptions = resolveReloadScreenOptions(options.reloadScreenOptions);
+    return await ExpoUpdates.reload(resolvedOptions);
+  }
+  await ExpoUpdates.reload(null);
 }
 
 /**
@@ -248,10 +300,7 @@ export async function readLogEntriesAsync(maxAge: number = 3600000): Promise<Upd
 }
 
 /**
- * Clears existing `expo-updates` log entries.
- *
- * > For now, this operation does nothing on the client.  Once log persistence has been
- * > implemented, this operation will actually remove existing logs.
+ * Removes every `expo-updates` log entry from the log on the device.
  *
  * @return A promise that fulfills if the clear operation was successful.
  *
@@ -267,7 +316,7 @@ export async function clearLogEntriesAsync(): Promise<void> {
  * storage. This method cannot be used in development mode, and the returned promise will be
  * rejected if you try to do so.
  *
- > **Note:** [`reloadAsync()`](#updatesreloadasync) can be called after promise resolution to
+ > **Note:** [`reloadAsync()`](#updatesreloadasyncoptions) can be called after promise resolution to
  * reload the app using the most recently downloaded version. Otherwise, the update will be applied
  * on the next app cold start.
  *
@@ -299,49 +348,85 @@ export async function fetchUpdateAsync(): Promise<UpdateFetchResult> {
 }
 
 /**
- * @hidden
+ * Overrides updates URL and request headers in runtime from build time.
+ * This method allows you to load specific updates from a URL that you provide.
+ * Use this method at your own risk, as it may cause unexpected behavior.
+ * Because of the risk, this method requires `disableAntiBrickingMeasures` to be set to `true` in the **app.json** file.
+ * [Learn more about use cases and limitations](https://docs.expo.dev/eas-update/override/).
+ * @experimental
  */
-export function clearUpdateCacheExperimentalAsync(_sdkVersion?: string) {
-  console.warn(
-    "This method is no longer necessary. `expo-updates` now automatically deletes your app's old bundle files!"
-  );
+export function setUpdateURLAndRequestHeadersOverride(
+  configOverride: { updateUrl: string; requestHeaders: Record<string, string> } | null
+): void {
+  ExpoUpdates.setUpdateURLAndRequestHeadersOverride(configOverride);
 }
 
 /**
- * @hidden
+ * Overrides updates request headers in runtime from build time.
+ * This method allows you to load specific updates with custom request headers.
+ * Use this method at your own risk, as it may cause unexpected behavior.
+ * [Learn more about use cases and limitations](https://docs.expo.dev/eas-update/override/).
+ * @experimental
  */
-export function transformNativeStateMachineContext(
-  originalNativeContext: UpdatesNativeStateMachineContext & {
-    latestManifestString?: string;
-    downloadedManifestString?: string;
-    lastCheckForUpdateTimeString?: string;
-    rollbackString?: string;
-  }
-): UpdatesNativeStateMachineContext {
-  const nativeContext = { ...originalNativeContext };
-  if (nativeContext.latestManifestString) {
-    nativeContext.latestManifest = JSON.parse(nativeContext.latestManifestString);
-    delete nativeContext.latestManifestString;
-  }
-  if (nativeContext.downloadedManifestString) {
-    nativeContext.downloadedManifest = JSON.parse(nativeContext.downloadedManifestString);
-    delete nativeContext.downloadedManifestString;
-  }
-  if (nativeContext.lastCheckForUpdateTimeString) {
-    nativeContext.lastCheckForUpdateTime = new Date(nativeContext.lastCheckForUpdateTimeString);
-    delete nativeContext.lastCheckForUpdateTimeString;
-  }
-  if (nativeContext.rollbackString) {
-    nativeContext.rollback = JSON.parse(nativeContext.rollbackString);
-    delete nativeContext.rollbackString;
-  }
-  return nativeContext;
+export function setUpdateRequestHeadersOverride(
+  requestHeaders: Record<string, string> | null
+): void {
+  ExpoUpdates.setUpdateRequestHeadersOverride(requestHeaders);
 }
 
 /**
- * @hidden
+ * Shows the reload screen with customizable appearance. This is primarily useful for testing
+ * how the reload screen will appear to users during app reloads and is only available in
+ * debug builds of the app. The reload screen can be hidden by calling `hideReloadScreen()`.
+ *
+ *
+ * @param options Configuration options for customizing the reload screen appearance.
+ *
+ * @hidden exposed for testing
+ * @example
+ * ```ts
+ * import * as Updates from 'expo-updates';
+ *
+ * // Show the reload screen with custom styling for testing
+ * await Updates.showReloadScreen({
+ *   reloadScreenOptions: {
+ *     backgroundColor: '#1a1a1a',
+ *     spinner: {
+ *       color: '#ffffff'
+ *     }
+ *   }
+ * });
+ *
+ * // Hide it after 3 seconds
+ * setTimeout(async () => {
+ *   await Updates.hideReloadScreen();
+ * }, 3000);
+ *
+ * // Test with a custom image
+ * await Updates.showReloadScreen({
+ *   reloadScreenOptions: {
+ *     backgroundColor: '#ffffff',
+ *     image: require('./assets/loading.png'),
+ *     imageResizeMode: 'contain'
+ *   }
+ * });
+ * ```
  */
-export async function getNativeStateMachineContextAsync(): Promise<UpdatesNativeStateMachineContext> {
-  const nativeContext = await ExpoUpdates.getNativeStateMachineContextAsync();
-  return transformNativeStateMachineContext(nativeContext);
+export async function showReloadScreen(options?: {
+  reloadScreenOptions?: ReloadScreenOptions;
+}): Promise<void> {
+  if (options?.reloadScreenOptions) {
+    const resolvedOptions = resolveReloadScreenOptions(options.reloadScreenOptions);
+    return ExpoUpdates.showReloadScreen(resolvedOptions);
+  }
+  return ExpoUpdates.showReloadScreen();
+}
+
+/**
+ *
+ * @hidden exposed for testing
+ * @return A promise that resolves when the reload screen is hidden.
+ */
+export async function hideReloadScreen(): Promise<void> {
+  return ExpoUpdates.hideReloadScreen();
 }

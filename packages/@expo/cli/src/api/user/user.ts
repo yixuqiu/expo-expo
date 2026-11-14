@@ -1,19 +1,15 @@
 import { promises as fs } from 'fs';
-import gql from 'graphql-tag';
 
-import UserSettings from './UserSettings';
-import { getSessionUsingBrowserAuthFlowAsync } from './expoSsoLauncher';
-import { CurrentUserQuery } from '../../graphql/generated';
 import * as Log from '../../log';
 import { getDevelopmentCodeSigningDirectory } from '../../utils/codesigning';
 import { env } from '../../utils/env';
-import { getTelemetry } from '../../utils/telemetry';
+import { withProgramStatus } from '../../utils/programStatus';
 import { getExpoWebsiteBaseUrl } from '../endpoint';
-import { graphqlClient } from '../graphql/client';
-import { UserQuery } from '../graphql/queries/UserQuery';
+import { debugEvent } from '../events';
+import { UserQuery, type Actor } from '../graphql/queries/UserQuery';
 import { fetchAsync } from '../rest/client';
-
-export type Actor = NonNullable<CurrentUserQuery['meActor']>;
+import { getAccessToken, getSession, setSessionAsync } from './UserSettings';
+import { getSessionUsingBrowserAuthFlowAsync } from './expoSsoLauncher';
 
 let currentUser: Actor | undefined;
 
@@ -32,37 +28,41 @@ export function getActorDisplayName(user?: Actor): string {
       return user.username;
     case 'Robot':
       return user.firstName ? `${user.firstName} (robot)` : 'robot';
+    case 'PartnerActor':
+      return user.username;
     default:
       return ANONYMOUS_USERNAME;
   }
 }
 
+export type { Actor };
+
 export async function getUserAsync(): Promise<Actor | undefined> {
-  const hasCredentials = UserSettings.getAccessToken() || UserSettings.getSession()?.sessionSecret;
+  const hasCredentials = getAccessToken() || getSession()?.sessionSecret;
   if (!env.EXPO_OFFLINE && !currentUser && hasCredentials) {
     const user = await UserQuery.currentUserAsync();
     currentUser = user ?? undefined;
-    getTelemetry()?.identify(currentUser);
   }
   return currentUser;
 }
 
-export async function loginAsync(json: {
+export async function loginAsync(credentials: {
   username: string;
   password: string;
   otp?: string;
 }): Promise<void> {
   const res = await fetchAsync('auth/loginAsync', {
     method: 'POST',
-    body: JSON.stringify(json),
+    body: JSON.stringify(credentials),
   });
-  const {
-    data: { sessionSecret },
-  } = await res.json();
+  const json: any = await res.json();
+  const sessionSecret = json.data.sessionSecret;
 
-  const userData = await fetchUserAsync({ sessionSecret });
+  const userData = await UserQuery.meUserActorAsync({
+    'expo-session': sessionSecret,
+  });
 
-  await UserSettings.setSessionAsync({
+  await setSessionAsync({
     sessionSecret,
     userId: userData.id,
     username: userData.username,
@@ -70,13 +70,19 @@ export async function loginAsync(json: {
   });
 }
 
-export async function ssoLoginAsync(): Promise<void> {
-  const sessionSecret = await getSessionUsingBrowserAuthFlowAsync({
-    expoWebsiteUrl: getExpoWebsiteBaseUrl(),
+export async function browserLoginAsync({ sso = false }): Promise<void> {
+  const sessionSecret = await withProgramStatus(
+    { state: 'blocked', kind: 'auth', msg: 'Waiting for browser login' },
+    () =>
+      getSessionUsingBrowserAuthFlowAsync({
+        expoWebsiteUrl: getExpoWebsiteBaseUrl(),
+        sso,
+      })
+  );
+  const userData = await UserQuery.meUserActorAsync({
+    'expo-session': sessionSecret,
   });
-  const userData = await fetchUserAsync({ sessionSecret });
-
-  await UserSettings.setSessionAsync({
+  await setSessionAsync({
     sessionSecret,
     userId: userData.id,
     username: userData.username,
@@ -85,43 +91,18 @@ export async function ssoLoginAsync(): Promise<void> {
 }
 
 export async function logoutAsync(): Promise<void> {
+  const sessionSecret = getSession()?.sessionSecret;
+  if (sessionSecret) {
+    try {
+      await fetchAsync('auth/logout', { method: 'POST' });
+    } catch (error) {
+      debugEvent('logout_server_failed', { error: debugEvent.error(error as Error) });
+    }
+  }
   currentUser = undefined;
   await Promise.all([
     fs.rm(getDevelopmentCodeSigningDirectory(), { recursive: true, force: true }),
-    UserSettings.setSessionAsync(undefined),
+    setSessionAsync(undefined),
   ]);
   Log.log('Logged out');
-}
-
-async function fetchUserAsync({
-  sessionSecret,
-}: {
-  sessionSecret: string;
-}): Promise<{ id: string; username: string }> {
-  const result = await graphqlClient
-    .query(
-      gql`
-        query UserQuery {
-          meUserActor {
-            id
-            username
-          }
-        }
-      `,
-      {},
-      {
-        fetchOptions: {
-          headers: {
-            'expo-session': sessionSecret,
-          },
-        },
-        additionalTypenames: [] /* UserQuery has immutable fields */,
-      }
-    )
-    .toPromise();
-  const { data } = result;
-  return {
-    id: data.meUserActor.id,
-    username: data.meUserActor.username,
-  };
 }

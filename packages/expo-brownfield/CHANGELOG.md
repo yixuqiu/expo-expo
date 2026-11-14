@@ -1,0 +1,460 @@
+# Changelog
+
+## 58.0.16
+
+### Patch Changes
+
+- Updated dependencies. ([#51946](https://github.com/expo/expo/pull/51946))
+  - @expo/env@2.5.3
+
+## 58.0.15
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-core@58.0.23. ([#51823](https://github.com/expo/expo/pull/51823) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.14
+
+### Patch Changes
+
+- Updated dependencies.
+  - expo-build-properties@58.0.11
+
+## 58.0.13
+
+### Patch Changes
+
+- [iOS][Internal] Define `ExpoBrownfieldModule` and `ExpoBrownfieldStateModule` with the `@ExpoModule`, `@SharedObject`, `@JS` and `@Event` macros instead of the module definition DSL. ([#51381](https://github.com/expo/expo/pull/51381) by [@tsapeta](https://github.com/tsapeta))
+- [Internal] Bump precompiled artifacts due to ABI breakage in expo-modules-jsi, which makes `JavaScriptValue` a non-copyable struct. ([#51368](https://github.com/expo/expo/pull/51368) by [@tsapeta](https://github.com/tsapeta))
+- [iOS] Make `JavaScriptValue` a non-copyable struct. This is a breaking change for Swift code that uses `JavaScriptValue` directly:
+
+  - Values are moved, not shared. Pass them as `borrowing` or `consuming` parameters, and call `copy()` where a second owned value is needed.
+  - `JavaScriptValue.undefined` and `JavaScriptValue.null` are functions now: write `.undefined()` and `.null()`.
+  - A `JavaScriptValue` can no longer be an argument or a result of a `Function`, `AsyncFunction`, `Property` or `Field` definition. Declare the function with the `@JS` macro instead (in an `@ExpoModule` or `@SharedObject` class) and take the value as `borrowing JavaScriptValue`, or use a typed argument.
+  - To keep a value in an array, an escaping closure or another place that takes copyable types only, wrap it with `value.ref()` and read it back with `take()` or `withUnwrappedValue(_:)`.
+  - `JavaScriptArray.init(_:items:)`, `JavaScriptArray.enumerated()`, `JavaScriptArray.filter(_:)` and `JavaScriptValuesBuffer.copying(in:values:)` with an array of values are removed. Use the parameter pack initializer, `forEach`, `forEachIndexed`, `reduce`, or the `[JavaScriptValue.Ref]` overload.
+
+  ([#51368](https://github.com/expo/expo/pull/51368) by [@tsapeta](https://github.com/tsapeta))
+
+- [iOS] Remove the module class declarations from `expo-module.config.json`. Autolinking now detects the `@ExpoModule`-annotated classes. ([#49784](https://github.com/expo/expo/pull/49784) by [@tsapeta](https://github.com/tsapeta))
+- Updated dependencies. ([#51321](https://github.com/expo/expo/pull/51321))
+  - @expo/env@2.5.2
+
+## 58.0.12
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-core@58.0.13. ([#51138](https://github.com/expo/expo/pull/51138) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.11
+
+### Patch Changes
+
+- Updated dependencies. ([#50391](https://github.com/expo/expo/pull/50391))
+  - expo-build-properties@58.0.10
+
+## 58.0.10
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.9
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762))
+  - @expo/env@2.5.1
+  - expo-build-properties@58.0.9
+  - expo-manifests@58.0.1
+
+## 58.0.8 — 2026-09-28
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.7 — 2026-09-25
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.6 — 2026-09-23
+
+### 🐛 Bug fixes
+
+- [iOS] Fix a data race on reload that could crash the app or stop the delivery of `onKeyRecreated` events and messages. ([#49560](https://github.com/expo/expo/pull/49560) by [@vonovak](https://github.com/vonovak))
+
+## 58.0.5 — 2026-09-22
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.4 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.3 — 2026-09-16
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-15
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.1 — 2026-09-14
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+### 🎉 New features
+
+- [android] Add `ReactNativeViewFactory.createSurface`, returning a `ReactNativeSurfaceHandle` the host disposes when its container goes away. ([#49094](https://github.com/expo/expo/pull/49094) by [@josefnorlin-svt](https://github.com/josefnorlin-svt))
+
+### 🐛 Bug fixes
+
+- [iOS] Point the `ExpoAppDelegate.swift` template symlink at the restructured `expo/ios/Expo` directory so `expo prebuild` works again. ([#45906](https://github.com/expo/expo/pull/45906) by [@chrfalch](https://github.com/chrfalch))
+- [android] Stop React Native surfaces when their container is destroyed instead of when the Activity is, so embedding a surface in a Compose node, fragment or tab no longer leaves it running off screen while a second one is created. ([#49094](https://github.com/expo/expo/pull/49094) by [@josefnorlin-svt](https://github.com/josefnorlin-svt))
+- [android] Fix `ReactDelegate.onHostResume()` throwing in host Activities that don't implement `DefaultHardwareBackBtnHandler`. ([#49094](https://github.com/expo/expo/pull/49094) by [@josefnorlin-svt](https://github.com/josefnorlin-svt))
+- [android] Fix `brownfield.fused.strip-packages` corrupting the generated `ExpoModulesPackageList.kt` when given a broad prefix (e.g. `expo.modules`). ([@gabrieldonadel](https://github.com/gabrieldonadel)) ([#48118](https://github.com/expo/expo/pull/48118) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Fix `ARG_MAX` error when using `multipleFrameworks`. ([#47999](https://github.com/expo/expo/pull/47999) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [android] Use `minSdk { version = release(24) }` in the fused library template, since AGP 9 replaced the `minSdk` property on `androidFusedLibrary` with a `MinSdkSpec` block. ([#47729](https://github.com/expo/expo/pull/47729) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [android] Declare the fused-mode AGP version as a minimum constraint instead of forcing it, so `--fused` builds no longer downgrade AGP below the version React Native's Gradle plugin was compiled against. ([#47729](https://github.com/expo/expo/pull/47729) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [Android] Add support for React Native 0.87 ([#47729](https://github.com/expo/expo/pull/47729) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 💡 Others
+
+- Add missing `react` and `react-native` peer dependencies ([#49744](https://github.com/expo/expo/pull/49744) by [@kitten](https://github.com/kitten))
+
+## 57.0.8 - 2026-07-29
+
+### 🐛 Bug fixes
+
+- [iOS] Fix `build:ios` with precompiled modules: locate frameworks under `XCFrameworkIntermediates/`, bundle `ExpoModulesJSI`, copy SPM deps as real flavor-matched directories instead of symlinks, and fail fast on duplicate or colliding target names. ([#48065](https://github.com/expo/expo/pull/48065) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 57.0.7 - 2026-07-22
+
+### 🎉 New features
+
+- [android] Add support for publishing a single fused AAR via AGP Fused Library ([#47921](https://github.com/expo/expo/pull/45878) by [@gabrieldonadel](https://github.com/gabrieldonadel)) ([#45878](https://github.com/expo/expo/pull/45878) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 57.0.6 - 2026-07-17
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-06-30
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.20 - 2026-06-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.19 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.18 - 2026-06-05
+
+### 🎉 New features
+
+- [iOS] Add hostProvidedFrameworks option to skip Frameworks provided by the host app ([#46355](https://github.com/expo/expo/pull/46355) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 56.0.17 - 2026-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.16 - 2026-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.15 — 2026-05-26
+
+### 🎉 New features
+
+- [iOS] Make `ReactNativeHostManager` accessible directly to Objective-C. ([#46227](https://github.com/expo/expo/pull/46227) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 🐛 Bug fixes
+
+- [iOS] `build:ios` now detects a missing iOS workspace and prompts to run `pod install` instead of failing with a vague "Could not find brownfield iOS workspace". ([#46247](https://github.com/expo/expo/pull/46247) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Fix following prebuilt symlinks when using SPM ([#46311](https://github.com/expo/expo/pull/46311) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 56.0.14 — 2026-05-23
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.13 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.12 — 2026-05-20
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed brownfield mangling builds writing products outside the Pods build directory. (by [@ry-allan](https://github.com/ry-allan))
+
+### 💡 Others
+
+- Bump to `@expo/spawn-async@^1.8.0` ([#45999](https://github.com/expo/expo/pull/45999) by [@kitten](https://github.com/kitten))
+
+## 56.0.11 — 2026-05-19
+
+### 🐛 Bug fixes
+
+- Fix `addSharedStateListener` callback type to match the native event shape ([#44401](https://github.com/expo/expo/pull/44401) by [@mberube09](https://github.com/mberube09))
+
+### 💡 Others
+
+- [Internal] Replace command invocation with `@expo/spawn-async` ([#45891](https://github.com/expo/expo/pull/45891) by [@kitten](https://github.com/kitten))
+
+## 56.0.10 — 2026-05-15
+
+### 🐛 Bug fixes
+
+- [Android] Fixed POM rewriter appending a duplicate `<version>` element instead of replacing the existing one, which caused `publish*PublicationToMavenLocal` to fail with `POM file is invalid` for dependencies declared with a placeholder version. ([#45783](https://github.com/expo/expo/pull/45783) by [@tsapeta](https://github.com/tsapeta))
+- Validate and sanitize values passed to `otool`, Gradle, and as iOS bundle identifier ([#45836](https://github.com/expo/expo/pull/45836) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Migrated to the single-payload `SharedObject.emit` API. ([#45596](https://github.com/expo/expo/pull/45596) by [@tsapeta](https://github.com/tsapeta))
+
+## 56.0.9 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.7 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-11
+
+### 🐛 Bug fixes
+
+- Fix reading updates app.manifest and meta-data tags ([#45655](https://github.com/expo/expo/pull/45655) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 56.0.5 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-07
+
+### 🐛 Bug fixes
+
+- Adjust CLI Android/iOS library file discovery to remove symlink following ([#44280](https://github.com/expo/expo/pull/44280) by [@kitten](https://github.com/kitten))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+- [ios] enable optional usage of prebuilt RN frameworks ([#43356](https://github.com/expo/expo/pull/43356) by [@pmleczek](https://github.com/pmleczek))
+- align using custom components between the platforms ([#43633](https://github.com/expo/expo/pull/43633) by [@pmleczek](https://github.com/pmleczek))
+- [state] shared state implementation improvements ([#43279](https://github.com/expo/expo/pull/43279) by [@pmleczek](https://github.com/pmleczek))
+- Use react-native prebuilds by default ([#44332](https://github.com/expo/expo/pull/44332) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Support rendering multiple ReactNativeView simultaneously ([#44891](https://github.com/expo/expo/pull/44891) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Support registering custom turbo modules from the hosting app ([#44929](https://github.com/expo/expo/pull/44929) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Add support for iOS prebuilds. ([#45148](https://github.com/expo/expo/pull/45148) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Add support for using multiple inner app frameworks in one host app via the new `multipleFrameworks` property. ([#45347](https://github.com/expo/expo/pull/45347) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 💡 Others
+
+- [iOS] Use `JavaScriptValue.getAny()` in place of the removed `getRaw()`. ([#44337](https://github.com/expo/expo/pull/44337) by [@tsapeta](https://github.com/tsapeta))
+- [test] add maestro e2e tests for dev menu ([#43421](https://github.com/expo/expo/pull/43421) by [@pmleczek](https://github.com/pmleczek))
+- [android] set react native version for all published artfacts ([#43693](https://github.com/expo/expo/pull/43693) by [@pmleczek](https://github.com/pmleczek))
+- [test] add fixes to ios debug e2es ([#43703](https://github.com/expo/expo/pull/43703) by [@pmleczek](https://github.com/pmleczek))
+- Validate package installation before running CLI commands ([#44210](https://github.com/expo/expo/pull/44210) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 55.0.22 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.21 - 2026-04-21
+
+### 🎉 New features
+
+- Added `Expo.plist` to the brownfield framework target. ([#44645](https://github.com/expo/expo/pull/44645) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Add `DEFINE_MODULES=TRUE` build setting ([#44672](https://github.com/expo/expo/pull/44672) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [ios] Fix loading assets in brownfield. ([#44724](https://github.com/expo/expo/pull/44724) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 55.0.20 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.19 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.18 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.17 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.16 - 2026-03-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-03-05
+
+### 🛠 Breaking changes
+
+- [ios] rename option from 'usePrebuiltReactNative' to 'buildReactNativeFromSource' ([#43574](https://github.com/expo/expo/pull/43574) by [@pmleczek](https://github.com/pmleczek))
+
+## 55.0.12 - 2026-02-26
+
+### 🎉 New features
+
+- [android] add basic implementation of shared state for android ([#43097](https://github.com/expo/expo/pull/43097) by [@pmleczek](https://github.com/pmleczek))
+- [cli] allow shipping ios artifacts as swift package ([#43369](https://github.com/expo/expo/pull/43369) by [@pmleczek](https://github.com/pmleczek))
+
+## 55.0.11 — 2026-02-25
+
+### 💡 Others
+
+- [test] run brownfield e2e tests (cli + plugin) in sdk/check-packages workflow ([#43391](https://github.com/expo/expo/pull/43391) by [@pmleczek](https://github.com/pmleczek))
+
+## 55.0.10 — 2026-02-25
+
+### 🎉 New features
+
+- [android] add basic implementation of shared state for android ([#43097](https://github.com/expo/expo/pull/43097) by [@pmleczek](https://github.com/pmleczek))
+
+### 💡 Others
+
+- [test] setup maestro e2e tests for expo-brownfield on ios ([#43028](https://github.com/expo/expo/pull/43028) by [@pmleczek](https://github.com/pmleczek))
+- [state] add ios implementation & improvements ([#43236](https://github.com/expo/expo/pull/43236) by [@pmleczek](https://github.com/pmleczek))
+
+## 55.0.9 — 2026-02-20
+
+### 🐛 Bug fixes
+
+- [Android] improve security of env injection in publishing in [#43059](https://github.com/expo/expo/pull/43059) by [@pmleczek](https://github.com/pmleczek)
+- [ios] pass additional settings to generate CFBundleShortVersionString ([#43289](https://github.com/expo/expo/pull/43289) by [@pmleczek](https://github.com/pmleczek))
+
+## 55.0.8 — 2026-02-16
+
+### 🛠 Breaking changes
+
+- [cli] update copied hermes framework name to hermesvm.xcframework ([#43138](https://github.com/expo/expo/pull/43138) by [@pmleczek](https://github.com/pmleczek))
+
+### 🐛 Bug fixes
+
+- [iOS] fix framework search paths settings ([#43106](https://github.com/expo/expo/pull/43106) by [@pmleczek](https://github.com/pmleczek))
+
+### 💡 Others
+
+- [test] add compilation verification and optimize brownfield workflow in [#42894](https://github.com/expo/expo/pull/42894) by [@pmleczek](https://github.com/pmleczek)
+- [cli] cli refactor ([#42921](https://github.com/expo/expo/pull/42921) by [@pmleczek](https://github.com/pmleczek))
+
+## 55.0.7 — 2026-02-08
+
+### 🐛 Bug fixes
+
+- [Android] fix dev menu in isolated brownfield ([#42637](https://github.com/expo/expo/pull/42637) by [@pmleczek](https://github.com/pmleczek))
+- [cli] handle build:android called with no args ([#42914](https://github.com/expo/expo/pull/42914) by [@pmleczek](https://github.com/pmleczek))
+
+### 💡 Others
+
+- [test] setup maestro e2e tests for expo-brownfield on android in [#42864](https://github.com/expo/expo/pull/42864) by [@pmleczek](https://github.com/pmleczek)
+
+## 55.0.6 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-03
+
+### 🐛 Bug fixes
+
+- [Android] strip com.facebook.react:hermes-android in [#42769](https://github.com/expo/expo/pull/42769) by [@pmleczek](https://github.com/pmleczek)
+- [iOS] Brownfield fixes & improvements for iOS in [#42782](https://github.com/expo/expo/pull/42782) by [@pmleczek](https://github.com/pmleczek)
+
+### 💡 Others
+
+- [test] Added E2E tests and improvements for CLI in [#42120](https://github.com/expo/expo/pull/42120) by [@pmleczek](https://github.com/pmleczek)
+- [test] Added E2E tests for the config plugin in [#42374](https://github.com/expo/expo/pull/42374) by [@pmleczek](https://github.com/pmleczek)
+
+## 55.0.4 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-26
+
+### 💡 Others
+
+- Add script to resolve symlinks ([#42457](https://github.com/expo/expo/pull/42457) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 55.0.2 — 2026-01-22
+
+### 💡 Others
+
+- [iOS] Use internal import for Expo ([#42449](https://github.com/expo/expo/pull/42449) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🐛 Bug fixes
+
+- [iOS] Added support for React Native 0.83 in [#42038](https://github.com/expo/expo/pull/42038) by [@gabrieldonadel](https://github.com/gabrieldonadel)
+- [iOS] Refactor podspec and fix template ([#42105](https://github.com/expo/expo/pull/42105) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [android] Added support for react-native 0.83 ([#42069](https://github.com/expo/expo/pull/42069) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Add `bin/cli.js` entrypoint for CLI ([#42152](https://github.com/expo/expo/pull/42152) by [@kitten](https://github.com/kitten))
+- Fixed debug compilation for Android in [#42234](https://github.com/expo/expo/pull/42234) by [@pmleczek](https://github.com/pmleczek)
+- Remove leftover phase reordering script setup from the config plugin in [#42427](https://github.com/expo/expo/pull/42427) by [@pmleczek](https://github.com/pmleczek)
+
+### 💡 Others
+
+- Initialized the package for `expo-brownfield` with code from [expo-brownfield-target](https://github.com/software-mansion-labs/expo-brownfield-target) in [#42012](https://github.com/expo/expo/pull/42012) by [@pmleczek](https://github.com/pmleczek), [@gabrieldonadel](https://github.com/gabrieldonadel)
+- Updated `minimal-tester` to use `expo-brownfield` (includes 2 minor iOS improvments in the package) in [#42048](https://github.com/expo/expo/pull/42048) by [@gabrieldonadel](https://github.com/gabrieldonadel)
+- Updated build configurations and resolved leftover TODOs in [#42072](https://github.com/expo/expo/pull/42072) by [@pmleczek](https://github.com/pmleczek)
+- [iOS] Symlink ExpoAppDelegate to iOS template ([#42240](https://github.com/expo/expo/pull/42240) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Remove ExpoModulesProvider patch ([#42317](https://github.com/expo/expo/pull/42317) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Improved bundle loading failure handling in [#42469](https://github.com/expo/expo/pull/42469) by [@pmleczek](https://github.com/pmleczek)
+- Added `expo-dev-client` warning message in [#42564](https://github.com/expo/expo/pull/42564) by [@pmleczek](https://github.com/pmleczek)
+- Pass manifest from bundler to dev menu in isolated brownfield ([#42600](https://github.com/expo/expo/pull/42600) by [@pmleczek](https://github.com/pmleczek))

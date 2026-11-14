@@ -1,10 +1,10 @@
 {
-  "name": "expo-battery",
-  "platforms": ["ios", "android", "web"],
-  "ios": {
-    "modules": ["BatteryModule"]
-  },
+  "platforms": ["apple", "android", "web"],
   "android": {
-    "modules": ["expo.modules.battery.BatteryModule"]
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.battery",
+      "repository": "local-maven-repo"
+    }
   }
 }

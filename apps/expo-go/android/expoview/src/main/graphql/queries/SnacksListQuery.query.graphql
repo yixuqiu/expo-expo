@@ -1,0 +1,19 @@
+query Home_AccountSnacks($accountName: String!, $first: Int!, $after: String) {
+  account {
+    byName(accountName: $accountName) {
+      id
+      name
+      snacksPaginated(first: $first, after: $after) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        edges {
+          node {
+            ...CommonSnackData
+          }
+        }
+      }
+    }
+  }
+}

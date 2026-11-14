@@ -30,10 +30,12 @@ internal class CameraContract(
     }.contentResolver
 
   override fun createIntent(context: Context, input: CameraContractOptions): Intent =
-    Intent(input.options.mediaTypes.toCameraIntentAction())
+    Intent(input.options.nativeMediaTypes.toCameraIntentAction())
       .putExtra(MediaStore.EXTRA_OUTPUT, input.uri.toUri())
       .apply {
-        if (input.options.mediaTypes.toCameraIntentAction() == MediaStore.ACTION_VIDEO_CAPTURE) {
+        // Android no longer grants it implicitly in android 17.
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        if (input.options.nativeMediaTypes.toCameraIntentAction() == MediaStore.ACTION_VIDEO_CAPTURE) {
           putExtra(MediaStore.EXTRA_DURATION_LIMIT, input.options.videoMaxDuration)
         }
         if (input.options.cameraType == CameraType.FRONT) {

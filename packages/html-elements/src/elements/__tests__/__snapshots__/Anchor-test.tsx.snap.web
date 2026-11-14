@@ -1,10 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`renders A 1`] = `
 <a
   className="css-text-146c3p1"
   dir="auto"
   href="#"
+  ref={[Function]}
   role="link"
   target="_parent"
 />

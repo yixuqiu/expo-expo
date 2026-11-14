@@ -11,11 +11,14 @@ export {
   useSegments,
   useRootNavigation,
   useRootNavigationState,
+  useCanGoBack,
+  useCanDismiss,
+  useLoaderData,
+  useCurrentRouteInfo,
 } from './hooks';
 
-export { router } from './imperative-api';
-
-export { Link, Redirect } from './link/Link';
+export { router, type ImperativeRouter, type NavigationTransitionMode } from './imperative-api';
+export { useIsNavigating as unstable_useIsNavigating } from './global-state/useIsNavigating';
 
 export { withLayoutContext } from './layouts/withLayoutContext';
 export { Navigator, Slot };
@@ -23,12 +26,174 @@ export { Navigator, Slot };
 // Expo Router Views
 export { ExpoRoot } from './ExpoRoot';
 export { Unmatched } from './views/Unmatched';
-export { ErrorBoundaryProps } from './views/Try';
+export { Sitemap } from './views/Sitemap';
+export { useSitemap, type SitemapType } from './views/useSitemap';
+export type { ErrorBoundaryProps } from './views/Try';
 export { ErrorBoundary } from './views/ErrorBoundary';
+export { SuspenseFallback, type SuspenseFallbackProps } from './views/SuspenseFallback';
+export { NavigationAwareActivity } from './views/NavigationAwareActivity';
+export type { ScreenProps } from './useScreens';
 
 // Platform
-export { SplashScreen } from './views/Splash';
+/**
+ * @hidden
+ */
+export * as SplashScreen from './views/Splash';
 
 // React Navigation
 export { useNavigation } from './useNavigation';
-export { useFocusEffect } from './useFocusEffect';
+export { useFocusEffect, type EffectCallback } from './useFocusEffect';
+export { useIsFocused } from './useIsFocused';
+export type { ResultState } from './fork/getStateFromPath';
+
+export { DarkTheme } from './react-navigation/native/theming/DarkTheme';
+export { DefaultTheme } from './react-navigation/native/theming/DefaultTheme';
+export { ThemeProvider } from './react-navigation/core/theming/ThemeProvider';
+export { useTheme } from './react-navigation/core/theming/useTheme';
+export { LocaleProvider, type LocaleProviderProps } from './LocaleProvider';
+export type { LocaleDirection, Theme } from './react-navigation/native/types';
+export { useRoutePath } from './react-navigation/native/useRoutePath';
+export { useScrollToTop } from './react-navigation/native/useScrollToTop';
+export { useRoute } from './react-navigation/core/useRoute';
+export {
+  type PreventRemoveOptions,
+  usePreventRemove,
+} from './react-navigation/core/usePreventRemove';
+
+export type { RedirectConfig } from './getRoutesCore';
+export type { SingularOptions } from './useScreens';
+
+export type * from './types';
+
+export {
+  Badge,
+  type BadgeProps,
+  Icon,
+  type IconProps,
+  Label,
+  type LabelProps,
+  VectorIcon,
+  type VectorIconProps,
+} from './primitives';
+
+export {
+  IsWithinNativeNavigator,
+  createStandardRouterNavigator,
+  integrateWithRouter,
+  unstable_createStandardRouterNavigator,
+  unstable_integrateWithRouter,
+} from './standard-navigation';
+export { useReconcileTabHistory as unstable_useReconcileTabHistory } from './standard-navigation/useReconcileTabHistory';
+export type {
+  IntegrateWithRouterOptions,
+  NavigatorContentProps,
+  StandardNavigatorDescriptor,
+  StandardNavigatorEmit,
+  StandardNavigatorEventMapBase,
+  StandardUseNavigationBuilderOptions,
+} from './standard-navigation';
+export { createBaseStackProps } from './layouts/stack-utils/createBaseStackProps';
+export { createBaseTabProps } from './layouts/createBaseTabProps';
+export { createNativeStackProps } from './layouts/createNativeStackProps';
+
+export type { RouteSource } from './react-navigation/native';
+
+// Router factories for use with `createStandardRouterNavigator` / `integrateWithRouter`,
+// and the helpers for customizing them.
+export {
+  attachRouteState,
+  extendRouter,
+  extendRouterActions,
+  isActionHandled,
+  RouterActionHandling,
+  StackRouter,
+  TabRouter,
+} from './react-navigation/routers';
+export { NativeStackView } from './react-navigation/native-stack';
+export { enableLegacyHeaderAppearance } from './react-navigation/native-stack/views/headerAppearance';
+export type {
+  NativeStackDescriptorMap,
+  NativeStackViewState,
+} from './react-navigation/native-stack';
+export type {
+  CommonNavigationAction,
+  DefaultRouterOptions,
+  ExtendedRouter,
+  NavigationAction,
+  NavigationState,
+  Router,
+  RouterActionContext,
+  RouterActionReducer,
+  RouterActionResult,
+  RouterBrowserHistoryAction,
+  RouterConfigOptions,
+  RouterExtension,
+  RouterExtensionContext,
+  RouterExtensionMembers,
+  RouterExtensionOptions,
+  RouterFactory,
+  StackActionType,
+  StackNavigationState,
+  StackRouterOptions,
+  TabActionType,
+  TabNavigationState,
+  TabRouterOptions,
+} from './react-navigation/routers';
+
+export {
+  unstable_enablePerformanceIntegration,
+  unstable_performance,
+  unstable_PerformanceObserver,
+} from './performance';
+export type {
+  RouterPageMarkDetail,
+  RouterActionMarkDetail,
+  RouterPagePreloadedMark,
+  RouterPageFocusedMark,
+  RouterPageBlurredMark,
+  RouterPageRemovedMark,
+  RouterActionEnqueuedMark,
+  RouterActionDispatchedMark,
+  RouterPerformanceMark,
+  RouterPerformanceMarkByName,
+  BaseRouterPerformanceMark,
+} from './performance';
+
+/**
+ * @deprecated Use `import { Tabs } from 'expo-router/js-tabs'` instead.
+ */
+export { Tabs } from './layouts/Tabs';
+
+export { ExperimentalStack } from './layouts/experimental-stack';
+export type {
+  ExperimentalStackNavigationOptions,
+  ExperimentalStackNavigationEventMap,
+  ExperimentalStackNavigationProp,
+  ExperimentalStackScreenProps,
+} from './layouts/experimental-stack';
+
+// Copied from packages/expo-router/src/react-navigation/native-stack/index.tsx
+// Keep in sync
+export type {
+  NativeStackHeaderBackProps,
+  NativeStackHeaderItem,
+  NativeStackHeaderItemButton,
+  NativeStackHeaderItemCustom,
+  NativeStackHeaderItemMenu,
+  NativeStackHeaderItemMenuAction,
+  NativeStackHeaderItemMenuSubmenu,
+  NativeStackHeaderItemProps,
+  NativeStackHeaderItemSpacing,
+  NativeStackHeaderLeftProps,
+  NativeStackHeaderProps,
+  NativeStackHeaderRightProps,
+  NativeStackHeaderNativeProps,
+  NativeStackNativeProps,
+  NativeStackNavigationEventMap,
+  NativeStackNavigationOptions,
+  NativeStackNavigationProp,
+  NativeStackNavigatorProps,
+  NativeStackOptionsArgs,
+  NativeStackScreenNativeProps,
+  NativeStackScreenProps,
+} from './react-navigation/native-stack';

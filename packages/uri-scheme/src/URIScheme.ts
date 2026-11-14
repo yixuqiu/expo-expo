@@ -6,7 +6,25 @@ import prompts from 'prompts';
 
 import * as Android from './Android';
 import * as Ios from './Ios';
-import { CommandError, Options } from './Options';
+import type { Options } from './Options';
+import { CommandError } from './Options';
+
+/**
+ * Escape special characters in URI search parameters exactly once.
+ *
+ * `URLSearchParams` already decodes percent-encoded values when iterating over
+ * them, so we re-encode each value a single time and join the params manually.
+ * Relying on `URLSearchParams.toString()` would encode the values a second time
+ * (e.g. `@` -> `%40` -> `%2540`).
+ *
+ * Decoding first makes this idempotent: passing already-escaped input back in
+ * produces the same output.
+ */
+export function escapeUriParams(uriParams: string): string {
+  return Array.from(new URLSearchParams(uriParams).entries())
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&');
+}
 
 function fileExists(filePath: string): boolean {
   try {
@@ -47,7 +65,7 @@ export function getAvailablePlatforms(
  */
 function ensureUriString(uri: any): string {
   if (!uri) {
-    throw new CommandError('Please supply a URI protocol');
+    throw new CommandError('No URI protocol provided. Supply one with --uri');
   }
   if (typeof uri !== 'string') {
     throw new CommandError(`URI protocol should be of type string. Instead got: ${typeof uri}`);
@@ -64,7 +82,7 @@ function ensureUriString(uri: any): string {
 async function normalizeUriProtocolAsync(uri: any): Promise<string> {
   const trimmedUri = ensureUriString(uri);
   const [protocol] = trimmedUri.split(':');
-  const normalizedUri = protocol.toLowerCase();
+  const normalizedUri = protocol?.toLowerCase();
   if (normalizedUri !== uri) {
     // Create a warning.
     if (normalizedUri) {
@@ -114,7 +132,7 @@ export async function addAsync(options: Options): Promise<string[]> {
   if (!actionOccurred) {
     console.log(
       chalk.yellow(
-        'No URI schemes could be added. Please ensure there is a native project available.'
+        'No URI schemes could be added. Ensure there is a native project in "ios" and/or "android" directories.'
       )
     );
   }
@@ -146,7 +164,7 @@ export async function removeAsync(options: Options): Promise<string[]> {
   if (!actionOccurred) {
     console.log(
       chalk.yellow(
-        'No URI schemes could be removed. Please ensure there is a native project available.'
+        'No URI schemes could be removed. Ensure there is a native project in "ios" and/or "android" directories.'
       )
     );
   }
@@ -154,15 +172,20 @@ export async function removeAsync(options: Options): Promise<string[]> {
 }
 
 export async function openAsync(
-  options: Pick<Options, 'uri' | 'ios' | 'android' | 'projectRoot'> & { androidPackage?: string }
+  options: Pick<Options, 'uri' | 'ios' | 'android' | 'projectRoot'> & {
+    androidPackage?: string;
+    escapeUri?: boolean;
+  }
 ): Promise<void> {
   options.uri = ensureUriString(options.uri);
 
   if (options.ios) {
+    if (options.escapeUri) options.uri = Ios.escapeUri(options.uri);
     logPlatformMessage('iOS', `Opening URI "${options.uri}" in simulator`);
     await Ios.openAsync(options);
   }
   if (options.android) {
+    if (options.escapeUri) options.uri = Android.escapeUri(options.uri);
     logPlatformMessage('Android', `Opening URI "${options.uri}" in emulator`);
     await Android.openAsync(options);
   }

@@ -1,0 +1,533 @@
+import { screen, within } from '@testing-library/react-native';
+import React from 'react';
+import { Text, View } from 'react-native';
+
+import { renderRouter } from '../../../testing-library';
+import Stack from '../../StackClient';
+
+jest.mock('react-native-screens', () => {
+  const actualScreens = jest.requireActual(
+    'react-native-screens'
+  ) as typeof import('react-native-screens');
+  return {
+    ...actualScreens,
+    ScreenStackItem: jest.fn((props) => <actualScreens.ScreenStackItem {...props} />),
+    ScreenStackHeaderLeftView: jest.fn((props) => (
+      <actualScreens.ScreenStackHeaderLeftView {...props} />
+    )),
+    ScreenStackHeaderRightView: jest.fn((props) => (
+      <actualScreens.ScreenStackHeaderRightView {...props} />
+    )),
+  };
+});
+
+jest.mock('@expo/ui/jetpack-compose', () => {
+  const { Text, View }: typeof import('react-native') = jest.requireActual('react-native');
+
+  const DropdownMenuItem = jest.fn((props) => (
+    <View testID="DropdownMenuItem" {...props} />
+  )) as unknown as jest.MockedFunction<React.FC<Record<string, unknown>>> & {
+    Text: jest.MockedFunction<React.FC<Record<string, unknown>>>;
+    LeadingIcon: jest.MockedFunction<React.FC<Record<string, unknown>>>;
+    TrailingIcon: jest.MockedFunction<React.FC<Record<string, unknown>>>;
+  };
+  DropdownMenuItem.Text = jest.fn((props) => <Text testID="DropdownMenuItem.Text" {...props} />);
+  DropdownMenuItem.LeadingIcon = jest.fn((props) => (
+    <View testID="DropdownMenuItem.LeadingIcon" {...props} />
+  ));
+  DropdownMenuItem.TrailingIcon = jest.fn((props) => (
+    <View testID="DropdownMenuItem.TrailingIcon" {...props} />
+  ));
+
+  return {
+    Host: jest.fn((props) => <View testID="Host" {...props} />),
+    Row: jest.fn((props) => <View testID="Row" {...props} />),
+    HorizontalFloatingToolbar: jest.fn((props) => (
+      <View testID="HorizontalFloatingToolbar" {...props} />
+    )),
+    DropdownMenuGroup: jest.fn((props) => <View testID="DropdownMenuGroup" {...props} />),
+    DropdownMenuItem,
+    DropdownMenuPopup: jest.fn((props) => <View testID="DropdownMenuPopup" {...props} />),
+    Spacer: jest.fn((props) => <View testID="Spacer" {...props} />),
+    Divider: jest.fn(() => <View testID="Divider" />),
+    Icon: jest.fn((props) => <View testID="Icon" {...props} />),
+    IconButton: jest.fn((props) => <View testID="IconButton" {...props} />),
+    Badge: jest.fn((props) => <View testID="Badge" {...props} />),
+    Box: jest.fn((props) => <View testID="Box" {...props} />),
+    Text: jest.fn((props) => <Text testID="ComposeText" {...props} />),
+    RNHostView: jest.fn((props) => <View testID="RNHostView" {...props} />),
+  };
+});
+
+jest.mock('@expo/ui/jetpack-compose/modifiers', () => ({
+  background: jest.fn((color: string) => ({ type: 'background', color })),
+  fillMaxWidth: jest.fn(() => ({ type: 'fillMaxWidth' })),
+  fillMaxHeight: jest.fn(() => ({ type: 'fillMaxHeight' })),
+  height: jest.fn((h: number) => ({ type: 'height', height: h })),
+  padding: jest.fn((...args: number[]) => ({ type: 'padding', values: args })),
+  imePadding: jest.fn(() => ({ type: 'imePadding' })),
+  width: jest.fn((w: number) => ({ type: 'width', width: w })),
+  verticalScroll: jest.fn(() => ({ type: 'verticalScroll' })),
+}));
+
+jest.mock('../../../color', () => ({
+  Color: {
+    android: {
+      dynamic: {
+        onSurface: 'dynamic:onSurface',
+        surfaceContainer: 'dynamic:surfaceContainer',
+      },
+      material: {
+        error: 'material:error',
+      },
+    },
+  },
+}));
+
+jest.mock('../../../../assets/arrow_right.xml', () => 'mocked-arrow-right');
+jest.mock('../../../../assets/checkmark.xml', () => 'mocked-checkmark');
+
+jest.mock('../../../toolbar/AnimatedItemContainer', () => {
+  const { View }: typeof import('react-native') = jest.requireActual('react-native');
+  return {
+    AnimatedItemContainer: jest.fn((props) => <View testID="AnimatedItemContainer" {...props} />),
+  };
+});
+
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  const SafeAreaInsetsContext = React.createContext({ top: 0, bottom: 0, left: 0, right: 0 });
+  const SafeAreaFrameContext = React.createContext({ x: 0, y: 0, width: 0, height: 0 });
+  return {
+    SafeAreaInsetsContext,
+    SafeAreaFrameContext,
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+    useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+    useSafeAreaFrame: () => ({ x: 0, y: 0, width: 0, height: 0 }),
+    initialWindowMetrics: {
+      insets: { top: 0, bottom: 0, left: 0, right: 0 },
+      frame: { x: 0, y: 0, width: 0, height: 0 },
+    },
+  };
+});
+
+jest.mock('../../../toolbar/native', () => {
+  const { View }: typeof import('react-native') = jest.requireActual('react-native');
+  return {
+    RouterToolbarHost: jest.fn(({ children }) => (
+      <View testID="RouterToolbarHost">{children}</View>
+    )),
+    RouterToolbarItem: jest.fn((props) => <View testID="RouterToolbarItem" {...props} />),
+  };
+});
+
+const { ScreenStackItem, ScreenStackHeaderLeftView, ScreenStackHeaderRightView } = jest.requireMock(
+  'react-native-screens'
+) as typeof import('react-native-screens');
+const MockedScreenStackItem = ScreenStackItem as jest.MockedFunction<typeof ScreenStackItem>;
+const MockedScreenStackHeaderLeftView = ScreenStackHeaderLeftView as jest.MockedFunction<
+  typeof ScreenStackHeaderLeftView
+>;
+const MockedScreenStackHeaderRightView = ScreenStackHeaderRightView as jest.MockedFunction<
+  typeof ScreenStackHeaderRightView
+>;
+
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+
+describe('Stack.Toolbar Android integration tests', () => {
+  describe('left/right placement from layout', () => {
+    it.each(['left', 'right'] as const)(
+      'renders Host > Row for %s toolbar with no headerBarButtonItems',
+      async (placement) => {
+        await renderRouter({
+          _layout: () => (
+            <Stack>
+              <Stack.Screen name="index">
+                <Stack.Toolbar placement={placement}>
+                  <Stack.Toolbar.Button icon={{ uri: 'icon' }} />
+                </Stack.Toolbar>
+              </Stack.Screen>
+            </Stack>
+          ),
+          index: () => <View testID="index" />,
+        });
+
+        expect(screen.getByTestId('index')).toBeVisible();
+
+        // On Android, toolbar renders native Compose content via Host > Row
+        const host = screen.getByTestId('Host');
+        expect(host.props.matchContents).toBe(true);
+        expect(within(host).getByTestId('Row')).toBeDefined();
+        expect(within(host).getByTestId('IconButton')).toBeDefined();
+
+        // Android uses headerLeft/headerRight (ScreenStackHeaderLeftView/RightView),
+        // NOT headerLeftBarButtonItems/headerRightBarButtonItems (iOS-only)
+        const headerConfig = MockedScreenStackItem.mock.calls[0]![0].headerConfig;
+        expect(headerConfig?.headerLeftBarButtonItems).toBeUndefined();
+        expect(headerConfig?.headerRightBarButtonItems).toBeUndefined();
+
+        // Verify the correct ScreenStackHeader*View was rendered
+        if (placement === 'left') {
+          expect(MockedScreenStackHeaderLeftView).toHaveBeenCalled();
+        } else {
+          expect(MockedScreenStackHeaderRightView).toHaveBeenCalled();
+        }
+      }
+    );
+
+    it('renders both left and right toolbars simultaneously', async () => {
+      await renderRouter({
+        _layout: () => (
+          <Stack>
+            <Stack.Screen name="index">
+              <Stack.Toolbar placement="left">
+                <Stack.Toolbar.Button icon={{ uri: 'menu-icon' }} />
+              </Stack.Toolbar>
+              <Stack.Toolbar placement="right">
+                <Stack.Toolbar.Button icon={{ uri: 'settings-icon' }} />
+              </Stack.Toolbar>
+            </Stack.Screen>
+          </Stack>
+        ),
+        index: () => <View testID="index" />,
+      });
+
+      expect(screen.getByTestId('index')).toBeVisible();
+
+      // Both left and right render their own Host > Row wrappers
+      const hosts = screen.getAllByTestId('Host');
+      expect(hosts).toHaveLength(2);
+      expect(screen.getAllByTestId('IconButton')).toHaveLength(2);
+
+      // Android uses headerLeft/headerRight, not iOS bar button items
+      const headerConfig = MockedScreenStackItem.mock.calls[0]![0].headerConfig;
+      expect(headerConfig?.headerLeftBarButtonItems).toBeUndefined();
+      expect(headerConfig?.headerRightBarButtonItems).toBeUndefined();
+
+      expect(MockedScreenStackHeaderLeftView).toHaveBeenCalled();
+      expect(MockedScreenStackHeaderRightView).toHaveBeenCalled();
+    });
+
+    it('draws right toolbar buttons on a container in buttonContainerColor', async () => {
+      await renderRouter({
+        _layout: () => (
+          <Stack>
+            <Stack.Screen name="index">
+              <Stack.Toolbar placement="right" buttonContainerColor="#000000b3">
+                <Stack.Toolbar.Button icon={{ uri: 'search-icon' }} />
+              </Stack.Toolbar>
+            </Stack.Screen>
+          </Stack>
+        ),
+        index: () => <View testID="index" />,
+      });
+
+      expect(screen.getByTestId('IconButton').props.colors).toEqual({
+        containerColor: '#000000b3',
+        disabledContainerColor: '#000000b3',
+      });
+    });
+
+    it('draws left toolbar menu buttons on a container in buttonContainerColor', async () => {
+      await renderRouter({
+        _layout: () => (
+          <Stack>
+            <Stack.Screen name="index">
+              <Stack.Toolbar placement="left" buttonContainerColor="#000000b3">
+                <Stack.Toolbar.Menu icon={{ uri: 'menu-icon' }}>
+                  <Stack.Toolbar.MenuAction onPress={() => {}}>Action 1</Stack.Toolbar.MenuAction>
+                </Stack.Toolbar.Menu>
+              </Stack.Toolbar>
+            </Stack.Screen>
+          </Stack>
+        ),
+        index: () => <View testID="index" />,
+      });
+
+      expect(screen.getByTestId('IconButton').props.colors).toEqual({
+        containerColor: '#000000b3',
+        disabledContainerColor: '#000000b3',
+      });
+    });
+
+    it.each(['left', 'right'] as const)(
+      'asChild mode for %s placement renders children directly',
+      async (placement) => {
+        await renderRouter({
+          _layout: () => (
+            <Stack>
+              <Stack.Screen name="index">
+                <Stack.Toolbar placement={placement} asChild>
+                  <Text testID={`custom-${placement}`}>Custom</Text>
+                </Stack.Toolbar>
+              </Stack.Screen>
+            </Stack>
+          ),
+          index: () => <View testID="index" />,
+        });
+
+        expect(screen.getByTestId('index')).toBeVisible();
+        expect(screen.getByTestId(`custom-${placement}`)).toBeVisible();
+
+        const headerConfig = MockedScreenStackItem.mock.calls[0]![0].headerConfig;
+        expect(headerConfig?.headerLeftBarButtonItems).toBeUndefined();
+        expect(headerConfig?.headerRightBarButtonItems).toBeUndefined();
+
+        if (placement === 'left') {
+          expect(MockedScreenStackHeaderLeftView).toHaveBeenCalled();
+        } else {
+          expect(MockedScreenStackHeaderRightView).toHaveBeenCalled();
+        }
+      }
+    );
+  });
+
+  it.each(['left', 'right'] as const)(
+    'renders menu with DropdownMenuPopup inside %s toolbar',
+    async (placement) => {
+      await renderRouter({
+        _layout: () => (
+          <Stack>
+            <Stack.Screen name="index">
+              <Stack.Toolbar placement={placement}>
+                <Stack.Toolbar.Menu icon={{ uri: 'menu-icon' }}>
+                  <Stack.Toolbar.MenuAction onPress={() => {}}>Action 1</Stack.Toolbar.MenuAction>
+                </Stack.Toolbar.Menu>
+              </Stack.Toolbar>
+            </Stack.Screen>
+          </Stack>
+        ),
+        index: () => <View testID="index" />,
+      });
+
+      expect(screen.getByTestId('index')).toBeVisible();
+
+      const host = screen.getByTestId('Host');
+      expect(host).toBeDefined();
+      expect(within(host).getByTestId('DropdownMenuPopup')).toBeDefined();
+      expect(within(host).getByTestId('IconButton')).toBeDefined();
+
+      if (placement === 'left') {
+        expect(MockedScreenStackHeaderLeftView).toHaveBeenCalled();
+      } else {
+        expect(MockedScreenStackHeaderRightView).toHaveBeenCalled();
+      }
+    }
+  );
+
+  it('renders RouterToolbarHost for bottom toolbar', async () => {
+    await renderRouter({
+      index: () => (
+        <>
+          <Stack.Toolbar placement="bottom">
+            <Stack.Toolbar.Button icon={{ uri: 'icon' }} />
+          </Stack.Toolbar>
+          <View testID="index" />
+        </>
+      ),
+    });
+
+    expect(screen.getByTestId('index')).toBeVisible();
+    expect(screen.getByTestId('RouterToolbarHost')).toBeVisible();
+  });
+
+  it.each(['left', 'right'] as const)(
+    'renders %s toolbar from page with Host > Row wrapper',
+    async (placement) => {
+      await renderRouter({
+        _layout: () => <Stack />,
+        index: () => (
+          <>
+            <Stack.Toolbar placement={placement}>
+              <Stack.Toolbar.Button icon={{ uri: 'page-icon' }} />
+            </Stack.Toolbar>
+            <View testID="index" />
+          </>
+        ),
+      });
+
+      expect(screen.getByTestId('index')).toBeVisible();
+
+      const host = screen.getByTestId('Host');
+      expect(host).toBeDefined();
+      expect(within(host).getByTestId('Row')).toBeDefined();
+
+      if (placement === 'left') {
+        expect(MockedScreenStackHeaderLeftView).toHaveBeenCalled();
+      } else {
+        expect(MockedScreenStackHeaderRightView).toHaveBeenCalled();
+      }
+    }
+  );
+
+  describe('badge support in left/right placement', () => {
+    it.each(['left', 'right'] as const)(
+      'renders Box with Badge when button has a Badge child in %s placement',
+      async (placement) => {
+        await renderRouter({
+          _layout: () => (
+            <Stack>
+              <Stack.Screen name="index">
+                <Stack.Toolbar placement={placement}>
+                  <Stack.Toolbar.Button icon={{ uri: 'icon' }}>
+                    <Stack.Toolbar.Icon src={{ uri: 'icon' }} />
+                    <Stack.Toolbar.Badge>3</Stack.Toolbar.Badge>
+                  </Stack.Toolbar.Button>
+                </Stack.Toolbar>
+              </Stack.Screen>
+            </Stack>
+          ),
+          index: () => <View testID="index" />,
+        });
+
+        expect(screen.getByTestId('index')).toBeVisible();
+        expect(screen.getByTestId('Box')).toBeDefined();
+        const badge = screen.getByTestId('Badge');
+        expect(badge).toBeDefined();
+        expect(within(badge).getByTestId('ComposeText')).toBeDefined();
+        expect(within(badge).getByTestId('ComposeText').props.children).toBe('3');
+      }
+    );
+
+    it('renders dot badge when Badge has no children', async () => {
+      await renderRouter({
+        _layout: () => (
+          <Stack>
+            <Stack.Screen name="index">
+              <Stack.Toolbar placement="right">
+                <Stack.Toolbar.Button icon={{ uri: 'icon' }}>
+                  <Stack.Toolbar.Icon src={{ uri: 'icon' }} />
+                  <Stack.Toolbar.Badge />
+                </Stack.Toolbar.Button>
+              </Stack.Toolbar>
+            </Stack.Screen>
+          </Stack>
+        ),
+        index: () => <View testID="index" />,
+      });
+
+      expect(screen.getByTestId('index')).toBeVisible();
+      expect(screen.getByTestId('Badge')).toBeDefined();
+      expect(screen.queryByTestId('ComposeText')).toBeNull();
+    });
+
+    it('does not render Box when button has no Badge child', async () => {
+      await renderRouter({
+        _layout: () => (
+          <Stack>
+            <Stack.Screen name="index">
+              <Stack.Toolbar placement="right">
+                <Stack.Toolbar.Button icon={{ uri: 'icon' }}>
+                  <Stack.Toolbar.Icon src={{ uri: 'icon' }} />
+                </Stack.Toolbar.Button>
+              </Stack.Toolbar>
+            </Stack.Screen>
+          </Stack>
+        ),
+        index: () => <View testID="index" />,
+      });
+
+      expect(screen.getByTestId('index')).toBeVisible();
+      expect(screen.queryByTestId('Box')).toBeNull();
+    });
+  });
+
+  describe('menu badge support in left/right placement', () => {
+    it.each(['left', 'right'] as const)(
+      'renders a badge Box next to the menu Box when menu has a Badge child in %s placement',
+      async (placement) => {
+        await renderRouter({
+          _layout: () => (
+            <Stack>
+              <Stack.Screen name="index">
+                <Stack.Toolbar placement={placement}>
+                  <Stack.Toolbar.Menu icon={{ uri: 'menu-icon' }}>
+                    <Stack.Toolbar.Badge>3</Stack.Toolbar.Badge>
+                    <Stack.Toolbar.MenuAction onPress={() => {}}>Action 1</Stack.Toolbar.MenuAction>
+                  </Stack.Toolbar.Menu>
+                </Stack.Toolbar>
+              </Stack.Screen>
+            </Stack>
+          ),
+          index: () => <View testID="index" />,
+        });
+
+        expect(screen.getByTestId('index')).toBeVisible();
+        // One Box holds the menu trigger and popup. The other Box holds the badge.
+        expect(screen.getAllByTestId('Box')).toHaveLength(2);
+        const badge = screen.getByTestId('Badge');
+        expect(badge).toBeDefined();
+        expect(within(badge).getByTestId('ComposeText')).toBeDefined();
+        expect(within(badge).getByTestId('ComposeText').props.children).toBe('3');
+      }
+    );
+
+    it('renders dot badge when menu Badge has no children', async () => {
+      await renderRouter({
+        _layout: () => (
+          <Stack>
+            <Stack.Screen name="index">
+              <Stack.Toolbar placement="right">
+                <Stack.Toolbar.Menu icon={{ uri: 'menu-icon' }}>
+                  <Stack.Toolbar.Badge />
+                  <Stack.Toolbar.MenuAction onPress={() => {}}>Action 1</Stack.Toolbar.MenuAction>
+                </Stack.Toolbar.Menu>
+              </Stack.Toolbar>
+            </Stack.Screen>
+          </Stack>
+        ),
+        index: () => <View testID="index" />,
+      });
+
+      expect(screen.getByTestId('index')).toBeVisible();
+      const badge = screen.getByTestId('Badge');
+      expect(badge).toBeDefined();
+      expect(within(badge).queryByTestId('ComposeText')).toBeNull();
+    });
+
+    it('folds the badge value into the icon contentDescription for TalkBack', async () => {
+      await renderRouter({
+        _layout: () => (
+          <Stack>
+            <Stack.Screen name="index">
+              <Stack.Toolbar placement="right">
+                <Stack.Toolbar.Menu icon={{ uri: 'menu-icon' }} accessibilityLabel="Notifications">
+                  <Stack.Toolbar.Badge>5</Stack.Toolbar.Badge>
+                  <Stack.Toolbar.MenuAction onPress={() => {}}>Action 1</Stack.Toolbar.MenuAction>
+                </Stack.Toolbar.Menu>
+              </Stack.Toolbar>
+            </Stack.Screen>
+          </Stack>
+        ),
+        index: () => <View testID="index" />,
+      });
+
+      expect(screen.getByTestId('index')).toBeVisible();
+      const icon = within(screen.getByTestId('IconButton')).getByTestId('Icon');
+      expect(icon.props.contentDescription).toBe('Notifications, 5');
+    });
+
+    it('does not render a badge Box when menu has no Badge child', async () => {
+      await renderRouter({
+        _layout: () => (
+          <Stack>
+            <Stack.Screen name="index">
+              <Stack.Toolbar placement="right">
+                <Stack.Toolbar.Menu icon={{ uri: 'menu-icon' }}>
+                  <Stack.Toolbar.MenuAction onPress={() => {}}>Action 1</Stack.Toolbar.MenuAction>
+                </Stack.Toolbar.Menu>
+              </Stack.Toolbar>
+            </Stack.Screen>
+          </Stack>
+        ),
+        index: () => <View testID="index" />,
+      });
+
+      expect(screen.getByTestId('index')).toBeVisible();
+      // Only the Box that holds the menu trigger and popup.
+      expect(screen.getAllByTestId('Box')).toHaveLength(1);
+    });
+  });
+});

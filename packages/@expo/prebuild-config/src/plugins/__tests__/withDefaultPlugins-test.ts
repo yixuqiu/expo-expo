@@ -1,57 +1,56 @@
+import type { ExportedConfig } from '@expo/config-plugins';
 import {
   compileModsAsync,
   evalModsAsync,
-  ExportedConfig,
   IOSConfig,
   withGradleProperties,
   XML,
 } from '@expo/config-plugins';
 import JsonFile from '@expo/json-file';
 import plist from '@expo/plist';
-import fs from 'fs-extra';
+import fsMock from 'fs';
 import { vol } from 'memfs';
 import * as path from 'path';
 import xcode from 'xcode';
 
-import rnFixture from './fixtures/react-native-project';
-import { getDirFromFS } from './getDirFromFS';
 import {
   withAndroidExpoPlugins,
   withIosExpoPlugins,
   withVersionedExpoSDKPlugins,
 } from '../withDefaultPlugins';
+import rnFixture from './fixtures/react-native-project';
+import { getDirFromFS } from './getDirFromFS';
 
 const { withOrientation } = IOSConfig.Orientation;
 
 const { readXMLAsync } = XML;
-const fsReal = jest.requireActual('fs') as typeof fs;
+const fsReal = jest.requireActual<typeof import('fs')>('fs');
+
+jest.setTimeout(30 * 1000);
 
 jest.mock('fs');
 // Weird issues with Android Icon module make it hard to mock test.
 jest.mock('../icons/withAndroidIcons', () => {
   return {
-    withAndroidIcons(config) {
+    withAndroidIcons(config: ExportedConfig) {
       return config;
     },
     setIconAsync() {},
   };
 });
-const NotificationsPlugin = require('../unversioned/expo-notifications/withAndroidNotifications');
-NotificationsPlugin.withNotificationIcons = jest.fn((config) => config);
 
 function getLargeConfig(): ExportedConfig {
-  // A very extensive Expo Config.
+  // A very extensive Expo Config. It intentionally includes legacy keys (e.g.
+  // packagerOpts, facebook*, googleMobileAds*, branch) that are no longer part of
+  // the public types but are still handled by the unversioned plugins, so it is
+  // asserted as ExportedConfig.
   return {
     name: 'my cool app',
     slug: 'mycoolapp',
     description: 'my app is great because it uses expo',
-    // owner?: string;
     // privacy?: 'public' | 'unlisted' | 'hidden';
     // sdkVersion?: string;
     runtimeVersion: '1.0',
-    splash: {
-      backgroundColor: '#ff00ff',
-    },
     version: '1.0.0',
     platforms: ['android', 'ios', 'web'],
     githubUrl: 'https://github.com/expo/expo',
@@ -60,25 +59,6 @@ function getLargeConfig(): ExportedConfig {
     backgroundColor: 'orange',
     primaryColor: '#fff000',
     // icon: './icons/icon.png',
-    notification: {
-      icon: './icons/notification-icon.png',
-      color: 'green',
-      iosDisplayInForeground: true,
-      androidMode: 'collapse',
-      androidCollapsedTitle: '#{unread_notifications} new interactions',
-    },
-    androidStatusBar: {
-      barStyle: 'light-content',
-      backgroundColor: '#000FFF',
-      hidden: false,
-      translucent: true,
-    },
-    androidNavigationBar: {
-      visible: 'sticky-immersive',
-      barStyle: 'dark-content',
-
-      backgroundColor: '#ff0000',
-    },
     developmentClient: {
       silentLaunch: true,
     },
@@ -104,6 +84,7 @@ function getLargeConfig(): ExportedConfig {
     ios: {
       bundleIdentifier: 'com.bacon.tester.expoapp',
       buildNumber: '6.5.0',
+      deploymentTarget: '15.1',
       backgroundColor: '#ff0000',
       appStoreUrl: 'https://itunes.apple.com/us/app/pillar-valley/id1336398804?ls=1&mt=8',
       config: {
@@ -122,6 +103,7 @@ function getLargeConfig(): ExportedConfig {
       associatedDomains: ['applinks:https://pillarvalley.netlify.app'],
       usesIcloudStorage: true,
       usesAppleSignIn: true,
+      usesBroadcastPushNotifications: true,
       accessesContactNotes: true,
     },
     android: {
@@ -132,12 +114,6 @@ function getLargeConfig(): ExportedConfig {
       adaptiveIcon: {
         foregroundImage: './icons/foreground.png',
         backgroundImage: './icons/background.png',
-      },
-      splash: {
-        backgroundColor: '#ff00ff',
-        dark: {
-          backgroundColor: '#00ffff',
-        },
       },
       blockedPermissions: [
         'android.permission.RECORD_AUDIO',
@@ -175,7 +151,7 @@ function getLargeConfig(): ExportedConfig {
     },
     _internal: { projectRoot: '/app' },
     mods: null,
-  };
+  } as ExportedConfig;
 }
 
 function getPrebuildConfig() {
@@ -187,6 +163,7 @@ function getPrebuildConfig() {
   });
   config = withAndroidExpoPlugins(config, {
     package: 'com.bacon.todo',
+    projectRoot: '/app',
   });
   return config;
 }
@@ -321,8 +298,9 @@ describe('built-in plugins', () => {
 
     // Google Sign In
     expect(
-      config.ios?.infoPlist?.CFBundleURLTypes?.find(({ CFBundleURLSchemes }) =>
-        CFBundleURLSchemes.includes('com.googleusercontent.apps.1234567890123-abcdef')
+      config.ios?.infoPlist?.CFBundleURLTypes?.find(
+        ({ CFBundleURLSchemes }: { CFBundleURLSchemes: string[] }) =>
+          CFBundleURLSchemes.includes('com.googleusercontent.apps.1234567890123-abcdef')
       )
     ).toBeDefined();
 
@@ -339,69 +317,81 @@ describe('built-in plugins', () => {
     // Test the written files...
     const after = getDirFromFS(vol.toJSON(), projectRoot);
 
-    expect(Object.keys(after)).toEqual([
-      'node_modules/react-native-maps/package.json',
-      'ios/.xcode.env',
-      'ios/HelloWorld/AppDelegate.h',
-      'ios/HelloWorld/AppDelegate.mm',
-      'ios/HelloWorld/Images.xcassets/AppIcon.appiconset/Contents.json',
-      'ios/HelloWorld/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png',
-      'ios/HelloWorld/Images.xcassets/Contents.json',
-      'ios/HelloWorld/Images.xcassets/SplashScreenBackground.imageset/image.png',
-      'ios/HelloWorld/Images.xcassets/SplashScreenBackground.imageset/Contents.json',
-      'ios/HelloWorld/Info.plist',
-      'ios/HelloWorld/SplashScreen.storyboard',
-      'ios/HelloWorld/Supporting/Expo.plist',
-      'ios/HelloWorld/Supporting/en.lproj/InfoPlist.strings',
-      'ios/HelloWorld/Supporting/es.lproj/InfoPlist.strings',
-      'ios/HelloWorld/main.m',
-      'ios/HelloWorld/GoogleService-Info.plist',
-      'ios/HelloWorld/noop-file.swift',
-      'ios/HelloWorld/HelloWorld-Bridging-Header.h',
-      'ios/HelloWorld/mycoolapp.entitlements',
-      'ios/HelloWorld.xcodeproj/project.pbxproj',
-      'ios/HelloWorld.xcodeproj/project.xcworkspace/contents.xcworkspacedata',
-      'ios/HelloWorld.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist',
-      'ios/HelloWorld.xcodeproj/xcshareddata/xcschemes/HelloWorld.xcscheme',
-      'ios/HelloWorld.xcworkspace/contents.xcworkspacedata',
-      'ios/HelloWorld.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist',
-      'ios/Podfile',
-      'ios/Podfile.properties.json',
-      'ios/gitignore',
-      'android/app/build.gradle',
-      'android/app/debug.keystore',
-      'android/app/proguard-rules.pro',
-      'android/app/src/debug/AndroidManifest.xml',
-      'android/app/src/main/AndroidManifest.xml',
-      'android/app/src/main/java/com/bacon/todo/MainActivity.kt',
-      'android/app/src/main/java/com/bacon/todo/MainApplication.kt',
-      'android/app/src/main/res/drawable/rn_edit_text_material.xml',
-      'android/app/src/main/res/drawable/splashscreen.xml',
-      'android/app/src/main/res/values/colors.xml',
-      'android/app/src/main/res/values/strings.xml',
-      'android/app/src/main/res/values/styles.xml',
-      'android/app/src/main/res/values-night/colors.xml',
-      'android/app/google-services.json',
-      'android/build.gradle',
-      'android/gitignore',
-      'android/gradle/wrapper/gradle-wrapper.jar',
-      'android/gradle/wrapper/gradle-wrapper.properties',
-      'android/gradle.properties',
-      'android/gradlew',
-      'android/gradlew.bat',
-      'android/settings.gradle',
-      'config/GoogleService-Info.plist',
-      'config/google-services.json',
-      'locales/en-US.json',
-    ]);
+    expect(Object.keys(after).sort()).toEqual(
+      [
+        'node_modules/react-native-maps/package.json',
+        'ios/.xcode.env',
+        'ios/HelloWorld/AppDelegate.swift',
+        'ios/HelloWorld/SceneDelegate.swift',
+        'ios/HelloWorld/Images.xcassets/AppIcon.appiconset/Contents.json',
+        'ios/HelloWorld/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png',
+        'ios/HelloWorld/Images.xcassets/Contents.json',
+        'ios/HelloWorld/Info.plist',
+        'ios/HelloWorld/SplashScreen.storyboard',
+        'ios/HelloWorld/Supporting/Expo.plist',
+        'ios/HelloWorld/Supporting/en.lproj/InfoPlist.strings',
+        'ios/HelloWorld/Supporting/es.lproj/InfoPlist.strings',
+        'ios/HelloWorld/GoogleService-Info.plist',
+        'ios/HelloWorld/HelloWorld-Bridging-Header.h',
+        'ios/HelloWorld/mycoolapp.entitlements',
+        'ios/HelloWorld.xcodeproj/project.pbxproj',
+        'ios/HelloWorld.xcodeproj/project.xcworkspace/contents.xcworkspacedata',
+        'ios/HelloWorld.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist',
+        'ios/HelloWorld.xcodeproj/xcshareddata/xcschemes/HelloWorld.xcscheme',
+        'ios/Podfile',
+        'ios/Podfile.properties.json',
+        'ios/gitignore',
+        'android/app/build.gradle',
+        'android/app/debug.keystore',
+        'android/app/proguard-rules.pro',
+        'android/app/src/debug/AndroidManifest.xml',
+        'android/app/src/debugOptimized/AndroidManifest.xml',
+        'android/app/src/main/AndroidManifest.xml',
+        'android/app/src/main/java/com/bacon/todo/MainActivity.kt',
+        'android/app/src/main/java/com/bacon/todo/MainApplication.kt',
+        'android/app/src/main/res/drawable/ic_launcher_background.xml',
+        'android/app/src/main/res/drawable/rn_edit_text_material.xml',
+        'android/app/src/main/res/mipmap-hdpi/ic_launcher.webp',
+        'android/app/src/main/res/mipmap-hdpi/ic_launcher_round.webp',
+        'android/app/src/main/res/mipmap-mdpi/ic_launcher.webp',
+        'android/app/src/main/res/mipmap-mdpi/ic_launcher_round.webp',
+        'android/app/src/main/res/mipmap-xhdpi/ic_launcher.webp',
+        'android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.webp',
+        'android/app/src/main/res/mipmap-xxhdpi/ic_launcher.webp',
+        'android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.webp',
+        'android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp',
+        'android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp',
+        'android/app/src/main/res/values-b+en/strings.xml',
+        'android/app/src/main/res/values-b+es/strings.xml',
+        'android/app/src/main/res/values/colors.xml',
+        'android/app/src/main/res/values/strings.xml',
+        'android/app/src/main/res/values/styles.xml',
+        'android/app/google-services.json',
+        'android/build.gradle',
+        'android/gitignore',
+        'android/gradle/wrapper/gradle-wrapper.jar',
+        'android/gradle/wrapper/gradle-wrapper.properties',
+        'android/gradle.properties',
+        'android/gradlew',
+        'android/gradlew.bat',
+        'android/settings.gradle',
+        'config/GoogleService-Info.plist',
+        'config/google-services.json',
+        'locales/en-US.json',
+      ].sort()
+    );
 
     expect(after['ios/HelloWorld/mycoolapp.entitlements']).toMatch(
       'com.apple.developer.associated-domains'
     );
 
     expect(after['ios/HelloWorld/Info.plist']).toMatch(/com.bacon.todo/);
+    // The scene-based life cycle (required by the iOS 27 SDK) declares a single-scene manifest
+    // pointing at the generated SceneDelegate.
+    expect(after['ios/HelloWorld/Info.plist']).toMatch('UIApplicationSceneManifest');
+    expect(after['ios/HelloWorld/Info.plist']).toMatch('$(PRODUCT_MODULE_NAME).SceneDelegate');
     expect(after['ios/HelloWorld/Supporting/en.lproj/InfoPlist.strings']).toMatch(
-      /foo = "uhh bar"/
+      /"foo" = "uhh bar"/
     );
     expect(after['ios/HelloWorld/GoogleService-Info.plist']).toBe(googleServiceInfoFixture);
 
@@ -427,14 +417,14 @@ describe('built-in plugins', () => {
 
     // Ensure the infoPlist object is merged correctly
     const infoPlist = await plist.parse(
-      fs.readFileSync(path.join(projectRoot, 'ios/HelloWorld/Info.plist'), 'utf8')
+      fsMock.readFileSync(path.join(projectRoot, 'ios/HelloWorld/Info.plist'), 'utf8')
     );
-    expect(infoPlist.bar).toStrictEqual({ val: ['foo'] });
+    expect(infoPlist.bar).toEqual({ val: ['foo'] });
     // Ensure the entitlements object is merged correctly
     const entitlements = await plist.parse(
-      fs.readFileSync(path.join(projectRoot, 'ios/HelloWorld/mycoolapp.entitlements'), 'utf8')
+      fsMock.readFileSync(path.join(projectRoot, 'ios/HelloWorld/mycoolapp.entitlements'), 'utf8')
     );
-    expect(entitlements.foo).toStrictEqual('bar');
+    expect(entitlements.foo).toEqual('bar');
 
     // Ensure files are always written in the correct format
     for (const xmlPath of [
@@ -466,8 +456,9 @@ describe('built-in plugins', () => {
 
     // Google Sign In
     expect(
-      config.ios?.infoPlist?.CFBundleURLTypes?.find(({ CFBundleURLSchemes }) =>
-        CFBundleURLSchemes.includes('com.googleusercontent.apps.1234567890123-abcdef')
+      config.ios?.infoPlist?.CFBundleURLTypes?.find(
+        ({ CFBundleURLSchemes }: { CFBundleURLSchemes: string[] }) =>
+          CFBundleURLSchemes.includes('com.googleusercontent.apps.1234567890123-abcdef')
       )
     ).toBeDefined();
 
@@ -499,27 +490,24 @@ describe('built-in plugins', () => {
 
     // Test the written files...
     const after = getDirFromFS(vol.toJSON(), projectRoot);
+    delete after['android/build/reports/problems/problems-report.html'];
 
     expect(Object.keys(after)).toEqual([
       'node_modules/react-native-maps/package.json',
       'ios/.xcode.env',
-      'ios/HelloWorld/AppDelegate.h',
-      'ios/HelloWorld/AppDelegate.mm',
+      'ios/HelloWorld/AppDelegate.swift',
+      'ios/HelloWorld/HelloWorld-Bridging-Header.h',
       'ios/HelloWorld/Images.xcassets/AppIcon.appiconset/Contents.json',
       'ios/HelloWorld/Images.xcassets/Contents.json',
-      'ios/HelloWorld/Images.xcassets/SplashScreen.imageset/Contents.json',
-      'ios/HelloWorld/Images.xcassets/SplashScreenBackground.imageset/Contents.json',
       'ios/HelloWorld/Info.plist',
+      'ios/HelloWorld/SceneDelegate.swift',
       'ios/HelloWorld/SplashScreen.storyboard',
       'ios/HelloWorld/Supporting/Expo.plist',
-      'ios/HelloWorld/main.m',
       'ios/HelloWorld/HelloWorld.entitlements',
       'ios/HelloWorld.xcodeproj/project.pbxproj',
       'ios/HelloWorld.xcodeproj/project.xcworkspace/contents.xcworkspacedata',
       'ios/HelloWorld.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist',
       'ios/HelloWorld.xcodeproj/xcshareddata/xcschemes/HelloWorld.xcscheme',
-      'ios/HelloWorld.xcworkspace/contents.xcworkspacedata',
-      'ios/HelloWorld.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist',
       'ios/Podfile',
       'ios/Podfile.properties.json',
       'ios/gitignore',
@@ -527,11 +515,22 @@ describe('built-in plugins', () => {
       'android/app/debug.keystore',
       'android/app/proguard-rules.pro',
       'android/app/src/debug/AndroidManifest.xml',
+      'android/app/src/debugOptimized/AndroidManifest.xml',
       'android/app/src/main/AndroidManifest.xml',
       'android/app/src/main/java/com/helloworld/MainActivity.kt',
       'android/app/src/main/java/com/helloworld/MainApplication.kt',
+      'android/app/src/main/res/drawable/ic_launcher_background.xml',
       'android/app/src/main/res/drawable/rn_edit_text_material.xml',
-      'android/app/src/main/res/drawable/splashscreen.xml',
+      'android/app/src/main/res/mipmap-hdpi/ic_launcher.webp',
+      'android/app/src/main/res/mipmap-hdpi/ic_launcher_round.webp',
+      'android/app/src/main/res/mipmap-mdpi/ic_launcher.webp',
+      'android/app/src/main/res/mipmap-mdpi/ic_launcher_round.webp',
+      'android/app/src/main/res/mipmap-xhdpi/ic_launcher.webp',
+      'android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.webp',
+      'android/app/src/main/res/mipmap-xxhdpi/ic_launcher.webp',
+      'android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.webp',
+      'android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp',
+      'android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp',
       'android/app/src/main/res/values/colors.xml',
       'android/app/src/main/res/values/strings.xml',
       'android/app/src/main/res/values/styles.xml',
@@ -562,7 +561,7 @@ describe('built-in plugins', () => {
       rnFixture['android/app/src/main/java/com/helloworld/MainActivity.kt']
     );
     expect(after['android/app/src/main/res/values/styles.xml']).toMatch(
-      rnFixture['android/app/src/main/res/values/styles.xml']
+      rnFixture['android/app/src/main/res/values/styles.xml']!
     );
 
     // for (const [name, contents] of Object.entries(rnFixture)) {
@@ -609,8 +608,9 @@ describe('built-in plugins', () => {
 
     // Google Sign In
     expect(
-      config.ios?.infoPlist?.CFBundleURLTypes?.find(({ CFBundleURLSchemes }) =>
-        CFBundleURLSchemes.includes('com.googleusercontent.apps.1234567890123-abcdef')
+      config.ios?.infoPlist?.CFBundleURLTypes?.find(
+        ({ CFBundleURLSchemes }: { CFBundleURLSchemes: string[] }) =>
+          CFBundleURLSchemes.includes('com.googleusercontent.apps.1234567890123-abcdef')
       )
     ).toBeDefined();
 
@@ -649,21 +649,6 @@ describe('built-in plugins', () => {
       'config/google-services.json',
       'locales/en-US.json',
     ]);
-  });
-
-  it('create Podfile.properties.json file for backward compatible', async () => {
-    const { '/app/ios/Podfile.properties.json': _, ...volWithoutPodfileProperties } = vol.toJSON();
-    vol.reset();
-    vol.fromJSON(volWithoutPodfileProperties);
-
-    let config = getPrebuildConfig();
-    // change jsEngine to hermes
-    config.jsEngine = 'hermes';
-
-    config = await compileModsAsync(config, { projectRoot: '/app' });
-
-    const result = await JsonFile.readAsync('/app/ios/Podfile.properties.json');
-    expect(result).toMatchObject({ 'expo.jsEngine': 'hermes' });
   });
 });
 

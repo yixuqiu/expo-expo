@@ -1,3 +1,7 @@
+import { unwrapDevLaunchURL } from 'expo-linking';
+
+import { safeDecodeURIComponent } from '../utils/url';
+
 export function parsePathAndParamsFromExpoGoLink(url: string): {
   pathname: string;
   queryString: string;
@@ -6,7 +10,7 @@ export function parsePathAndParamsFromExpoGoLink(url: string): {
   // `exp://192.168.87.39:19000/` then use the default `exp://192.168.87.39:19000/--/`
 
   const href = parsePathFromExpoGoLink(url);
-  const results = href.match(/(.*?)(\?.*)/);
+  const results = href.match(/([^?]*)(\?.*)?/);
   return {
     pathname: results?.[1] ?? '',
     queryString: results?.[2] ?? '',
@@ -21,12 +25,22 @@ export function parsePathFromExpoGoLink(url: string): string {
 
 // This is only run on native.
 function extractExactPathFromURL(url: string): string {
+  // Resolve launch URLs to the URL the app should route, dropping the reserved `__expo_*` params.
+  url = unwrapDevLaunchURL(url);
+
   if (
     // If a universal link / app link / web URL is used, we should use the path
     // from the URL, while stripping the origin.
     url.match(/^https?:\/\//)
   ) {
-    const { origin, href } = new URL(url);
+    const { origin, href, hostname } = new URL(url);
+
+    if (hostname === 'exp.host' || hostname === 'u.expo.dev') {
+      // These are QR code generated deep-links that always link to the '/' path
+      // TODO: In the future, QR code may link to a specific path and this logic will need to be updated
+      return '';
+    }
+
     return href.replace(origin, '');
   }
 
@@ -52,32 +66,32 @@ function extractExactPathFromURL(url: string): string {
     return '';
   }
 
-  // TODO: Support dev client URLs
-
   return fromDeepLink(url);
 }
 
-/** Major hack to support the makeshift expo-development-client system. */
-function isExpoDevelopmentClient(url: URL): boolean {
-  return url.hostname === 'expo-development-client';
-}
-
 function fromDeepLink(url: string): string {
-  let res: URL;
+  let res: URL | null;
   try {
     // This is for all standard deep links, e.g. `foobar://` where everything
     // after the `://` is the path.
     res = new URL(url);
   } catch {
-    return url;
-  }
+    /**
+     * We failed to parse the URL. This can occur for a variety of reasons, including:
+     * - Its a partial URL (e.g. `/route?query=param`).
+     * - It has a valid App scheme, but the scheme isn't a valid URL scheme (e.g. `my_app://`)
+     */
 
-  if (isExpoDevelopmentClient(res)) {
-    if (!res.searchParams.get('url')) {
-      return '';
+    // If `url` is already a path (starts with `/`), return it as-is
+    if (url.startsWith('/')) {
+      return url;
     }
-    const incomingUrl = res.searchParams.get('url')!;
-    return extractExactPathFromURL(decodeURI(incomingUrl));
+
+    /**
+     * App schemes are not valid URL schemes, so they will fail to parse.
+     * We need to strip the scheme from these URLs
+     */
+    return url.replace(/^[^:]+:\/\//, '');
   }
 
   let results = '';
@@ -93,7 +107,9 @@ function fromDeepLink(url: string): string {
   const qs = !res.search
     ? ''
     : // @ts-ignore: `entries` is not on `URLSearchParams` in some typechecks.
-      [...res.searchParams.entries()].map(([k, v]) => `${k}=${decodeURIComponent(v)}`).join('&');
+      [...res.searchParams.entries()]
+        .map(([k, v]) => `${k}=${safeDecodeURIComponent(v)}`)
+        .join('&');
 
   if (qs) {
     results += '?' + qs;
@@ -102,7 +118,7 @@ function fromDeepLink(url: string): string {
   return results;
 }
 
-export function extractExpoPathFromURL(url: string = '') {
+export function extractExpoPathFromURL(_prefixes: string[], url: string = '') {
   return (
     extractExactPathFromURL(url)
       // TODO: We should get rid of this, dropping specificities is not good

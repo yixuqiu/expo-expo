@@ -1,19 +1,13 @@
-import { ParamListBase, StackNavigationState } from '@react-navigation/native';
-import {
-  createNativeStackNavigator,
-  NativeStackNavigationEventMap,
-  NativeStackNavigationOptions,
-} from '@react-navigation/native-stack';
+import Stack from './StackClient';
+import { StackScreen, StackHeader, StackTitle } from './stack-utils';
+// Note(@ubax): Importing StackToolbar from separate file for rsc to work correctly
+import { StackToolbar } from './stack-utils/toolbar/StackToolbar';
 
-import { withLayoutContext } from './withLayoutContext';
+Stack.Screen = StackScreen;
+Stack.Header = StackHeader;
+Stack.Title = StackTitle;
+Stack.Toolbar = StackToolbar;
 
-const NativeStackNavigator = createNativeStackNavigator().Navigator;
-
-export const Stack = withLayoutContext<
-  NativeStackNavigationOptions,
-  typeof NativeStackNavigator,
-  StackNavigationState<ParamListBase>,
-  NativeStackNavigationEventMap
->(NativeStackNavigator);
+export { Stack };
 
 export default Stack;

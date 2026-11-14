@@ -21,12 +21,10 @@ public class ExpoPrintModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ExpoPrint")
 
-    Constants {
+    Constant("Orientation") {
       [
-        "Orientation": [
-          "portrait": PrintOrientation.portrait.rawValue,
-          "landscape": PrintOrientation.landscape.rawValue
-        ]
+        "portrait": PrintOrientation.portrait.rawValue,
+        "landscape": PrintOrientation.landscape.rawValue
       ]
     }
 
@@ -63,5 +61,23 @@ class ExpoPrintModuleDelegate: NSObject, UIPrinterPickerControllerDelegate, UIPr
   // UIPrintInteractionControllerDelegate
   func printInteractionControllerParentViewController(_ printInteractionController: UIPrintInteractionController) -> UIViewController? {
     return getViewController()
+  }
+}
+
+class ExpoPrintPaperDelegate: ExpoPrintModuleDelegate {
+  private let paperSize: CGSize
+  private let fallback: ExpoPrintModuleDelegate
+
+  // UIPrintPaper sizes are portrait, and bestPaper(forPageSize:withPapersFrom:) does not rotate the page.
+  init(paperSize: CGSize, fallback: ExpoPrintModuleDelegate) {
+    self.paperSize = CGSize(width: min(paperSize.width, paperSize.height), height: max(paperSize.width, paperSize.height))
+    self.fallback = fallback
+  }
+
+  @objc
+  func printInteractionController(_ printInteractionController: UIPrintInteractionController, choosePaper paperList: [UIPrintPaper]) -> UIPrintPaper {
+    // UIKit asks again after the user picks a paper, without saying which one, so only the first choice is ours.
+    printInteractionController.delegate = fallback
+    return UIPrintPaper.bestPaper(forPageSize: paperSize, withPapersFrom: paperList)
   }
 }

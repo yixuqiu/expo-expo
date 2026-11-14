@@ -1,7 +1,10 @@
-import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
+'use client';
+
 import React, { type PropsWithChildren } from 'react';
 import { ActivityIndicator, Animated, Image, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { BottomTabBarHeightContext } from '../react-navigation/bottom-tabs';
 
 export const CODE_FONT = Platform.select({
   default: 'Courier',
@@ -16,14 +19,14 @@ function useFadeIn() {
     Animated.timing(value, {
       toValue: 1,
       duration: 200,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start();
   }, []);
   return value;
 }
 
 export function ToastWrapper({ children }: React.PropsWithChildren) {
-  const inTabBar = React.useContext(BottomTabBarHeightContext);
+  const inTabBar = React.use(BottomTabBarHeightContext);
   const Wrapper = inTabBar ? View : SafeAreaView;
 
   return (
@@ -51,10 +54,10 @@ export function Toast({
       <Animated.View
         style={[
           styles.toast,
-          // @ts-expect-error: fixed is supported on web.
           {
             position: Platform.select({
-              web: 'fixed',
+              // NOTE(@kitten): This isn't typed to support Web properties
+              web: 'fixed' as any,
               default: 'absolute',
             }),
             opacity: value,

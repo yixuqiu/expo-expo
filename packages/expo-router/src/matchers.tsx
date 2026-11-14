@@ -1,13 +1,24 @@
-/** Match `[page]` -> `page` */
-export function matchDynamicName(name: string): string | undefined {
-  // Don't match `...` or `[` or `]` inside the brackets
-  // eslint-disable-next-line no-useless-escape
-  return name.match(/^\[([^[\](?:\.\.\.)]+?)\]$/)?.[1];
+/** Match `[page]` -> `page` or `[...group]` -> `...group` */
+const dynamicNameRe = /^\[([^[\]]+?)\]$/;
+
+interface DynamicNameMatch {
+  name: string;
+  deep: boolean;
 }
 
-/** Match `[...page]` -> `page` */
-export function matchDeepDynamicRouteName(name: string): string | undefined {
-  return name.match(/^\[\.\.\.([^/]+?)\]$/)?.[1];
+// NOTE(@hassankhan): Should we retrieve these from a more central location?
+export const VALID_PLATFORMS = new Set(['android', 'ios', 'native', 'web']);
+
+/** Match `[page]` -> `page` */
+export function matchDynamicName(name: string): DynamicNameMatch | undefined {
+  const paramName = name.match(dynamicNameRe)?.[1];
+  if (paramName == null) {
+    return undefined;
+  } else if (paramName.startsWith('...')) {
+    return { name: paramName.slice(3), deep: true };
+  } else {
+    return { name: paramName, deep: false };
+  }
 }
 
 /** Test `/` -> `page` */
@@ -17,31 +28,58 @@ export function testNotFound(name: string): boolean {
 
 /** Match `(page)` -> `page` */
 export function matchGroupName(name: string): string | undefined {
-  return name.match(/^(?:[^\\(\\)])*?\(([^\\/]+)\).*?$/)?.[1];
+  return name.match(/^(?:[^\\()])*?\(([^\\/]+)\)/)?.[1];
+}
+
+/** Match `(app)/(page)` -> `page` */
+export function matchLastGroupName(name: string): string | undefined {
+  return name.match(/.*(?:\/|^)\(([^\\/]+)\)[^\s]*$/)?.[1];
 }
 
 /** Match the first array group name `(a,b,c)/(d,c)` -> `'a,b,c'` */
 export function matchArrayGroupName(name: string) {
-  return name.match(/(?:[^\\(\\)])*?\(([^\\/]+,[^\\/]+)\).*?$/)?.[1];
+  return name.match(/(?:[^\\()])*?\(([^\\/]+,[^\\/]+)\)/)?.[1];
 }
 
 export function getNameFromFilePath(name: string): string {
   return removeSupportedExtensions(removeFileSystemDots(name));
 }
 
+export function getPlatformFromFilePath(filePath: string): string | undefined {
+  const filename = getNameFromFilePath(filePath).split('/').pop()!;
+  const extensionIndex = filename.lastIndexOf('.');
+
+  if (extensionIndex < 0) {
+    return undefined;
+  }
+
+  const platform = filename.slice(extensionIndex + 1);
+  return VALID_PLATFORMS.has(platform) ? platform : undefined;
+}
+
 export function getContextKey(name: string): string {
   // The root path is `` (empty string) so always prepend `/` to ensure
   // there is some value.
-  const normal = '/' + getNameFromFilePath(name);
+  const contextKey = getNameFromFilePath(name);
+  const platform = getPlatformFromFilePath(name);
+  const contextKeyWithoutPlatform = platform
+    ? contextKey.slice(0, -(platform.length + 1))
+    : contextKey;
+  const normal = '/' + contextKeyWithoutPlatform;
   if (!normal.endsWith('_layout')) {
     return normal;
   }
   return normal.replace(/\/?_layout$/, '');
 }
 
-/** Remove `.js`, `.ts`, `.jsx`, `.tsx` */
+/** Remove `.js`, `.ts`, `.jsx`, `.tsx`, and the +api suffix */
 export function removeSupportedExtensions(name: string): string {
   return name.replace(/(\+api)?\.[jt]sx?$/g, '');
+}
+
+/** Remove `.js`, `.ts`, `.jsx`, `.tsx` */
+export function removeFileSystemExtensions(name: string): string {
+  return name.replace(/\.[jt]sx?$/g, '');
 }
 
 // Remove any amount of `./` and `../` from the start of the string
@@ -50,6 +88,20 @@ export function removeFileSystemDots(filePath: string): string {
 }
 
 export function stripGroupSegmentsFromPath(path: string): string {
+  // Only the pathname can contain groups. The search and hash may contain parentheses, e.g. `?a=(a)`
+  const suffixIndex = path.search(/[?#]/);
+  if (suffixIndex !== -1) {
+    const pathname = stripGroupSegmentsFromPath(path.slice(0, suffixIndex));
+    const queryAndHash = path.slice(suffixIndex);
+    if (pathname) {
+      return pathname + queryAndHash;
+    }
+    if (path.startsWith('/')) {
+      return '/' + queryAndHash;
+    }
+    return queryAndHash;
+  }
+
   return path
     .split('/')
     .reduce((acc, v) => {
@@ -62,7 +114,7 @@ export function stripGroupSegmentsFromPath(path: string): string {
 }
 
 export function stripInvisibleSegmentsFromPath(path: string): string {
-  return stripGroupSegmentsFromPath(path).replace(/\/?index$/, '');
+  return stripGroupSegmentsFromPath(path).replace(/(^|\/)index$/, '');
 }
 
 /**

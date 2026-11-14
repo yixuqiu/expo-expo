@@ -1,14 +1,178 @@
 # Changelog
 
-## Unpublished
+## 58.0.2
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.1
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
 
 ### 🛠 Breaking changes
 
-### 🎉 New features
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
 
-### 🐛 Bug fixes
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
 
 ### 💡 Others
+
+- [Android] Removed unused `androidx.annotation:annotation` dependency. ([#39756](https://github.com/expo/expo/pull/39756) by [@lukmccall](https://github.com/lukmccall))
+
+## 14.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35288](https://github.com/expo/expo/pull/35288) by [@behenate](https://github.com/behenate))
+
+## 13.0.1 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 💡 Others
+
+- Removed all `NativeModulesProxy` occurrences. ([#31496](https://github.com/expo/expo/pull/31496) by [@reichhartd](https://github.com/reichhartd))
 
 ## 12.0.1 — 2024-04-23
 

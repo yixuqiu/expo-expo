@@ -1,17 +1,20 @@
-import { UnavailabilityError } from 'expo-modules-core';
+import { UnavailabilityError } from 'expo';
 
 import NotificationScheduler from './NotificationScheduler';
-import { NotificationRequest } from './Notifications.types';
+import type { NotificationRequest } from './Notifications.types';
+import { mapNotificationRequest } from './utils/mapNotificationResponse';
 
 /**
  * Fetches information about all scheduled notifications.
  * @return Returns a Promise resolving to an array of objects conforming to the [`Notification`](#notification) interface.
  * @header schedule
  */
-export default async function getAllScheduledNotificationsAsync(): Promise<NotificationRequest[]> {
+export async function getAllScheduledNotificationsAsync(): Promise<NotificationRequest[]> {
   if (!NotificationScheduler.getAllScheduledNotificationsAsync) {
     throw new UnavailabilityError('Notifications', 'getAllScheduledNotificationsAsync');
   }
 
-  return await NotificationScheduler.getAllScheduledNotificationsAsync();
+  return (await NotificationScheduler.getAllScheduledNotificationsAsync()).map((request) =>
+    mapNotificationRequest(request)
+  );
 }

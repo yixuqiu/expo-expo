@@ -1,28 +1,66 @@
 import ExpoModulesCore
-import SystemConfiguration
 import Network
 
+@Record
+struct NetworkState {
+  var type: String
+  var isConnected: Bool
+  var isInternetReachable: Bool
+}
+
+@ExpoModule("ExpoNetwork")
 public final class NetworkModule: Module {
-  private let monitor = NWPathMonitor()
+  let monitor = Mutex<NWPathMonitor?>(nil)
   private let monitorQueue = DispatchQueue.global(qos: .default)
 
-  public func definition() -> ModuleDefinition {
-    Name("ExpoNetwork")
+  @Event("onNetworkStateChanged")
+  var onNetworkStateChanged: (NetworkState) -> Void
 
-    OnCreate {
-      monitor.start(queue: monitorQueue)
+  public override func didStartListening(event: String) {
+    if event == "onNetworkStateChanged" {
+      setupNetworkMonitoring()
     }
+  }
 
-    AsyncFunction("getIpAddressAsync") { () -> String? in
-      return try getIPAddress()
+  public override func didStopListening(event: String) {
+    if event == "onNetworkStateChanged" {
+      stopNetworkMonitoring()
     }
+  }
 
-    AsyncFunction("getNetworkStateAsync") {
-      return getNetworkStateAsync()
+  public override func willDestroy() {
+    stopNetworkMonitoring()
+  }
+
+  @JS(.concurrent)
+  func getIpAddressAsync() async throws -> String {
+    return try getIPAddress()
+  }
+
+  @JS(.concurrent)
+  func getNetworkStateAsync() async -> NetworkState {
+    return networkState(path: await getNetworkPathAsync())
+  }
+
+  private func setupNetworkMonitoring() {
+    let newMonitor = NWPathMonitor()
+    newMonitor.pathUpdateHandler = { [weak self] path in
+      guard let self else {
+        return
+      }
+      self.onNetworkStateChanged(self.networkState(path: path))
     }
+    monitor.withLock { monitor in
+      monitor?.cancel()
+      monitor = newMonitor
+    }
+    newMonitor.start(queue: monitorQueue)
+  }
 
-    OnDestroy {
-      monitor.cancel()
+  private func stopNetworkMonitoring() {
+    monitor.withLock { monitor in
+      monitor?.cancel()
+      monitor = nil
     }
   }
 
@@ -46,7 +84,7 @@ public final class NetworkModule: Module {
 
       if family == UInt8(AF_INET) {
         let name = String(cString: temp.ifa_name)
-        if name == "en0" || name == "en1" {
+        if name.starts(with: "en") {
           var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
           getnameinfo(
             temp.ifa_addr,
@@ -55,7 +93,8 @@ public final class NetworkModule: Module {
             socklen_t(hostname.count),
             nil,
             socklen_t(0),
-            NI_NUMERICHOST)
+            NI_NUMERICHOST
+          )
           address = String(cString: hostname)
         }
       }
@@ -65,38 +104,80 @@ public final class NetworkModule: Module {
     return address
   }
 
-  private func getNetworkStateAsync() -> [String: Any] {
-    let path = monitor.currentPath
-    let isConnected = path.status == .satisfied
-    var currentNetworkType = NetworkType.unknown
+  private func getNetworkPathAsync() async -> NWPath? {
+    // create a temporary monitor to avoid interfering with the module's monitor
+    // since we want to wait for the result to be updated once:
+    let tempMonitor = NWPathMonitor()
+    defer { tempMonitor.cancel() }
+
+    return await withCheckedContinuation { continuation in
+      // The update handler and the timeout race, and a continuation must be resumed only once.
+      let isResumed = Mutex(false)
+      let resume: @Sendable (NWPath?) -> Bool = { path in
+        let shouldResume = isResumed.withLock { isResumed in
+          defer { isResumed = true }
+          return !isResumed
+        }
+        if shouldResume {
+          continuation.resume(returning: path)
+        }
+        return shouldResume
+      }
+
+      // Wait max 5 seconds to avoid any locking issues if the monitor
+      // doesn't get an update in time. A cancelled timer source releases its handler when the
+      // cancellation completes, while a cancelled `DispatchWorkItem` keeps it until its deadline.
+      let timeout = DispatchSource.makeTimerSource(queue: monitorQueue)
+      timeout.schedule(deadline: .now() + 5)
+      timeout.setEventHandler {
+        timeout.cancel()
+        if resume(nil) {
+          print("Timeout waiting for network path.")
+        }
+      }
+
+      tempMonitor.pathUpdateHandler = { updatedPath in
+        timeout.cancel()
+        _ = resume(updatedPath)
+      }
+      timeout.resume()
+      tempMonitor.start(queue: monitorQueue)
+    }
+  }
+
+  private func networkState(path: NWPath?) -> NetworkState {
+    let isConnected = path?.status == .satisfied
 
     if !isConnected {
-      return [
-        "type": NetworkType.none.description,
-        "isConnected": isConnected,
-        "isInternetReachable": isConnected
-      ]
+      return NetworkState(
+        type: NetworkType.none.description,
+        isConnected: isConnected,
+        isInternetReachable: isConnected
+      )
     }
 
     let connectionType = NWInterface
       .InterfaceType
       .allCases
-      .filter { path.usesInterfaceType($0) }
+      .filter { path?.usesInterfaceType($0) == true }
       .first
 
+    var currentNetworkType = NetworkType.unknown
     switch connectionType {
     case .wifi:
       currentNetworkType = .wifi
     case .cellular:
       currentNetworkType = .cellular
+    case .wiredEthernet:
+      currentNetworkType = .wiredEthernet
     default:
       currentNetworkType = .unknown
     }
 
-    return [
-      "type": currentNetworkType.description,
-      "isConnected": isConnected,
-      "isInternetReachable": isConnected
-    ]
+    return NetworkState(
+      type: currentNetworkType.description,
+      isConnected: isConnected,
+      isInternetReachable: isConnected
+    )
   }
 }

@@ -1,14 +1,202 @@
 # Changelog
 
-## Unpublished
+## 58.0.3
 
-### 🛠 Breaking changes
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.2
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.1 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-07
 
 ### 🎉 New features
 
+- Add macOS support ([#45448](https://github.com/expo/expo/pull/45448) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.5 - 2025-06-05
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.0 — 2025-04-04
+
 ### 🐛 Bug fixes
 
+- Fix adaptive color support for `PlatformColor` and add corresponding types ([#34214](https://github.com/expo/expo/pull/34214) by [@dlindenkreuz](https://github.com/dlindenkreuz))
+
 ### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+
+## 14.0.2 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.1 — 2024-10-25
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- stricter TS type of the `colors` prop. It now requires providing an array of least two values. Passing an empty array or an array with one value will fail to typecheck. ([#27820](https://github.com/expo/expo/pull/27820) by [@navignaw](https://github.com/navignaw))
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Add experimental support for React Server Components. ([#29404](https://github.com/expo/expo/pull/29404) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Add missing `react` and `react-native` peer dependencies for isolated modules. ([#30471](https://github.com/expo/expo/pull/30471) by [@byCedric](https://github.com/byCedric))
 
 ## 13.0.2 — 2024-05-01
 

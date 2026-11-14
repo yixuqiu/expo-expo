@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -11,11 +12,15 @@ import android.provider.MediaStore
 import android.text.TextUtils
 import android.util.Log
 import android.webkit.MimeTypeMap
-import expo.modules.kotlin.Promise
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 object MediaLibraryUtils {
   class AssetFile(pathname: String, val assetId: String, val mimeType: String) : File(pathname)
@@ -65,7 +70,7 @@ object MediaLibraryUtils {
     }
     FileInputStream(src).channel.use { input ->
       FileOutputStream(newFile).channel.use { output ->
-        val transferred = input.transferTo(0, input.size(), output)
+        val transferred = input.transferAllTo(output)
         if (transferred != input.size()) {
           newFile.delete()
           throw IOException("Could not save file to $destDir Not enough space.")
@@ -75,7 +80,11 @@ object MediaLibraryUtils {
     }
   }
 
-  fun deleteAssets(context: Context, selection: String?, selectionArgs: Array<out String?>?, promise: Promise) {
+  suspend fun deleteAssets(
+    context: Context,
+    selection: String?,
+    selectionArgs: Array<out String?>?
+  ): Boolean = withContext(Dispatchers.IO) {
     val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATA)
     try {
       context.contentResolver.query(
@@ -89,11 +98,17 @@ object MediaLibraryUtils {
           throw AssetFileException("Could not delete assets. Cursor is null.")
         } else {
           while (filesToDelete.moveToNext()) {
+            // Interrupting file deletion when scope is closed is desired, as
+            // user might want to stop this process in the meantime
+            coroutineContext.ensureActive()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
               val columnId = filesToDelete.getColumnIndex(MediaStore.MediaColumns._ID)
               val id = filesToDelete.getLong(columnId)
               val assetUri = ContentUris.withAppendedId(EXTERNAL_CONTENT_URI, id)
-              context.contentResolver.delete(assetUri, null)
+              val rowsDeleted = context.contentResolver.delete(assetUri, null)
+              if (rowsDeleted == 0) {
+                throw AssetFileException("Could not delete file.")
+              }
             } else {
               val dataColumnIndex = filesToDelete.getColumnIndex(MediaStore.MediaColumns.DATA)
               val filePath = filesToDelete.getString(dataColumnIndex)
@@ -109,18 +124,13 @@ object MediaLibraryUtils {
               }
             }
           }
-          promise.resolve(true)
         }
       }
+      return@withContext true
     } catch (e: SecurityException) {
-      promise.reject(
-        ERROR_UNABLE_TO_SAVE_PERMISSION,
-        "Could not delete asset: need WRITE_EXTERNAL_STORAGE permission.",
-        e
-      )
+      throw UnableToDeleteException("Could not delete asset: need WRITE_EXTERNAL_STORAGE permission.", e)
     } catch (e: Exception) {
-      e.printStackTrace()
-      promise.reject(ERROR_UNABLE_TO_DELETE, "Could not delete file.", e)
+      throw UnableToDeleteException("Could not delete file: ${e.message}", e)
     }
   }
 
@@ -185,9 +195,9 @@ object MediaLibraryUtils {
   fun getMimeType(contentResolver: ContentResolver, uri: Uri): String? =
     contentResolver.getType(uri) ?: getMimeTypeFromFileUrl(uri.toString())
 
-  fun getAssetsUris(context: Context, assetsId: List<String?>?): List<Uri> {
+  fun getAssetsUris(context: Context, assetsId: Array<String>): List<Uri> {
     val result = mutableListOf<Uri>()
-    val selection = MediaStore.MediaColumns._ID + " IN (" + TextUtils.join(",", assetsId!!) + " )"
+    val selection = MediaStore.MediaColumns._ID + " IN (" + TextUtils.join(",", assetsId) + " )"
     val selectionArgs: Array<String>? = null
     val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.MIME_TYPE)
     context.contentResolver.query(
@@ -220,16 +230,24 @@ object MediaLibraryUtils {
 
   fun getRelativePathForAssetType(mimeType: String?, useCameraDir: Boolean): String {
     if (mimeType?.contains("image") == true || mimeType?.contains("video") == true) {
-      return if (useCameraDir) Environment.DIRECTORY_DCIM else Environment.DIRECTORY_PICTURES
+      return if (useCameraDir) {
+        Environment.DIRECTORY_DCIM
+      } else {
+        Environment.DIRECTORY_PICTURES
+      }
     } else if (mimeType?.contains("audio") == true) {
       return Environment.DIRECTORY_MUSIC
     }
 
     // For backward compatibility
-    return if (useCameraDir) Environment.DIRECTORY_DCIM else Environment.DIRECTORY_PICTURES
+    return if (useCameraDir) {
+      Environment.DIRECTORY_DCIM
+    } else {
+      Environment.DIRECTORY_PICTURES
+    }
   }
 
-  @Deprecated("It uses deprecated Android method under the hood. See implementation for details.")
+  // It uses deprecated Android method under the hood. See implementation for details.
   fun getEnvDirectoryForAssetType(mimeType: String?, useCameraDir: Boolean): File =
     Environment.getExternalStoragePublicDirectory(getRelativePathForAssetType(mimeType, useCameraDir))
 
@@ -255,4 +273,11 @@ object MediaLibraryUtils {
    */
   fun hasManifestPermission(context: Context, permission: String): Boolean =
     getManifestPermissions(context).contains(permission)
+
+  suspend fun scanFile(context: Context, paths: Array<String>, mimeTypes: Array<String>?) =
+    suspendCoroutine { complete ->
+      MediaScannerConnection.scanFile(context, paths, mimeTypes) { path: String, uri: Uri? ->
+        complete.resume(Pair(path, uri))
+      }
+    }
 }

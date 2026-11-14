@@ -3,56 +3,57 @@ package expo.modules.kotlin.types
 import com.facebook.react.bridge.Dynamic
 import com.facebook.react.bridge.ReadableArray
 import expo.modules.kotlin.exception.CollectionElementCastException
+import expo.modules.kotlin.exception.DynamicCastException
 import expo.modules.kotlin.exception.exceptionDecorator
 import expo.modules.kotlin.jni.CppType
 import expo.modules.kotlin.jni.ExpectedType
 import expo.modules.kotlin.jni.SingleType
 import expo.modules.kotlin.recycle
-import kotlin.reflect.KType
+import expo.modules.kotlin.types.descriptors.TypeDescriptor
 
 class PairTypeConverter(
   converterProvider: TypeConverterProvider,
-  private val pairType: KType
-) : DynamicAwareTypeConverters<Pair<*, *>>(pairType.isMarkedNullable) {
+  private val pairType: TypeDescriptor
+) : DynamicAwareTypeConverters<Pair<*, *>>() {
   private val converters = listOf(
     converterProvider.obtainTypeConverter(
-      requireNotNull(pairType.arguments.getOrNull(0)?.type) {
+      requireNotNull(pairType.params.getOrNull(0)) {
         "The pair type should contain the type of the first parameter."
       }
     ),
     converterProvider.obtainTypeConverter(
-      requireNotNull(pairType.arguments.getOrNull(1)?.type) {
+      requireNotNull(pairType.params.getOrNull(1)) {
         "The pair type should contain the type of the second parameter."
       }
     )
   )
 
-  override fun convertFromDynamic(value: Dynamic): Pair<*, *> {
-    val jsArray = value.asArray()
-    return convertFromReadableArray(jsArray)
+  override fun convertFromDynamic(value: Dynamic, context: ConverterContext, forceConversion: Boolean): Pair<*, *> {
+    val jsArray = value.asArray() ?: throw DynamicCastException(ReadableArray::class)
+    return convertFromReadableArray(jsArray, context, forceConversion)
   }
 
-  override fun convertFromAny(value: Any): Pair<*, *> {
+  override fun convertFromAny(value: Any, context: ConverterContext, forceConversion: Boolean): Pair<*, *> {
     if (value is ReadableArray) {
-      return convertFromReadableArray(value)
+      return convertFromReadableArray(value, context, forceConversion)
     }
 
     return value as Pair<*, *>
   }
 
-  private fun convertFromReadableArray(jsArray: ReadableArray): Pair<*, *> {
+  private fun convertFromReadableArray(jsArray: ReadableArray, context: ConverterContext, forceConversion: Boolean): Pair<*, *> {
     return Pair(
-      convertElement(jsArray, 0),
-      convertElement(jsArray, 1)
+      convertElement(context, jsArray, 0, forceConversion),
+      convertElement(context, jsArray, 1, forceConversion)
     )
   }
 
-  private fun convertElement(array: ReadableArray, index: Int): Any? {
+  private fun convertElement(context: ConverterContext, array: ReadableArray, index: Int, forceConversion: Boolean): Any? {
     return array.getDynamic(index).recycle {
       exceptionDecorator({ cause ->
-        CollectionElementCastException(pairType, pairType.arguments[index].type!!, type, cause)
+        CollectionElementCastException(pairType, pairType.params[index], type, cause)
       }) {
-        converters[index].convert(this)
+        converters[index].convert(this, context, forceConversion)
       }
     }
   }

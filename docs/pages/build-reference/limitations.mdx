@@ -1,10 +1,10 @@
 ---
-title: EAS Build Limitations
+title: Expo Build limitations
 sidebar_title: Limitations
-description: Learn about the current limitations of EAS Build.
+description: Learn about the current limitations of Expo Build.
 ---
 
-EAS Build is designed to work for any React Native project. However, it is good to be aware of certain limitations that we plan to address since they could prevent you from being able to use the service for your applications or might cause an inconvenience.
+Expo Build is designed to work for any React Native project. However, it is good to be aware of certain limitations that we plan to address since they could prevent you from being able to use the service for your applications or might cause an inconvenience.
 
 ## Fixed memory and CPU limits on build worker servers
 
@@ -14,24 +14,26 @@ See [Server infrastructure reference](/build-reference/infrastructure) for more 
 
 ## Limited dependency caching
 
-Build jobs for Android install npm and Maven dependencies from a local cache. Build jobs for iOS install npm dependencies from a local cache, but there is no caching for CocoaPods yet.
+Build jobs for Android install npm and Maven dependencies from a local cache. Build jobs for iOS install npm dependencies from a local cache, and CocoaPods artifacts from a cache server.
 
-Intermediate artifacts like `node_modules` directories are not cached and restored (eg: based on `yarn.lock` or `package-lock.json`), but if you commit them to your git repository then they will be uploaded to build servers.
+Intermediate artifacts like **node_modules** directories are not cached and restored (for example, based on **package-lock.json** or **yarn.lock**), but if you commit them to your Git repository then they will be uploaded to build servers.
 
 See [dependency caching](/build-reference/caching) for more information.
 
-## Maximum build duration of 2 hours
+## Maximum build duration
 
-If your build takes longer than 2 hours to run, it will be canceled. This limit is lower on the free plan, and the limit is subject to change in the future.
+If your build takes longer to run than the maximum duration allowed for your plan, it will be canceled. See [Expo pricing](https://expo.dev/pricing#builds) for the build timeout included with each plan, which is subject to change.
 
-## Yarn Workspaces is recommended for monorepos; official guidance for others is limited
+## Maximum number of pending builds is 50 per platform per account
 
-While you likely can have success using other monorepo tools like Nx if you are willing to dig in and understand the tooling and get your hands dirty, the Expo team will be unable to provide support and guidance on those tools. We recommend using [Yarn Workspaces](https://yarnpkg.com/en/docs/workspaces) because it is the only monorepo tool that we provide first-class integration with at the moment.
+If you have more than 50 builds pending for a platform, new builds will be rejected until the number of pending builds drops below the limit.
 
-## Managed workflow projects on SDK 40 and below are not supported
+## Package managers with workspaces support may require special setup
 
-EAS Build supports building iOS/Android native projects, so it works with any React Native app. Support for [Managed Expo projects](/archive/managed-vs-bare/) is only available for SDK 41 and higher. **For best results, we recommend using the latest SDK version**, or at least SDK 43.
+> **Note**: Official guidance for package managers other than Bun, npm, pnpm, and Yarn is limited.
+
+Expo Build supports monorepos managed with package managers supporting workspaces. However, third-party monorepo or workspaces tooling may not work as expected or require additional setup. Increased complexity is common when setting up and configuring monorepos and workspaces. Check whether your tools and libraries work well within a monorepo before setting one up. See [Work with monorepos](/guides/monorepos/).
 
 ## Get notified about changes
 
-To be notified as progress is made on these items, you can subscribe to the EAS newsletter on [expo.dev/eas](https://expo.dev/eas).
+To be notified as progress is made on these items, you can subscribe to the Expo newsletter on [expo.dev/services](https://expo.dev/services).

@@ -1,11 +1,13 @@
-import { ConfigPlugin, IOSConfig, withAppDelegate, withDangerousMod } from '@expo/config-plugins';
+import type { ConfigPlugin } from '@expo/config-plugins';
+import { IOSConfig, withAppDelegate, withDangerousMod } from '@expo/config-plugins';
 import {
   addObjcImports,
+  addSwiftImports,
   insertContentsInsideObjcFunctionBlock,
   insertContentsInsideSwiftFunctionBlock,
 } from '@expo/config-plugins/build/ios/codeMod';
 import fs from 'fs';
-import { sync as globSync } from 'glob';
+import path from 'node:path';
 import semver from 'semver';
 
 import {
@@ -46,14 +48,12 @@ export const withIosModulesSwiftBridgingHeader: ConfigPlugin = (config) => {
       return config;
     }
 
-    const [bridgingHeaderFilePath] = globSync(
-      `ios/${bridgingHeaderFileName.replace(/['"]/g, '')}`,
-      {
-        absolute: true,
-        cwd: config.modRequest.projectRoot,
-      }
+    const bridgingHeaderFilePath = path.resolve(
+      config.modRequest.projectRoot,
+      'ios',
+      bridgingHeaderFileName.replace(/['"]/g, '')
     );
-    if (!bridgingHeaderFilePath) {
+    if (!fs.existsSync(bridgingHeaderFilePath)) {
       return config;
     }
     let contents = await fs.promises.readFile(bridgingHeaderFilePath, 'utf8');
@@ -129,7 +129,138 @@ export function updateModulesAppDelegateObjcHeader(
   return contents;
 }
 
+export function assertNoLegacySourceUrl(
+  contents: string,
+  sdkVersion: string | undefined,
+  fileName = 'AppDelegate.swift'
+): void {
+  if (!sdkVersion || semver.lt(sdkVersion, '59.0.0')) {
+    return;
+  }
+
+  const legacySourceUrl = contents.match(
+    /^(?:(?!\/\/)[^\n])*\bfunc\s+sourceURL\s*\(\s*for\s+\w+\s*:\s*(?:React\.)?RCTBridge\b/m
+  );
+  if (legacySourceUrl) {
+    const line = contents.slice(0, legacySourceUrl.index).split('\n').length;
+    throw new Error(
+      `Cannot install Expo modules because ${fileName} contains the legacy sourceURL(for:) method at line ${line}. SDK 59 and later require bundleURL() instead. Remove sourceURL(for:), including any attached annotations such as @objc. If it contains custom bundle selection, move that logic to bundleURL() first. Then run install-expo-modules again.`
+    );
+  }
+}
+
 export function updateModulesAppDelegateSwift(
+  contents: string,
+  sdkVersion: string | undefined
+): string {
+  if (sdkVersion) {
+    if (semver.lt(sdkVersion, '52.0.0')) {
+      return updateModulesAppDelegateSwiftLegacy(contents, sdkVersion);
+    }
+    if (semver.lt(sdkVersion, '53.0.0')) {
+      return updateModulesAppDelegateSwiftSdk52(contents, sdkVersion);
+    }
+  }
+
+  // Add imports if needed.
+  // SDK 55+ uses `internal import` to match ExpoModulesProvider.swift (Swift 6 compatibility).
+  const useInternalImport = sdkVersion && semver.gte(sdkVersion, '55.0.0');
+  if (!contents.match(/^(internal\s+)?import\s+Expo\s*$/m)) {
+    contents = addSwiftImports(contents, ['Expo']);
+    if (useInternalImport) {
+      contents = contents.replace(/^import Expo$/m, 'internal import Expo');
+    }
+  }
+
+  // Replace superclass with ExpoAppDelegate
+  contents = contents.replace(
+    /^(class\s+AppDelegate\s*:\s*)UIResponder,\s*UIApplicationDelegate(\W+)/m,
+    '$1ExpoAppDelegate$2'
+  );
+  // Add `override` keyword and return super call to didFinishLaunchingWithOptions
+  contents = contents.replace(
+    /\b(func application\([\s\S]+?didFinishLaunchingWithOptions launchOptions[\s\S]+?\{[\s\S]+?)(return true)([\s\S]+?\})/m,
+    'override $1return super.application(application, didFinishLaunchingWithOptions: launchOptions)$3'
+  );
+
+  // Use Expo classes
+  contents = contents.replace(/\b(RCTReactNativeFactory)(\()/, 'ExpoReactNativeFactory$2');
+  contents = contents.replace(
+    /\bRCTDefaultReactNativeFactoryDelegate\b/,
+    'ExpoReactNativeFactoryDelegate'
+  );
+  // SDK 59 and later keep no sourceURL(for:) method. `runAsync` rejects a legacy one with
+  // `assertNoLegacySourceUrl` before any mod runs, so this transform does not check again.
+  if (!sdkVersion || semver.lt(sdkVersion, '59.0.0')) {
+    contents = contents.replace(
+      /(\boverride.*\ssourceURL\(.*\{[\s\S]+?)(\s+)self\.bundleURL\(\)/m,
+      '$1$2bridge.bundleURL ?? bundleURL()'
+    );
+  }
+  if (sdkVersion && semver.gte(sdkVersion, '58.0.0')) {
+    contents = updateModulesAppDelegateSwiftSceneLifecycle(contents);
+  }
+
+  return contents;
+}
+
+/**
+ * SDK 58+ starts React Native from `ExpoAppSceneDelegate`, so the app delegate only creates the factory.
+ */
+function updateModulesAppDelegateSwiftSceneLifecycle(contents: string): string {
+  const startReactNativeRegExp =
+    /^[ \t]*factory\.startReactNative\(\s*withModuleName:\s*"([^"]+)"[\s\S]*?\n[ \t]*\)\n\n?/m;
+  const moduleName = contents.match(startReactNativeRegExp)?.[1];
+  if (!moduleName) {
+    return contents;
+  }
+
+  contents = contents.replace(startReactNativeRegExp, '');
+  contents = contents.replace(
+    /^[ \t]*window = UIWindow\(frame: UIScreen\.main\.bounds\)\n\n?/m,
+    ''
+  );
+
+  if (!contents.match(/\bExpoReactNativeFactoryProvider\b/)) {
+    contents = contents.replace(
+      /^(class\s+AppDelegate\s*:\s*ExpoAppDelegate)(\s*\{)/m,
+      '$1, ExpoReactNativeFactoryProvider$2'
+    );
+  }
+
+  if (!contents.match(/\breactNativeFactoryModuleName\b/)) {
+    contents = contents.replace(
+      /^([ \t]*)(var reactNativeFactory: RCTReactNativeFactory\?\n)/m,
+      `$1$2$1let reactNativeFactoryModuleName = "${moduleName}"\n`
+    );
+  }
+
+  return contents;
+}
+
+function updateModulesAppDelegateSwiftSdk52(
+  contents: string,
+  sdkVersion: string | undefined
+): string {
+  // Add imports if needed
+  if (!contents.match(/^import\s+Expo\s*$/m)) {
+    contents = addSwiftImports(contents, ['Expo']);
+  }
+  // SDK 52 serves ExpoAppDelegate from ExpoModulesCore. We also need to import it.
+  if (!contents.match(/^import\s+ExpoModulesCore\s*$/m)) {
+    contents = addSwiftImports(contents, ['ExpoModulesCore']);
+  }
+
+  // Replace superclass with ExpoAppDelegate
+  contents = contents.replace(
+    /^(class\s+AppDelegate\s*:\s*)RCTAppDelegate(\W+)/m,
+    '$1ExpoAppDelegate$2'
+  );
+
+  return contents;
+}
+
+function updateModulesAppDelegateSwiftLegacy(
   contents: string,
   sdkVersion: string | undefined
 ): string {

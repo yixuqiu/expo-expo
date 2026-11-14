@@ -1,14 +1,511 @@
 # Changelog
 
-## Unpublished
+## 58.0.11
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Updated dependencies. ([#51986](https://github.com/expo/expo/pull/51986))
+  - @expo/config-plugins@58.0.10
+
+## 58.0.10
+
+### Patch Changes
+
+- [Android] Fix the main activity being kept in memory after it is destroyed. ([#51691](https://github.com/expo/expo/pull/51691) by [@zoontek](https://github.com/zoontek))
+
+## 58.0.9
+
+### Patch Changes
+
+- Updated dependencies.
+  - @expo/config-plugins@58.0.9
+  - @expo/image-utils@0.12.5
+
+## 58.0.8
+
+### Patch Changes
+
+- Updated dependencies.
+  - @expo/config-plugins@58.0.8
+
+## 58.0.7
+
+### Patch Changes
+
+- Updated dependencies. ([`0bf5424`](https://github.com/expo/expo/commit/0bf54244ba22f2953bd6e187e39b8d7206f10eb4))
+  - @expo/config-plugins@58.0.7
+
+## 58.0.6
+
+### Patch Changes
+
+- Updated dependencies. ([#51080](https://github.com/expo/expo/pull/51080))
+  - @expo/config-plugins@58.0.6
+  - @expo/image-utils@0.12.4
+
+## 58.0.5
+
+### Patch Changes
+
+- Updated dependencies. ([#50955](https://github.com/expo/expo/pull/50955), [#50391](https://github.com/expo/expo/pull/50391))
+  - @expo/config-plugins@58.0.5
+  - @expo/image-utils@0.12.3
+
+## 58.0.4
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.3
+
+### Patch Changes
+
+- [Android] Fix the splash screen staying visible over the app on Android 12 and 13 when the activity stops before the splash screen exits, for example when the app starts while the device is locked. This removes the workaround added in #44584. ([#50818](https://github.com/expo/expo/pull/50818) by [@zoontek](https://github.com/zoontek))
+
+## 58.0.2
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762), [#45964](https://github.com/expo/expo/pull/45964))
+  - @expo/config-plugins@58.0.4
+  - @expo/image-utils@0.12.2
+
+## 58.0.1 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
 
 ### 🐛 Bug fixes
 
+- Generate a transparent Android splash drawable when the config plugin has no image. ([#49371](https://github.com/expo/expo/pull/49371) by [@expo-tuft[bot]](https://github.com/apps/expo-tuft))
+
+## 57.0.5 - 2026-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-30
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.10 — 2026-05-23
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.9 — 2026-05-20
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-19
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.7 — 2026-05-15
+
+### 🐛 Bug fixes
+
+- Fix `exports` field resolving to the web stubs on native, making functions like `preventAutoHideAsync` no-ops. ([#45798](https://github.com/expo/expo/pull/45798) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.6 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
+### 🐛 Bug fixes
+
+- [Android] Mitigate `SurfaceControl.checkNotReleased` crash on API 31-33 by cancelling splash exit animation on activity stop. ([#44584](https://github.com/expo/expo/pull/44584) by [@zoontek](https://github.com/zoontek))
+
 ### 💡 Others
+
+- Moved splash screen config plugins from `@expo/prebuild-config` into `expo-splash-screen`. ([#44598](https://github.com/expo/expo/pull/44598) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.20 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.19 - 2026-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.18 - 2026-04-13
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.17 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.16 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-04-02
+
+### 💡 Others
+
+- [Android] Updated `androidx.core:core-splashscreen` from `1.2.0-alpha02` to `1.2.0`. ([#44584](https://github.com/expo/expo/pull/44584) by [@zoontek](https://github.com/zoontek))
+- Make `backgroundColor` plugin prop optional, defaulting to `#ffffff`. ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+- [iOS] Use `internal import React` and reduce public API surface to internal access level. ([#44248](https://github.com/expo/expo/pull/44248) by [@chrfalch](https://github.com/chrfalch))
+- Removed the `expo_splash_screen_status_bar_translucent` Android leftover attribute. ([#43514](https://github.com/expo/expo/pull/43514) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.13 - 2026-03-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-03-18
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-02-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🐛 Bug fixes
+
+- [iOS] Fix crash when storyboard is not present ([#42178](https://github.com/expo/expo/pull/42178) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 💡 Others
+
+- [iOS] Remove new architecture checks. ([#41767](https://github.com/expo/expo/pull/41767) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 31.0.12 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.11 - 2025-11-17
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.10 — 2025-09-12
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.9 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.8 — 2025-09-03
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.7 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.6 — 2025-08-28
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.5 — 2025-08-26
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.4 — 2025-08-21
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.3 — 2025-08-19
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 31.0.0 — 2025-08-13
+
+### 🐛 Bug fixes
+
+- [iOS] Resolve StoryBoard name from Info.plist. ([#37151](https://github.com/expo/expo/pull/37151) by [@Vadko](https://github.com/Vadko))
+
+## 0.30.10 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 0.30.9 - 2025-06-04
+
+_This version does not introduce any user-facing changes._
+
+## 0.30.8 — 2025-05-01
+
+_This version does not introduce any user-facing changes._
+
+## 0.30.7 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 0.30.6 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 0.30.5 — 2025-04-22
+
+_This version does not introduce any user-facing changes._
+
+## 0.30.4 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 0.30.3 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 0.30.2 — 2025-04-11
+
+_This version does not introduce any user-facing changes._
+
+## 0.30.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 0.30.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+
+## 0.29.22 - 2025-02-14
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.21 - 2025-01-19
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.20 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.19 - 2025-01-08
+
+### 🐛 Bug fixes
+
+- On `iOS`, show the splashscreen again when the app is reloaded. ([#33793](https://github.com/expo/expo/pull/33793) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 0.29.18 - 2024-12-10
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.17 - 2024-12-10
+
+### 🎉 New features
+
+- On Android, add support for providing vector drawables as the splashscreen icon. ([#33507](https://github.com/expo/expo/pull/33507) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 0.29.16 - 2024-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.15 - 2024-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.14 - 2024-12-05
+
+### 💡 Others
+
+- Use `light` and `dark` colors on `iOS` instead of `any`. ([#33472](https://github.com/expo/expo/pull/33472) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 0.29.13 — 2024-11-22
+
+### 🐛 Bug fixes
+
+- Correctly handle `resizeMode` in config plugin. ([#33143](https://github.com/expo/expo/pull/33143) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 0.29.12 — 2024-11-20
+
+### 🐛 Bug fixes
+
+- Prevent `setOptions` from being called in Expo Go. ([#33104](https://github.com/expo/expo/pull/33104) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 0.29.11 — 2024-11-15
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.10 — 2024-11-14
+
+### 💡 Others
+
+- Bump minimum @expo/prebuild-config version.
+
+## 0.29.9 — 2024-11-14
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.8 — 2024-11-13
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.7 — 2024-11-12
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.6 — 2024-11-11
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.5 — 2024-11-10
+
+### 🐛 Bug fixes
+
+- [Android] Added guard to prevent null pointer exception when the splashScreen property is referenced without an activity (headless JS) ([#32707](https://github.com/expo/expo/pull/32707) by [@chrfalch](https://github.com/chrfalch))
+
+## 0.29.4 — 2024-11-07
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.3 — 2024-11-06
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.2 — 2024-11-05
+
+### 💡 Others
+
+- Migrate internal logic used by router from JS to native ([#32610](https://github.com/expo/expo/pull/32610) by [@brentvatne](https://github.com/brentvatne))
+
+## 0.29.1 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 0.29.0 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 0.28.5 — 2024-10-30
+
+_This version does not introduce any user-facing changes._
+
+## 0.28.4 — 2024-10-28
+
+_This version does not introduce any user-facing changes._
+
+## 0.28.3 — 2024-10-28
+
+_This version does not introduce any user-facing changes._
+
+## 0.28.2 — 2024-10-24
+
+_This version does not introduce any user-facing changes._
+
+## 0.28.1 — 2024-10-24
+
+_This version does not introduce any user-facing changes._
+
+## 0.28.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Fixed `preventAutoHideAsync()` broken on iOS bridgeless mode. ([#28234](https://github.com/expo/expo/pull/28234) by [@kudo](https://github.com/kudo))
+
+## 0.27.6 - 2024-09-23
+
+_This version does not introduce any user-facing changes._
+
+## 0.27.5 - 2024-06-06
+
+_This version does not introduce any user-facing changes._
 
 ## 0.27.4 — 2024-05-03
 
@@ -360,7 +857,7 @@ _This version does not introduce any user-facing changes._
 - On Android fixed `SplashScreen` methods not working in managed workflow. Scoped the `SplashScreen` native object to the separate `singletons` sub-package to work with versioned code. ([#10294](https://github.com/expo/expo/pull/10294) by [@bbarthec](https://github.com/bbarthec))
 - Updated `@expo/configure-splash-screen` to `v0.2.0`.
   - This version fixes the problem with the wrong `SplashScreen.show` method signature on Android. It properly adds the `ReactRootView` parameter now.
-  - Additionally it properly imports the `SplashScreen` object from the `singletons` sub-packagae on Android.
+  - Additionally it properly imports the `SplashScreen` object from the `singletons` sub-package on Android.
 - `yarn run expo-splash-screen` changed its parameters layout. Run `yarn run expo-splash-screen --help` to see the new options layout. Every parameter has to provided via the `--[option name]` syntax now.
 
 ## 0.6.1 - 2020-09-17

@@ -1,9 +1,19 @@
+import { events, flushEventLogger, type SerializedError } from '2g';
 import { AssertionError } from 'assert';
 import chalk from 'chalk';
+import { execSync } from 'child_process';
 
-import { exit } from '../log';
+import { exit, exception, warn } from '../log';
 
 const ERROR_PREFIX = 'Error: ';
+
+declare module '2g' {
+  interface EventRegistry {
+    'cli:error': { error: SerializedError };
+  }
+}
+
+const event = events('cli');
 
 /**
  * General error, formatted as a message in red text when caught by expo-cli (no stack trace is printed). Should be used in favor of `log.error()` in most cases.
@@ -11,6 +21,7 @@ const ERROR_PREFIX = 'Error: ';
 export class CommandError extends Error {
   name = 'CommandError';
   readonly isCommandError = true;
+  [prop: string]: unknown;
 
   constructor(
     public code: string,
@@ -50,14 +61,18 @@ export class SilentError extends CommandError {
   }
 }
 
-export function logCmdError(error: any): never {
+export async function logCmdError(error: any): Promise<never> {
   if (!(error instanceof Error)) {
     throw error;
   }
   if (error instanceof AbortCommandError || error instanceof SilentError) {
     // Do nothing, this is used for prompts or other cases that were custom logged.
-    process.exit(0);
-  } else if (
+    await flushEventLogger();
+    process.exit(1);
+  }
+  event('error', { error: event.error(error) });
+  await flushEventLogger();
+  if (
     error instanceof CommandError ||
     error instanceof AssertionError ||
     error.name === 'ApiV2Error' ||
@@ -79,3 +94,39 @@ export class UnimplementedError extends Error {
     this.name = 'UnimplementedError';
   }
 }
+
+/**
+ * Add additional information when EMFILE errors are encountered.
+ * These errors originate from Metro's FSEventsWatcher due to `fsevents` going over MacOS system limit.
+ * Unfortunately, these limits in macOS are relatively low compared to an average React Native project.
+ *
+ * @see https://github.com/expo/expo/issues/29083
+ * @see https://github.com/facebook/metro/issues/834
+ * @see https://github.com/fsevents/fsevents/issues/42#issuecomment-62632234
+ */
+function handleTooManyOpenFileErrors(error: any) {
+  // Only enable special logging when running on macOS and are running into the `EMFILE` error
+  if ('code' in error && error.code === 'EMFILE' && process.platform === 'darwin') {
+    try {
+      // Try to recover watchman, if it's not installed this will throw
+      execSync('watchman shutdown-server', { stdio: 'ignore' });
+      // NOTE(cedric): this both starts the watchman server and resets all watchers
+      execSync('watchman watch-del-all', { stdio: 'ignore' });
+
+      warn(
+        'Watchman is installed but was likely not enabled when starting Metro, try starting your project again.\nIf this problem persists, follow the troubleshooting guide of Watchman: https://facebook.github.io/watchman/docs/troubleshooting'
+      );
+    } catch {
+      warn(
+        `Your macOS system limit does not allow enough watchers for Metro, install Watchman instead. Learn more: https://facebook.github.io/watchman/docs/install`
+      );
+    }
+
+    exception(error);
+    process.exit(1);
+  }
+
+  throw error;
+}
+
+process.on('uncaughtException', handleTooManyOpenFileErrors);

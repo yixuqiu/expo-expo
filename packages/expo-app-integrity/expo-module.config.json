@@ -1,0 +1,14 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["IntegrityModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.integrity.IntegrityModule"],
+    "publication": {
+      "groupId": "expo.modules.integrity",
+      "artifactId": "expo.modules.integrity",
+      "repository": "local-maven-repo"
+    }
+  }
+}

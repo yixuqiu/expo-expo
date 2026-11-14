@@ -1,5 +1,1 @@
-import { EventEmitter } from 'expo-modules-core';
-
-import ExpoLocation from './ExpoLocation';
-
-export const LocationEventEmitter = new EventEmitter(ExpoLocation);
+export { default as LocationEventEmitter } from './ExpoLocation';

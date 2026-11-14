@@ -4,7 +4,16 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
-import { FBSourceFunctionMap, MetroSourceMapSegmentTuple } from 'metro-source-map';
+import type { types as t } from '@babel/core';
+import type {
+  FBSourceFunctionMap,
+  MetroSourceMapSegmentTuple,
+  VlqMap,
+} from '@expo/metro/metro-source-map';
+import type { JsTransformerConfig } from '@expo/metro/metro-transform-worker';
+
+import type { EmbeddedVaryDim } from '../cache-vary/ambient';
+import type { Options as CollectDependenciesOptions } from '../transform-worker/collect-dependencies';
 
 export type JSFileType = 'js/script' | 'js/module' | 'js/module/asset';
 
@@ -12,7 +21,7 @@ export type JsOutput = {
   data: {
     code: string;
     lineCount: number;
-    map: MetroSourceMapSegmentTuple[];
+    map: VlqMap;
     functionMap: FBSourceFunctionMap | null;
 
     css?: {
@@ -21,25 +30,60 @@ export type JsOutput = {
       map: MetroSourceMapSegmentTuple[];
       functionMap: FBSourceFunctionMap | null;
     };
+
+    ast?: t.File;
+
+    hasCjsExports?: boolean;
+
+    readonly reconcile?: ReconcileTransformSettings;
+    readonly reactServerReference?: string;
+    readonly reactClientReference?: string;
+    readonly expoDomComponentReference?: string;
+    readonly loaderReference?: string;
   };
   type: JSFileType;
 };
 
+export type CSSMetadata = {
+  code: string;
+  lineCount: number;
+  map: unknown[];
+  functionMap: null;
+  skipCache?: boolean;
+  externalImports: { url: string; supports: string | null; media: string | null }[];
+};
+
 export type ExpoJsOutput = Omit<JsOutput, 'data'> & {
   data: JsOutput['data'] & {
+    skipCache?: boolean;
     profiling?: {
       start: number;
       end: number;
       duration: number;
     };
-    css?: {
-      code: string;
-      lineCount: number;
-      map: unknown[];
-      functionMap: null;
-      skipCache?: boolean;
-    };
+    css?: CSSMetadata;
+    expoCacheVary?: EmbeddedVaryDim[];
   };
+};
+
+export type ReconcileTransformSettings = {
+  inlineRequires: boolean;
+  importDefault: string;
+  importAll: string;
+  globalPrefix: string;
+  unstable_useStaticHermesModuleFactory?: boolean;
+  unstable_compactOutput?: boolean;
+  minify?: {
+    minifierPath: string;
+    minifierConfig: JsTransformerConfig['minifierConfig'];
+  };
+  collectDependenciesOptions: CollectDependenciesOptions;
+
+  unstable_dependencyMapReservedName?: string | null;
+  optimizationSizeLimit?: number;
+  unstable_disableNormalizePseudoGlobals?: boolean;
+
+  normalizePseudoGlobals: boolean;
 };
 
 export function isExpoJsOutput(output: any): output is ExpoJsOutput {

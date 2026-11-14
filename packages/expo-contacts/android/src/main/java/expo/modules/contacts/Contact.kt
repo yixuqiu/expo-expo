@@ -4,8 +4,6 @@ import android.content.ContentProviderOperation
 import android.content.ContentValues
 import android.database.Cursor
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.provider.ContactsContract.CommonDataKinds
@@ -13,6 +11,7 @@ import android.provider.ContactsContract.CommonDataKinds.StructuredName
 import android.provider.ContactsContract.RawContacts
 import android.text.TextUtils
 import android.util.Log
+import androidx.core.net.toUri
 import expo.modules.contacts.models.BaseModel
 import expo.modules.contacts.models.DateModel
 import expo.modules.contacts.models.EmailModel
@@ -22,6 +21,8 @@ import expo.modules.contacts.models.PhoneNumberModel
 import expo.modules.contacts.models.PostalAddressModel
 import expo.modules.contacts.models.RelationshipModel
 import expo.modules.contacts.models.UrlAddressModel
+import expo.modules.kotlin.AppContext
+import expo.modules.kotlin.exception.Exceptions
 import java.io.ByteArrayOutputStream
 import java.text.ParseException
 import java.text.SimpleDateFormat
@@ -29,7 +30,7 @@ import java.util.Calendar
 import java.util.Locale
 
 // TODO: MaidenName Nickname
-class Contact(var contactId: String) {
+class Contact(var contactId: String, var appContext: AppContext) {
   private var rawContactId: String? = null
   var lookupKey: String? = null
   private var displayName: String? = null
@@ -58,11 +59,13 @@ class Contact(var contactId: String) {
   var relationships: MutableList<RelationshipModel> = ArrayList()
   var urlAddresses: MutableList<UrlAddressModel> = ArrayList()
   var extraNames: MutableList<ExtraNameModel> = ArrayList()
+  var isFavorite: Boolean = false
 
   fun fromCursor(cursor: Cursor) {
     rawContactId = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Data.RAW_CONTACT_ID))
     val mimeType = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Data.MIMETYPE))
     val name = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME))
+    isFavorite = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.Data.STARRED)) == 1
     if (!TextUtils.isEmpty(name) && TextUtils.isEmpty(displayName)) {
       displayName = name
     }
@@ -118,7 +121,10 @@ class Contact(var contactId: String) {
         emails.add(item)
       }
 
-      CommonDataKinds.Im.CONTENT_ITEM_TYPE -> {
+      // Legacy API supports IM addresses, deprecated since Android API 35. The new Contacts API removes these fields.
+      @Suppress("DEPRECATION")
+      CommonDataKinds.Im.CONTENT_ITEM_TYPE
+      -> {
         val item = ImAddressModel()
         item.fromCursor(cursor)
         imAddresses.add(item)
@@ -170,16 +176,28 @@ class Contact(var contactId: String) {
   }
 
   fun getFinalFirstName(): String {
-    return firstName ?: if (displayName == null) "" else displayName!!
+    return firstName ?: if (displayName == null) {
+      ""
+    } else {
+      displayName!!
+    }
   }
 
   fun getFinalLastName(): String {
-    return lastName ?: if (displayName == null) "" else displayName!!
+    return lastName ?: if (displayName == null) {
+      ""
+    } else {
+      displayName!!
+    }
   }
 
   fun getFinalDisplayName(): String? {
     return if (displayName == null && firstName != null) {
-      if (lastName == null) firstName else String.format("%s %s", firstName, lastName).trim { it <= ' ' }
+      if (lastName == null) {
+        firstName
+      } else {
+        String.format("%s %s", firstName, lastName).trim { it <= ' ' }
+      }
     } else {
       displayName
     }
@@ -194,8 +212,7 @@ class Contact(var contactId: String) {
   fun toInsertOperationList(): ArrayList<ContentProviderOperation> {
     val ops = ArrayList<ContentProviderOperation>()
     var op = ContentProviderOperation.newInsert(RawContacts.CONTENT_URI)
-      .withValue(RawContacts.ACCOUNT_TYPE, null)
-      .withValue(RawContacts.ACCOUNT_NAME, null)
+      .withValue(RawContacts.STARRED, isFavorite)
     ops.add(op.build())
     op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
       .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
@@ -223,8 +240,9 @@ class Contact(var contactId: String) {
       .withValue(CommonDataKinds.Note.NOTE, note)
     ops.add(op.build())
     op.withYieldAllowed(true)
-    if (!TextUtils.isEmpty(photoUri) || !TextUtils.isEmpty(rawPhotoUri)) {
-      val photo = getThumbnailBitmap(if (TextUtils.isEmpty(rawPhotoUri)) photoUri else rawPhotoUri)
+    val maybePhoto = rawPhotoUri ?: photoUri
+    if (!maybePhoto.isNullOrBlank()) {
+      val photo = getThumbnailBitmap(maybePhoto)
       ops.add(
         ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
           .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
@@ -267,8 +285,9 @@ class Contact(var contactId: String) {
       .withValue(CommonDataKinds.Note.NOTE, note)
     ops.add(op.build())
     op.withYieldAllowed(true)
-    if (!TextUtils.isEmpty(photoUri) || !TextUtils.isEmpty(rawPhotoUri)) {
-      val photo = getThumbnailBitmap(if (TextUtils.isEmpty(rawPhotoUri)) photoUri else rawPhotoUri)
+    val maybePhoto = rawPhotoUri ?: photoUri
+    if (!maybePhoto.isNullOrBlank()) {
+      val photo = getThumbnailBitmap(maybePhoto)
       ops.add(
         ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
           .withSelection(selection, arrayOf(rawContactId, CommonDataKinds.Photo.CONTENT_ITEM_TYPE))
@@ -282,17 +301,55 @@ class Contact(var contactId: String) {
           .build()
       )
     }
+    op = ContentProviderOperation.newUpdate(ContactsContract.Contacts.CONTENT_URI)
+      .withSelection("${ContactsContract.Contacts._ID}=?", arrayOf(contactId))
+      .withValue(
+        ContactsContract.Contacts.STARRED,
+        if (isFavorite) {
+          1
+        } else {
+          0
+        }
+      )
+    ops.add(op.build())
+
+    // Flush all data from linked db
+    rawContactId?.let { id ->
+      baseModelsContentType.forEach {
+        ops.add(getFlushOperation(it, id))
+      }
+    }
+
+    // add updated data
     for (map in baseModels) {
       for (item in map) {
-        ops.add(item.getDeleteOperation(rawContactId!!))
         ops.add(item.getInsertOperation(rawContactId))
       }
     }
     return ops
   }
 
+  private fun getFlushOperation(contentType: String, rawId: String): ContentProviderOperation {
+    return ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
+      .withSelection("${ContactsContract.Data.MIMETYPE}=? AND ${ContactsContract.Data.RAW_CONTACT_ID}=?", arrayOf(contentType, rawId))
+      .build()
+  }
+
   private val baseModels: Array<List<BaseModel>>
     get() = arrayOf(dates, emails, imAddresses, phones, addresses, relationships, urlAddresses, extraNames)
+  private val baseModelsContentType: Array<String>
+    get() = arrayOf(
+      CommonDataKinds.Event.CONTENT_ITEM_TYPE,
+      CommonDataKinds.Email.CONTENT_ITEM_TYPE,
+      // Legacy API supports IM addresses, deprecated since Android API 35. The new Contacts API removes these fields.
+      @Suppress("DEPRECATION")
+      CommonDataKinds.Im.CONTENT_ITEM_TYPE,
+      CommonDataKinds.Phone.CONTENT_ITEM_TYPE,
+      CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE,
+      CommonDataKinds.Relation.CONTENT_ITEM_TYPE,
+      CommonDataKinds.Website.CONTENT_ITEM_TYPE,
+      CommonDataKinds.Nickname.CONTENT_ITEM_TYPE
+    )
 
   // convert to react native object
   @Throws(ParseException::class)
@@ -300,7 +357,14 @@ class Contact(var contactId: String) {
     val contact = Bundle().apply {
       putString("lookupKey", lookupKey)
       putString("id", contactId)
-      putString("name", if (!displayName.isNullOrEmpty()) displayName else "$firstName $lastName")
+      putString(
+        "name",
+        if (!displayName.isNullOrEmpty()) {
+          displayName
+        } else {
+          "$firstName $lastName"
+        }
+      )
 
       firstName
         ?.takeIf(String::isNotEmpty)
@@ -349,6 +413,8 @@ class Contact(var contactId: String) {
         ?.let { putString("department", it) }
 
       putBoolean("imageAvailable", hasPhoto)
+
+      putBoolean("isFavorite", isFavorite)
     }
 
     if (fieldSet.contains("image") && photoUri != null) {
@@ -411,8 +477,6 @@ class Contact(var contactId: String) {
       val datesArray = ArrayList<Bundle?>()
       for (item in dates) {
         val calendar = Calendar.getInstance()
-        val datePattern = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        val noYearPattern = SimpleDateFormat("--MM-dd", Locale.getDefault())
         val details = Bundle()
         val dateString = item.data
         val label = item.label
@@ -424,8 +488,10 @@ class Contact(var contactId: String) {
         try {
           hasYear = !dateString!!.startsWith("--")
           if (hasYear) {
+            val datePattern = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             calendar.time = datePattern.parse(dateString)!!
           } else {
+            val noYearPattern = SimpleDateFormat("--MM-dd", Locale.US)
             calendar.time = noYearPattern.parse(dateString)!!
           }
           if (hasYear) {
@@ -486,23 +552,35 @@ class Contact(var contactId: String) {
         put(CommonDataKinds.Note.NOTE, note)
       }
       contactData.add(notes)
-
-      if (!photoUri.isNullOrBlank()) {
-        val photo = getThumbnailBitmap(Uri.parse(photoUri).path)
+      val maybePhotoUri = photoUri
+      if (!maybePhotoUri.isNullOrBlank()) {
+        val photo = getThumbnailBitmap(maybePhotoUri)
         val image = ContentValues().apply {
           put(Columns.MIMETYPE, CommonDataKinds.Photo.CONTENT_ITEM_TYPE)
           put(CommonDataKinds.Photo.PHOTO, toByteArray(photo))
         }
         contactData.add(image)
       }
-      if (!rawPhotoUri.isNullOrBlank()) {
-        val photo = getThumbnailBitmap(rawPhotoUri)
+      val maybeRawPhotoUri = rawPhotoUri
+      if (!maybeRawPhotoUri.isNullOrBlank()) {
+        val photo = getThumbnailBitmap(maybeRawPhotoUri)
         val image = ContentValues().apply {
           put(Columns.MIMETYPE, CommonDataKinds.Photo.CONTENT_ITEM_TYPE)
           put(CommonDataKinds.Photo.PHOTO, toByteArray(photo))
         }
         contactData.add(image)
       }
+      val isFavoriteValue = ContentValues().apply {
+        put(
+          "isFavorite",
+          if (isFavorite) {
+            1
+          } else {
+            0
+          }
+        )
+      }
+      contactData.add(isFavoriteValue)
       for (map in baseModels) {
         for (item in map) {
           contactData.add(item.contentValues)
@@ -511,8 +589,8 @@ class Contact(var contactId: String) {
       return contactData
     }
 
-  private fun getThumbnailBitmap(photoUri: String?): Bitmap {
-    val path = Uri.parse(photoUri).path
-    return BitmapFactory.decodeFile(path)
+  private fun getThumbnailBitmap(photoUri: String): Bitmap {
+    val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+    return ContactPhotoDecoder.decode(context.contentResolver, photoUri.toUri())
   }
 }

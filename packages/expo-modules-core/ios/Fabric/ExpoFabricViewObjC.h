@@ -1,49 +1,74 @@
 // Copyright 2022-present 650 Industries. All rights reserved.
 
-#import <UIKit/UIKit.h>
+#import <ExpoModulesCore/Platform.h>
 
-#ifdef RN_FABRIC_ENABLED
 #ifdef __cplusplus
-#import <React/RCTViewComponentView.h>
+
+#import <React/RCTViewComponentView.h> // Allows non-umbrella since it's coming from React-RCTFabric
 
 @interface ExpoFabricViewObjC : RCTViewComponentView
 @end
 
 #else
 
-// Interface visible in Swift
-@interface ExpoFabricViewObjC
+// Interface visible in Swift - we expose the view base class so Swift sees it as a UIView subclass.
+// The actual C++ implementation inherits from RCTViewComponentView.
+// Methods that Swift needs to override must be declared here (not in a category) so Swift
+// can properly override them.
+//
+// On macOS, react-native-macos provides RCTUIView (an NSView subclass with iOS-compatible methods
+// like layoutSubviews and didMoveToWindow). We must inherit from it so Swift overrides resolve correctly.
+#if TARGET_OS_OSX
+#import <React/RCTUIKit.h>
+@interface ExpoFabricViewObjC : RCTUIView
+#else
+@interface ExpoFabricViewObjC : UIView
+#endif
+
+/*
+ * Called for mounting (attaching) a child component view inside `self` component view.
+ * Declared in main interface (not category) so Swift subclasses can override.
+ */
+- (void)mountChildComponentView:(nonnull UIView *)childComponentView index:(NSInteger)index;
+
+/*
+ * Called for unmounting (detaching) a child component view from `self` component view.
+ * Declared in main interface (not category) so Swift subclasses can override.
+ */
+- (void)unmountChildComponentView:(nonnull UIView *)childComponentView index:(NSInteger)index;
+
 @end
 
 #endif // __cplusplus
-#else // Paper
-#import <React/RCTView.h>
-
-@interface ExpoFabricViewObjC : RCTView
-@end
-
-#endif // RN_FABRIC_ENABLED
-
-@class EXAppContext;
 
 // Addition to the interface that is visible in both Swift and Objective-C
 @interface ExpoFabricViewObjC (ExpoFabricViewInterface)
-
-@property (nonatomic, strong, nullable) UIView *contentView;
 
 - (void)dispatchEvent:(nonnull NSString *)eventName payload:(nullable id)payload;
 
 - (void)updateProps:(nonnull NSDictionary<NSString *, id> *)props;
 
-- (void)viewDidUpdateProps;
+- (void)viewDidUpdateProps NS_SWIFT_UI_ACTOR;
+
+- (void)setShadowNodeSize:(float)width height:(float)height NS_SWIFT_UI_ACTOR;
+
+- (void)setStyleSize:(nullable NSNumber *)width height:(nullable NSNumber *)height NS_SWIFT_UI_ACTOR;
 
 - (BOOL)supportsPropWithName:(nonnull NSString *)name;
 
+// MARK: - Derived from RCTComponentViewProtocol
+
 - (void)prepareForRecycle;
 
-#pragma mark - Methods injected to the class in runtime
+#pragma mark - Component registration
 
-- (nullable EXAppContext *)__injectedAppContext;
-- (nonnull NSString *)__injectedModuleName;
+/**
+ Registers given view class in the global `RCTComponentViewFactory`.
+ */
++ (void)registerComponentViewClass:(nonnull Class)viewClass;
+
+/// Creates the view for the component that this class is registered for. `+new` returns its result,
+/// or falls back to the default behavior when it returns `nil`. Overridden by `ExpoFabricView`.
++ (nullable id)createComponentView;
 
 @end

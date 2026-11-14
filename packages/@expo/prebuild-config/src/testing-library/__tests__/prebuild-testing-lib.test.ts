@@ -9,6 +9,8 @@ import {
   unmockProcessPlatform,
 } from './prebuild-tester';
 
+jest.setTimeout(30 * 1000);
+
 jest.mock('fs');
 
 const originalWarn = console.warn;
@@ -38,6 +40,18 @@ it('runs normally for a single iOS prebuild', async () => {
   expect(Object.values(config.mods!.ios!).every((value) => typeof value === 'function')).toBe(true);
 
   expect(config).toMatchInfoPlist(expect.objectContaining({ CFBundleDisplayName: 'app' }));
+  // The matcher hint contains ANSI color codes when jest runs with colors enabled (interactive
+  // terminals), which would split the substrings asserted on below — strip them first.
+  const getNotToMatchInfoPlistMessage = () => {
+    try {
+      expect(config).not.toMatchInfoPlist(expect.objectContaining({ CFBundleDisplayName: 'app' }));
+    } catch (error: any) {
+      return String(error.message).replace(/\u001b\[\d+m/g, '');
+    }
+    throw new Error('Expected .not.toMatchInfoPlist to throw');
+  };
+  expect(getNotToMatchInfoPlistMessage()).toMatch(/\.not\.toMatchInfoPlist/);
+  expect(getNotToMatchInfoPlistMessage()).toMatch(/Expected: not/);
   expect(config).toMatchAppleEntitlements({});
 });
 
@@ -123,19 +137,16 @@ it('compiles expo-camera', async () => {
     },
     { projectRoot, platforms: ['ios', 'android'] }
   );
-  expect(config).toHaveModHistory('expo-camera');
 
-  expect(config).toMatchAndroidProjectBuildGradle(
-    expect.stringContaining(
-      `def expoCameraMavenPath = new File(["node", "--print", "require.resolve('expo-camera/package.json')"].execute(null, rootDir).text.trim(), "../android/maven")`
-    )
-  );
+  // Ensure the camera plugin was applied
+  expect(config).toHaveModHistory('expo-camera');
+  // Ensure the iOS camera permission string is set
   expect(config).toMatchInfoPlist(
     expect.objectContaining({
       NSCameraUsageDescription: expect.stringMatching(/custom message/),
     })
   );
-
+  // Ensure the Android camera permission is added
   expect(getAndroidManifestStringLikePrebuild(config)).toMatch(
     /<uses-permission android:name="android.permission.CAMERA"\/>/
   );

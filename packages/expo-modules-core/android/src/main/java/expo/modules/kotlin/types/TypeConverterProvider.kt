@@ -7,17 +7,24 @@ import com.facebook.react.bridge.Dynamic
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import expo.modules.core.arguments.ReadableArguments
-import expo.modules.kotlin.apifeatures.EitherType
+import expo.modules.kotlin.exception.DynamicCastException
 import expo.modules.kotlin.exception.MissingTypeConverter
+import expo.modules.kotlin.jni.ArrayBuffer
 import expo.modules.kotlin.jni.CppType
 import expo.modules.kotlin.jni.ExpectedType
+import expo.modules.kotlin.jni.JavaScriptArrayBuffer
 import expo.modules.kotlin.jni.JavaScriptFunction
 import expo.modules.kotlin.jni.JavaScriptObject
 import expo.modules.kotlin.jni.JavaScriptValue
+import expo.modules.kotlin.jni.NativeArrayBuffer
+import expo.modules.kotlin.jni.worklets.Serializable
+import expo.modules.kotlin.jni.worklets.Worklet
 import expo.modules.kotlin.records.Record
 import expo.modules.kotlin.records.RecordTypeConverter
 import expo.modules.kotlin.sharedobjects.SharedObject
 import expo.modules.kotlin.sharedobjects.SharedObjectTypeConverter
+import expo.modules.kotlin.sharedobjects.SharedRef
+import expo.modules.kotlin.sharedobjects.SharedRefTypeConverter
 import expo.modules.kotlin.typedarray.BigInt64Array
 import expo.modules.kotlin.typedarray.BigUint64Array
 import expo.modules.kotlin.typedarray.Float32Array
@@ -30,260 +37,341 @@ import expo.modules.kotlin.typedarray.Uint16Array
 import expo.modules.kotlin.typedarray.Uint32Array
 import expo.modules.kotlin.typedarray.Uint8Array
 import expo.modules.kotlin.typedarray.Uint8ClampedArray
+import expo.modules.kotlin.types.descriptors.TypeDescriptor
+import expo.modules.kotlin.types.descriptors.toTypeDescriptor
+import expo.modules.kotlin.types.descriptors.typeDescriptorOf
 import expo.modules.kotlin.types.io.FileTypeConverter
 import expo.modules.kotlin.types.io.PathTypeConverter
 import expo.modules.kotlin.types.net.JavaURITypeConverter
 import expo.modules.kotlin.types.net.URLTypConverter
 import expo.modules.kotlin.types.net.UriTypeConverter
+import expo.modules.kotlin.types.worklets.SerializableTypeConverter
+import expo.modules.kotlin.types.worklets.WorkletTypeConverter
 import expo.modules.kotlin.views.ViewTypeConverter
 import java.io.File
 import java.net.URI
 import java.net.URL
 import java.nio.file.Path
 import java.time.LocalDate
-import kotlin.reflect.KClass
 import kotlin.reflect.KType
-import kotlin.reflect.typeOf
+import kotlin.time.Duration
 
 interface TypeConverterProvider {
-  fun obtainTypeConverter(type: KType): TypeConverter<*>
+  fun obtainTypeConverter(typeDescriptor: TypeDescriptor): TypeConverter<*>
 }
 
 inline fun <reified T : Any> obtainTypeConverter(): TypeConverter<T> {
   @Suppress("UNCHECKED_CAST")
-  return TypeConverterProviderImpl.obtainTypeConverter(typeOf<T>()) as TypeConverter<T>
+  return TypeConverterProviderImpl.obtainTypeConverter(typeDescriptorOf<T>()) as TypeConverter<T>
 }
 
-inline fun <reified T> convert(value: Dynamic): T {
-  val converter = TypeConverterProviderImpl.obtainTypeConverter(typeOf<T>())
-  return converter.convert(value) as T
+inline fun <reified T> convert(value: Dynamic, context: ConverterContext): T {
+  val converter = TypeConverterProviderImpl.obtainTypeConverter(typeDescriptorOf<T>())
+  return converter.convert(value, context) as T
 }
 
-inline fun <reified T> convert(value: Any?): T {
-  val converter = TypeConverterProviderImpl.obtainTypeConverter(typeOf<T>())
-  return converter.convert(value) as T
+inline fun <reified T> convert(value: Any?, context: ConverterContext): T {
+  val converter = TypeConverterProviderImpl.obtainTypeConverter(typeDescriptorOf<T>())
+  return converter.convert(value, context) as T
 }
 
-fun convert(value: Dynamic, type: KType): Any? {
-  val converter = TypeConverterProviderImpl.obtainTypeConverter(type)
-  return converter.convert(value)
+fun convert(value: Dynamic, type: KType, context: ConverterContext): Any? {
+  val converter = TypeConverterProviderImpl.obtainTypeConverter(type.toTypeDescriptor())
+  return converter.convert(value, context)
 }
 
 object TypeConverterProviderImpl : TypeConverterProvider {
-  private val cachedConverters = createCachedConverters(false)
-  private val nullableCachedConverters = createCachedConverters(true)
+  private val cachedConverters = createCachedConverters()
+  private val cachedPrimitiveArrayConverters = createCachedPrimitiveArrayConverters()
 
-  private val cachedRecordConverters = mutableMapOf<KClass<*>, TypeConverter<*>>()
+  private val cachedRecordConverters = mutableMapOf<Class<*>, TypeConverter<*>>()
 
-  private fun getCachedConverter(inputType: KType): TypeConverter<*>? {
-    return if (inputType.isMarkedNullable) {
-      nullableCachedConverters[inputType.classifier]
+  private fun getCachedConverter(inputType: TypeDescriptor): TypeConverter<*>? {
+    return cachedConverters[inputType.jClass]
+  }
+
+  private fun getCachedPrimitiveArrayConverter(typeDescriptor: TypeDescriptor): TypeConverter<*>? {
+    return cachedPrimitiveArrayConverters[typeDescriptor.jClass]
+  }
+
+  override fun obtainTypeConverter(typeDescriptor: TypeDescriptor): TypeConverter<*> {
+    val nonNullableTypeConverter = obtainNonNullableTypeConverter(typeDescriptor)
+    return if (typeDescriptor.isNullable) {
+      NullableTypeConverter(nonNullableTypeConverter)
     } else {
-      cachedConverters[inputType.classifier]
+      nonNullableTypeConverter
     }
   }
 
-  override fun obtainTypeConverter(type: KType): TypeConverter<*> {
-    getCachedConverter(type)?.let {
+  fun obtainNonNullableTypeConverter(typeDescriptor: TypeDescriptor): TypeConverter<*> {
+    getCachedConverter(typeDescriptor)?.let {
       return it
     }
 
-    val kClass = type.classifier as? KClass<*> ?: throw MissingTypeConverter(type)
-    val jClass = kClass.java
+    val jClass = typeDescriptor.jClass
 
     if (jClass.isArray || Array::class.java.isAssignableFrom(jClass)) {
-      return ArrayTypeConverter(this, type)
+      return if (isPrimitiveArray(typeDescriptor)) {
+        getCachedPrimitiveArrayConverter(typeDescriptor)
+          ?: throw MissingTypeConverter(typeDescriptor)
+      } else {
+        ArrayTypeConverter(this, typeDescriptor)
+      }
     }
 
     if (List::class.java.isAssignableFrom(jClass)) {
-      return ListTypeConverter(this, type)
+      return ListTypeConverter(this, typeDescriptor)
     }
 
     if (Map::class.java.isAssignableFrom(jClass)) {
-      return MapTypeConverter(this, type)
+      return MapTypeConverter(this, typeDescriptor)
     }
 
     if (Pair::class.java.isAssignableFrom(jClass)) {
-      return PairTypeConverter(this, type)
+      return PairTypeConverter(this, typeDescriptor)
     }
 
     if (Set::class.java.isAssignableFrom(jClass)) {
-      return SetTypeConverter(this, type)
+      return SetTypeConverter(this, typeDescriptor)
     }
 
     if (jClass.isEnum) {
       @Suppress("UNCHECKED_CAST")
-      return EnumTypeConverter(kClass as KClass<Enum<*>>, type.isMarkedNullable)
+      return EnumTypeConverter(jClass as Class<out Enum<*>>)
     }
 
-    val cachedConverter = cachedRecordConverters[kClass]
+    val cachedConverter = cachedRecordConverters[jClass]
     if (cachedConverter != null) {
       return cachedConverter
     }
 
     if (Record::class.java.isAssignableFrom(jClass)) {
-      val converter = RecordTypeConverter<Record>(this, type)
-      cachedRecordConverters[kClass] = converter
+      val converter = RecordTypeConverter<Record>(this, typeDescriptor)
+      cachedRecordConverters[jClass] = converter
       return converter
     }
 
     if (View::class.java.isAssignableFrom(jClass)) {
-      return ViewTypeConverter<View>(type)
+      return ViewTypeConverter<View>(typeDescriptor)
+    }
+
+    if (SharedRef::class.java.isAssignableFrom(jClass)) {
+      return SharedRefTypeConverter<SharedRef<*>>(typeDescriptor)
     }
 
     if (SharedObject::class.java.isAssignableFrom(jClass)) {
-      return SharedObjectTypeConverter<SharedObject>(type)
+      return SharedObjectTypeConverter<SharedObject>(typeDescriptor)
     }
 
     if (JavaScriptFunction::class.java.isAssignableFrom(jClass)) {
-      return JavaScriptFunctionTypeConverter<Any>(type)
+      return JavaScriptFunctionTypeConverter<Any>(typeDescriptor)
     }
 
-    return handelEither(type, jClass)
-      ?: throw MissingTypeConverter(type)
+    if (ValueOrUndefined::class.java.isAssignableFrom(jClass)) {
+      return ValueOrUndefinedTypeConverter(this, typeDescriptor)
+    }
+
+    return handelEither(typeDescriptor)
+      ?: throw MissingTypeConverter(typeDescriptor)
   }
 
-  @OptIn(EitherType::class)
-  private fun handelEither(type: KType, jClass: Class<*>): TypeConverter<*>? {
+  private fun handelEither(typeDescriptor: TypeDescriptor): TypeConverter<*>? {
+    val jClass = typeDescriptor.jClass
     if (Either::class.java.isAssignableFrom(jClass)) {
       if (EitherOfFour::class.java.isAssignableFrom(jClass)) {
-        return EitherOfFourTypeConverter<Any, Any, Any, Any>(this, type)
+        return EitherOfFourTypeConverter<Any, Any, Any, Any>(this, typeDescriptor)
       }
       if (EitherOfThree::class.java.isAssignableFrom(jClass)) {
-        return EitherOfThreeTypeConverter<Any, Any, Any>(this, type)
+        return EitherOfThreeTypeConverter<Any, Any, Any>(this, typeDescriptor)
       }
-      return EitherTypeConverter<Any, Any>(this, type)
+      return EitherTypeConverter<Any, Any>(this, typeDescriptor)
     }
 
     return null
   }
 
-  private fun createCachedConverters(isOptional: Boolean): Map<KClass<*>, TypeConverter<*>> {
+  private fun createCachedConverters(): Map<Class<*>, TypeConverter<*>> {
     val intTypeConverter = createTrivialTypeConverter(
-      isOptional,
       ExpectedType(CppType.INT)
     ) { it.asDouble().toInt() }
     val longTypeConverter = createTrivialTypeConverter(
-      isOptional,
       ExpectedType(CppType.LONG)
     ) { it.asDouble().toLong() }
     val doubleTypeConverter = createTrivialTypeConverter(
-      isOptional,
       ExpectedType(CppType.DOUBLE)
     ) { it.asDouble() }
     val floatTypeConverter = createTrivialTypeConverter(
-      isOptional,
       ExpectedType(CppType.FLOAT)
     ) { it.asDouble().toFloat() }
     val boolTypeConverter = createTrivialTypeConverter(
-      isOptional,
       ExpectedType(CppType.BOOLEAN)
     ) { it.asBoolean() }
 
+    val serializableTypeConverter = SerializableTypeConverter()
+
+    @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
     val converters = mapOf(
-      Int::class to intTypeConverter,
-      java.lang.Integer::class to intTypeConverter,
+      Int::class.java to intTypeConverter,
+      java.lang.Integer::class.java to intTypeConverter,
 
-      Long::class to longTypeConverter,
-      java.lang.Long::class to longTypeConverter,
+      Long::class.java to longTypeConverter,
+      java.lang.Long::class.java to longTypeConverter,
 
-      Double::class to doubleTypeConverter,
-      java.lang.Double::class to doubleTypeConverter,
+      Double::class.java to doubleTypeConverter,
+      java.lang.Double::class.java to doubleTypeConverter,
 
-      Float::class to floatTypeConverter,
-      java.lang.Float::class to floatTypeConverter,
+      Float::class.java to floatTypeConverter,
+      java.lang.Float::class.java to floatTypeConverter,
 
-      Boolean::class to boolTypeConverter,
-      java.lang.Boolean::class to boolTypeConverter,
+      Boolean::class.java to boolTypeConverter,
+      java.lang.Boolean::class.java to boolTypeConverter,
 
-      String::class to createTrivialTypeConverter(
-        isOptional, ExpectedType(CppType.STRING)
-      ) { it.asString() },
+      String::class.java to createTrivialTypeConverter(
+        ExpectedType(CppType.STRING)
+      ) { it.asString() ?: throw DynamicCastException(String::class) },
 
-      ReadableArray::class to createTrivialTypeConverter(
-        isOptional, ExpectedType(CppType.READABLE_ARRAY)
-      ) { it.asArray() },
-      ReadableMap::class to createTrivialTypeConverter(
-        isOptional, ExpectedType(CppType.READABLE_MAP)
-      ) { it.asMap() },
+      ReadableArray::class.java to createTrivialTypeConverter(
+        ExpectedType(CppType.READABLE_ARRAY)
+      ) { it.asArray() ?: throw DynamicCastException(ReadableArray::class) },
+      ReadableMap::class.java to createTrivialTypeConverter(
+        ExpectedType(CppType.READABLE_MAP)
+      ) { it.asMap() ?: throw DynamicCastException(ReadableMap::class) },
 
-      IntArray::class to createTrivialTypeConverter(
-        isOptional, ExpectedType.forPrimitiveArray(CppType.INT)
-      ) {
-        val jsArray = it.asArray()
-        IntArray(jsArray.size()) { index ->
-          jsArray.getInt(index)
-        }
-      },
-      DoubleArray::class to createTrivialTypeConverter(
-        isOptional, ExpectedType.forPrimitiveArray(CppType.DOUBLE)
-      ) {
-        val jsArray = it.asArray()
-        DoubleArray(jsArray.size()) { index ->
-          jsArray.getDouble(index)
-        }
-      },
-      FloatArray::class to createTrivialTypeConverter(
-        isOptional, ExpectedType.forPrimitiveArray(CppType.FLOAT)
-      ) {
-        val jsArray = it.asArray()
-        FloatArray(jsArray.size()) { index ->
-          jsArray.getDouble(index).toFloat()
-        }
-      },
-      BooleanArray::class to createTrivialTypeConverter(
-        isOptional, ExpectedType.forPrimitiveArray(CppType.BOOLEAN)
-      ) {
-        val jsArray = it.asArray()
-        BooleanArray(jsArray.size()) { index ->
-          jsArray.getBoolean(index)
-        }
-      },
-      ByteArray::class to ByteArrayTypeConverter(isOptional),
+      ByteArray::class.java to ByteArrayTypeConverter(),
 
-      JavaScriptValue::class to createTrivialTypeConverter(
-        isOptional, ExpectedType(CppType.JS_VALUE)
+      JavaScriptValue::class.java to createTrivialTypeConverter(
+        ExpectedType(CppType.JS_VALUE)
       ),
-      JavaScriptObject::class to createTrivialTypeConverter(
-        isOptional, ExpectedType(CppType.JS_OBJECT)
+      JavaScriptObject::class.java to createTrivialTypeConverter(
+        ExpectedType(CppType.JS_OBJECT)
+      ),
+      JavaScriptArrayBuffer::class.java to createTrivialTypeConverter(
+        ExpectedType(CppType.JS_ARRAY_BUFFER)
+      ),
+      ArrayBuffer::class.java to createTrivialTypeConverter(
+        ExpectedType(CppType.ARRAY_BUFFER)
+      ),
+      NativeArrayBuffer::class.java to createTrivialTypeConverter(
+        ExpectedType(CppType.NATIVE_ARRAY_BUFFER)
       ),
 
-      Int8Array::class to Int8ArrayTypeConverter(isOptional),
-      Int16Array::class to Int16ArrayTypeConverter(isOptional),
-      Int32Array::class to Int32ArrayTypeConverter(isOptional),
-      Uint8Array::class to Uint8ArrayTypeConverter(isOptional),
-      Uint8ClampedArray::class to Uint8ClampedArrayTypeConverter(isOptional),
-      Uint16Array::class to Uint16ArrayTypeConverter(isOptional),
-      Uint32Array::class to Uint32ArrayTypeConverter(isOptional),
-      Float32Array::class to Float32ArrayTypeConverter(isOptional),
-      Float64Array::class to Float64ArrayTypeConverter(isOptional),
-      BigInt64Array::class to BigInt64ArrayTypeConverter(isOptional),
-      BigUint64Array::class to BigUint64ArrayTypeConverter(isOptional),
-      TypedArray::class to TypedArrayTypeConverter(isOptional),
+      Serializable::class.java to serializableTypeConverter,
+      Worklet::class.java to WorkletTypeConverter(serializableTypeConverter),
 
-      URL::class to URLTypConverter(isOptional),
-      Uri::class to UriTypeConverter(isOptional),
-      URI::class to JavaURITypeConverter(isOptional),
+      Int8Array::class.java to Int8ArrayTypeConverter(),
+      Int16Array::class.java to Int16ArrayTypeConverter(),
+      Int32Array::class.java to Int32ArrayTypeConverter(),
+      Uint8Array::class.java to Uint8ArrayTypeConverter(),
+      Uint8ClampedArray::class.java to Uint8ClampedArrayTypeConverter(),
+      Uint16Array::class.java to Uint16ArrayTypeConverter(),
+      Uint32Array::class.java to Uint32ArrayTypeConverter(),
+      Float32Array::class.java to Float32ArrayTypeConverter(),
+      Float64Array::class.java to Float64ArrayTypeConverter(),
+      BigInt64Array::class.java to BigInt64ArrayTypeConverter(),
+      BigUint64Array::class.java to BigUint64ArrayTypeConverter(),
+      TypedArray::class.java to TypedArrayTypeConverter(),
 
-      File::class to FileTypeConverter(isOptional),
+      URL::class.java to URLTypConverter(),
+      Uri::class.java to UriTypeConverter(),
+      URI::class.java to JavaURITypeConverter(),
 
-      Any::class to AnyTypeConverter(isOptional),
+      File::class.java to FileTypeConverter(),
+
+      Duration::class.java to DurationTypeConverter(),
+
+      Any::class.java to AnyTypeConverter(),
+
+      Color::class.java to ColorTypeConverter(),
 
       // Unit converter doesn't care about nullability.
       // It will always return Unit
-      Unit::class to UnitTypeConverter(),
+      Unit::class.java to UnitTypeConverter(),
 
-      ReadableArguments::class to ReadableArgumentsTypeConverter(isOptional)
+      ReadableArguments::class.java to ReadableArgumentsTypeConverter(),
+
+      // expo-ui modifier prop are converted by ModifierRegistry, so this is just a pass-through.
+      // This converter should not be used in other cases.
+      Dynamic::class.java to createTrivialTypeConverter<Dynamic>(
+        ExpectedType(CppType.NONE)
+      ) { it }
     )
 
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
       return converters + mapOf(
-        Path::class to PathTypeConverter(isOptional),
-        Color::class to ColorTypeConverter(isOptional),
-        LocalDate::class to DateTypeConverter(isOptional)
+        Path::class.java to PathTypeConverter(),
+        LocalDate::class.java to DateTypeConverter()
       )
     }
 
     return converters
   }
+
+  private fun createCachedPrimitiveArrayConverters(): Map<Class<*>, TypeConverter<*>> {
+    return mapOf(
+      IntArray::class.java to createTrivialTypeConverter(
+        ExpectedType.forPrimitiveArray(CppType.INT)
+      ) {
+        val jsArray = it.asArray() ?: throw DynamicCastException(ReadableArray::class)
+        IntArray(jsArray.size()) { index ->
+          jsArray.getInt(index)
+        }
+      },
+      LongArray::class.java to createTrivialTypeConverter(
+        ExpectedType.forPrimitiveArray(CppType.LONG)
+      ) {
+        val jsArray = it.asArray() ?: throw DynamicCastException(ReadableArray::class)
+        LongArray(jsArray.size()) { index ->
+          jsArray.getDouble(index).toLong()
+        }
+      },
+      DoubleArray::class.java to createTrivialTypeConverter(
+        ExpectedType.forPrimitiveArray(CppType.DOUBLE)
+      ) {
+        val jsArray = it.asArray() ?: throw DynamicCastException(ReadableArray::class)
+        DoubleArray(jsArray.size()) { index ->
+          jsArray.getDouble(index)
+        }
+      },
+      FloatArray::class.java to createTrivialTypeConverter(
+        ExpectedType.forPrimitiveArray(CppType.FLOAT)
+      ) {
+        val jsArray = it.asArray() ?: throw DynamicCastException(ReadableArray::class)
+        FloatArray(jsArray.size()) { index ->
+          jsArray.getDouble(index).toFloat()
+        }
+      },
+      BooleanArray::class.java to createTrivialTypeConverter(
+        ExpectedType.forPrimitiveArray(CppType.BOOLEAN)
+      ) {
+        val jsArray = it.asArray() ?: throw DynamicCastException(ReadableArray::class)
+        BooleanArray(jsArray.size()) { index ->
+          jsArray.getBoolean(index)
+        }
+      }
+    )
+  }
+}
+
+class MergedTypeConverterProvider(
+  private val providers: List<TypeConverterProvider>
+) : TypeConverterProvider {
+  override fun obtainTypeConverter(typeDescriptor: TypeDescriptor): TypeConverter<*> {
+    for (provider in providers) {
+      try {
+        return provider.obtainTypeConverter(typeDescriptor)
+      } catch (_: MissingTypeConverter) {
+        // Ignore and try next provider
+      }
+    }
+
+    throw MissingTypeConverter(typeDescriptor)
+  }
+}
+
+fun TypeConverterProvider.mergeWith(otherProvider: TypeConverterProvider): TypeConverterProvider {
+  return MergedTypeConverterProvider(listOf(this, otherProvider))
+}
+
+fun TypeConverterProvider?.mergeWithDefault(): TypeConverterProvider {
+  return this?.mergeWith(TypeConverterProviderImpl) ?: TypeConverterProviderImpl
 }

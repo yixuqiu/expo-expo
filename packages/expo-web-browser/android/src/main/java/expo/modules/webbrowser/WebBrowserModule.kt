@@ -1,15 +1,15 @@
 package expo.modules.webbrowser
 
-import expo.modules.core.errors.CurrentActivityNotFoundException
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.text.TextUtils
+import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.os.bundleOf
 import expo.modules.core.utilities.ifNull
+import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import androidx.core.net.toUri
 
 private const val SERVICE_PACKAGE_KEY = "servicePackage"
 private const val BROWSER_PACKAGES_KEY = "browserPackages"
@@ -20,16 +20,15 @@ private const val DEFAULT_BROWSER_PACKAGE = "defaultBrowserPackage"
 private const val MODULE_NAME = "ExpoWebBrowser"
 
 class WebBrowserModule : Module() {
+  private val context
+    get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+
   override fun definition() = ModuleDefinition {
     Name(MODULE_NAME)
 
     OnCreate {
-      customTabsResolver = CustomTabsActivitiesHelper(appContext.activityProvider)
-      connectionHelper = CustomTabsConnectionHelper(
-        requireNotNull(appContext.reactContext) {
-          "Cannot initialize WebBrowser, ReactContext is null"
-        }
-      )
+      customTabsResolver = CustomTabsActivitiesHelper(appContext)
+      connectionHelper = CustomTabsConnectionHelper(context)
     }
 
     OnActivityDestroys {
@@ -58,13 +57,12 @@ class WebBrowserModule : Module() {
 
     AsyncFunction("mayInitWithUrlAsync") { url: String, packageName: String? ->
       val resolvedPackageName = givenOrPreferredPackageName(packageName)
-      connectionHelper.mayInitWithUrl(resolvedPackageName, Uri.parse(url))
+      connectionHelper.mayInitWithUrl(resolvedPackageName, url.toUri())
       return@AsyncFunction bundleOf(
         SERVICE_PACKAGE_KEY to resolvedPackageName
       )
     }
 
-    // throws CurrentActivityNotFoundException
     AsyncFunction<Bundle>("getCustomTabsSupportingBrowsersAsync") {
       val activities = customTabsResolver.customTabsResolvingActivities
       val services = customTabsResolver.customTabsResolvingServices
@@ -82,17 +80,22 @@ class WebBrowserModule : Module() {
       }
     }
 
-    // throws CurrentActivityNotFoundException
     AsyncFunction("openBrowserAsync") { url: String, options: OpenBrowserOptions ->
-      val intent = createCustomTabsIntent(options).apply {
-        data = Uri.parse(url)
+      val tabsIntent = createCustomTabsIntent(options).apply {
+        intent.data = url.toUri()
       }
 
-      if (!customTabsResolver.canResolveIntent(intent)) {
+      if (!customTabsResolver.canResolveIntent(tabsIntent)) {
         throw NoMatchingActivityException()
       }
 
-      customTabsResolver.startCustomTabs(intent)
+      if (options.browserPackage.isNullOrEmpty() && tabsIntent.intent.`package` == null) {
+        customTabsResolver.getPreferredCustomTabsResolvingActivity(null)?.let {
+          tabsIntent.intent.setPackage(it)
+        }
+      }
+
+      customTabsResolver.startCustomTabs(tabsIntent, options)
 
       return@AsyncFunction bundleOf(
         "type" to "opened"
@@ -104,42 +107,33 @@ class WebBrowserModule : Module() {
   internal lateinit var customTabsResolver: CustomTabsActivitiesHelper
   internal lateinit var connectionHelper: CustomTabsConnectionHelper
 
-  private fun createCustomTabsIntent(options: OpenBrowserOptions): Intent {
+  private fun createCustomTabsIntent(options: OpenBrowserOptions): CustomTabsIntent {
     val builder = CustomTabsIntent.Builder()
 
-    val color = options.toolbarColor
-    if (color != null) {
-      builder.setToolbarColor(color)
-    }
-
-    val secondaryColor = options.secondaryToolbarColor
-    if (secondaryColor != null) {
-      builder.setSecondaryToolbarColor(secondaryColor)
+    val toolbarColor = options.toolbarColor
+    val secondaryToolbarColor = options.secondaryToolbarColor
+    if (toolbarColor != null || secondaryToolbarColor != null) {
+      val params = CustomTabColorSchemeParams.Builder()
+        .apply {
+          toolbarColor?.let { setToolbarColor(it) }
+          secondaryToolbarColor?.let { setSecondaryToolbarColor(it) }
+        }
+        .build()
+      builder.setDefaultColorSchemeParams(params)
     }
 
     builder.setShowTitle(options.showTitle)
 
     if (options.enableDefaultShareMenuItem) {
-      builder.addDefaultShareMenuItem()
+      builder.setShareState(CustomTabsIntent.SHARE_STATE_ON)
     }
 
-    return builder.build().intent.apply {
-      // We cannot use the builder's method enableUrlBarHiding, because there is
-      // no corresponding disable method and some browsers enable it by default.
-      putExtra(CustomTabsIntent.EXTRA_ENABLE_URLBAR_HIDING, options.enableBarCollapsing)
+    builder.setUrlBarHidingEnabled(options.enableBarCollapsing)
 
+    return builder.build().apply {
       val packageName = options.browserPackage
       if (!TextUtils.isEmpty(packageName)) {
-        setPackage(packageName)
-      }
-
-      if (options.shouldCreateTask) {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-        if (!options.showInRecents) {
-          addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
-          addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
-        }
+        intent.setPackage(packageName)
       }
     }
   }
@@ -152,9 +146,7 @@ class WebBrowserModule : Module() {
       packageName?.takeIf { it.isNotEmpty() }.ifNull {
         customTabsResolver.getPreferredCustomTabsResolvingActivity(null)
       }
-    } catch (ex: CurrentActivityNotFoundException) {
-      throw NoPreferredPackageFound()
-    } catch (ex: PackageManagerNotFoundException) {
+    } catch (_: PackageManagerNotFoundException) {
       throw NoPreferredPackageFound()
     }
 

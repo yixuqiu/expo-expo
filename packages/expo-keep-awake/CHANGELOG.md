@@ -1,14 +1,188 @@
 # Changelog
 
-## Unpublished
+## 58.0.3
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.2
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.1 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
 
 ### 🛠 Breaking changes
 
-### 🎉 New features
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.8 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 - 2026-05-01
 
 ### 🐛 Bug fixes
 
+- fix(keep-awake): catch activation promise rejection on Android ([#45006](https://github.com/expo/expo/pull/45006) by [@cortinico](https://github.com/cortinico))
+
+## 55.0.6 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
 ### 💡 Others
+
+- Removed references to legacy native modules API. ([#41657](https://github.com/expo/expo/pull/41657) by [@tsapeta](https://github.com/tsapeta))
+
+## 15.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.0 — 2025-08-13
+
+### 💡 Others
+
+- Migrate to package exports ([#37298](https://github.com/expo/expo/pull/37298) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 14.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.0 — 2025-04-04
+
+### 🛠 Breaking changes
+
+- Bump minimum macOS version to 11.0. ([#34980](https://github.com/expo/expo/pull/34980) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 💡 Others
+
+- [android] Remove deactivation warning. ([#35760](https://github.com/expo/expo/pull/35760) by [@aleqsio](https://github.com/aleqsio))
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+
+## 14.0.3 - 2025-02-19
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.2 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.1 — 2024-10-22
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Add missing `react` peer dependencies for isolated modules. ([#30470](https://github.com/expo/expo/pull/30470) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Use `EventSubscription` type instead of `Subscription`. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
+- Replaced `@testing-library/react-hooks` with `@testing-library/react-native`. ([#30742](https://github.com/expo/expo/pull/30742) by [@byCedric](https://github.com/byCedric))
+
+## 13.0.2 — 2024-05-15
+
+### 🐛 Bug fixes
+
+- Stop useKeepAwake calls deactivating each other by default. ([#28884](https://github.com/expo/expo/pull/28884) by [@macksal](https://github.com/macksal))
 
 ## 13.0.1 — 2024-04-23
 

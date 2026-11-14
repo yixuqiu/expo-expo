@@ -1,48 +1,40 @@
-import { UnavailabilityError } from 'expo-modules-core';
-import {
-  AppState,
-  AppStateStatus,
-  Linking,
-  Platform,
-  EmitterSubscription,
-  processColor,
-} from 'react-native';
+import { UnavailabilityError } from 'expo';
+import type { AppStateStatus, EmitterSubscription } from 'react-native';
+import { AppState, Linking, Platform, processColor } from 'react-native';
 
 import ExponentWebBrowser from './ExpoWebBrowser';
 import {
-  RedirectEvent,
-  WebBrowserAuthSessionResult,
-  WebBrowserCompleteAuthSessionOptions,
-  WebBrowserCompleteAuthSessionResult,
-  WebBrowserCoolDownResult,
-  WebBrowserCustomTabsResults,
-  WebBrowserMayInitWithUrlResult,
-  WebBrowserOpenOptions,
-  WebBrowserRedirectResult,
-  WebBrowserResult,
+  type RedirectEvent,
+  type WebBrowserAuthSessionResult,
+  type WebBrowserCompleteAuthSessionOptions,
+  type WebBrowserCompleteAuthSessionResult,
+  type WebBrowserCoolDownResult,
+  type WebBrowserCustomTabsResults,
+  type WebBrowserMayInitWithUrlResult,
+  type WebBrowserOpenOptions,
+  type WebBrowserRedirectResult,
+  type WebBrowserResult,
   WebBrowserResultType,
-  WebBrowserWarmUpResult,
-  WebBrowserWindowFeatures,
-  WebBrowserPresentationStyle,
-  AuthSessionOpenOptions,
+  type WebBrowserWarmUpResult,
+  type AuthSessionOpenOptions,
 } from './WebBrowser.types';
 
 export {
-  WebBrowserAuthSessionResult,
-  WebBrowserCompleteAuthSessionOptions,
-  WebBrowserCompleteAuthSessionResult,
-  WebBrowserCoolDownResult,
-  WebBrowserCustomTabsResults,
-  WebBrowserMayInitWithUrlResult,
-  WebBrowserOpenOptions,
-  WebBrowserRedirectResult,
-  WebBrowserResult,
+  type WebBrowserAuthSessionResult,
+  type WebBrowserCompleteAuthSessionOptions,
+  type WebBrowserCompleteAuthSessionResult,
+  type WebBrowserCoolDownResult,
+  type WebBrowserCustomTabsResults,
+  type WebBrowserMayInitWithUrlResult,
+  type WebBrowserOpenOptions,
+  type WebBrowserRedirectResult,
+  type WebBrowserResult,
   WebBrowserResultType,
-  WebBrowserWarmUpResult,
-  WebBrowserWindowFeatures,
+  type WebBrowserWarmUpResult,
+  type WebBrowserWindowFeatures,
   WebBrowserPresentationStyle,
-  AuthSessionOpenOptions,
-};
+  type AuthSessionOpenOptions,
+} from './WebBrowser.types';
 
 const emptyCustomTabsPackages: WebBrowserCustomTabsResults = {
   defaultBrowserPackage: undefined,
@@ -74,7 +66,7 @@ export async function getCustomTabsSupportingBrowsersAsync(): Promise<WebBrowser
 
 // @needsAudit
 /**
- * This method calls `warmUp` method on [CustomTabsClient](https://developer.android.com/reference/android/support/customtabs/CustomTabsClient.html#warmup(long))
+ * This method calls the `warmUp` method on [CustomTabsClient](https://developer.android.com/reference/android/support/customtabs/CustomTabsClient.html#warmup(long))
  * for specified package.
  *
  * @param browserPackage Package of browser to be warmed up. If not set, preferred browser will be warmed.
@@ -167,25 +159,18 @@ export async function openBrowserAsync(
     throw new UnavailabilityError('WebBrowser', 'openBrowserAsync');
   }
 
-  let result: WebBrowserResult;
-  try {
-    result = await ExponentWebBrowser.openBrowserAsync(url, _processOptions(browserParams));
-  } catch {
-    return { type: WebBrowserResultType.LOCKED };
-  }
-
-  return result;
+  return await ExponentWebBrowser.openBrowserAsync(url, _processOptions(browserParams));
 }
 
 // @needsAudit
 /**
  * Dismisses the presented web browser.
  *
- * @return The `void` on successful attempt, or throws error, if dismiss functionality is not avaiable.
+ * @return The promise that resolves with `{ type: 'dismiss' }` on the successful attempt or throws an error if dismiss functionality is not available.
  * @platform ios
  */
-export function dismissBrowser(): void {
-  ExponentWebBrowser.dismissBrowser?.();
+export function dismissBrowser(): Promise<{ type: WebBrowserResultType.DISMISS }> {
+  return ExponentWebBrowser.dismissBrowser?.();
 }
 
 // @needsAudit
@@ -247,7 +232,7 @@ export async function openAuthSessionAsync(
     if (!ExponentWebBrowser.openAuthSessionAsync) {
       throw new UnavailabilityError('WebBrowser', 'openAuthSessionAsync');
     }
-    if (['ios', 'web'].includes(Platform.OS)) {
+    if (['ios', 'macos', 'web'].includes(Platform.OS)) {
       return ExponentWebBrowser.openAuthSessionAsync(url, redirectUrl, _processOptions(options));
     }
     return ExponentWebBrowser.openAuthSessionAsync(url, redirectUrl);
@@ -256,7 +241,14 @@ export async function openAuthSessionAsync(
   }
 }
 
-// @docsMissing
+/**
+ * Dismisses the current authentication session. On web, it will close the popup window associated with auth process.
+ *
+ * @return The `void` on the successful attempt or throws an error if dismiss functionality is not available.
+ *
+ * @platform ios
+ * @platform web
+ */
 export function dismissAuthSession(): void {
   if (_authSessionIsNativelySupported()) {
     if (!ExponentWebBrowser.dismissAuthSession) {
@@ -265,7 +257,7 @@ export function dismissAuthSession(): void {
     ExponentWebBrowser.dismissAuthSession();
   } else {
     if (!ExponentWebBrowser.dismissBrowser) {
-      throw new UnavailabilityError('WebBrowser', 'dismissAuthSession');
+      throw new UnavailabilityError('WebBrowser', 'dismissBrowser');
     }
     ExponentWebBrowser.dismissBrowser();
   }
@@ -281,7 +273,7 @@ export function dismissAuthSession(): void {
  * @return Returns an object with message about why the redirect failed or succeeded:
  *
  * If `type` is set to `failed`, the reason depends on the message:
- * - `Not supported on this platform`: If the platform doesn't support this method (iOS, Android).
+ * - `Not supported on this platform`: If the platform doesn't support this method (Android, iOS).
  * - `Cannot use expo-web-browser in a non-browser environment`: If the code was executed in an SSR
  *   or node environment.
  * - `No auth session is currently in progress`: (the cached state wasn't found in local storage).
@@ -318,17 +310,10 @@ function _processOptions(options: WebBrowserOpenOptions) {
   };
 }
 
-/* iOS <= 10 and Android polyfill for SFAuthenticationSession flow */
+/* Android polyfill for ASWebAuthenticationSession flow */
 
 function _authSessionIsNativelySupported(): boolean {
-  if (Platform.OS === 'android') {
-    return false;
-  } else if (Platform.OS === 'web') {
-    return true;
-  }
-
-  const versionNumber = parseInt(String(Platform.Version), 10);
-  return versionNumber >= 11;
+  return Platform.OS !== 'android';
 }
 
 let _redirectSubscription: EmitterSubscription | null = null;
@@ -390,7 +375,7 @@ async function _openBrowserAndWaitAndroidAsync(
 
 async function _openAuthSessionPolyfillAsync(
   startUrl: string,
-  returnUrl: string | null | undefined,
+  returnUrl?: string | null,
   browserParams: WebBrowserOpenOptions = {}
 ): Promise<WebBrowserAuthSessionResult> {
   if (_redirectSubscription) {
@@ -437,9 +422,7 @@ function _stopWaitingForRedirect() {
   _redirectSubscription = null;
 }
 
-function _waitForRedirectAsync(
-  returnUrl: string | null | undefined
-): Promise<WebBrowserRedirectResult> {
+function _waitForRedirectAsync(returnUrl?: string | null): Promise<WebBrowserRedirectResult> {
   // Note that this Promise never resolves when `returnUrl` is nullish
   return new Promise((resolve) => {
     const redirectHandler = (event: RedirectEvent) => {

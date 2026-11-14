@@ -1,4 +1,4 @@
-import { PermissionResponse } from 'expo-modules-core';
+import type { PermissionResponse } from 'expo';
 
 // @needsAudit
 /**
@@ -12,12 +12,18 @@ export type CameraPermissionResponse = PermissionResponse;
  */
 export type MediaLibraryPermissionResponse = PermissionResponse & {
   /**
-   * @platform ios
+   * Indicates if your app has access to the whole or only part of the photo library. Possible values are:
+   * - `'all'` if the user granted your app access to the whole photo library
+   * - `'limited'` if the user granted your app access only to selected photos (only available on Android API 34+ and iOS 14.0+)
+   * - `'none'` if user denied or hasn't yet granted the permission
    */
   accessPrivileges?: 'all' | 'limited' | 'none';
 };
 
 // @needsAudit
+/**
+ * @deprecated To set media types available in the image picker use an array of [`MediaType`](#mediatype) instead.
+ */
 export enum MediaTypeOptions {
   /**
    * Images and videos.
@@ -32,6 +38,30 @@ export enum MediaTypeOptions {
    */
   Images = 'Images',
 }
+
+/**
+ * Media types that can be picked by the image picker.
+ * - `'images'` - for images.
+ * - `'videos'` - for videos.
+ * - `'livePhotos'` - for live photos (iOS only).
+ *
+ * > When the `livePhotos` type is added to the media types array and a live photo is selected,
+ * > the resulting `ImagePickerAsset` will contain an unaltered image and the `pairedVideoAsset` field will contain a
+ * > video asset paired with the image. This option will be ignored when the `allowsEditing` option is enabled. Due
+ * > to platform limitations live photos are returned at original quality, regardless of the `quality` option.
+ *
+ * > When on Android or Web `livePhotos` type passed as a media type will be ignored.
+ */
+export type MediaType = 'images' | 'videos' | 'livePhotos';
+
+/**
+ * The default tab with which the image picker will be opened.
+ * - `'photos'` - the photos/videos tab will be opened.
+ * - `'albums'` - the albums tab will be opened.
+ *
+ * @platform android
+ */
+export type DefaultTab = 'photos' | 'albums';
 
 // @needsAudit
 export enum VideoExportPreset {
@@ -227,22 +257,27 @@ export type ImagePickerAsset = {
    * > This might be `null` when the ID is unavailable or the user gave limited permission to access the media library.
    * > On Android, the ID is unavailable when the user selects a photo by directly browsing file system.
    *
-   * @platform ios
    * @platform android
+   * @platform ios
    */
   assetId?: string | null;
   /**
-   * Width of the image or video.
+   * Width of the image or video. Can be `0` if the system did not provide the width.
    */
   width: number;
   /**
-   * Height of the image or video.
+   * Height of the image or video. Can be `0` if the system did not provide the height.
    */
   height: number;
   /**
    * The type of the asset.
+   * - `'image'` - for images.
+   * - `'video'` - for videos.
+   * - `'livePhoto'` - for live photos. (iOS only)
+   * - `'pairedVideo'` - for videos paired with photos, which can be combined to create a live photo. (iOS only)
+   * - `null` - when the type could not be determined. This is rare but can happen with some Android ContentProviders.
    */
-  type?: 'image' | 'video';
+  type?: 'image' | 'video' | 'livePhoto' | 'pairedVideo' | null;
   /**
    * Preferred filename to use when saving this item. This might be `null` when the name is unavailable
    * or user gave limited permission to access the media library.
@@ -258,6 +293,9 @@ export type ImagePickerAsset = {
    * The `exif` field is included if the `exif` option is truthy, and is an object containing the
    * image's EXIF data. The names of this object's properties are EXIF tags and the values are the
    * respective EXIF values for those tags.
+   *
+   * @platform android
+   * @platform ios
    */
   exif?: Record<string, any> | null;
   /**
@@ -280,6 +318,19 @@ export type ImagePickerAsset = {
    * The MIME type of the selected asset or `null` if could not be determined.
    */
   mimeType?: string;
+  /**
+   * Contains information about the video paired with the image file. This property is only set when `livePhotos` media type was present in the `mediaTypes` array when launching the picker and a live photo was selected.
+   *
+   * @platform ios
+   */
+  pairedVideoAsset?: ImagePickerAsset | null;
+
+  /**
+   * The web `File` object containing the selected media. This property is web-only and can be used to upload to a server with `FormData`.
+   *
+   * @platform web
+   */
+  file?: File;
 };
 
 // @needsAudit
@@ -344,6 +395,11 @@ export type ImagePickerCancelledResult = ImagePickerCanceledResult;
  */
 export type ImagePickerMultipleResult = ImagePickerResult;
 
+/**
+ * The shape of the crop area.
+ */
+export type CropShape = 'rectangle' | 'oval';
+
 // @needsAudit
 export type ImagePickerOptions = {
   /**
@@ -355,8 +411,8 @@ export type ImagePickerOptions = {
    * > - On iOS cropping a `.bmp` image will convert it to `.png`.
    *
    * @default false
-   * @platform ios
    * @platform android
+   * @platform ios
    */
   allowsEditing?: boolean;
   /**
@@ -366,6 +422,14 @@ export type ImagePickerOptions = {
    */
   aspect?: [number, number];
   /**
+   * Specify the shape of the crop area if the user is allowed to edit the image
+   * (by passing `allowsEditing: true`). This option is only applicable on Android.
+   *
+   * @default rectangle
+   * @platform android
+   */
+  shape?: CropShape;
+  /**
    * Specify the quality of compression, from `0` to `1`. `0` means compress for small size,
    * `1` means compress for maximum quality.
    * > Note: If the selected image has been compressed before, the size of the output file may be
@@ -373,19 +437,22 @@ export type ImagePickerOptions = {
    *
    * > Note: On iOS, if a `.bmp` or `.png` image is selected from the library, this option is ignored.
    *
-   * @default 0.2
-   * @platform ios
+   * @default 1.0
    * @platform android
+   * @platform ios
    */
   quality?: number;
   /**
    * Choose what type of media to pick.
-   * @default ImagePicker.MediaTypeOptions.Images
+   * @default 'images'
    */
-  mediaTypes?: MediaTypeOptions;
+  mediaTypes?: MediaType | MediaType[] | MediaTypeOptions;
   /**
    * Whether to also include the EXIF data for the image. On iOS the EXIF data does not include GPS
    * tags in the camera case.
+   *
+   * @platform android
+   * @platform ios
    */
   exif?: boolean;
   /**
@@ -413,8 +480,8 @@ export type ImagePickerOptions = {
    * > If this option is enabled, then `allowsEditing` is ignored.
    *
    * @default false
-   * @platform ios 14+
    * @platform android
+   * @platform ios 14+
    * @platform web
    */
   allowsMultipleSelection?: boolean;
@@ -422,8 +489,8 @@ export type ImagePickerOptions = {
    * The maximum number of items that user can select. Applicable when `allowsMultipleSelection` is enabled.
    * Setting the value to `0` sets the selection limit to the maximum that the system supports.
    *
-   * @platform ios 14+
    * @platform android
+   * @platform ios 14+
    * @default 0
    */
   selectionLimit?: number;
@@ -439,12 +506,18 @@ export type ImagePickerOptions = {
    */
   orderedSelection?: boolean;
   /**
+   * Choose the default tab with which the image picker will be opened.
+   * @default 'photos'
+   * @platform android
+   */
+  defaultTab?: DefaultTab;
+  /**
    * Maximum duration, in seconds, for video recording. Setting this to `0` disables the limit.
    * Defaults to `0` (no limit).
    * - **On iOS**, when `allowsEditing` is set to `true`, maximum duration is limited to 10 minutes.
    *   This limit is applied automatically, if `0` or no value is specified.
    * - **On Android**, effect of this option depends on support of installed camera app.
-   * - **On Web** this option has no effect - the limit is browser-dependant.
+   * - **On Web** this option has no effect - the limit is browser-dependent.
    */
   videoMaxDuration?: number;
   /**
@@ -458,9 +531,8 @@ export type ImagePickerOptions = {
    * Selects the camera-facing type. The `CameraType` enum provides two options:
    * `front` for the front-facing camera and `back` for the back-facing camera.
    * - **On Android**, the behavior of this option may vary based on the camera app installed on the device.
+   * - **On Web**, if this option is not provided, use "camera" as the default value of internal input element for backwards compatibility.
    * @default CameraType.back
-   * @platform ios
-   * @platform android
    */
   cameraType?: CameraType;
   /**
@@ -476,17 +548,39 @@ export type ImagePickerOptions = {
    * @default false
    */
   legacy?: boolean;
+  /**
+   * When enabled, allows the picker to access and download media from iCloud or other remote sources
+   * if the asset is not stored locally on the device.
+   *
+   * This option gates the direct resource read that the picker attempts first. That read is used for
+   * Live Photos, and for videos when [`videoExportPreset`](#videoexportpreset) is set to `Passthrough`.
+   * In all other cases, the media will be downloaded from iCloud automatically.
+   *
+   * > Note: For videos, this option does not prevent a download. When it is disabled and the direct
+   * > read fails because the data is not stored locally, the picker falls back to a slower path that
+   * > fetches the asset from iCloud on its own. Enable this option to take the faster path for such videos.
+   *
+   * > Note: Live Photos also honor this option, and they have no fallback path. Enable it when
+   * > picking Live Photos that may not be stored locally.
+   *
+   * @platform ios
+   * @default false
+   */
+  shouldDownloadFromNetwork?: boolean;
 };
 
-// @needsAudit
+/**
+ * @hidden
+ * @deprecated Only used internally.
+ */
 export type OpenFileBrowserOptions = {
   /**
    * Choose what type of media to pick.
-   * @default ImagePicker.MediaTypeOptions.Images
+   * @default 'images'
    */
-  mediaTypes: MediaTypeOptions;
+  mediaTypes: MediaType | MediaType[] | MediaTypeOptions;
   // @docsMissing
-  capture?: boolean;
+  capture?: boolean | CameraType;
   /**
    * Whether or not to allow selecting multiple media files at once.
    * @platform web
@@ -503,8 +597,4 @@ export type OpenFileBrowserOptions = {
  * @deprecated Use `ImagePickerResult` or `OpenFileBrowserOptions` instead.
  */
 export type ExpandImagePickerResult<T extends ImagePickerOptions | OpenFileBrowserOptions> =
-  T extends {
-    allowsMultipleSelection: true;
-  }
-    ? ImagePickerResult
-    : ImagePickerResult;
+  T extends { allowsMultipleSelection: true } ? ImagePickerResult : ImagePickerResult;

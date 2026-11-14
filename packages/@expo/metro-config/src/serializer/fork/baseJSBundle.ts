@@ -9,12 +9,18 @@
  * https://github.com/facebook/metro/blob/bbdd7d7c5e6e0feb50a9967ffae1f723c1d7c4e8/packages/metro/src/DeltaBundler/Serializers/baseJSBundle.js#L1
  */
 
+import type {
+  MixedOutput,
+  Module,
+  ReadOnlyGraph,
+  SerializerOptions,
+} from '@expo/metro/metro/DeltaBundler/types';
+import CountingSet from '@expo/metro/metro/lib/CountingSet';
+import countLines from '@expo/metro/metro/lib/countLines';
+import getAppendScripts from '@expo/metro/metro/lib/getAppendScripts';
 import { isJscSafeUrl, toNormalUrl } from 'jsc-safe-url';
-import type { MixedOutput, Module, ReadOnlyGraph, SerializerOptions } from 'metro';
-import CountingSet from 'metro/src/lib/CountingSet';
-import countLines from 'metro/src/lib/countLines';
-import getAppendScripts from 'metro/src/lib/getAppendScripts';
 
+import type { AsyncModulePaths, ChunkingStrategy } from '../serializerAssets';
 import { processModules } from './processModules';
 
 export type ModuleMap = [number, string][];
@@ -23,15 +29,27 @@ export type Bundle = {
   modules: ModuleMap;
   post: string;
   pre: string;
+  paths: Record<
+    // Module ID
+    string,
+    // Split paths { moduleId: URL }
+    AsyncModulePaths
+  >;
 };
 
 export type ExpoSerializerOptions = SerializerOptions & {
+  /** Append a footer that records this chunk's completed module registration. */
+  includeChunkCompletion?: boolean;
   serializerOptions?: {
     baseUrl?: string;
     skipWrapping?: boolean;
+    usedExports?: boolean;
     splitChunks?: boolean;
+    chunkingStrategy?: ChunkingStrategy;
     output?: string;
     includeSourceMaps?: boolean;
+    exporting?: boolean;
+    excludeSource?: boolean;
   };
   // Chunk-based stable identifier for the bundle that is used for identifying the bundle.
   // https://sentry.engineering/blog/the-case-for-debug-ids
@@ -123,6 +141,7 @@ export function baseJSBundleWithDependencies(
     splitChunks: options.splitChunks,
     skipWrapping: options.skipWrapping,
     computedAsyncModulePaths: options.computedAsyncModulePaths,
+    unstable_getAsyncDependencyPath: options.unstable_getAsyncDependencyPath,
   };
 
   // Do not prepend polyfills or the require runtime when only modules are requested
@@ -146,6 +165,8 @@ export function baseJSBundleWithDependencies(
     asyncRequireModulePath: options.asyncRequireModulePath,
     createModuleId: options.createModuleId,
     getRunModuleStatement: options.getRunModuleStatement,
+    getSourceUrl: options.getSourceUrl,
+    globalPrefix: options.globalPrefix,
     inlineSourceMap: options.inlineSourceMap,
     runBeforeMainModule: options.runBeforeMainModule,
     runModule: options.runModule,
@@ -153,9 +174,23 @@ export function baseJSBundleWithDependencies(
     sourceMapUrl,
     // This directive doesn't make a lot of sense in the context of a large single bundle that represent
     // multiple files. It's usually used for things like TypeScript where you want the file name to appear with a
-    // different extension. Since it's unclear to me (Bacon) how it is used on native, I'm only disabling in web.
-    sourceUrl: options.platform === 'web' ? undefined : options.sourceUrl,
-  });
+    // different extension. Since it's unclear to me (Bacon) how it is used on native, I'm only disabling in web and native in production.
+    sourceUrl:
+      options.platform === 'web' ? undefined : !options.dev ? undefined : options.sourceUrl,
+  }) as Module[];
+
+  if (options.includeChunkCompletion && options.platform === 'web' && !options.dev) {
+    // Read the URL from currentScript because this footer contributes to the chunk's filename hash.
+    const key = JSON.stringify(`${options.globalPrefix ?? ''}__expo_chunk_completion__`);
+    const code = `(function(){var s=typeof document!=="undefined"&&document.currentScript;if(s&&s.namespaceURI==="http://www.w3.org/1999/xhtml"&&s.tagName==="SCRIPT"&&typeof s.src==="string"&&s.src){var k=${key};(globalThis[k]||(globalThis[k]=new Set())).add(s.src);}})();`;
+    modulesWithAnnotations.unshift({
+      path: 'expo-chunk-completion',
+      dependencies: new Map(),
+      inverseDependencies: new CountingSet(),
+      getSource: () => Buffer.from(code),
+      output: [{ type: 'js/script/virtual', data: { code, lineCount: countLines(code), map: [] } }],
+    });
+  }
 
   // If the `debugId` annotation is available and we aren't inlining the source map, add it to the bundle.
   // NOTE: We may want to move this assertion up further.
@@ -193,7 +228,14 @@ export function baseJSBundleWithDependencies(
     post: postCode,
     modules: mods.map(([id, code]) => [
       id,
-      typeof code === 'number' ? code : code.src,
+      typeof code === 'number' ? code : code?.src,
     ]) as ModuleMap,
+    paths: Object.fromEntries(
+      (
+        mods.filter(
+          ([id, code]) => typeof code !== 'number' && Object.keys(code?.paths ?? {}).length
+        ) as [string, { src: string; paths: AsyncModulePaths }][]
+      ).map(([id, code]) => [id, code.paths])
+    ),
   };
 }

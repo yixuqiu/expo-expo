@@ -13,8 +13,10 @@ export type NetworkState = {
   isConnected?: boolean;
   /**
    * If the internet is reachable with the currently active network connection. On Android, this
-   * depends on `NetInfo.isConnected()` (API level < 29) or `ConnectivityManager.getActiveNetwork()`
-   * (API level >= 29). On iOS, this value will always be the same as `isConnected`.
+   * requires the active network to have internet capability (`NET_CAPABILITY_INTERNET`), confirmed
+   * internet access (`NET_CAPABILITY_VALIDATED`), and a usable connection state. VPN connections
+   * also require non-zero downstream bandwidth. On iOS, this value will always be the same as
+   * `isConnected`.
    */
   isInternetReachable?: boolean;
 };
@@ -35,30 +37,54 @@ export enum NetworkStateType {
   /**
    * Active network connection over mobile data or [`DUN-specific`](https://developer.android.com/reference/android/net/ConnectivityManager#TYPE_MOBILE_DUN)
    * mobile connection when setting an upstream connection for tethering.
+   * @platform android
+   * @platform ios
    */
   CELLULAR = 'CELLULAR',
   /**
-   * Active network connection over WiFi.
+   * Active network connection over Wi-Fi.
+   * @platform android
+   * @platform ios
    */
   WIFI = 'WIFI',
   /**
    * Active network connection over Bluetooth.
+   * @platform android
    */
   BLUETOOTH = 'BLUETOOTH',
   /**
    * Active network connection over Ethernet.
+   * @platform android
+   * @platform ios
    */
   ETHERNET = 'ETHERNET',
   /**
-   * Active network connection over Wimax.
+   * Active network connection over WiMAX.
+   * @platform android
    */
   WIMAX = 'WIMAX',
   /**
    * Active network connection over VPN.
+   * @platform android
    */
   VPN = 'VPN',
   /**
    * Active network connection over other network connection types.
+   * @platform android
    */
   OTHER = 'OTHER',
 }
+
+// @needsAudit
+/**
+ * Represents an event that provides the updated network state when there is a change in the network status.
+ * This is passed as the argument to listeners registered with [`addNetworkStateListener()`](#networkaddnetworkstatelistenerlistener).
+ */
+export type NetworkStateEvent = NetworkState;
+
+/**
+ * @hidden
+ */
+export type NetworkEvents = {
+  onNetworkStateChanged(event: NetworkStateEvent): void;
+};

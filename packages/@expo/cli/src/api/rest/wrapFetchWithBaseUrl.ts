@@ -1,8 +1,6 @@
 import { URL } from 'url';
 
-import { FetchLike } from './client.types';
-
-// const debug = require('debug')('expo:api:fetch:base') as typeof console.log;
+import type { FetchLike } from './client.types';
 
 /**
  * Wrap a fetch function with support for a predefined base URL.
@@ -18,7 +16,6 @@ export function wrapFetchWithBaseUrl(fetch: FetchLike, baseUrl: string): FetchLi
     if (init?.searchParams) {
       parsed.search = init.searchParams.toString();
     }
-    // debug('fetch:', parsed.toString().trim());
     return fetch(parsed.toString(), init);
   };
 }

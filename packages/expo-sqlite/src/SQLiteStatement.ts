@@ -1,17 +1,20 @@
-import { NativeDatabase } from './NativeDatabase';
-import {
-  SQLiteBindParams,
-  SQLiteBindValue,
+import type { NativeDatabase } from './NativeDatabase';
+import type {
   NativeStatement,
+  SQLiteBindParams,
   SQLiteVariadicBindParams,
-  type SQLiteAnyDatabase,
-  type SQLiteColumnNames,
-  type SQLiteColumnValues,
-  type SQLiteRunResult,
+  SQLiteAnyDatabase,
+  SQLiteColumnNames,
+  SQLiteColumnValues,
 } from './NativeStatement';
 import { composeRow, composeRows, normalizeParams } from './paramUtils';
 
-export { SQLiteBindParams, SQLiteBindValue, SQLiteRunResult, SQLiteVariadicBindParams };
+export type {
+  SQLiteBindParams,
+  SQLiteBindValue,
+  SQLiteRunResult,
+  SQLiteVariadicBindParams,
+} from './NativeStatement';
 
 type ValuesOf<T extends object> = T[keyof T][];
 
@@ -19,10 +22,26 @@ type ValuesOf<T extends object> = T[keyof T][];
  * A prepared statement returned by [`SQLiteDatabase.prepareAsync()`](#prepareasyncsource) or [`SQLiteDatabase.prepareSync()`](#preparesyncsource) that can be binded with parameters and executed.
  */
 export class SQLiteStatement {
+  /**
+   * The cursor that currently owns the underlying `sqlite3_stmt`. A prepared statement has exactly
+   * one cursor, so running the statement again invalidates the cursor of every earlier run.
+   */
+  private currentCursor: object | null = null;
+
   constructor(
     private readonly nativeDatabase: NativeDatabase,
     private readonly nativeStatement: NativeStatement
   ) {}
+
+  /**
+   * Make the run that just finished the owner of the statement cursor, and return a predicate
+   * that tells whether it still is.
+   */
+  private claimCursor(): () => boolean {
+    const cursor = {};
+    this.currentCursor = cursor;
+    return () => this.currentCursor === cursor;
+  }
 
   //#region Asynchronous API
 
@@ -48,7 +67,8 @@ export class SQLiteStatement {
         rawResult: false,
         lastInsertRowId,
         changes,
-      }
+      },
+      this.claimCursor()
     );
   }
 
@@ -80,7 +100,8 @@ export class SQLiteStatement {
         rawResult: true,
         lastInsertRowId,
         changes,
-      }
+      },
+      this.claimCursor()
     );
   }
 
@@ -95,7 +116,9 @@ export class SQLiteStatement {
    * Finalize the prepared statement. This will call the [`sqlite3_finalize()`](https://www.sqlite.org/c3ref/finalize.html) C function under the hood.
    *
    * Attempting to access a finalized statement will result in an error.
-   * > **Note:** While expo-sqlite will automatically finalize any orphaned prepared statements upon closing the database, it is considered best practice to manually finalize prepared statements as soon as they are no longer needed. This helps to prevent resource leaks. You can use the `try...finally` statement to ensure that prepared statements are finalized even if an error occurs.
+   * > **Note:** While `expo-sqlite` will automatically finalize any orphaned prepared statements upon closing the database, it is considered best practice
+   * > to manually finalize prepared statements as soon as they are no longer needed. This helps to prevent resource leaks.
+   * > You can use the `try...finally` statement to ensure that prepared statements are finalized even if an error occurs.
    */
   public async finalizeAsync(): Promise<void> {
     await this.nativeStatement.finalizeAsync(this.nativeDatabase);
@@ -128,7 +151,8 @@ export class SQLiteStatement {
         rawResult: false,
         lastInsertRowId,
         changes,
-      }
+      },
+      this.claimCursor()
     );
   }
 
@@ -160,7 +184,8 @@ export class SQLiteStatement {
         rawResult: true,
         lastInsertRowId,
         changes,
-      }
+      },
+      this.claimCursor()
     );
   }
 
@@ -175,7 +200,10 @@ export class SQLiteStatement {
    * Finalize the prepared statement. This will call the [`sqlite3_finalize()`](https://www.sqlite.org/c3ref/finalize.html) C function under the hood.
    *
    * Attempting to access a finalized statement will result in an error.
-   * > **Note:** While expo-sqlite will automatically finalize any orphaned prepared statements upon closing the database, it is considered best practice to manually finalize prepared statements as soon as they are no longer needed. This helps to prevent resource leaks. You can use the `try...finally` statement to ensure that prepared statements are finalized even if an error occurs.
+   *
+   * > **Note:** While `expo-sqlite` will automatically finalize any orphaned prepared statements upon closing the database, it is considered best practice
+   * > to manually finalize prepared statements as soon as they are no longer needed. This helps to prevent resource leaks.
+   * > You can use the `try...finally` statement to ensure that prepared statements are finalized even if an error occurs.
    */
   public finalizeSync(): void {
     this.nativeStatement.finalizeSync(this.nativeDatabase);
@@ -339,6 +367,12 @@ interface SQLiteExecuteResultOptions {
   changes: number;
 }
 
+const SUPERSEDED_CURSOR_MESSAGE =
+  'This result is no longer readable because the prepared statement ran again. ' +
+  'A prepared statement holds a single SQLite cursor, so a later run rebinds the parameters and moves that cursor, ' +
+  'and this result would return the rows of the later run. ' +
+  'Read a result to the end before you run the same statement again, or prepare a separate statement for each reader.';
+
 /**
  * Create the `SQLiteExecuteAsyncResult` instance.
  *
@@ -349,13 +383,15 @@ async function createSQLiteExecuteAsyncResult<T>(
   database: SQLiteAnyDatabase,
   statement: NativeStatement,
   firstRowValues: SQLiteColumnValues | null,
-  options: SQLiteExecuteResultOptions
+  options: SQLiteExecuteResultOptions,
+  isCursorOwner: () => boolean
 ): Promise<SQLiteExecuteAsyncResult<T>> {
   const instance = new SQLiteExecuteAsyncResultImpl<T>(
     database,
     statement,
-    firstRowValues,
-    options
+    firstRowValues ? processNativeRow(firstRowValues) : null,
+    options,
+    isCursorOwner
   );
   const generator = instance.generatorAsync();
   Object.defineProperties(generator, {
@@ -396,9 +432,16 @@ function createSQLiteExecuteSyncResult<T>(
   database: SQLiteAnyDatabase,
   statement: NativeStatement,
   firstRowValues: SQLiteColumnValues | null,
-  options: SQLiteExecuteResultOptions
+  options: SQLiteExecuteResultOptions,
+  isCursorOwner: () => boolean
 ): SQLiteExecuteSyncResult<T> {
-  const instance = new SQLiteExecuteSyncResultImpl<T>(database, statement, firstRowValues, options);
+  const instance = new SQLiteExecuteSyncResultImpl<T>(
+    database,
+    statement,
+    firstRowValues ? processNativeRow(firstRowValues) : firstRowValues,
+    options,
+    isCursorOwner
+  );
   const generator = instance.generatorSync();
   Object.defineProperties(generator, {
     lastInsertRowId: {
@@ -439,8 +482,16 @@ class SQLiteExecuteAsyncResultImpl<T> {
     private readonly database: SQLiteAnyDatabase,
     private readonly statement: NativeStatement,
     private firstRowValues: SQLiteColumnValues | null,
-    public readonly options: SQLiteExecuteResultOptions
+    public readonly options: SQLiteExecuteResultOptions,
+    private readonly isCursorOwner: () => boolean
   ) {}
+
+  /** Throw rather than step a cursor that a later run of the same statement has taken over. */
+  private assertCursorOwner() {
+    if (!this.isCursorOwner()) {
+      throw new Error(SUPERSEDED_CURSOR_MESSAGE);
+    }
+  }
 
   async getFirstAsync(): Promise<T | null> {
     if (this.isStepCalled) {
@@ -454,9 +505,10 @@ class SQLiteExecuteAsyncResultImpl<T> {
     if (firstRowValues != null) {
       return composeRowIfNeeded<T>(this.options.rawResult, columnNames, firstRowValues);
     }
+    this.assertCursorOwner();
     const firstRow = await this.statement.stepAsync(this.database);
     return firstRow != null
-      ? composeRowIfNeeded<T>(this.options.rawResult, columnNames, firstRow)
+      ? composeRowIfNeeded<T>(this.options.rawResult, columnNames, processNativeRow(firstRow))
       : null;
   }
 
@@ -473,8 +525,10 @@ class SQLiteExecuteAsyncResultImpl<T> {
       return [];
     }
     const columnNames = await this.getColumnNamesAsync();
-    const allRows = await this.statement.getAllAsync(this.database);
-    if (firstRowValues != null && firstRowValues.length > 0) {
+    this.assertCursorOwner();
+    const nativeRows = await this.statement.getAllAsync(this.database);
+    const allRows = processNativeRows(nativeRows);
+    if (firstRowValues.length > 0) {
       return composeRowsIfNeeded<T>(this.options.rawResult, columnNames, [
         firstRowValues,
         ...allRows,
@@ -493,17 +547,19 @@ class SQLiteExecuteAsyncResultImpl<T> {
 
     let result;
     do {
+      this.assertCursorOwner();
       result = await this.statement.stepAsync(this.database);
       if (result != null) {
-        yield composeRowIfNeeded<T>(this.options.rawResult, columnNames, result);
+        yield composeRowIfNeeded<T>(this.options.rawResult, columnNames, processNativeRow(result));
       }
     } while (result != null);
   }
 
-  resetAsync(): Promise<void> {
-    const result = this.statement.resetAsync(this.database);
+  async resetAsync(): Promise<void> {
+    // Resetting a superseded result would rewind the cursor of the run that owns it now.
+    this.assertCursorOwner();
+    await this.statement.resetAsync(this.database);
     this.isStepCalled = false;
-    return result;
   }
 
   private popFirstRowValues(): SQLiteColumnValues | null {
@@ -531,8 +587,16 @@ class SQLiteExecuteSyncResultImpl<T> {
     private readonly database: SQLiteAnyDatabase,
     private readonly statement: NativeStatement,
     private firstRowValues: SQLiteColumnValues | null,
-    public readonly options: SQLiteExecuteResultOptions
+    public readonly options: SQLiteExecuteResultOptions,
+    private readonly isCursorOwner: () => boolean
   ) {}
+
+  /** Throw rather than step a cursor that a later run of the same statement has taken over. */
+  private assertCursorOwner() {
+    if (!this.isCursorOwner()) {
+      throw new Error(SUPERSEDED_CURSOR_MESSAGE);
+    }
+  }
 
   getFirstSync(): T | null {
     if (this.isStepCalled) {
@@ -540,14 +604,16 @@ class SQLiteExecuteSyncResultImpl<T> {
         'The SQLite cursor has been shifted and is unable to retrieve the first row without being reset. Invoke `resetSync()` to reset the cursor first if you want to retrieve the first row.'
       );
     }
+    this.isStepCalled = true;
     const columnNames = this.getColumnNamesSync();
     const firstRowValues = this.popFirstRowValues();
     if (firstRowValues != null) {
       return composeRowIfNeeded<T>(this.options.rawResult, columnNames, firstRowValues);
     }
+    this.assertCursorOwner();
     const firstRow = this.statement.stepSync(this.database);
     return firstRow != null
-      ? composeRowIfNeeded<T>(this.options.rawResult, columnNames, firstRow)
+      ? composeRowIfNeeded<T>(this.options.rawResult, columnNames, processNativeRow(firstRow))
       : null;
   }
 
@@ -563,7 +629,9 @@ class SQLiteExecuteSyncResultImpl<T> {
       return [];
     }
     const columnNames = this.getColumnNamesSync();
-    const allRows = this.statement.getAllSync(this.database);
+    this.assertCursorOwner();
+    const nativeRows = this.statement.getAllSync(this.database);
+    const allRows = processNativeRows(nativeRows);
     if (firstRowValues != null && firstRowValues.length > 0) {
       return composeRowsIfNeeded<T>(this.options.rawResult, columnNames, [
         firstRowValues,
@@ -574,6 +642,7 @@ class SQLiteExecuteSyncResultImpl<T> {
   }
 
   *generatorSync(): IterableIterator<T> {
+    this.isStepCalled = true;
     const columnNames = this.getColumnNamesSync();
     const firstRowValues = this.popFirstRowValues();
     if (firstRowValues != null) {
@@ -581,17 +650,19 @@ class SQLiteExecuteSyncResultImpl<T> {
     }
     let result;
     do {
+      this.assertCursorOwner();
       result = this.statement.stepSync(this.database);
       if (result != null) {
-        yield composeRowIfNeeded<T>(this.options.rawResult, columnNames, result);
+        yield composeRowIfNeeded<T>(this.options.rawResult, columnNames, processNativeRow(result));
       }
     } while (result != null);
   }
 
   resetSync(): void {
-    const result = this.statement.resetSync(this.database);
+    // Resetting a superseded result would rewind the cursor of the run that owns it now.
+    this.assertCursorOwner();
+    this.statement.resetSync(this.database);
     this.isStepCalled = false;
-    return result;
   }
 
   private popFirstRowValues(): SQLiteColumnValues | null {
@@ -629,6 +700,16 @@ function composeRowsIfNeeded<T>(
   return rawResult
     ? (columnValuesList as T[]) // T[] would be a ValuesOf<>[] from caller
     : composeRows<T>(columnNames, columnValuesList);
+}
+
+function processNativeRow(nativeRow: SQLiteColumnValues): SQLiteColumnValues {
+  return nativeRow?.map((column) =>
+    column instanceof ArrayBuffer ? new Uint8Array(column) : column
+  );
+}
+
+function processNativeRows(nativeRows: SQLiteColumnValues[]): SQLiteColumnValues[] {
+  return nativeRows.map(processNativeRow);
 }
 
 //#endregion

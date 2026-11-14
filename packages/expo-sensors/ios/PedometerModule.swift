@@ -5,6 +5,7 @@ import ExpoModulesCore
 
 private let EVENT_PEDOMETER_UPDATE = "Exponent.pedometerUpdate"
 
+// This class should always be kept in sync with PedometerModuleDisabled
 public final class PedometerModule: Module {
   private lazy var pedometer = CMPedometer()
 
@@ -17,6 +18,9 @@ public final class PedometerModule: Module {
     Events(EVENT_PEDOMETER_UPDATE)
 
     AsyncFunction("isAvailableAsync") {
+      if MotionPermissionRequester.isMotionPermissionDisabled() {
+        return false
+      }
       return CMPedometer.isStepCountingAvailable()
     }
 
@@ -39,9 +43,9 @@ public final class PedometerModule: Module {
       guard let permissionsManager = appContext?.permissions else {
         return
       }
-      appContext?.permissions?.getPermissionUsingRequesterClass(
-        EXMotionPermissionRequester.self,
-        resolve: promise.resolver,
+      permissionsManager.getPermissionUsingRequesterClass(
+        MotionPermissionRequester.self,
+        resolve: promise.legacyResolver,
         reject: promise.legacyRejecter
       )
     }
@@ -50,9 +54,9 @@ public final class PedometerModule: Module {
       guard let permissionsManager = appContext?.permissions else {
         return
       }
-      appContext?.permissions?.askForPermission(
-        usingRequesterClass: EXMotionPermissionRequester.self,
-        resolve: promise.resolver,
+      permissionsManager.askForPermission(
+        usingRequesterClass: MotionPermissionRequester.self,
+        resolve: promise.legacyResolver,
         reject: promise.legacyRejecter
       )
     }
@@ -61,7 +65,7 @@ public final class PedometerModule: Module {
       guard let permissionsManager = appContext?.permissions else {
         return
       }
-      appContext?.permissions?.register([EXMotionPermissionRequester()])
+      permissionsManager.register([MotionPermissionRequester()])
     }
 
     OnStartObserving {
@@ -82,6 +86,8 @@ public final class PedometerModule: Module {
 
     OnStopObserving {
       stopUpdates()
+      watchStartDate = nil
+      watchHandler = nil
     }
 
     OnAppEntersBackground {
@@ -103,13 +109,11 @@ public final class PedometerModule: Module {
   private func stopUpdates() {
     guard watchHandler != nil,
       let permissions = appContext?.permissions,
-      permissions.hasGrantedPermission(usingRequesterClass: EXMotionPermissionRequester.self) else {
+      permissions.hasGrantedPermission(usingRequesterClass: MotionPermissionRequester.self) else {
       return
     }
 
     pedometer.stopUpdates()
-    watchStartDate = nil
-    watchHandler = nil
   }
 }
 

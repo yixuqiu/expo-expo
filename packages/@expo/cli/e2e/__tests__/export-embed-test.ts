@@ -1,16 +1,18 @@
-/* eslint-env jest */
-import execa from 'execa';
-import fs from 'fs-extra';
-import klawSync from 'klaw-sync';
+import { resolveEntryPoint } from '@expo/config/paths';
+import fs from 'fs';
 import path from 'path';
 
-import { execute, projectRoot, getLoadedModulesAsync, bin } from './utils';
+import { isHermesBytecodeBundleAsync } from '../../src/export/exportHermes';
+import { executeExpoAsync } from '../utils/expo';
+import { projectRoot, getLoadedModulesAsync, findProjectFiles } from './utils';
 
 const originalForceColor = process.env.FORCE_COLOR;
 const originalCI = process.env.CI;
 
+jest.unmock('resolve-from');
+
 beforeAll(async () => {
-  await fs.mkdir(projectRoot, { recursive: true });
+  await fs.promises.mkdir(projectRoot, { recursive: true });
   process.env.FORCE_COLOR = '0';
   process.env.CI = '1';
   process.env._EXPO_E2E_USE_PATH_ALIASES = '1';
@@ -34,7 +36,7 @@ it('loads expected modules by default', async () => {
 });
 
 it('runs `npx expo export:embed --help`', async () => {
-  const results = await execute('export:embed', '--help');
+  const results = await executeExpoAsync(projectRoot, ['export:embed', '--help']);
   expect(results.stdout).toMatchInlineSnapshot(`
     "
       Info
@@ -45,7 +47,7 @@ it('runs `npx expo export:embed --help`', async () => {
 
       Options
         <dir>                                  Directory of the Expo project. Default: Current working directory
-        --entry-file <path>                    Path to the root JS file, either absolute or relative to JS root
+        --entry-file <path>                    Path to the root JS file, either absolute or relative to current working directory
         --platform <string>                    Either "ios" or "android" (default: "ios")
         --transformer <string>                 Specify a custom transformer to be used
         --dev [boolean]                        If false, warnings are disabled and the bundle is minified (default: true)
@@ -60,6 +62,8 @@ it('runs `npx expo export:embed --help`', async () => {
         --asset-catalog-dest <string>          Directory to create an iOS Asset Catalog for images
         --unstable-transform-profile <string>  Experimental, transform JS for a specific JS engine. Currently supported: hermes, hermes-canary, default
         --reset-cache                          Removes cached files
+        --eager                                Eagerly export the bundle with default options
+        --bytecode                             Export the bundle as Hermes bytecode bundle
         -v, --verbose                          Enables debug logging
         --config <string>                      Path to the CLI configuration file
         --read-global-cache                    Try to fetch transformed JS code from the global cache, if configured.
@@ -79,133 +83,281 @@ function ensureTesterReady(fixtureName: string): string {
   return root;
 }
 
-it(
-  'runs `npx expo export:embed`',
-  async () => {
-    const projectRoot = ensureTesterReady('static-rendering');
-    const output = 'dist-export-embed';
-    await fs.remove(path.join(projectRoot, output));
-    await fs.ensureDir(path.join(projectRoot, output));
+it('runs `npx expo export:embed`', async () => {
+  const projectRoot = ensureTesterReady('static-rendering');
+  const output = 'dist-export-embed';
+  await fs.promises.rm(path.join(projectRoot, output), { force: true, recursive: true });
+  await fs.promises.mkdir(path.join(projectRoot, output));
 
-    await execa(
-      'node',
-      [
-        bin,
-        'export:embed',
-        '--entry-file',
-        path.join(projectRoot, './index.js'),
-        '--bundle-output',
-        `./${output}/output.js`,
-        '--assets-dest',
-        output,
-        '--platform',
-        'ios',
-        '--dev',
-        'false',
-      ],
-      {
-        cwd: projectRoot,
-        env: {
-          NODE_ENV: 'production',
-          EXPO_USE_STATIC: 'static',
-          E2E_ROUTER_SRC: 'static-rendering',
-          E2E_ROUTER_ASYNC: 'development',
-        },
-      }
-    );
+  // `npx expo export:embed`
+  await executeExpoAsync(
+    projectRoot,
+    [
+      'export:embed',
+      '--entry-file',
+      resolveEntryPoint(projectRoot, { platform: 'ios' }),
+      '--bundle-output',
+      `./${output}/output.js`,
+      '--assets-dest',
+      output,
+      '--platform',
+      'ios',
+      '--dev',
+      'false',
+    ],
+    {
+      env: {
+        NODE_ENV: 'production',
+        EXPO_USE_STATIC: 'static',
+        E2E_ROUTER_SRC: 'static-rendering',
+        E2E_ROUTER_ASYNC: 'development',
+      },
+    }
+  );
 
-    const outputDir = path.join(projectRoot, 'dist-export-embed');
-    // List output files with sizes for snapshotting.
-    // This is to make sure that any changes to the output are intentional.
-    // Posix path formatting is used to make paths the same across OSes.
-    const files = klawSync(outputDir)
-      .map((entry) => {
-        if (entry.path.includes('node_modules') || !entry.stats.isFile()) {
-          return null;
-        }
-        return path.posix.relative(outputDir, entry.path);
-      })
-      .filter(Boolean);
+  const outputDir = path.join(projectRoot, 'dist-export-embed');
 
-    // If this changes then everything else probably changed as well.
-    expect(files).toEqual([
-      'assets/__e2e__/static-rendering/sweet.ttf',
-      'assets/__packages/expo-router/assets/error.png',
-      'assets/__packages/expo-router/assets/file.png',
-      'assets/__packages/expo-router/assets/forward.png',
-      'assets/__packages/expo-router/assets/pkg.png',
-      'assets/assets/icon.png',
-      'output.js',
-    ]);
-  },
-  // Could take 45s depending on how fast npm installs
-  120 * 1000
-);
+  // If this changes then everything else probably changed as well.
+  expect(findProjectFiles(outputDir)).toEqual([
+    'assets/__e2e__/static-rendering/sweet.ttf',
+    expect.stringMatching(/assets\/arrow_down\.png$/),
+    expect.stringMatching(/assets\/error\.png$/),
+    expect.stringMatching(/assets\/file\.png$/),
+    expect.stringMatching(/assets\/forward\.png$/),
+    expect.stringMatching(/assets\/pkg\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/back-icon-mask\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/back-icon\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/back-icon@2x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/back-icon@3x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/clear-icon\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/clear-icon@2x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/clear-icon@3x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/close-icon\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/close-icon@2x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/close-icon@3x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/search-icon\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/search-icon@2x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/search-icon@3x\.png$/),
+    expect.stringMatching(/assets\/sitemap\.png$/),
+    expect.stringMatching(/assets\/unmatched\.png$/),
+    'assets/assets/icon.png',
+    'output.js',
+  ]);
 
-it(
-  'runs `npx expo export:embed` with source maps',
-  async () => {
-    const projectRoot = ensureTesterReady('static-rendering');
-    const output = 'dist-export-embed-source-maps';
-    await fs.remove(path.join(projectRoot, output));
-    await fs.ensureDir(path.join(projectRoot, output));
+  // Ensure output.js is a utf8 encoded file
+  const outputJS = fs.readFileSync(path.join(outputDir, 'output.js'), 'utf8');
+  expect(outputJS.slice(0, 5)).toBe('var _');
 
-    await execa(
-      'node',
-      [
-        bin,
-        'export:embed',
-        '--entry-file',
-        path.join(projectRoot, './index.js'),
-        '--bundle-output',
-        `./${output}/output.js`,
-        '--assets-dest',
-        output,
-        '--platform',
-        'ios',
-        '--dev',
-        'false',
-        '--sourcemap-output',
-        `./${output}/output.js.map`,
-        '--sourcemap-sources-root',
-        projectRoot,
-      ],
-      {
-        cwd: projectRoot,
-        env: {
-          NODE_ENV: 'production',
-          EXPO_USE_STATIC: 'static',
-          E2E_ROUTER_SRC: 'static-rendering',
-          E2E_ROUTER_ASYNC: 'development',
-        },
-      }
-    );
+  // Ensure no `//# sourceURL=` comment
+  expect(outputJS).not.toContain('//# sourceURL=');
+  // Ensure `//# sourceMappingURL=output.js.map`
+  expect(outputJS).not.toContain('//# sourceMappingURL=');
+});
 
-    const outputDir = path.join(projectRoot, output);
-    // List output files with sizes for snapshotting.
-    // This is to make sure that any changes to the output are intentional.
-    // Posix path formatting is used to make paths the same across OSes.
-    const files = klawSync(outputDir)
-      .map((entry) => {
-        if (entry.path.includes('node_modules') || !entry.stats.isFile()) {
-          return null;
-        }
-        return path.posix.relative(outputDir, entry.path);
-      })
-      .filter(Boolean);
+it('runs `npx expo export:embed --platform ios` with source maps', async () => {
+  const projectRoot = ensureTesterReady('static-rendering');
+  const output = 'dist-export-embed-source-maps';
+  await fs.promises.rm(path.join(projectRoot, output), { force: true, recursive: true });
+  await fs.promises.mkdir(path.join(projectRoot, output));
 
-    // If this changes then everything else probably changed as well.
-    expect(files).toEqual([
-      'assets/__e2e__/static-rendering/sweet.ttf',
-      'assets/__packages/expo-router/assets/error.png',
-      'assets/__packages/expo-router/assets/file.png',
-      'assets/__packages/expo-router/assets/forward.png',
-      'assets/__packages/expo-router/assets/pkg.png',
-      'assets/assets/icon.png',
-      'output.js',
-      'output.js.map',
-    ]);
-  },
-  // Could take 45s depending on how fast npm installs
-  120 * 1000
-);
+  // `npx expo export:embed`
+  await executeExpoAsync(
+    projectRoot,
+    [
+      'export:embed',
+      '--entry-file',
+      path.relative(projectRoot, resolveEntryPoint(projectRoot, { platform: 'ios' })),
+      '--bundle-output',
+      `./${output}/output.js`,
+      '--assets-dest',
+      output,
+      '--platform',
+      'ios',
+      '--dev',
+      'false',
+      '--sourcemap-output',
+      `./${output}/output.js.map`,
+      '--sourcemap-sources-root',
+      projectRoot,
+    ],
+    {
+      env: {
+        NODE_ENV: 'production',
+        EXPO_USE_STATIC: 'static',
+        E2E_ROUTER_SRC: 'static-rendering',
+        E2E_ROUTER_ASYNC: 'development',
+      },
+    }
+  );
+
+  const outputDir = path.join(projectRoot, output);
+
+  // Ensure output.js is a utf8 encoded file
+  const outputJS = fs.readFileSync(path.join(outputDir, 'output.js'), 'utf8');
+  expect(outputJS.slice(0, 5)).toBe('var _');
+  // Ensure no `//# sourceURL=` comment
+  expect(outputJS).not.toContain('//# sourceURL=');
+  // Ensure `//# sourceMappingURL=output.js.map`
+  expect(outputJS).toContain('//# sourceMappingURL=output.js.map');
+
+  // If this changes then everything else probably changed as well.
+  expect(findProjectFiles(outputDir)).toEqual([
+    'assets/__e2e__/static-rendering/sweet.ttf',
+    expect.stringMatching(/assets\/arrow_down\.png$/),
+    expect.stringMatching(/assets\/error\.png$/),
+    expect.stringMatching(/assets\/file\.png$/),
+    expect.stringMatching(/assets\/forward\.png$/),
+    expect.stringMatching(/assets\/pkg\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/back-icon-mask\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/back-icon\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/back-icon@2x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/back-icon@3x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/clear-icon\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/clear-icon@2x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/clear-icon@3x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/close-icon\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/close-icon@2x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/close-icon@3x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/search-icon\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/search-icon@2x\.png$/),
+    expect.stringMatching(/assets\/react-navigation\/elements\/search-icon@3x\.png$/),
+    expect.stringMatching(/assets\/sitemap\.png$/),
+    expect.stringMatching(/assets\/unmatched\.png$/),
+    'assets/assets/icon.png',
+    'output.js',
+    'output.js.map',
+  ]);
+});
+
+it('runs `npx expo export:embed --platform android` with source maps', async () => {
+  const projectRoot = ensureTesterReady('static-rendering');
+  const output = 'dist-export-embed-source-maps-android';
+  await fs.promises.rm(path.join(projectRoot, output), { force: true, recursive: true });
+  await fs.promises.mkdir(path.join(projectRoot, output));
+
+  // `npx expo export:embed`
+  await executeExpoAsync(
+    projectRoot,
+    // pnpm expo export:embed --platform android --dev false --reset-cache --entry-file /Users/cedric/Desktop/test-expo-29656/node_modules/expo/AppEntry.js --bundle-output /Users/cedric/Desktop/test-expo-29656/android/app/build/generated/assets/createBundleReleaseJsAndAssets/index.android.bundle --assets-dest /Users/cedric/Desktop/test-expo-29656/android/app/build/generated/res/createBundleReleaseJsAndAssets
+    // --sourcemap-output /Users/cedric/Desktop/test-expo-29656/android/app/build/intermediates/sourcemaps/react/release/index.android.bundle.packager.map --minify false
+    [
+      'export:embed',
+      '--entry-file',
+      path.relative(projectRoot, resolveEntryPoint(projectRoot, { platform: 'android' })),
+      '--bundle-output',
+      `./${output}/output.js`,
+      '--assets-dest',
+      output,
+      '--platform',
+      'android',
+      '--dev',
+      'false',
+      '--sourcemap-output',
+      path.join(projectRoot, `./${output}/output.js.map`),
+      '--sourcemap-sources-root',
+      projectRoot,
+    ],
+    {
+      env: {
+        NODE_ENV: 'production',
+        EXPO_USE_STATIC: 'static',
+        E2E_ROUTER_SRC: 'static-rendering',
+        E2E_ROUTER_ASYNC: 'development',
+      },
+    }
+  );
+
+  const outputDir = path.join(projectRoot, output);
+
+  // Ensure output.js is a utf8 encoded file
+  const outputJS = fs.readFileSync(path.join(outputDir, 'output.js'), 'utf8');
+  expect(outputJS.slice(0, 5)).toBe('var _');
+  // Ensure no `//# sourceURL=` comment
+  expect(outputJS).not.toContain('//# sourceURL=');
+  // Ensure `//# sourceMappingURL=output.js.map`
+  expect(outputJS).toContain('//# sourceMappingURL=output.js.map');
+
+  // If this changes then everything else probably changed as well.
+  expect(findProjectFiles(outputDir)).toEqual([
+    expect.stringMatching(/drawable-mdpi\/.*_arrow_down\.png$/),
+    expect.stringMatching(/drawable-mdpi\/.*_arrow_right\.xml$/),
+    expect.stringMatching(/drawable-mdpi\/.*_checkmark\.xml$/),
+    expect.stringMatching(/drawable-mdpi\/.*_error\.png$/),
+    expect.stringMatching(/drawable-mdpi\/.*_file\.png$/),
+    expect.stringMatching(/drawable-mdpi\/.*_forward\.png$/),
+    expect.stringMatching(/drawable-mdpi\/.*_pkg\.png$/),
+    expect.stringMatching(/drawable-mdpi\/.*_backicon\.png$/),
+    expect.stringMatching(/drawable-mdpi\/.*_backiconmask\.png$/),
+    expect.stringMatching(/drawable-mdpi\/.*_clearicon\.png$/),
+    expect.stringMatching(/drawable-mdpi\/.*_closeicon\.png$/),
+    expect.stringMatching(/drawable-mdpi\/.*_searchicon\.png$/),
+    expect.stringMatching(/drawable-mdpi\/.*_sitemap\.png$/),
+    expect.stringMatching(/drawable-mdpi\/.*_unmatched\.png$/),
+
+    'drawable-mdpi/assets_icon.png',
+
+    expect.stringMatching(/drawable-xhdpi\/.*_backicon\.png$/),
+    expect.stringMatching(/drawable-xhdpi\/.*_clearicon\.png$/),
+    expect.stringMatching(/drawable-xhdpi\/.*_closeicon\.png$/),
+    expect.stringMatching(/drawable-xhdpi\/.*_searchicon\.png$/),
+
+    expect.stringMatching(/drawable-xxhdpi\/.*_backicon\.png$/),
+    expect.stringMatching(/drawable-xxhdpi\/.*_clearicon\.png$/),
+    expect.stringMatching(/drawable-xxhdpi\/.*_closeicon\.png$/),
+    expect.stringMatching(/drawable-xxhdpi\/.*_searchicon\.png$/),
+
+    expect.stringMatching(/drawable-xxxhdpi\/.*_backicon\.png$/),
+    expect.stringMatching(/drawable-xxxhdpi\/.*_clearicon\.png$/),
+    expect.stringMatching(/drawable-xxxhdpi\/.*_closeicon\.png$/),
+    expect.stringMatching(/drawable-xxxhdpi\/.*_searchicon\.png$/),
+
+    'output.js',
+    'output.js.map',
+    'raw/__e2e___staticrendering_sweet.ttf',
+
+    expect.stringMatching(/raw\/.*_400regular\.ttf$/),
+    expect.stringMatching(/raw\/.*_evilicons\.ttf$/),
+
+    'raw/keep.xml',
+  ]);
+});
+
+it('runs `npx expo export:embed --bytecode`', async () => {
+  const projectRoot = ensureTesterReady('static-rendering');
+  const output = 'dist-export-embed';
+  await fs.promises.rm(path.join(projectRoot, output), { force: true, recursive: true });
+  await fs.promises.mkdir(path.join(projectRoot, output));
+
+  // `npx expo export:embed`
+  await executeExpoAsync(
+    projectRoot,
+    [
+      'export:embed',
+      '--entry-file',
+      path.relative(projectRoot, resolveEntryPoint(projectRoot, { platform: 'ios' })),
+      '--bundle-output',
+      `./${output}/output.js`,
+      '--assets-dest',
+      output,
+      '--platform',
+      'ios',
+      '--dev',
+      'false',
+      '--bytecode',
+      'true',
+    ],
+    {
+      env: {
+        NODE_ENV: 'production',
+        EXPO_USE_STATIC: 'static',
+        E2E_ROUTER_SRC: 'static-rendering',
+        E2E_ROUTER_ASYNC: 'development',
+      },
+    }
+  );
+
+  const outputDir = path.join(projectRoot, 'dist-export-embed');
+
+  // Ensure output.js is a Hermes bytecode bundle
+  expect(await isHermesBytecodeBundleAsync(path.join(outputDir, 'output.js'))).toBe(true);
+});

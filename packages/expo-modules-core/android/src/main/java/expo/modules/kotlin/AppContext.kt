@@ -6,33 +6,16 @@ import android.content.Intent
 import android.os.Handler
 import android.os.HandlerThread
 import android.view.View
-import androidx.annotation.UiThread
 import androidx.appcompat.app.AppCompatActivity
 import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.common.annotations.FrameworkAPI
-import com.facebook.react.turbomodule.core.CallInvokerHolderImpl
-import com.facebook.react.uimanager.UIManagerHelper
-import com.facebook.react.uimanager.UIManagerModule
-import com.facebook.react.uimanager.common.UIManagerType
+import com.facebook.react.modules.network.OkHttpClientProvider
 import expo.modules.adapters.react.NativeModulesProxy
 import expo.modules.core.errors.ContextDestroyedException
-import expo.modules.core.errors.ModuleNotFoundException
 import expo.modules.core.interfaces.ActivityProvider
-import expo.modules.core.utilities.ifNull
-import expo.modules.interfaces.barcodescanner.BarCodeScannerInterface
-import expo.modules.interfaces.camera.CameraViewInterface
-import expo.modules.interfaces.constants.ConstantsInterface
-import expo.modules.interfaces.filesystem.AppDirectoriesModuleInterface
-import expo.modules.interfaces.filesystem.FilePermissionModuleInterface
-import expo.modules.interfaces.font.FontManagerInterface
-import expo.modules.interfaces.imageloader.ImageLoaderInterface
 import expo.modules.interfaces.permissions.Permissions
-import expo.modules.interfaces.sensors.SensorServiceInterface
-import expo.modules.interfaces.taskManager.TaskManagerInterface
 import expo.modules.kotlin.activityresult.ActivityResultsManager
 import expo.modules.kotlin.activityresult.DefaultAppContextActivityResultCaller
-import expo.modules.kotlin.defaultmodules.CoreModule
-import expo.modules.kotlin.defaultmodules.ErrorManagerModule
+import expo.modules.kotlin.defaultmodules.JSLoggerModule
 import expo.modules.kotlin.defaultmodules.NativeModulesProxyModule
 import expo.modules.kotlin.events.EventEmitter
 import expo.modules.kotlin.events.EventName
@@ -40,49 +23,54 @@ import expo.modules.kotlin.events.KEventEmitterWrapper
 import expo.modules.kotlin.events.KModuleEventEmitterWrapper
 import expo.modules.kotlin.events.OnActivityResultPayload
 import expo.modules.kotlin.exception.Exceptions
-import expo.modules.kotlin.jni.JNIDeallocator
-import expo.modules.kotlin.jni.JSIContext
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.providers.CurrentActivityProvider
-import expo.modules.kotlin.sharedobjects.ClassRegistry
-import expo.modules.kotlin.sharedobjects.SharedObjectRegistry
+import expo.modules.kotlin.runtime.MainRuntime
+import expo.modules.kotlin.runtime.WorkletRuntime
+import expo.modules.kotlin.services.AppDirectoriesService
+import expo.modules.kotlin.services.FilePermissionService
+import expo.modules.kotlin.services.Service
+import expo.modules.kotlin.services.ServicesRegistry
 import expo.modules.kotlin.tracing.trace
+import expo.modules.kotlin.types.ConverterContext
+import expo.modules.v2.ExpoModulesV2Host
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.android.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
+import okhttp3.OkHttpClient
 import java.io.File
 import java.lang.ref.WeakReference
 
 class AppContext(
   modulesProvider: ModulesProvider,
   val legacyModuleRegistry: expo.modules.core.ModuleRegistry,
-  private val reactContextHolder: WeakReference<ReactApplicationContext>
-) : CurrentActivityProvider {
-  val registry = ModuleRegistry(WeakReference(this))
+  reactContextHolder: WeakReference<ReactApplicationContext>
+) : CurrentActivityProvider, ConverterContext {
+  // The main context used in the app.
+  // Modules attached to this context will be available on the main js context.
+  override val runtime = MainRuntime(this, reactContextHolder)
+
+  override val applicationContext: Context
+    get() {
+      return requireNotNull(reactContext) {
+        "The app context should be created with valid react context."
+      }.applicationContext
+    }
+
+  override fun <T : View> findView(viewTag: Int): T? = super.findView(viewTag)
+
+  override fun assertMainThread() = super.assertMainThread()
+
+  private val uiRuntimeHolder = lazy { WorkletRuntime(this, reactContextHolder) }
+  val uiRuntime
+    get() = uiRuntimeHolder.value
+
   private val reactLifecycleDelegate = ReactLifecycleDelegate(this)
 
   private var hostWasDestroyed = false
-
-  // We postpone creating the `JSIContext` to not load so files in unit tests.
-  internal lateinit var jsiInterop: JSIContext
-
-  /**
-   * The core module that defines the `expo` object in the global scope of the JS runtime.
-   *
-   * Note: in current implementation this module won't receive any events.
-   */
-  internal val coreModule = run {
-    val module = CoreModule()
-    module._appContext = this
-    ModuleHolder(module)
-  }
-
-  internal val sharedObjectRegistry = SharedObjectRegistry(this)
-
-  internal val classRegistry = ClassRegistry()
 
   private val modulesQueueDispatcher = HandlerThread("expo.modules.AsyncFunctionQueue")
     .apply { start() }
@@ -113,26 +101,40 @@ class AppContext(
       CoroutineName("expo.modules.MainQueue")
   )
 
-  val jniDeallocator: JNIDeallocator = JNIDeallocator()
+  val registry = ModuleRegistry(this.weak())
+
+  val services = ServicesRegistry(this.weak())
 
   internal var legacyModulesProxyHolder: WeakReference<NativeModulesProxy>? = null
 
   private val activityResultsManager = ActivityResultsManager(this)
-  internal val appContextActivityResultCaller = DefaultAppContextActivityResultCaller(activityResultsManager)
+  internal val appContextActivityResultCaller = DefaultAppContextActivityResultCaller(
+    activityResultsManager
+  )
 
   init {
     requireNotNull(reactContextHolder.get()) {
       "The app context should be created with valid react context."
     }.apply {
+      legacyModuleRegistry.appContext = this@AppContext
+
       addLifecycleEventListener(reactLifecycleDelegate)
       addActivityEventListener(reactLifecycleDelegate)
+
+      services.register<FilePermissionService>()
+      services.register<AppDirectoriesService>()
+
+      services.register(modulesProvider.getServices())
 
       // Registering modules has to happen at the very end of `AppContext` creation. Some modules need to access
       // `AppContext` during their initialisation, so we need to ensure all `AppContext`'s
       // properties are initialized first. Not having that would trigger NPE.
-      registry.register(ErrorManagerModule())
-      registry.register(NativeModulesProxyModule())
+      registry.register(NativeModulesProxyModule(), null)
+      registry.register(JSLoggerModule(), null)
+
       registry.register(modulesProvider)
+
+      registerInlineModulesList()
 
       logger.info("✅ AppContext was initialized")
     }
@@ -142,50 +144,22 @@ class AppContext(
     registry.postOnCreate()
   }
 
+  private fun registerInlineModulesList() {
+    try {
+      val inlineModulesList = Class.forName("inline.modules.ExpoInlineModulesList").getConstructor()
+        .newInstance() as ModulesProvider
+      registry.register(inlineModulesList)
+    } catch (_: ClassNotFoundException) {
+    }
+  }
+
   /**
    * Initializes a JSI part of the module registry.
    * It will be a NOOP if the remote debugging was activated.
    */
-  @OptIn(FrameworkAPI::class)
-  fun installJSIInterop() = synchronized(this) {
-    if (::jsiInterop.isInitialized) {
-      logger.warn("⚠️ JSI interop was already installed")
-      return
-    }
-
-    trace("AppContext.installJSIInterop") {
-      try {
-        jsiInterop = JSIContext()
-        val reactContext = reactContextHolder.get() ?: return@trace
-        val jsContextHolder = reactContext.javaScriptContextHolder?.get() ?: return@trace
-
-        val jsRuntimePointer = jsContextHolder.takeIf { it != 0L }.ifNull {
-          logger.error("❌ Cannot install JSI interop - JS runtime pointer is null")
-          return@trace
-        }
-
-        @Suppress("DEPRECATION")
-        if (reactContext.isBridgeless) {
-          jsiInterop.installJSIForBridgeless(
-            this,
-            jsRuntimePointer,
-            jniDeallocator,
-            reactContext.runtimeExecutor!!
-          )
-        } else {
-          jsiInterop.installJSI(
-            this,
-            jsRuntimePointer,
-            jniDeallocator,
-            reactContext.catalystInstance.jsCallInvokerHolder as CallInvokerHolderImpl
-          )
-        }
-
-        logger.info("✅ JSI interop was installed")
-      } catch (e: Throwable) {
-        logger.error("❌ Cannot install JSI interop: $e", e)
-      }
-    }
+  fun installJSIInterop() {
+    runtime.install()
+    runtime.reactContext?.let(ExpoModulesV2Host::install)
   }
 
   /**
@@ -193,84 +167,57 @@ class AppContext(
    */
   inline fun <reified Module> legacyModule(): Module? {
     return try {
-      legacyModuleRegistry.getModule(Module::class.java)
+      val module = legacyModuleRegistry.getModule(Module::class.java)
+      return module
     } catch (_: Exception) {
       null
     }
   }
 
   /**
-   * Provides access to app's constants from the legacy module registry.
+   * Returns a service implementing given interface.
    */
-  val constants: ConstantsInterface?
-    get() = legacyModule()
+  inline fun <reified T : Service> service(): T? = services.service<T>()
 
   /**
-   * Provides access to the file system manager from the legacy module registry.
+   * Returns a service implementing given interface.
+   * It's compatible with Java callers.
    */
-  val filePermission: FilePermissionModuleInterface?
-    get() = legacyModule()
+  @Suppress("UNCHECKED_CAST")
+  fun <T : Service> service(serviceClass: Class<T>): T? = services.registry[serviceClass] as? T
+
+  /**
+   * Provides access to the file system service
+   */
+  val filePermission: FilePermissionService
+    get() = service<FilePermissionService>() ?: throw IllegalStateException(
+      "FilePermissionService is not registered in the ServicesRegistry."
+    )
 
   /**
    * Provides access to the scoped directories from the legacy module registry.
    */
-  private val appDirectories: AppDirectoriesModuleInterface?
-    get() = legacyModule()
+  private val appDirectories: AppDirectoriesService
+    get() = service<AppDirectoriesService>() ?: throw IllegalStateException(
+      "AppDirectoriesService is not registered in the ServicesRegistry."
+    )
 
   /**
    * A directory for storing user documents and other permanent files.
    */
   val persistentFilesDirectory: File
-    get() = appDirectories?.persistentFilesDirectory
-      ?: throw ModuleNotFoundException("expo.modules.interfaces.filesystem.AppDirectories")
+    get() = appDirectories.persistentFilesDirectory
 
   /**
    * A directory for storing temporary files that can be removed at any time by the device's operating system.
    */
   val cacheDirectory: File
-    get() = appDirectories?.cacheDirectory
-      ?: throw ModuleNotFoundException("expo.modules.interfaces.filesystem.AppDirectories")
+    get() = appDirectories.cacheDirectory
 
   /**
    * Provides access to the permissions manager from the legacy module registry
    */
   val permissions: Permissions?
-    get() = legacyModule()
-
-  /**
-   * Provides access to the image loader from the legacy module registry
-   */
-  val imageLoader: ImageLoaderInterface?
-    get() = legacyModule()
-
-  /**
-   * Provides access to the bar code scanner manager from the legacy module registry
-   */
-  val barcodeScanner: BarCodeScannerInterface?
-    get() = legacyModule()
-
-  /**
-   * Provides access to the camera view manager from the legacy module registry
-   */
-  val camera: CameraViewInterface?
-    get() = legacyModule()
-
-  /**
-   * Provides access to the font manager from the legacy module registry
-   */
-  val font: FontManagerInterface?
-    get() = legacyModule()
-
-  /**
-   * Provides access to the sensor manager from the legacy module registry
-   */
-  val sensor: SensorServiceInterface?
-    get() = legacyModule()
-
-  /**
-   * Provides access to the task manager from the legacy module registry
-   */
-  val taskManager: TaskManagerInterface?
     get() = legacyModule()
 
   /**
@@ -283,13 +230,24 @@ class AppContext(
    * Provides access to the react application context
    */
   val reactContext: Context?
-    get() = reactContextHolder.get()
+    get() = runtime.reactContext
 
   /**
    * @return true if there is an non-null, alive react native instance
    */
   val hasActiveReactInstance: Boolean
-    get() = reactContextHolder.get()?.hasActiveReactInstance() ?: false
+    get() = runtime.reactContext?.hasActiveReactInstance() == true
+
+  /**
+   * @returns an OkHttpClient instance that can be used to perform network requests
+   * with the same configuration as React Native's networking module. See [com.facebook.react.modules.network.OkHttpClientProvider].
+   * This client will share the same cookie jar and has no timeouts by default.
+   */
+  val okHttpClient: OkHttpClient
+    get() = OkHttpClientProvider.getOkHttpClient()
+
+  fun createOkHttpClientBuilder(): OkHttpClient.Builder =
+    OkHttpClientProvider.createClientBuilder()
 
   /**
    * Provides access to the event emitter
@@ -299,10 +257,11 @@ class AppContext(
       ?: return null
     return KModuleEventEmitterWrapper(
       requireNotNull(registry.getModuleHolder(module)) {
-        "Cannot create an event emitter for the module that isn't present in the module registry."
+        val availableModulesNames = registry.registry.keys.joinToString(", ")
+        "Cannot create an event emitter for module ${module.javaClass} that isn't present in the module registry. Available modules: [$availableModulesNames]."
       },
       legacyEventEmitter,
-      reactContextHolder
+      runtime.reactContextHolder
     )
   }
 
@@ -310,26 +269,42 @@ class AppContext(
     get() {
       val legacyEventEmitter = legacyModule<expo.modules.core.interfaces.services.EventEmitter>()
         ?: return null
-      return KEventEmitterWrapper(legacyEventEmitter, reactContextHolder)
+      return KEventEmitterWrapper(legacyEventEmitter, runtime.reactContextHolder)
     }
 
-  val errorManager: ErrorManagerModule?
-    get() = registry.getModule()
+  val jsLogger by lazy {
+    registry.getModule<JSLoggerModule>()?.logger
+  }
 
   internal fun onDestroy() = trace("AppContext.onDestroy") {
-    reactContextHolder.get()?.removeLifecycleEventListener(reactLifecycleDelegate)
-    registry.post(EventName.MODULE_DESTROY)
-    registry.cleanUp()
-    coreModule.module._appContext = null
+    runtime.reactContext?.run {
+      removeLifecycleEventListener(reactLifecycleDelegate)
+      removeActivityEventListener(reactLifecycleDelegate)
+    }
+
+    with(registry) {
+      post(EventName.MODULE_DESTROY)
+      cleanUp()
+    }
+
     modulesQueue.cancel(ContextDestroyedException())
     mainQueue.cancel(ContextDestroyedException())
     backgroundCoroutineScope.cancel(ContextDestroyedException())
-    jniDeallocator.deallocate()
+
+    ExpoModulesV2Host.uninstall()
+
+    runtime.deallocate()
+    if (uiRuntimeHolder.isInitialized()) {
+      uiRuntime.deallocate()
+    }
+
     logger.info("✅ AppContext was destroyed")
   }
 
   internal fun onHostResume() {
-    val activity = currentActivity
+    // If the current activity is null, it means that the current React context was destroyed.
+    // We can just return here.
+    val activity = currentActivity ?: return
     check(activity is AppCompatActivity) {
       "Current Activity is of incorrect class, expected AppCompatActivity, received ${currentActivity?.localClassName}"
     }
@@ -348,6 +323,10 @@ class AppContext(
     registry.post(EventName.ACTIVITY_ENTERS_BACKGROUND)
   }
 
+  internal fun onUserLeaveHint() {
+    registry.post(EventName.ON_USER_LEAVES_ACTIVITY)
+  }
+
   internal fun onHostDestroy() {
     currentActivity?.let {
       check(it is AppCompatActivity) {
@@ -362,7 +341,12 @@ class AppContext(
     hostWasDestroyed = true
   }
 
-  internal fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+  internal fun onActivityResult(
+    activity: Activity,
+    requestCode: Int,
+    resultCode: Int,
+    data: Intent?
+  ) {
     activityResultsManager.onActivityResult(requestCode, resultCode, data)
     registry.post(
       EventName.ON_ACTIVITY_RESULT,
@@ -382,34 +366,12 @@ class AppContext(
     )
   }
 
-  @Suppress("UNCHECKED_CAST")
-  @UiThread
-  fun <T : View> findView(viewTag: Int): T? {
-    val reactContext = reactContextHolder.get() ?: return null
-    return UIManagerHelper.getUIManagerForReactTag(reactContext, viewTag)?.resolveView(viewTag) as? T
-  }
-
-  internal fun dispatchOnMainUsingUIManager(block: () -> Unit) {
-    val reactContext = reactContextHolder.get() ?: throw Exceptions.ReactContextLost()
-    val uiManager = UIManagerHelper.getUIManagerForReactTag(
-      reactContext,
-      UIManagerType.DEFAULT
-    ) as UIManagerModule
-
-    uiManager.addUIBlock {
-      block()
-    }
-  }
-
-  internal fun assertMainThread() {
-    Utils.assertMainThread()
-  }
-
   /**
    * Runs a code block on the JavaScript thread.
    */
+  @Deprecated("Use RuntimeContext.schedule instead", ReplaceWith("runtime.schedule(runnable)"))
   fun executeOnJavaScriptThread(runnable: Runnable) {
-    reactContextHolder.get()?.runOnJSQueueThread(runnable)
+    runtime.reactContext?.runOnJSQueueThread(runnable)
   }
 
 // region CurrentActivityProvider
@@ -418,6 +380,13 @@ class AppContext(
     get() {
       return activityProvider?.currentActivity
         ?: (reactContext as? ReactApplicationContext)?.currentActivity
+    }
+
+  val throwingActivity: Activity
+    get() {
+      val current = activityProvider?.currentActivity
+        ?: (reactContext as? ReactApplicationContext)?.currentActivity
+      return current ?: throw Exceptions.MissingActivity()
     }
 
 // endregion

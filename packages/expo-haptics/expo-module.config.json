@@ -1,10 +1,10 @@
 {
-  "name": "expo-haptics",
-  "platforms": ["ios", "android"],
-  "ios": {
-    "modules": ["HapticsModule"]
-  },
+  "platforms": ["apple", "android"],
   "android": {
-    "modules": ["expo.modules.haptics.HapticsModule"]
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.haptics",
+      "repository": "local-maven-repo"
+    }
   }
 }

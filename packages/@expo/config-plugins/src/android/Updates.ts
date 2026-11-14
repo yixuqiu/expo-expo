@@ -1,18 +1,11 @@
-import { Resources } from '.';
-import {
-  addMetaDataItemToMainApplication,
-  AndroidManifest,
-  findMetaDataItem,
-  getMainApplicationOrThrow,
-  removeMetaDataItemFromMainApplication,
-} from './Manifest';
-import { buildResourceItem, ResourceXML } from './Resources';
-import { removeStringItem, setStringItem } from './Strings';
-import { ConfigPlugin, ExportedConfigWithProps } from '../Plugin.types';
+import type { ExpoConfig } from '@expo/config-types';
+
+import type { ConfigPlugin, ExportedConfigWithProps } from '../Plugin.types';
 import { createStringsXmlPlugin, withAndroidManifest } from '../plugins/android-plugins';
 import { withPlugins } from '../plugins/withPlugins';
+import type { ExpoConfigUpdates } from '../utils/Updates';
 import {
-  ExpoConfigUpdates,
+  getDisableAntiBrickingMeasures,
   getExpoUpdatesPackageVersion,
   getRuntimeVersionNullableAsync,
   getUpdatesCheckOnLaunch,
@@ -20,9 +13,23 @@ import {
   getUpdatesCodeSigningMetadataStringified,
   getUpdatesRequestHeadersStringified,
   getUpdatesEnabled,
+  getUpdatesMaxUpdatesToKeep,
   getUpdatesTimeout,
   getUpdateUrl,
+  getUpdatesBsdiffPatchSupportEnabled,
+  getUpdatesUseEmbeddedUpdate,
 } from '../utils/Updates';
+import { addWarningAndroid } from '../utils/warnings';
+import { createBuildGradlePropsConfigPlugin } from './BuildProperties';
+import type { AndroidManifest } from './Manifest';
+import {
+  addMetaDataItemToMainApplication,
+  findMetaDataItem,
+  getMainApplicationOrThrow,
+  removeMetaDataItemFromMainApplication,
+} from './Manifest';
+import { buildResourceItem, type ResourceXML } from './Resources';
+import { removeStringItem, setStringItem } from './Strings';
 
 export enum Config {
   ENABLED = 'expo.modules.updates.ENABLED',
@@ -31,16 +38,37 @@ export enum Config {
   RUNTIME_VERSION = 'expo.modules.updates.EXPO_RUNTIME_VERSION',
   UPDATE_URL = 'expo.modules.updates.EXPO_UPDATE_URL',
   UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY = 'expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY',
+  UPDATES_HAS_EMBEDDED_UPDATE = 'expo.modules.updates.HAS_EMBEDDED_UPDATE',
   CODE_SIGNING_CERTIFICATE = 'expo.modules.updates.CODE_SIGNING_CERTIFICATE',
   CODE_SIGNING_METADATA = 'expo.modules.updates.CODE_SIGNING_METADATA',
+  DISABLE_ANTI_BRICKING_MEASURES = 'expo.modules.updates.DISABLE_ANTI_BRICKING_MEASURES',
+  BSDIFF_PATCH_SUPPORT = 'expo.modules.updates.ENABLE_BSDIFF_PATCH_SUPPORT',
+  MAX_UPDATES_TO_KEEP = 'expo.modules.updates.EXPO_UPDATES_MAX_UPDATES_TO_KEEP',
 }
 
 // when making changes to this config plugin, ensure the same changes are also made in eas-cli and build-tools
 // Also ensure the docs are up-to-date: https://docs.expo.dev/bare/installing-updates/
 
 export const withUpdates: ConfigPlugin = (config) => {
-  return withPlugins(config, [withUpdatesManifest, withRuntimeVersionResource]);
+  return withPlugins(config, [
+    withUpdatesManifest,
+    withRuntimeVersionResource,
+    withUpdatesNativeDebugGradleProps,
+  ]);
 };
+
+/**
+ * A config-plugin to update `android/gradle.properties` from the `updates.useNativeDebug` in expo config
+ */
+const withUpdatesNativeDebugGradleProps = createBuildGradlePropsConfigPlugin<ExpoConfig>(
+  [
+    {
+      propName: 'EX_UPDATES_NATIVE_DEBUG',
+      propValueGetter: (config) => (config?.updates?.useNativeDebug === true ? 'true' : undefined),
+    },
+  ],
+  'withUpdatesNativeDebugGradleProps'
+);
 
 const withUpdatesManifest: ConfigPlugin = (config) => {
   return withAndroidManifest(config, async (config) => {
@@ -62,7 +90,7 @@ const withRuntimeVersionResource = createStringsXmlPlugin(
 );
 
 export async function applyRuntimeVersionFromConfigAsync(
-  config: ExportedConfigWithProps<Resources.ResourceXML>,
+  config: ExportedConfigWithProps<ResourceXML>,
   stringsJSON: ResourceXML
 ): Promise<ResourceXML> {
   const projectRoot = config.modRequest.projectRoot;
@@ -97,16 +125,25 @@ export async function setUpdatesConfigAsync(
     Config.ENABLED,
     String(getUpdatesEnabled(config))
   );
-  addMetaDataItemToMainApplication(
-    mainApplication,
-    Config.CHECK_ON_LAUNCH,
-    getUpdatesCheckOnLaunch(config, expoUpdatesPackageVersion)
-  );
-  addMetaDataItemToMainApplication(
-    mainApplication,
-    Config.LAUNCH_WAIT_MS,
-    String(getUpdatesTimeout(config))
-  );
+  const checkOnLaunch = getUpdatesCheckOnLaunch(config, expoUpdatesPackageVersion);
+  addMetaDataItemToMainApplication(mainApplication, Config.CHECK_ON_LAUNCH, checkOnLaunch);
+
+  const timeout = getUpdatesTimeout(config);
+  addMetaDataItemToMainApplication(mainApplication, Config.LAUNCH_WAIT_MS, String(timeout));
+
+  const useEmbeddedUpdate = getUpdatesUseEmbeddedUpdate(config);
+  if (useEmbeddedUpdate) {
+    removeMetaDataItemFromMainApplication(mainApplication, Config.UPDATES_HAS_EMBEDDED_UPDATE);
+  } else {
+    // TODO: is there a better place for this validation?
+    if (timeout === 0 && checkOnLaunch !== 'ALWAYS') {
+      addWarningAndroid(
+        'updates.useEmbeddedUpdate',
+        `updates.checkOnLaunch should be set to "ON_LOAD" and updates.fallbackToCacheTimeout should be set to a non-zero value when updates.useEmbeddedUpdate is set to false. This is because an update must be fetched on the initial launch, when no embedded update is available.`
+      );
+    }
+    addMetaDataItemToMainApplication(mainApplication, Config.UPDATES_HAS_EMBEDDED_UPDATE, 'false');
+  }
 
   const updateUrl = getUpdateUrl(config);
   if (updateUrl) {
@@ -151,6 +188,34 @@ export async function setUpdatesConfigAsync(
     );
   }
 
+  const disableAntiBrickingMeasures = getDisableAntiBrickingMeasures(config);
+  if (disableAntiBrickingMeasures) {
+    addMetaDataItemToMainApplication(
+      mainApplication,
+      Config.DISABLE_ANTI_BRICKING_MEASURES,
+      'true'
+    );
+  } else {
+    removeMetaDataItemFromMainApplication(mainApplication, Config.DISABLE_ANTI_BRICKING_MEASURES);
+  }
+
+  addMetaDataItemToMainApplication(
+    mainApplication,
+    Config.BSDIFF_PATCH_SUPPORT,
+    getUpdatesBsdiffPatchSupportEnabled(config) ? 'true' : 'false'
+  );
+
+  const maxUpdatesToKeep = getUpdatesMaxUpdatesToKeep(config);
+  if (maxUpdatesToKeep !== undefined) {
+    addMetaDataItemToMainApplication(
+      mainApplication,
+      Config.MAX_UPDATES_TO_KEEP,
+      String(maxUpdatesToKeep)
+    );
+  } else {
+    removeMetaDataItemFromMainApplication(mainApplication, Config.MAX_UPDATES_TO_KEEP);
+  }
+
   return await setVersionsConfigAsync(projectRoot, config, androidManifest);
 }
 
@@ -164,7 +229,7 @@ export async function setVersionsConfigAsync(
   const runtimeVersion = await getRuntimeVersionNullableAsync(projectRoot, config, 'android');
   if (!runtimeVersion && findMetaDataItem(mainApplication, Config.RUNTIME_VERSION) > -1) {
     throw new Error(
-      'A runtime version is set in your AndroidManifest.xml, but is missing from your app.json/app.config.js. Please either set runtimeVersion in your app.json/app.config.js or remove expo.modules.updates.EXPO_RUNTIME_VERSION from your AndroidManifest.xml.'
+      'A runtime version is set in your AndroidManifest.xml, but is missing from your Expo app config (app.json/app.config.js). Either set runtimeVersion in your Expo app config or remove expo.modules.updates.EXPO_RUNTIME_VERSION from your AndroidManifest.xml.'
     );
   }
   if (runtimeVersion) {

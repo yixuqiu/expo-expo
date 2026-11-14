@@ -7,6 +7,8 @@ struct ExpoDeviceType {
 
 public extension UIDevice {
   // Credit: https://stackoverflow.com/a/26962452
+  // Added support for iPhone 17 from https://deviceatlas.com/resources/clientside/ios-hardware-identification
+  // and https://gist.github.com/adamawolf/3048717
   static let modelIdentifier: String = {
     var systemInfo = utsname()
     uname(&systemInfo)
@@ -26,16 +28,8 @@ public extension UIDevice {
 
 #if os(iOS)
       switch identifier {
-      case "iPod7,1":
-        return ExpoDeviceType(modelName: "iPod touch (6th generation)", deviceYearClass: 2015)
       case "iPod9,1":
         return ExpoDeviceType(modelName: "iPod touch (7th generation)", deviceYearClass: 2019)
-      case "iPhone6,1", "iPhone6,2":
-        return ExpoDeviceType(modelName: "iPhone 5s", deviceYearClass: 2013)
-      case "iPhone7,1":
-        return ExpoDeviceType(modelName: "iPhone 6 Plus", deviceYearClass: 2014)
-      case "iPhone7,2":
-        return ExpoDeviceType(modelName: "iPhone 6", deviceYearClass: 2014)
       case "iPhone8,1":
         return ExpoDeviceType(modelName: "iPhone 6s", deviceYearClass: 2015)
       case "iPhone8,2":
@@ -94,8 +88,34 @@ public extension UIDevice {
         return ExpoDeviceType(modelName: "iPhone 15 Pro", deviceYearClass: 2023)
       case "iPhone16,2":
         return ExpoDeviceType(modelName: "iPhone 15 Pro Max", deviceYearClass: 2023)
+      case "iPhone17,3":
+        return ExpoDeviceType(modelName: "iPhone 16", deviceYearClass: 2024)
+      case "iPhone17,4":
+        return ExpoDeviceType(modelName: "iPhone 16 Plus", deviceYearClass: 2024)
+      case "iPhone17,1":
+        return ExpoDeviceType(modelName: "iPhone 16 Pro", deviceYearClass: 2024)
+      case "iPhone17,2":
+        return ExpoDeviceType(modelName: "iPhone 16 Pro Max", deviceYearClass: 2024)
+      case "iPhone17,5":
+        return ExpoDeviceType(modelName: "iPhone 16e", deviceYearClass: 2025)
+      case "iPhone18,1":
+        return ExpoDeviceType(modelName: "iPhone 17 Pro", deviceYearClass: 2025)
+      case "iPhone18,2":
+        return ExpoDeviceType(modelName: "iPhone 17 Pro Max", deviceYearClass: 2025)
+      case "iPhone19,2":
+        return ExpoDeviceType(modelName: "iPhone 18 Pro", deviceYearClass: 2026)
+      case "iPhone19,3", "iPhone19,7":
+        return ExpoDeviceType(modelName: "iPhone 18 Pro Max", deviceYearClass: 2026)
+      case "iPhone19,4":
+        return ExpoDeviceType(modelName: "iPhone Duo", deviceYearClass: 2026)
+      case "iPhone18,3":
+        return ExpoDeviceType(modelName: "iPhone 17", deviceYearClass: 2025)
+      case "iPhone18,4":
+        return ExpoDeviceType(modelName: "iPhone Air", deviceYearClass: 2025)
+      case "iPhone18,5":
+        return ExpoDeviceType(modelName: "iPhone 17e", deviceYearClass: 2026)
       case "iPhone8,4":
-        return ExpoDeviceType(modelName: "iPhone SE", deviceYearClass: 2016)
+        return ExpoDeviceType(modelName: "iPhone SE (1st generation)", deviceYearClass: 2016)
       case "iPhone12,8":
         return ExpoDeviceType(modelName: "iPhone SE (2nd generation)", deviceYearClass: 2020)
       case "iPhone14,6":
@@ -112,8 +132,8 @@ public extension UIDevice {
         return ExpoDeviceType(modelName: "iPad (9th generation)", deviceYearClass: 2021)
       case "iPad13,18", "iPad13,19":
         return ExpoDeviceType(modelName: "iPad (10th generation)", deviceYearClass: 2022)
-      case "iPad4,1", "iPad4,2", "iPad4,3":
-        return ExpoDeviceType(modelName: "iPad Air", deviceYearClass: 2013)
+      case "iPad15,7", "iPad15,8":
+        return ExpoDeviceType(modelName: "iPad (A16)", deviceYearClass: 2025)
       case "iPad5,3", "iPad5,4":
         return ExpoDeviceType(modelName: "iPad Air 2", deviceYearClass: 2014)
       case "iPad11,3", "iPad11,4":
@@ -122,16 +142,26 @@ public extension UIDevice {
         return ExpoDeviceType(modelName: "iPad Air (4th generation)", deviceYearClass: 2020)
       case "iPad13,16", "iPad13,17":
         return ExpoDeviceType(modelName: "iPad Air (5th generation)", deviceYearClass: 2022)
-      case "iPad4,4", "iPad4,5", "iPad4,6":
-        return ExpoDeviceType(modelName: "iPad mini 2", deviceYearClass: 2013)
-      case "iPad4,7", "iPad4,8", "iPad4,9":
-        return ExpoDeviceType(modelName: "iPad mini 3", deviceYearClass: 2014)
+      case "iPad14,8", "iPad14,9":
+        return ExpoDeviceType(modelName: "iPad Air 11-inch (M2)", deviceYearClass: 2024)
+      case "iPad14,10", "iPad14,11":
+        return ExpoDeviceType(modelName: "iPad Air 13-inch (M2)", deviceYearClass: 2024)
+      case "iPad15,3", "iPad15,4":
+        return ExpoDeviceType(modelName: "iPad Air 11-inch (M3)", deviceYearClass: 2025)
+      case "iPad15,5", "iPad15,6":
+        return ExpoDeviceType(modelName: "iPad Air 13-inch (M3)", deviceYearClass: 2025)
+      case "iPad16,8", "iPad16,9":
+        return ExpoDeviceType(modelName: "iPad Air 11-inch (M4)", deviceYearClass: 2026)
+      case "iPad16,10", "iPad16,11":
+        return ExpoDeviceType(modelName: "iPad Air 13-inch (M4)", deviceYearClass: 2026)
       case "iPad5,1", "iPad5,2":
         return ExpoDeviceType(modelName: "iPad mini 4", deviceYearClass: 2015)
       case "iPad11,1", "iPad11,2":
         return ExpoDeviceType(modelName: "iPad mini (5th generation)", deviceYearClass: 2019)
       case "iPad14,1", "iPad14,2":
         return ExpoDeviceType(modelName: "iPad mini (6th generation)", deviceYearClass: 2021)
+      case "iPad16,1", "iPad16,2":
+        return ExpoDeviceType(modelName: "iPad mini (A17 Pro)", deviceYearClass: 2024)
       case "iPad6,3", "iPad6,4":
         return ExpoDeviceType(modelName: "iPad Pro (9.7-inch)", deviceYearClass: 2016)
       case "iPad7,3", "iPad7,4":
@@ -143,7 +173,7 @@ public extension UIDevice {
       case "iPad13,4", "iPad13,5", "iPad13,6", "iPad13,7":
         return ExpoDeviceType(modelName: "iPad Pro (11-inch) (3rd generation)", deviceYearClass: 2021)
       case "iPad14,3-A", "iPad14,3-B", "iPad14,4-A", "iPad14,4-B":
-        return ExpoDeviceType(modelName: "iPad Pro (11-inch) (4rd generation)", deviceYearClass: 2022)
+        return ExpoDeviceType(modelName: "iPad Pro (11-inch) (4th generation)", deviceYearClass: 2022)
       case "iPad6,7", "iPad6,8":
         return ExpoDeviceType(modelName: "iPad Pro (12.9-inch) (1st generation)", deviceYearClass: 2015)
       case "iPad7,1", "iPad7,2":
@@ -156,10 +186,14 @@ public extension UIDevice {
         return ExpoDeviceType(modelName: "iPad Pro (12.9-inch) (5th generation)", deviceYearClass: 2021)
       case "iPad14,5-A", "iPad14,5-B", "iPad14,6-A", "iPad14,6-B":
         return ExpoDeviceType(modelName: "iPad Pro (12.9-inch) (6th generation)", deviceYearClass: 2022)
-      case "AppleTV5,3":
-        return ExpoDeviceType(modelName: "Apple TV HD (4th Generation, Siri)", deviceYearClass: 2015)
-      case "AppleTV6,2":
-        return ExpoDeviceType(modelName: "Apple TV 4K", deviceYearClass: 2017)
+      case "iPad16,3-A", "iPad16,3-B", "iPad16,4-A", "iPad16,4-B":
+        return ExpoDeviceType(modelName: "iPad Pro 11-inch (M4)", deviceYearClass: 2024)
+      case "iPad16,5-A", "iPad16,5-B", "iPad16,6-A", "iPad16,6-B":
+        return ExpoDeviceType(modelName: "iPad Pro 13-inch (M4)", deviceYearClass: 2024)
+      case "iPad17,1-A", "iPad17,1-B", "iPad17,2-A", "iPad17,2-B":
+        return ExpoDeviceType(modelName: "iPad Pro 11-inch (M5)", deviceYearClass: 2025)
+      case "iPad17,3-A", "iPad17,3-B", "iPad17,4-A", "iPad17,4-B":
+        return ExpoDeviceType(modelName: "iPad Pro 13-inch (M5)", deviceYearClass: 2025)
       case "i386", "x86_64", "arm64":
         return ExpoDeviceType(modelName: "Simulator iOS", deviceYearClass: currentYear)
       default:
@@ -171,6 +205,10 @@ public extension UIDevice {
         return ExpoDeviceType(modelName: "Apple TV HD (4th Generation, Siri)", deviceYearClass: 2015)
       case "AppleTV6,2":
         return ExpoDeviceType(modelName: "Apple TV 4K", deviceYearClass: 2017)
+      case "AppleTV11,1":
+        return ExpoDeviceType(modelName: "Apple TV 4K (2nd generation)", deviceYearClass: 2021)
+      case "AppleTV14,1":
+        return ExpoDeviceType(modelName: "Apple TV 4K (3rd generation)", deviceYearClass: 2022)
       case "i386", "x86_64":
         return ExpoDeviceType(modelName: "Simulator tvOS", deviceYearClass: currentYear)
       default:
@@ -185,7 +223,11 @@ public extension UIDevice {
 
   // Credit: https://github.com/developerinsider/isJailBroken/blob/master/IsJailBroken/Extension/UIDevice%2BJailBroken.swift
   var isSimulator: Bool {
-    return TARGET_OS_SIMULATOR != 0
+#if targetEnvironment(simulator)
+    return true
+#else
+    return false
+#endif
   }
 
   var isJailbroken: Bool {

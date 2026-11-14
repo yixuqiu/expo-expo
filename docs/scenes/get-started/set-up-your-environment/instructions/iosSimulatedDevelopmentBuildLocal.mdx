@@ -1,15 +1,14 @@
-import ImageSpotlight from '~/components/plugins/ImageSpotlight';
-import { Step } from '~/ui/components/Step';
 import { Terminal } from '~/ui/components/Snippet';
+import { Step } from '~/ui/components/Step';
 
-import { BuildEnvironmentSwitch } from '../BuildEnvironmentSwitch';
 import XcodeInstructions from './_xcodeInstructions.mdx';
+import { BuildEnvironmentSwitch } from '../BuildEnvironmentSwitch';
 
 ## Set up an iOS Simulator with a development build
 
 <BuildEnvironmentSwitch />
 
-## Set up Xcode
+## Set up Xcode and Watchman
 
 <XcodeInstructions />
 
@@ -21,7 +20,14 @@ import XcodeInstructions from './_xcodeInstructions.mdx';
 
 Run the following command in your project's root directory:
 
-<Terminal cmd={['$ npx expo install expo-dev-client']} />
+<Terminal
+  cmd={{
+    npm: ['$ npx expo install expo-dev-client'],
+    yarn: ['$ yarn expo install expo-dev-client'],
+    pnpm: ['$ pnpm expo install expo-dev-client'],
+    bun: ['$ bun expo install expo-dev-client'],
+  }}
+/>
 
 </Step>
 
@@ -29,7 +35,14 @@ Run the following command in your project's root directory:
 
 Run the following from your terminal:
 
-<Terminal cmd={['$ npx expo run:ios']} />
+<Terminal
+  cmd={{
+    npm: ['$ npx expo run:ios'],
+    yarn: ['$ yarn expo run:ios'],
+    pnpm: ['$ pnpm expo run:ios'],
+    bun: ['$ bun expo run:ios'],
+  }}
+/>
 
 > This command runs a development server after building your app. You can skip running `npx expo start` on the next page.
 

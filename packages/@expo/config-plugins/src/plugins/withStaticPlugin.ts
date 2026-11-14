@@ -1,7 +1,7 @@
 import assert from 'assert';
-import { boolish } from 'getenv';
 
-import { ConfigPlugin, StaticPlugin } from '../Plugin.types';
+import type { ConfigPlugin, StaticPlugin } from '../Plugin.types';
+import { env } from '../utils/env';
 import { PluginError } from '../utils/errors';
 import {
   assertInternalProjectRoot,
@@ -9,13 +9,13 @@ import {
   resolveConfigPluginFunction,
 } from '../utils/plugin-resolver';
 
-const EXPO_DEBUG = boolish('EXPO_DEBUG', false);
+const EXPO_DEBUG = env.EXPO_DEBUG;
 
 // Show all error info related to plugin resolution.
-const EXPO_CONFIG_PLUGIN_VERBOSE_ERRORS = boolish('EXPO_CONFIG_PLUGIN_VERBOSE_ERRORS', false);
+const EXPO_CONFIG_PLUGIN_VERBOSE_ERRORS = env.EXPO_CONFIG_PLUGIN_VERBOSE_ERRORS;
 // Force using the fallback unversioned plugin instead of a local versioned copy,
 // this should only be used for testing the CLI.
-const EXPO_USE_UNVERSIONED_PLUGINS = boolish('EXPO_USE_UNVERSIONED_PLUGINS', false);
+const EXPO_USE_UNVERSIONED_PLUGINS = env.EXPO_USE_UNVERSIONED_PLUGINS;
 
 function isModuleMissingError(name: string, error: Error): boolean {
   // @ts-ignore
@@ -128,8 +128,23 @@ export const withStaticPlugin: ConfigPlugin<{
       }
     }
   } else {
+    if (typeof pluginResolve === 'object') {
+      throw new PluginError(
+        `Plugin is an unexpected object, with keys: "${Object.keys(pluginResolve).join(', ')}".\n
+If you tried to provide parameters to a config plugin, make sure the plugin configuration is wrapped by square brackets. Ex:\n
+[
+  "some-config-plugin",
+  {
+    "someParam": "someValue"
+  }
+]
+\n
+See the package documentation on how to correctly configure the plugin.`,
+        'INVALID_PLUGIN_TYPE'
+      );
+    }
     throw new PluginError(
-      `Plugin is an unexpected type: ${typeof pluginResolve}`,
+      `Plugin is an unexpected type: ${typeof pluginResolve}. See the package documentation on how to correctly configure the plugin.`,
       'INVALID_PLUGIN_TYPE'
     );
   }

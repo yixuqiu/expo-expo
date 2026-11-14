@@ -2,27 +2,43 @@ package expo.modules.kotlin.modules
 
 import android.os.Bundle
 import expo.modules.kotlin.AppContext
+import expo.modules.kotlin.runtime.Runtime
+import expo.modules.kotlin.convertToString
 import expo.modules.kotlin.providers.AppContextProvider
 import expo.modules.kotlin.tracing.trace
 import expo.modules.kotlin.types.Enumerable
+import expo.modules.kotlin.types.TypeConverterProvider
 import kotlinx.coroutines.CoroutineScope
-import kotlin.reflect.KProperty1
-import kotlin.reflect.full.declaredMemberProperties
-import kotlin.reflect.full.primaryConstructor
+import java.lang.ref.WeakReference
 
 abstract class Module : AppContextProvider {
+  @Suppress("PropertyName")
+  internal var _appContextHolder: WeakReference<AppContext> = WeakReference(null)
+
+  val runtime: Runtime
+    get() = requireNotNull(_appContextHolder.get()?.runtime) { "The module wasn't created! You can't access the hosting runtime." }
+
+  @Deprecated(
+    message = "Use 'runtime' property instead.",
+    replaceWith = ReplaceWith("runtime")
+  )
+  val runtimeContext: Runtime
+    get() = runtime
 
   // region AppContextProvider
 
-  @Suppress("PropertyName")
-  internal var _appContext: AppContext? = null
-
   override val appContext: AppContext
-    get() = requireNotNull(_appContext) { "The module wasn't created! You can't access the app context." }
+    get() = requireNotNull(_appContextHolder.get()) {
+      "You attempted to access the app context before the module was created. " +
+        "Defer accessing the context until after the module initializes."
+    }
 
   // endregion
 
   private val moduleEventEmitter by lazy { appContext.eventEmitter(this) }
+
+  val registry
+    get() = appContext.registry
 
   @PublishedApi
   internal lateinit var coroutineScopeDelegate: Lazy<CoroutineScope>
@@ -36,36 +52,24 @@ abstract class Module : AppContextProvider {
   }
 
   fun <T> sendEvent(enum: T, body: Bundle? = Bundle.EMPTY) where T : Enumerable, T : Enum<T> {
-    moduleEventEmitter?.emit(convertEnumToString(enum), body)
+    moduleEventEmitter?.emit(enum.convertToString(), body)
   }
 
   fun <T> sendEvent(enum: T, body: Map<String, Any?>? = null) where T : Enumerable, T : Enum<T> {
-    moduleEventEmitter?.emit(convertEnumToString(enum), body)
+    moduleEventEmitter?.emit(enum.convertToString(), body)
   }
+
+  open fun converters(): TypeConverterProvider? = null
 
   abstract fun definition(): ModuleDefinitionData
-
-  private fun <T> convertEnumToString(enumValue: T): String where T : Enumerable, T : Enum<T> {
-    val enumClass = enumValue::class
-    val primaryConstructor = enumClass.primaryConstructor
-    if (primaryConstructor?.parameters?.size == 1) {
-      val parameterName = primaryConstructor.parameters.first().name
-      val parameterProperty = enumClass
-        .declaredMemberProperties
-        .find { it.name == parameterName }
-
-      requireNotNull(parameterProperty) { "Cannot find a property for $parameterName parameter" }
-      require(parameterProperty.returnType.classifier == String::class) { "The enum parameter has to be a string." }
-
-      @Suppress("UNCHECKED_CAST")
-      return (parameterProperty as KProperty1<T, String>).get(enumValue)
-    }
-
-    return enumValue.name
-  }
 }
 
 @Suppress("FunctionName")
 inline fun Module.ModuleDefinition(crossinline block: ModuleDefinitionBuilder.() -> Unit): ModuleDefinitionData {
   return trace("${this.javaClass}.ModuleDefinition") { ModuleDefinitionBuilder(this).also(block).buildModule() }
+}
+
+@Suppress("FunctionName")
+inline fun Module.ModuleConverters(crossinline block: ModuleConvertersBuilder.() -> Unit): TypeConverterProvider {
+  return trace("${this.javaClass}.TypeConverters") { ModuleConvertersBuilder().also(block).buildTypeConverterProvider() }
 }

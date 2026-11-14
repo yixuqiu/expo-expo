@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMotion
+import ExpoModulesCore
 
 struct ExpoCameraUtils {
   static func device(with mediaType: AVMediaType, preferring position: AVCaptureDevice.Position) -> AVCaptureDevice? {
@@ -26,6 +27,26 @@ struct ExpoCameraUtils {
     return orientation
   }
 
+  // .landscapeRight and .landscapeLeft of UIInterfaceOrientation are reversed when mapped to UIDeviceOrientation
+  static func physicalOrientation(
+    for orientation: UIInterfaceOrientation
+  ) -> UIDeviceOrientation {
+    switch orientation {
+    case .portrait:
+      return .portrait
+    case .landscapeLeft:
+      return .landscapeRight
+    case .landscapeRight:
+      return .landscapeLeft
+    case .portraitUpsideDown:
+      return .portraitUpsideDown
+    case .unknown:
+      return .unknown
+    default:
+      return .unknown
+    }
+  }
+
   static func videoOrientation(for interfaceOrientation: UIInterfaceOrientation) -> AVCaptureVideoOrientation {
     switch interfaceOrientation {
     case .portrait:
@@ -41,6 +62,7 @@ struct ExpoCameraUtils {
     }
   }
 
+  // .landscapeRight and .landscapeLeft need to be reversed when mapped back to AVCaptureVideoOrientation
   static func videoOrientation(for deviceOrientation: UIDeviceOrientation) -> AVCaptureVideoOrientation {
     switch deviceOrientation {
     case .portrait:
@@ -48,12 +70,24 @@ struct ExpoCameraUtils {
     case .portraitUpsideDown:
       return .portraitUpsideDown
     case .landscapeLeft:
-      return .landscapeLeft
-    case .landscapeRight:
       return .landscapeRight
+    case .landscapeRight:
+      return .landscapeLeft
     default:
       return .portrait
     }
+  }
+
+  // When responsive orientation is off, capture must follow the interface orientation,
+  // which respects the app/device orientation lock, instead of the physical device rotation.
+  static func captureOrientation(
+    responsiveWhenOrientationLocked: Bool,
+    physicalOrientation: UIDeviceOrientation,
+    interfaceOrientation: UIInterfaceOrientation
+  ) -> AVCaptureVideoOrientation {
+    return responsiveWhenOrientationLocked
+      ? videoOrientation(for: physicalOrientation)
+      : videoOrientation(for: interfaceOrientation)
   }
 
   static func toOrientationString(orientation: UIDeviceOrientation) -> String {
@@ -77,16 +111,26 @@ struct ExpoCameraUtils {
     }
   }
 
-  static func export(orientation: UIImage.Orientation) -> Int {
+  static func toExifOrientation(orientation: UIImage.Orientation) -> Int {
     switch orientation {
-    case .left:
-      return 90
-    case .right:
-      return -90
+    case .up:
+      return 1
     case .down:
-      return 180
-    default:
-      return 0
+      return 3
+    case .left:
+      return 8
+    case .right:
+      return 6
+    case .upMirrored:
+      return 2
+    case .downMirrored:
+      return 4
+    case .leftMirrored:
+      return 5
+    case .rightMirrored:
+      return 7
+    @unknown default:
+      return 1
     }
   }
 
@@ -146,44 +190,30 @@ struct ExpoCameraUtils {
   }
 
   static func data(from image: UIImage, with metadata: [String: Any], quality: Float) -> Data? {
-    guard let sourceCGImageRef = image.cgImage,
-    let sourceData = image.jpegData(compressionQuality: 1.0) as CFData?,
-    let sourceCGImageSourceRef = CGImageSourceCreateWithData(sourceData, nil),
-    let sourceMetadata = CGImageSourceCopyPropertiesAtIndex(sourceCGImageSourceRef, 0, nil) as? NSDictionary else {
+    guard let sourceCGImageRef = image.cgImage else {
       return nil
     }
 
-    let updatedMetadata = NSMutableDictionary(dictionary: sourceMetadata)
-
-    for (key, value) in metadata {
-      updatedMetadata[key] = value
-    }
-
+    let updatedMetadata = NSMutableDictionary(dictionary: metadata)
     updatedMetadata.setObject(NSNumber(value: quality), forKey: kCGImageDestinationLossyCompressionQuality as NSString)
     let processedImageData = NSMutableData()
 
-    guard let sourceType = CGImageSourceGetType(sourceCGImageSourceRef) else {
-      return nil
-    }
-
     guard let destinationCGImageRef =
-      CGImageDestinationCreateWithData(processedImageData, sourceType, 1, nil) else {
+      CGImageDestinationCreateWithData(processedImageData, UTType.jpeg.identifier as CFString, 1, nil) else {
       return nil
     }
 
     CGImageDestinationAddImage(destinationCGImageRef, sourceCGImageRef, updatedMetadata)
 
-    if CGImageDestinationFinalize(destinationCGImageRef) {
-      return processedImageData as Data
-    }
-
-    CGImageDestinationAddImage(destinationCGImageRef, sourceCGImageRef, updatedMetadata as CFDictionary)
     return CGImageDestinationFinalize(destinationCGImageRef) ? processedImageData as Data : nil
   }
 
-  static func updateExif(metadata: NSDictionary, with additionalData: [String: Any]) -> NSMutableDictionary {
-    let mutableMetadata = NSMutableDictionary(dictionary: metadata)
-    mutableMetadata.addEntries(from: additionalData)
+  static func updateExif(metadata: [String: Any], with additionalData: [String: Any]) -> [String: Any] {
+    var mutableMetadata = metadata
+
+    for (key, value) in additionalData {
+      mutableMetadata[key] = value
+    }
 
     if let gps = mutableMetadata[kCGImagePropertyGPSDictionary as String] as? [String: Any] {
       for (gpsKey, gpsValue) in gps {
@@ -192,5 +222,65 @@ struct ExpoCameraUtils {
     }
 
     return mutableMetadata
+  }
+
+  struct EncodedImage {
+    let data: Data
+    let width: Double
+    let height: Double
+    let base64: String?
+  }
+
+  // Records the capture orientation as an EXIF tag instead of rotating the pixels, so viewers display
+  // it upright. Free of the file system so it can be unit tested.
+  static func encodeForSave(image: UIImage, metadata: [String: Any]?, quality: Double, includeBase64: Bool) throws -> EncodedImage {
+    var metadata = metadata ?? [:]
+    metadata[kCGImagePropertyOrientation as String] = toExifOrientation(orientation: image.imageOrientation)
+
+    guard let data = data(from: image, with: metadata, quality: Float(quality)) else {
+      throw CameraSavingImageException("Image data could not be processed")
+    }
+
+    return EncodedImage(
+      data: data,
+      width: image.size.width,
+      height: image.size.height,
+      base64: includeBase64 ? data.base64EncodedString() : nil
+    )
+  }
+
+  /**
+   Saves the image as a file.
+   */
+  static internal func saveImage(_ image: UIImage, options: SavePictureOptions, appContext: AppContext) throws -> [String: Any] {
+    guard let cachesDirectory = appContext.config.cacheDirectory else {
+      throw CameraSavingImageException("Failed to locate `cacheDirectory`")
+    }
+
+    let directory = URL(fileURLWithPath: cachesDirectory.path).appendingPathComponent("Camera")
+    let filename = UUID().uuidString.appending(".jpg")
+    let fileUrl = directory.appendingPathComponent(filename)
+
+    FileSystemUtilities.ensureDirExists(at: directory)
+
+    let encoded = try encodeForSave(
+      image: image,
+      metadata: options.metadata,
+      quality: options.quality,
+      includeBase64: options.base64
+    )
+
+    do {
+      try encoded.data.write(to: fileUrl, options: .atomic)
+    } catch let error {
+      throw CameraSavingImageException(error.localizedDescription)
+    }
+
+    var result = [String: Any]()
+    result["url"] = fileUrl.absoluteString
+    result["width"] = encoded.width
+    result["height"] = encoded.height
+    result["base64"] = encoded.base64
+    return result
   }
 }

@@ -1,14 +1,234 @@
 # Changelog
 
-## Unpublished
+## 58.0.4
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.3
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.2 — 2026-09-28
 
 ### 🐛 Bug fixes
 
+- Fixed the typed config plugin (`expo-document-picker/plugin`) not accepting `iCloudContainerEnvironment` and `kvStoreIdentifier` props. ([#50601](https://github.com/expo/expo/issues/50601) by [@rvieceli](https://github.com/rvieceli), [#50606](https://github.com/expo/expo/pull/50606) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
+
+## 58.0.1 — 2026-09-22
+
+### 🐛 Bug fixes
+
+- [iOS] Anchored the picker popover on every regular-width display, not only iPad, so it presents correctly on iPhone Duo. ([#50434](https://github.com/expo/expo/pull/50434) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.0 — 2025-08-13
+
+### 🛠 Breaking changes
+
+- [Web] getDocumentAsync() no longer returns base64 by default. The uri on web now always points to a Blob created via URL.createObjectURL(), which can be used for previews or appended to FormData for uploads. Selecting large files on web is now almost instant, since there’s no base64 conversion by default. If you still need base64, you can pass base64: true in the options. A new base64 field will then be included in the result. ([#37443](https://github.com/expo/expo/pull/37443) by [@hirbod](https://github.com/hirbod))
+
+### 🎉 New features
+
+- [iOS][Android] add lastModified for iOS and Android to align with web ([#37429](https://github.com/expo/expo/pull/37429) by [@hirbod](https://github.com/hirbod))
+
 ### 💡 Others
+
+- remove use of `IOUtils` for stream copying ([#38096](https://github.com/expo/expo/pull/38096) by [@vonovak](https://github.com/vonovak))
+
+## 13.1.6 - 2025-06-18
+
+### 🐛 Bug fixes
+
+- [Android] avoid hard crash in case of an exception ([#37110](https://github.com/expo/expo/pull/37110) by [@vonovak](https://github.com/vonovak))
+
+## 13.1.5 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.4 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.3 — 2025-04-21
+
+### 🐛 Bug fixes
+
+- [Android] Avoid int overflow for large files ([#36245](https://github.com/expo/expo/pull/36245) by [@vonovak](https://github.com/vonovak))
+
+## 13.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+- [web] Add option to disable file reader to read base64 from file on successfull picking. ([#34739](https://github.com/expo/expo/pull/34739) by [@danilaplee](https://github.com/danilaplee))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35288](https://github.com/expo/expo/pull/35288) by [@behenate](https://github.com/behenate))
+- [Android] Specified Gradle project version. ([#35751](https://github.com/expo/expo/pull/35751) by [@lukmccall](https://github.com/lukmccall))
+
+## 13.0.3 - 2025-02-07
+
+### 🎉 New features
+
+- [iOS] Allow setting of the `com.apple.developer.ubiquity-kvstore-identifier` entitlement directly. ([#34338](https://github.com/expo/expo/pull/34338) by [@keith-kurak](https://github.com/keith-kurak))
+
+## 13.0.2 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.1 — 2024-10-22
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+## 12.0.2 - 2024-06-13
+
+### 🐛 Bug fixes
+
+- [iOS] Fix `video/*` MIME Type not allowing to select videos with audio. ([#29673](https://github.com/expo/expo/pull/29673) by [@gabrieldonadel](https://github.com/gabrieldonadel))
 
 ## 12.0.1 — 2024-04-23
 

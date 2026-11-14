@@ -1,9 +1,10 @@
+import { CodedError, Platform } from 'expo';
 import Constants from 'expo-constants';
-import { CodedError, DeviceEventEmitter, Platform } from 'expo-modules-core';
+import { DeviceEventEmitter } from 'react-native';
 
-import { DevicePushToken } from './Tokens.types';
+import type { DevicePushToken } from './Tokens.types';
 
-export default async function getDevicePushTokenAsync(): Promise<DevicePushToken> {
+export async function getDevicePushTokenAsync(): Promise<DevicePushToken> {
   const data = await _subscribeDeviceToPushNotificationsAsync();
   DeviceEventEmitter.emit('onDevicePushToken', { devicePushToken: data });
   return { type: Platform.OS, data };
@@ -45,7 +46,7 @@ async function _subscribeDeviceToPushNotificationsAsync(): Promise<DevicePushTok
   if (!serviceWorkerPath) {
     throw new CodedError(
       'ERR_NOTIFICATIONS_PUSH_MISSING_CONFIGURATION',
-      'You must specify `notification.serviceWorkerPath` in `app.json` to use push notifications on the web. Please provide the path to the service worker that will handle notifications.'
+      'You must specify `notification.serviceWorkerPath` in `app.json` to use push notifications on the web. Provide the path to the service worker that will handle notifications.'
     );
   }
   guardPermission();
@@ -98,16 +99,13 @@ async function _subscribeDeviceToPushNotificationsAsync(): Promise<DevicePushTok
   // We wrap it with `fromExpoWebClient` to make sure other message
   // will not override content such as `notificationIcon`.
   // https://stackoverflow.com/a/35729334/2603230
-  const notificationIcon = (Constants.expoConfig?.notification ?? {}).icon;
-  await registration.active.postMessage(
-    JSON.stringify({ fromExpoWebClient: { notificationIcon } })
-  );
+  await registration.active.postMessage(JSON.stringify({ fromExpoWebClient: {} }));
 
   return subscriptionObject;
 }
 
 // https://github.com/web-push-libs/web-push#using-vapid-key-for-applicationserverkey
-function _urlBase64ToUint8Array(base64String: string): Uint8Array {
+function _urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
 

@@ -1,14 +1,226 @@
 # Changelog
 
-## Unpublished
+## 58.0.7
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- [Android] Fix async functions rejecting with `NoSuchMethodError` on `expo-modules-core` 58.0.18 and later. The prebuilt Android library is now built against Expo Modules v2 runtime 0.2.5. ([#51693](https://github.com/expo/expo/pull/51693) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.6
+
+### Patch Changes
+
+- [iOS] Remove the module class declarations from `expo-module.config.json`. Autolinking now detects the `@ExpoModule`-annotated classes. ([#49784](https://github.com/expo/expo/pull/49784) by [@tsapeta](https://github.com/tsapeta))
+
+## 58.0.5
+
+### Patch Changes
+
+- [Android] Migrate to the Expo Modules API 2.0. ([#51088](https://github.com/expo/expo/pull/51088) by [@lukmccall](https://github.com/lukmccall))
+
+## 58.0.4
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.3
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.2 — 2026-09-28
+
+### 💡 Others
+
+- [iOS] Derive the prebuilt XCFramework's target layout from a checked-in `Package.swift` instead of generating it at build time. The built artifact is unchanged. ([#50417](https://github.com/expo/expo/pull/50417) by [@chrfalch](https://github.com/chrfalch))
+
+## 58.0.1 — 2026-09-14
+
+### 💡 Others
+
+- [iOS] Migrate to the Expo Modules API 2.0 macros. ([#50047](https://github.com/expo/expo/pull/50047) by [@tsapeta](https://github.com/tsapeta))
+
+## 58.0.0 — 2026-09-10
 
 ### 🐛 Bug fixes
 
+- [android] Fix `performAndroidHapticsAsync` doing nothing by running it on the main queue. ([#49263](https://github.com/expo/expo/pull/49263) by [@KAMRONBEK](https://github.com/KAMRONBEK))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.14 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-06
+
+### 🎉 New features
+
+- Add web haptics for iOS Safari using checkbox. ([#44261](https://github.com/expo/expo/pull/44261) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
 ### 💡 Others
+
+- [Android] Fix missing `await` for `performHapticsAsync` ([#40987](https://github.com/expo/expo/pull/40987) by [@kamui545](https://github.com/kamui545))
+- [Android] Removed unused `androidx.annotation:annotation` dependency. ([#39759](https://github.com/expo/expo/pull/39759) by [@lukmccall](https://github.com/lukmccall))
+
+## 15.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.0 — 2025-04-04
+
+### 🎉 New features
+
+- [Android] Added new method `performAndroidHapticsAsync()`. The `Vibrator` api is no longer recommended. This method avoids it. ([#34077](https://github.com/expo/expo/pull/34077) by [@alanjhughes](https://github.com/alanjhughes))
+- [Web] Add web support using Web Vibration API. ([#34131](https://github.com/expo/expo/pull/34131) by [@reichhartd](https://github.com/reichhartd))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+
+## 14.0.1 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Jump directly to source. ([#29244](https://github.com/expo/expo/pull/29244) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 💡 Others
+
+- Align web implementation exports as native to support DOM components when using `@expo/dom-webview`. ([#31662](https://github.com/expo/expo/pull/31662) by [@kudo](https://github.com/kudo))
+- Fixed bundling error on Web. ([#32183](https://github.com/expo/expo/pull/32183) by [@kudo](https://github.com/kudo))
 
 ## 13.0.1 — 2024-04-23
 

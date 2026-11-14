@@ -2,11 +2,11 @@ import * as ImagePicker from 'expo-image-picker';
 import React from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 
-import ImagePickerAssetsList from './ImagePickerAssetsList';
 import FunctionDemo, {
   FunctionDescription,
   FunctionParameter,
 } from '../../components/FunctionDemo';
+import ImagePickerAssetsList from './ImagePickerAssetsList';
 
 const LAUNCH_PICKER_PARAMETERS: FunctionParameter[] = [
   {
@@ -17,9 +17,13 @@ const LAUNCH_PICKER_PARAMETERS: FunctionParameter[] = [
         name: 'mediaTypes',
         type: 'enum',
         values: [
-          { name: 'MediaTypeOptions.Images', value: ImagePicker.MediaTypeOptions.Images },
-          { name: 'MediaTypeOptions.Videos', value: ImagePicker.MediaTypeOptions.Videos },
-          { name: 'MediaTypeOptions.All', value: ImagePicker.MediaTypeOptions.All },
+          { name: "['images']", value: 'images' },
+          { name: "['videos']", value: 'videos' },
+          { name: "['livePhotos']", value: 'livePhotos' },
+          { name: "['images', 'videos']", value: ['images', 'videos'] },
+          { name: "['images', 'livePhotos']", value: ['images', 'livePhotos'] },
+          { name: "['livePhotos', 'videos']", value: ['livePhotos', 'videos'] },
+          { name: "['images', 'videos', 'livePhotos']", value: ['images', 'videos', 'livePhotos'] },
         ],
       },
       { name: 'allowsEditing', type: 'boolean', initial: false },
@@ -33,10 +37,20 @@ const LAUNCH_PICKER_PARAMETERS: FunctionParameter[] = [
         ],
         platforms: ['android'],
       },
-      { name: 'quality', type: 'number', values: [0, 0.2, 0.7, 1.0] },
+      {
+        name: 'shape',
+        type: 'enum',
+        values: [
+          { name: "'rectangle'", value: 'rectangle' },
+          { name: "'oval'", value: 'oval' },
+        ],
+        platforms: ['android'],
+      },
+      { name: 'quality', type: 'number', values: [1.0, 0.7, 0.2, 0] },
       { name: 'exif', type: 'boolean', initial: false },
       { name: 'base64', type: 'boolean', initial: false },
       { name: 'legacy', type: 'boolean', initial: false },
+      { name: 'shouldDownloadFromNetwork', type: 'boolean', initial: false },
       {
         name: 'videoExportPreset',
         type: 'enum',
@@ -46,10 +60,7 @@ const LAUNCH_PICKER_PARAMETERS: FunctionParameter[] = [
             name: 'VideoExportPreset.Passthrough',
             value: ImagePicker.VideoExportPreset.Passthrough,
           },
-          {
-            name: 'VideoExportPreset.LowQuality',
-            value: ImagePicker.VideoExportPreset.LowQuality,
-          },
+          { name: 'VideoExportPreset.LowQuality', value: ImagePicker.VideoExportPreset.LowQuality },
           {
             name: 'VideoExportPreset.MediumQuality',
             value: ImagePicker.VideoExportPreset.MediumQuality,
@@ -119,24 +130,26 @@ const LAUNCH_PICKER_PARAMETERS: FunctionParameter[] = [
           },
         ],
       },
+      { name: 'allowsMultipleSelection', type: 'boolean', initial: false },
+      { name: 'selectionLimit', type: 'number', values: [0, 1, 3], platforms: ['ios', 'android'] },
+      { name: 'orderedSelection', type: 'boolean', initial: false, platforms: ['ios', 'android'] },
       {
-        name: 'allowsMultipleSelection',
-        type: 'boolean',
-        initial: false,
-      },
-      {
-        name: 'selectionLimit',
-        type: 'number',
-        values: [0, 1, 3],
-        platforms: ['ios', 'android'],
-      },
-      {
-        name: 'orderedSelection',
-        type: 'boolean',
-        initial: false,
-        platforms: ['ios'],
+        name: 'defaultTab',
+        type: 'enum',
+        values: [
+          { name: 'photos', value: 'photos' },
+          { name: 'albums', value: 'albums' },
+        ],
       },
       { name: 'videoMaxDuration', type: 'number', values: [0, 10, 60] },
+      {
+        name: 'cameraType',
+        type: 'enum',
+        values: [
+          { name: 'back', value: ImagePicker.CameraType.back },
+          { name: 'front', value: ImagePicker.CameraType.front },
+        ],
+      },
       {
         name: 'presentationStyle',
         type: 'enum',
@@ -176,6 +189,25 @@ const LAUNCH_PICKER_PARAMETERS: FunctionParameter[] = [
           },
         ],
       },
+      {
+        name: 'preferredAssetRepresentationMode',
+        type: 'enum',
+        platforms: ['ios'],
+        values: [
+          {
+            name: 'UIImagePickerPreferredAssetRepresentationMode.Current',
+            value: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
+          },
+          {
+            name: 'UIImagePickerPreferredAssetRepresentationMode.Automatic',
+            value: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Automatic,
+          },
+          {
+            name: 'UIImagePickerPreferredAssetRepresentationMode.Compatible',
+            value: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+          },
+        ],
+      },
     ],
   },
 ];
@@ -195,10 +227,7 @@ const FUNCTIONS_DESCRIPTIONS: FunctionDescription[] = [
     name: 'requestCameraPermissionsAsync',
     actions: () => ImagePicker.requestCameraPermissionsAsync(),
   },
-  {
-    name: 'getCameraPermissionsAsync',
-    actions: () => ImagePicker.getCameraPermissionsAsync(),
-  },
+  { name: 'getCameraPermissionsAsync', actions: () => ImagePicker.getCameraPermissionsAsync() },
   {
     name: 'launchImageLibraryAsync',
     parameters: LAUNCH_PICKER_PARAMETERS,
@@ -227,15 +256,10 @@ function ImagePickerScreen() {
   );
 }
 
-ImagePickerScreen.navigationOptions = {
-  title: 'ImagePicker',
-};
+ImagePickerScreen.navigationOptions = { title: 'ImagePicker' };
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 10,
-    justifyContent: 'center',
-  },
+  container: { paddingHorizontal: 10, justifyContent: 'center' },
 });
 
 export default ImagePickerScreen;

@@ -1,4 +1,5 @@
-import { ArrowUpRightIcon, BuildIcon } from '@expo/styleguide-icons';
+import { BuildIcon } from '@expo/styleguide-icons/custom/BuildIcon';
+import { ArrowUpRightIcon } from '@expo/styleguide-icons/outline/ArrowUpRightIcon';
 import { addHighlight, CommandItemBaseWithCopy } from '@expo/styleguide-search-ui';
 import { type ComponentType, HTMLAttributes } from 'react';
 
@@ -22,15 +23,15 @@ export const ExpoDashboardItem = ({ item, onSelect, query }: Props) => {
       url={item.url}
       onSelect={onSelect}
       isExternalLink>
-      <div className="flex gap-3 justify-between">
-        <div className="inline-flex gap-3 items-center justify-between">
-          <Icon className="text-icon-secondary" />
+      <div className="flex justify-between gap-3">
+        <div className="inline-flex items-center justify-between gap-3">
+          <Icon aria-hidden="true" className="text-icon-secondary" />
           <p
-            className="text-xs font-medium"
+            className="text-sm font-medium"
             dangerouslySetInnerHTML={{ __html: addHighlight(item.label, query) }}
           />
         </div>
-        <ArrowUpRightIcon className="text-icon-tertiary" />
+        <ArrowUpRightIcon aria-hidden="true" className="text-icon-tertiary" />
       </div>
     </CommandItemBaseWithCopy>
   );

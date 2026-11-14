@@ -5,13 +5,22 @@ import { resolve } from 'path';
 
 import * as Android from './Android';
 import * as Ios from './Ios';
-import { CommandError, Options } from './Options';
+import type { Options } from './Options';
+import { CommandError } from './Options';
 import * as URIScheme from './URIScheme';
-import shouldUpdate from './update';
+import shouldUpdate, { PACKAGE_NAME } from './update';
 
-const packageJson = () => require('../package.json');
+const packageJson = () => {
+  try {
+    return require('uri-scheme/package.json');
+  } catch {
+    return null;
+  }
+};
 
-export const program = new Command(packageJson().name).version(packageJson().version);
+export const program = new Command(packageJson()?.name ?? PACKAGE_NAME).version(
+  packageJson()?.version ?? '0.0.0'
+);
 
 function buildCommand(name: string, examples: string[] = []): Command {
   return program
@@ -44,9 +53,9 @@ buildCommand('add', ['com.app', 'myapp'])
     try {
       const options = await parseArgsAsync(uri, args);
       await URIScheme.addAsync(options);
-      shouldUpdate();
+      await shouldUpdate();
     } catch (error) {
-      commandDidThrowAsync(error);
+      await commandDidThrowAsync(error);
     }
   });
 
@@ -62,29 +71,31 @@ buildCommand('remove', ['com.app', 'myapp'])
     try {
       const options = await parseArgsAsync(uri, args);
       await URIScheme.removeAsync(options);
-      shouldUpdate();
+      await shouldUpdate();
     } catch (error) {
-      commandDidThrowAsync(error);
+      await commandDidThrowAsync(error);
     }
   });
 
 buildCommand('open', ['com.app://oauth', 'http://expo.dev'])
   .description('Open a URI scheme in a running simulator or emulator')
   .option('--package <string>', 'The Android package name to use when opening in an emulator')
+  .option('--raw', 'Open the URL without escaping special characters in the search parameters')
   .action(async (uri: string, args: any) => {
     try {
       if (!args.ios && !args.android) {
-        throw new CommandError('Please provide a target platform with --ios or --android');
+        throw new CommandError('Provide a target platform with --ios or --android');
       }
       await URIScheme.openAsync({
         projectRoot: process.cwd(),
         ...args,
         androidPackage: args['package'],
         uri,
+        escapeUri: !args.raw,
       });
-      shouldUpdate();
+      await shouldUpdate();
     } catch (error) {
-      commandDidThrowAsync(error);
+      await commandDidThrowAsync(error);
     }
   });
 
@@ -99,9 +110,9 @@ buildCommand('list')
     try {
       const options = await parseArgsAsync(uri, args);
       await URIScheme.listAsync(options);
-      shouldUpdate();
+      await shouldUpdate();
     } catch (error) {
-      commandDidThrowAsync(error);
+      await commandDidThrowAsync(error);
     }
   });
 
@@ -175,7 +186,9 @@ async function commandDidThrowAsync(reason: any) {
   console.log();
   if (reason.command) {
     console.log(
-      chalk.red(`\u203A ${chalk.bold(`npx ${packageJson().name} ${reason.command}`)} has failed.`)
+      chalk.red(
+        `\u203A ${chalk.bold(`npx ${packageJson()?.name ?? PACKAGE_NAME} ${reason.command}`)} has failed.`
+      )
     );
     console.log();
   }
@@ -184,7 +197,10 @@ async function commandDidThrowAsync(reason: any) {
   } else {
     console.log('Aborting run');
 
-    console.log(chalk.black.bgRed`An unexpected error was encountered. Please report it as a bug:`);
+    console.log(
+      chalk.black
+        .bgRed`An unexpected error was encountered. Report it: https://github.com/expo/expo/issues`
+    );
     console.log(reason);
   }
   console.log();

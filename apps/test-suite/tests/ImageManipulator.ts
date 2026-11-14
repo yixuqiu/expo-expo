@@ -1,0 +1,378 @@
+import { Asset } from 'expo-asset';
+import * as FileSystem from 'expo-file-system/legacy';
+import { manipulateAsync, ImageManipulator, FlipType, SaveFormat } from 'expo-image-manipulator';
+import { Platform } from 'react-native';
+
+import type { JasmineInterface } from '../types';
+import { requireNotNull } from '../utils/requireNotNull';
+
+export const name = 'ImageManipulator';
+
+/**
+ * `FileSystem.getInfoAsync` returns a union discriminated on `exists`, and only
+ * the existing branch carries `size`. Every caller below has just written or
+ * downloaded the file, so a missing one is a genuine failure.
+ */
+async function getFileSizeAsync(uri: string) {
+  const info = await FileSystem.getInfoAsync(uri);
+  if (!info.exists) {
+    throw new Error(`Expected a file at ${uri}, but none exists.`);
+  }
+  return info.size;
+}
+
+export async function test(t: JasmineInterface) {
+  t.describe('ImageManipulator', () => {
+    let asset: Asset;
+    let assetUri: string;
+    let assetWidth: number;
+    let assetHeight: number;
+
+    t.beforeAll(async () => {
+      asset = Asset.fromModule(require('../assets/example_image_1.jpg'));
+      await asset.downloadAsync();
+      assetUri = requireNotNull(asset.localUri);
+      assetWidth = requireNotNull(asset.width);
+      assetHeight = requireNotNull(asset.height);
+    });
+
+    t.describe('manipulate()', () => {
+      t.it('returns a context', () => {
+        const context = ImageManipulator.manipulate(assetUri);
+
+        t.expect(context).toBeDefined();
+        t.expect(context instanceof ImageManipulator.Context).toBe(true);
+      });
+    });
+
+    t.describe('Context', () => {
+      t.it('renders valid image', async () => {
+        const context = ImageManipulator.manipulate(assetUri).resize({
+          width: 100,
+          height: 100,
+        });
+        const image = await context.renderAsync();
+
+        t.expect(image).toBeDefined();
+        t.expect(image instanceof ImageManipulator.Image).toBe(true);
+        t.expect(image.width).toBe(100);
+        t.expect(image.height).toBe(100);
+      });
+
+      t.it('renders valid image from base64 data URL', async () => {
+        // 1x1 red image
+        const context = ImageManipulator.manipulate(
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='
+        ).resize({ width: 100, height: 100 });
+        const image = await context.renderAsync();
+
+        t.expect(image).toBeDefined();
+        t.expect(image instanceof ImageManipulator.Image).toBe(true);
+        t.expect(image.width).toBe(100);
+        t.expect(image.height).toBe(100);
+      });
+
+      t.it('rotates images', async () => {
+        const image = await ImageManipulator.manipulate(assetUri).rotate(45).renderAsync();
+
+        t.expect(image.width).toBeGreaterThan(assetWidth);
+      });
+
+      t.it('flips horizontally', async () => {
+        const image = await ImageManipulator.manipulate(assetUri).flip('horizontal').renderAsync();
+
+        t.expect(image.width).toBe(assetWidth);
+        t.expect(image.height).toBe(assetHeight);
+      });
+
+      t.it('flips vertically', async () => {
+        const image = await ImageManipulator.manipulate(assetUri).flip('vertical').renderAsync();
+
+        t.expect(image.width).toBe(assetWidth);
+        t.expect(image.height).toBe(assetHeight);
+      });
+
+      t.it('resizes image', async () => {
+        const image = await ImageManipulator.manipulate(assetUri)
+          .resize({ width: 100, height: 100 })
+          .renderAsync();
+
+        t.expect(image.width).toBe(100);
+        t.expect(image.height).toBe(100);
+      });
+
+      t.it('crops image', async () => {
+        const image = await ImageManipulator.manipulate(assetUri)
+          .crop({ originX: 20, originY: 20, width: 100, height: 100 })
+          .renderAsync();
+
+        t.expect(image.width).toBe(100);
+        t.expect(image.height).toBe(100);
+      });
+
+      t.it('performs multiple transformations', async () => {
+        const context = ImageManipulator.manipulate(assetUri);
+        const image = await context
+          .resize({ width: 200, height: 200 })
+          .flip('vertical')
+          .rotate(45)
+          .crop({ originX: 20, originY: 20, width: 100, height: 100 })
+          .renderAsync();
+
+        t.expect(image.height).toBe(100);
+        t.expect(image.width).toBe(100);
+      });
+
+      t.it('resolves a pending render after the context is released', async () => {
+        // Upscaling first keeps the pipeline busy long enough for the release to land mid-render.
+        const context = ImageManipulator.manipulate(assetUri)
+          .resize({ width: 4000 })
+          .rotate(90)
+          .rotate(90)
+          .rotate(90)
+          .resize({ width: 100, height: 100 });
+        const pending = context.renderAsync();
+
+        // On Android, async functions convert their arguments on the serial modules queue after
+        // the JS call returns. A call queued after `renderAsync` resolves only once `renderAsync`
+        // has converted the context, so the release below can't reject it during conversion.
+        await FileSystem.getInfoAsync(assetUri);
+
+        // `useImageManipulator` releases the context on unmount, which can land while a render
+        // started in an effect is still in flight. Releasing means JS is done with the object,
+        // not that the call already awaiting it should be cancelled.
+        context.release();
+
+        const image = await pending;
+
+        t.expect(image.width).toBe(100);
+        t.expect(image.height).toBe(100);
+        image.release();
+      });
+    });
+
+    t.describe('Image', () => {
+      t.it('saves with default format', async () => {
+        const image = await ImageManipulator.manipulate(assetUri)
+          .resize({
+            width: 100,
+            height: 100,
+          })
+          .renderAsync();
+        const result = await image.saveAsync();
+
+        if (Platform.OS === 'web') {
+          t.expect(result.uri.startsWith('data:image/png;base64,')).toBe(true);
+        } else {
+          t.expect(result.uri.endsWith('.jpg')).toBe(true);
+        }
+      });
+
+      t.it('saves as JPEG', async () => {
+        const image = await ImageManipulator.manipulate(assetUri)
+          .resize({ width: 100, height: 100 })
+          .renderAsync();
+        const result = await image.saveAsync({
+          format: SaveFormat.JPEG,
+        });
+
+        if (Platform.OS === 'web') {
+          t.expect(result.uri.startsWith('data:image/jpeg;base64,')).toBe(true);
+        } else {
+          t.expect(result.uri.endsWith('.jpg')).toBe(true);
+        }
+      });
+
+      t.it('saves as PNG', async () => {
+        const image = await ImageManipulator.manipulate(assetUri)
+          .resize({ width: 100, height: 100 })
+          .renderAsync();
+        const result = await image.saveAsync({
+          format: SaveFormat.PNG,
+        });
+
+        if (Platform.OS === 'web') {
+          t.expect(result.uri.startsWith('data:image/png;base64,')).toBe(true);
+        } else {
+          t.expect(result.uri.endsWith('.png')).toBe(true);
+        }
+      });
+
+      t.it('provides Base64 with no header or newline terminator', async () => {
+        const image = await ImageManipulator.manipulate(assetUri)
+          .resize({ width: 100, height: 100 })
+          .renderAsync();
+        const result = await image.saveAsync({
+          base64: true,
+        });
+
+        t.expect(typeof result.base64).toBe('string');
+        t.expect(result.base64).not.toContain('\n');
+        t.expect(result.base64).not.toContain('\r');
+        t.expect(result.base64?.startsWith('data:image/jpeg;base64,')).toBe(false);
+      });
+
+      t.it('performs compression', async () => {
+        const image = await ImageManipulator.manipulate(assetUri).flip('vertical').renderAsync();
+        const result = await image.saveAsync({
+          format: SaveFormat.JPEG,
+          compress: 0.0,
+        });
+
+        if (Platform.OS === 'web') {
+          const originalInfo = await fetch(assetUri).then((a) => a.blob());
+          const resultInfo = await fetch(result.uri).then((a) => a.blob());
+
+          t.expect(originalInfo.size).toBeGreaterThan(resultInfo.size);
+        } else {
+          const originalSize = await getFileSizeAsync(assetUri);
+          const resultSize = await getFileSizeAsync(result.uri);
+
+          t.expect(originalSize).toBeGreaterThan(resultSize);
+        }
+      });
+    });
+  });
+
+  t.describe('ImageManipulator (Legacy)', () => {
+    let image: Asset;
+    let imageUri: string;
+    let imageWidth: number;
+    let imageHeight: number;
+
+    t.beforeAll(async () => {
+      image = Asset.fromModule(require('../assets/example_image_1.jpg'));
+      await image.downloadAsync();
+      imageUri = requireNotNull(image.localUri);
+      imageWidth = requireNotNull(image.width);
+      imageHeight = requireNotNull(image.height);
+    });
+
+    t.describe('manipulateAsync()', () => {
+      t.it('returns valid image', async () => {
+        const result = await manipulateAsync(imageUri, [{ resize: { width: 100, height: 100 } }]);
+        t.expect(result).toBeDefined();
+        t.expect(typeof result.uri).toBe('string');
+        t.expect(typeof result.width).toBe('number');
+        t.expect(typeof result.height).toBe('number');
+      });
+
+      t.it('returns valid image from base64 data URL', async () => {
+        // 1x1 red image
+        const result = await manipulateAsync(
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
+          [{ resize: { width: 100, height: 100 } }]
+        );
+        t.expect(result).toBeDefined();
+        t.expect(typeof result.uri).toBe('string');
+        t.expect(result.width).toBe(100);
+        t.expect(result.height).toBe(100);
+      });
+
+      t.it('saves with default format', async () => {
+        const result = await manipulateAsync(imageUri, [{ resize: { width: 100, height: 100 } }]);
+
+        if (Platform.OS === 'web') {
+          t.expect(result.uri.startsWith('data:image/jpeg;base64,')).toBe(true);
+        } else {
+          t.expect(result.uri.endsWith('.jpg')).toBe(true);
+        }
+      });
+
+      t.it('saves as JPEG', async () => {
+        const result = await manipulateAsync(imageUri, [{ resize: { width: 100, height: 100 } }], {
+          format: SaveFormat.JPEG,
+        });
+
+        if (Platform.OS === 'web') {
+          t.expect(result.uri.startsWith('data:image/jpeg;base64,')).toBe(true);
+        } else {
+          t.expect(result.uri.endsWith('.jpg')).toBe(true);
+        }
+      });
+
+      t.it('saves as PNG', async () => {
+        const result = await manipulateAsync(imageUri, [{ resize: { width: 100, height: 100 } }], {
+          format: SaveFormat.PNG,
+        });
+
+        if (Platform.OS === 'web') {
+          t.expect(result.uri.startsWith('data:image/png;base64,')).toBe(true);
+        } else {
+          t.expect(result.uri.endsWith('.png')).toBe(true);
+        }
+      });
+
+      t.it('provides Base64 with no header or newline terminator', async () => {
+        const result = await manipulateAsync(imageUri, [{ resize: { width: 100, height: 100 } }], {
+          base64: true,
+        });
+
+        t.expect(typeof result.base64).toBe('string');
+        t.expect(result.base64).not.toContain('\n');
+        t.expect(result.base64).not.toContain('\r');
+        t.expect(result.base64?.startsWith('data:image/jpeg;base64,')).toBe(false);
+      });
+
+      t.it('performs compression', async () => {
+        const result = await manipulateAsync(imageUri, [{ flip: FlipType.Vertical }], {
+          compress: 0.0,
+        });
+
+        if (Platform.OS === 'web') {
+          const imageInfo = await fetch(imageUri).then((a) => a.blob());
+          const resultInfo = await fetch(result.uri).then((a) => a.blob());
+
+          t.expect(imageInfo.size).toBeGreaterThan(resultInfo.size);
+        } else {
+          const imageSize = await getFileSizeAsync(imageUri);
+          const resultSize = await getFileSizeAsync(result.uri);
+
+          t.expect(imageSize).toBeGreaterThan(resultSize);
+        }
+      });
+
+      t.it('rotates images', async () => {
+        const result = await manipulateAsync(imageUri, [{ rotate: 45 }]);
+        t.expect(result.width).toBeGreaterThan(imageWidth);
+      });
+
+      t.it('flips horizontally', async () => {
+        const result = await manipulateAsync(imageUri, [{ flip: FlipType.Horizontal }]);
+        t.expect(result.width).toBe(imageWidth);
+        t.expect(result.height).toBe(imageHeight);
+      });
+
+      t.it('flips vertically', async () => {
+        const result = await manipulateAsync(imageUri, [{ flip: FlipType.Vertical }]);
+        t.expect(result.width).toBe(imageWidth);
+        t.expect(result.height).toBe(imageHeight);
+      });
+
+      t.it('resizes image', async () => {
+        const result = await manipulateAsync(imageUri, [{ resize: { width: 100, height: 100 } }]);
+        t.expect(result.height).toBe(100);
+        t.expect(result.width).toBe(100);
+      });
+
+      t.it('crops image', async () => {
+        const result = await manipulateAsync(imageUri, [
+          { crop: { originX: 20, originY: 20, width: 100, height: 100 } },
+        ]);
+        t.expect(result.height).toBe(100);
+        t.expect(result.width).toBe(100);
+      });
+
+      t.it('performs multiple transformations', async () => {
+        const result = await manipulateAsync(imageUri, [
+          { resize: { width: 200, height: 200 } },
+          { flip: FlipType.Vertical },
+          { rotate: 45 },
+          { crop: { originX: 20, originY: 20, width: 100, height: 100 } },
+        ]);
+        t.expect(result.height).toBe(100);
+        t.expect(result.width).toBe(100);
+      });
+    });
+  });
+}

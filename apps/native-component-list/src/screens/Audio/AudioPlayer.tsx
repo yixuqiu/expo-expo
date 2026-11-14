@@ -1,95 +1,87 @@
-import { Asset } from 'expo-asset';
-import { useAudioPlayer } from 'expo-audio';
-import { useEffect, useState } from 'react';
+import { useAudioPlayer, AudioSource, useAudioPlayerStatus } from 'expo-audio';
+import React from 'react';
 import { StyleProp, ViewStyle } from 'react-native';
 
-import Player from '../AV/Player';
-
-type PlaybackSource =
-  | number
-  | {
-      uri: string;
-      overrideFileExtensionAndroid?: string;
-      headers?: {
-        [fieldName: string]: string;
-      };
-    }
-  | Asset;
+import { JsiAudioBar } from './JsiAudioBar';
+import Player from './Player';
 
 type AudioPlayerProps = {
-  source: PlaybackSource;
-  style: StyleProp<ViewStyle>;
+  source: AudioSource | string | number;
+  style?: StyleProp<ViewStyle>;
+  downloadFirst?: boolean;
+  crossOrigin?: 'anonymous' | 'use-credentials';
+  keepAudioSessionActive?: boolean;
 };
 
-export default function AudioPlayer({ source, style }: AudioPlayerProps) {
-  const [state, setState] = useState({
-    androidImplementation: 'SimpleExoPlayer',
-    isMuted: false,
-    isPlaying: false,
-    isLoaded: true,
-    isLooping: false,
-    positionMillis: 0,
-    durationMillis: 0,
-    rate: 1,
-    volume: 1,
-    audioPan: 0,
-    shouldCorrectPitch: false,
+const localSource = require('../../../assets/sounds/polonez.mp3');
+const remoteSource = 'https://expo-test-media.com/audio/por_una_cabeza.mp3';
+
+export default function AudioPlayer({
+  source,
+  style,
+  downloadFirst = false,
+  crossOrigin,
+  keepAudioSessionActive = false,
+}: AudioPlayerProps) {
+  const [currentSource, setCurrentSource] = React.useState(source);
+  const player = useAudioPlayer(source, {
+    downloadFirst,
+    crossOrigin,
+    keepAudioSessionActive,
   });
-
-  const player = useAudioPlayer(
-    'https://p.scdn.co/mp3-preview/f7a8ab9c5768009b65a30e9162555e8f21046f46?cid=162b7dc01f3a4a2ca32ed3cec83d1e02'
-  );
-
-  useEffect(() => {
-    return () => player.pause();
-  }, []);
-
-  const play = () => {
-    player.play();
-    setState({ ...state, isPlaying: true });
-  };
-
-  const pause = () => {
-    player.pause();
-    setState({ ...state, isPlaying: false });
-  };
+  const status = useAudioPlayerStatus(player);
 
   const setVolume = (volume: number) => {
-    player.setVolume(volume);
-    setState({ ...state, volume });
+    player.volume = volume;
   };
 
-  const setIsMuted = () => {
-    player.isMuted = !player.isMuted;
-    setState({ ...state, isMuted: player.isMuted });
+  const setIsMuted = (isMuted: boolean) => {
+    player.muted = isMuted;
   };
 
   const setIsLooping = (isLooping: boolean) => {
-    player.isLoopingEnabled(isLooping);
-    setState({ ...state, isLooping });
+    player.loop = isLooping;
   };
 
-  const setRate = (rate: number) => {
-    player.setRate(rate);
-    setState({ ...state, rate });
+  const setRate = (rate: number, shouldCorrectPitch: boolean) => {
+    player.shouldCorrectPitch = shouldCorrectPitch;
+    player.setPlaybackRate(rate);
+  };
+
+  const replaceSource = () => {
+    const source = currentSource === localSource ? remoteSource : localSource;
+    player.replace(source);
+    setCurrentSource(source);
   };
 
   return (
     <Player
-      {...state}
-      positionMillis={player.currentTime}
-      rate={1}
+      {...status}
+      audioPan={0}
+      volume={player.volume}
       style={style}
-      playAsync={play}
-      pauseAsync={pause}
-      replayAsync={() => {}}
-      setPositionAsync={(position: number) => {
-        return new Promise(() => {});
+      play={() => {
+        // expo-audio does not support looping
+        // so we need to seek to the beginning of the audio when it finishes
+        // this is default on web, but not on native so we need to do it manually
+        if (status.didJustFinish) {
+          player.seekTo(0);
+        }
+        player.play();
       }}
-      setIsLoopingAsync={setIsLooping}
-      setRateAsync={setRate}
-      setIsMutedAsync={setIsMuted}
+      pause={() => player.pause()}
+      replace={() => replaceSource()}
+      replay={() => {
+        return player.seekTo(0);
+      }}
+      setPosition={(position: number) => {
+        return player.seekTo(position);
+      }}
+      setIsLooping={setIsLooping}
+      setRate={setRate}
+      setIsMuted={setIsMuted}
       setVolume={setVolume}
+      extraIndicator={<JsiAudioBar isPlaying={status.playing} player={player} />}
     />
   );
 }

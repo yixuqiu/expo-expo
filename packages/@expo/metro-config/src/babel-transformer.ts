@@ -7,15 +7,68 @@
  */
 // A fork of the upstream babel-transformer that uses Expo-specific babel defaults
 // and adds support for web and Node.js environments via `isServer` on the Babel caller.
-import type { BabelTransformer, BabelTransformerArgs } from 'metro-babel-transformer';
+import type {
+  BabelTransformer,
+  BabelTransformerArgs,
+  BabelTransformerCacheKeyOptions,
+} from '@expo/metro/metro-babel-transformer';
+import { getCacheKey as getFileCacheKey } from '@expo/metro/metro-cache-key';
 import assert from 'node:assert';
+import path from 'node:path';
 
-import type { TransformOptions } from './babel-core';
-import { loadBabelConfig } from './loadBabelConfig';
+import type { PluginItem, TransformOptions } from './babel-core';
+import { loadPartialConfigSync } from './babel-core';
+import { loadBabelConfig, resolveBabelrcName } from './loadBabelConfig';
+import { debugEvent } from './transform-worker/events';
 import { transformSync } from './transformSync';
 
+export type ExpoBabelCaller = TransformOptions['caller'] & {
+  babelRuntimeVersion?: string;
+  metroSourceType?: 'script' | 'module' | 'asset';
+  supportsReactCompiler?: boolean;
+  isReactServer?: boolean;
+  isHMREnabled?: boolean;
+  isServer?: boolean;
+  isNodeModule?: boolean;
+  preserveEnvVars?: boolean;
+  isDev?: boolean;
+  asyncRoutes?: boolean;
+  baseUrl?: string;
+  engine?: string;
+  bundler?: 'metro' | (string & object);
+  platform?: string | null;
+  routerRoot?: string;
+  projectRoot: string;
+  /** When true, indicates this bundle should contain only the loader export */
+  isLoaderBundle?: boolean;
+  /** When true, indicates this file is part of a DOM component bundle */
+  isDomComponent?: boolean;
+};
+
+export type ExpoBabelTransformerCacheKeyOptions = BabelTransformerCacheKeyOptions & {
+  extendsBabelConfigPath?: string;
+};
+
+/**
+ * Metro's Babel transformer options plus the fields Metro's transform worker passes through
+ * from `JsTransformOptions` without declaring them on the Babel transformer's own type.
+ */
+export type ExpoBabelTransformerOptions = BabelTransformerArgs['options'] & {
+  /** The kind of file being transformed, forwarded from `JsTransformOptions['type']`. */
+  type?: 'script' | 'module' | 'asset';
+};
+
+export type ExpoBabelTransformerArgs = Omit<BabelTransformerArgs, 'options'> & {
+  options: ExpoBabelTransformerOptions;
+};
+
+export type ExpoBabelTransformer = Omit<BabelTransformer, 'getCacheKey'> & {
+  getCacheKey?: (options?: ExpoBabelTransformerCacheKeyOptions) => string;
+  isDefaultConfig: typeof isDefaultConfig;
+};
+
 function isCustomTruthy(value: any): boolean {
-  return value === true || value === 'true';
+  return String(value) === 'true';
 }
 
 function memoize<T extends (...args: any[]) => any>(fn: T): T {
@@ -32,10 +85,13 @@ function memoize<T extends (...args: any[]) => any>(fn: T): T {
 }
 
 const memoizeWarning = memoize((message: string) => {
-  console.warn(message);
+  debugEvent('babel:missing_router_root', { message });
 });
 
-function getBabelCaller({ filename, options }: Pick<BabelTransformerArgs, 'filename' | 'options'>) {
+function getBabelCaller({
+  filename,
+  options,
+}: Pick<ExpoBabelTransformerArgs, 'filename' | 'options'>): ExpoBabelCaller {
   const isNodeModule = filename.includes('node_modules');
   const isReactServer = options.customTransformOptions?.environment === 'react-server';
   const isGenericServer = options.customTransformOptions?.environment === 'node';
@@ -48,7 +104,7 @@ function getBabelCaller({ filename, options }: Pick<BabelTransformerArgs, 'filen
 
   if (routerRoot == null) {
     memoizeWarning(
-      'Missing transform.routerRoot option in Metro bundling request, falling back to `app` as routes directory.'
+      'Warning: Missing transform.routerRoot option in Metro bundling request, falling back to `app` as routes directory. This can occur if you bundle without Expo CLI or expo/metro-config.'
     );
   }
 
@@ -60,7 +116,7 @@ function getBabelCaller({ filename, options }: Pick<BabelTransformerArgs, 'filen
     // Metro automatically updates the cache to account for the custom transform options.
     isServer,
 
-    // Enable React Server Component rules for AST.
+    // Enable React Server Component rules for AST. The naming maps to the resolver property `--conditions=react-server`.
     isReactServer,
 
     // The base url to make requests from, used for hosting from non-standard locations.
@@ -83,18 +139,177 @@ function getBabelCaller({ filename, options }: Pick<BabelTransformerArgs, 'filen
     asyncRoutes: isCustomTruthy(options.customTransformOptions?.asyncRoutes) ? true : undefined,
     // Pass the engine to babel so we can automatically transpile for the correct
     // target environment.
-    engine: options.customTransformOptions?.engine,
+    engine: stringOrUndefined(options.customTransformOptions?.engine),
 
     // Provide the project root for accurately reading the Expo config.
     projectRoot: options.projectRoot,
 
     isNodeModule,
 
-    isHMREnabled: options.hot,
+    // TODO(@kitten): Removed and the default; The `hot` parameter is now force-enabled in Metro
+    // to align caching for `dev` with `hot` being enforced. Hence, we match this by forcing our
+    // own caller flag to `true` for `babel-preset-expo`. However, `babel-preset-expo` is still
+    // able to disable the React Refresh transform plugin for other runtimes and uses this flag
+    // to identify Metro / React Refresh runtime targets
+    isHMREnabled: true,
+
+    // Pass on the input type. Scripts shall be transformed to avoid dependencies (imports/requires),
+    // for example by polyfills or Babel runtime
+    metroSourceType: options.type,
 
     // Set the standard Babel flag to disable ESM transformations.
-    supportsStaticESM: options.experimentalImportSupport,
+    supportsStaticESM:
+      isCustomTruthy(options.customTransformOptions?.optimize) || options.experimentalImportSupport,
+
+    // Enable React compiler support in Babel.
+    // TODO: Remove this in the future when compiler is on by default.
+    supportsReactCompiler: isCustomTruthy(options.customTransformOptions?.reactCompiler)
+      ? true
+      : undefined,
+
+    // When true, indicates this bundle should contain only the loader export.
+    // Used by server-data-loaders-plugin to strip everything except the loader function.
+    isLoaderBundle: isCustomTruthy(options.customTransformOptions?.isLoaderBundle)
+      ? true
+      : undefined,
+
+    isDomComponent: options.customTransformOptions?.dom != null ? true : undefined,
+
+    // This is picked up by `babel-preset-expo` if it's set, and overrides the minimum supported
+    // `@babel/runtime` version that `@babel/plugin-transform-runtime` can assume is installed
+    // This option should be set to the project's version of `@babel/runtime`, if it's installed directly
+    babelRuntimeVersion:
+      typeof options.enableBabelRuntime === 'string' ? options.enableBabelRuntime : undefined,
   };
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function getDefaultExpoPreset(): PluginItem {
+  try {
+    return require('expo/internal/babel-preset');
+  } catch {
+    return require('babel-preset-expo');
+  }
+}
+
+function comparablePartialOptions(options: TransformOptions): unknown {
+  const {
+    babelrc: _babelrc,
+    caller: _caller,
+    configFile: _configFile,
+    cwd: _cwd,
+    envName: _envName,
+    filename: _filename,
+    plugins: _plugins,
+    presets: _presets,
+    root: _root,
+    ...comparable
+  } = options;
+  return comparable;
+}
+
+interface ResolvedConfigItem {
+  value: unknown;
+  options?: unknown;
+}
+
+interface ConfigComparison {
+  plugins: ResolvedConfigItem[];
+  presets: ResolvedConfigItem[];
+  options: string;
+}
+
+const defaultConfigComparisonCache = new Map<string, ConfigComparison>();
+
+function toConfigComparison(options: TransformOptions): ConfigComparison {
+  return {
+    plugins: (options.plugins ?? []) as ResolvedConfigItem[],
+    presets: (options.presets ?? []) as ResolvedConfigItem[],
+    options: JSON.stringify(comparablePartialOptions(options)),
+  };
+}
+
+/**
+ * Resolves the project config through Babel and compares its effective top-level
+ * configuration with Expo's default preset. This deliberately compares resolved
+ * descriptors rather than config filenames or source text.
+ */
+function isDefaultConfig({ filename, options, plugins = [] }: BabelTransformerArgs): boolean {
+  if (options.enableBabelRCLookup === false) return true;
+  const configName = options.extendsBabelConfigPath ?? resolveBabelrcName(options.projectRoot);
+  if (!configName) return true;
+
+  const shared: TransformOptions = {
+    sourceType: 'unambiguous',
+    cwd: options.projectRoot,
+    root: options.projectRoot,
+    filename,
+    babelrc: false,
+    configFile: false,
+    cloneInputAst: false,
+    caller: getBabelCaller({ filename, options }),
+    envName: options.dev ? 'development' : 'production',
+    plugins,
+  };
+  try {
+    const configured = loadPartialConfigSync({
+      ...shared,
+      extends: path.resolve(options.projectRoot, configName),
+    });
+    if (!configured) return false;
+    const baselineKey = JSON.stringify({
+      caller: shared.caller,
+      cwd: shared.cwd,
+      root: shared.root,
+      sourceType: shared.sourceType,
+    });
+    let baseline = defaultConfigComparisonCache.get(baselineKey);
+    if (!baseline) {
+      const partial = loadPartialConfigSync({
+        ...shared,
+        // The default descriptor does not expand the preset, so it does not vary
+        // by filename. Cache it by the caller and resolution roots, while still
+        // resolving the project config for every filename so Babel overrides
+        // remain authoritative.
+        presets: [getDefaultExpoPreset()],
+      });
+      if (!partial) return false;
+      baseline = toConfigComparison(partial.options);
+      defaultConfigComparisonCache.set(baselineKey, baseline);
+    }
+    const comparison = toConfigComparison(configured.options);
+    const configuredPlugins = comparison.plugins;
+    const baselinePlugins = baseline.plugins;
+    if (
+      configuredPlugins.length !== baselinePlugins.length ||
+      configuredPlugins.some(
+        (descriptor, index) =>
+          descriptor.value !== baselinePlugins[index]?.value ||
+          JSON.stringify(descriptor.options) !== JSON.stringify(baselinePlugins[index]?.options)
+      )
+    ) {
+      return false;
+    }
+    const configuredPresets = comparison.presets;
+    const baselinePresets = baseline.presets;
+    if (
+      configuredPresets.length !== baselinePresets.length ||
+      configuredPresets.some(
+        (descriptor, index) =>
+          descriptor.value !== baselinePresets[index]?.value ||
+          JSON.stringify(descriptor.options) !== JSON.stringify(baselinePresets[index]?.options)
+      )
+    ) {
+      return false;
+    }
+    return comparison.options === baseline.options;
+  } catch {
+    // Babel remains the source of truth when config resolution is ambiguous.
+    return false;
+  }
 }
 
 const transform: BabelTransformer['transform'] = ({
@@ -105,9 +320,13 @@ const transform: BabelTransformer['transform'] = ({
   plugins,
 }: BabelTransformerArgs): ReturnType<BabelTransformer['transform']> => {
   const OLD_BABEL_ENV = process.env.BABEL_ENV;
-  process.env.BABEL_ENV = options.dev ? 'development' : process.env.BABEL_ENV || 'production';
+  process.env.BABEL_ENV = options.dev ? 'development' : 'production';
 
+  const done = debugEvent.span();
   try {
+    const { enableBabelRCLookup } = options;
+    const { exts, presets } = loadBabelConfig(options);
+
     const babelConfig: TransformOptions = {
       // ES modules require sourceType='module' but OSS may not always want that
       sourceType: 'unambiguous',
@@ -126,12 +345,19 @@ const transform: BabelTransformer['transform'] = ({
       filename,
       highlightCode: true,
 
-      // Load the project babel config file.
-      ...loadBabelConfig(options),
+      root: options.projectRoot, // Default value
 
-      babelrc:
-        typeof options.enableBabelRCLookup === 'boolean' ? options.enableBabelRCLookup : true,
+      babelrcRoots: enableBabelRCLookup ? options.projectRoot : false, // Default value
+      // NOTE(@kitten): This will and has always only searched `projectRoot`, excluding node_modules and other workspaces
+      // As such, we'll only enable it when `enableBabelRCLookup` is explicitly enabled for non-node_modules
+      babelrc: enableBabelRCLookup ? !filename.includes('node_modules') : false,
+      // NOTE(@kitten): This used to duplicate the config file, which is already piped into `extends`
+      // However, for deprecated/legacy behaviour, we'll still enable it when `enableBabelRCLookup` is explicitly enabled
+      configFile: !!enableBabelRCLookup, // Otherwise duplicates our search below
 
+      // Add the discovered config file
+      extends: exts,
+      presets,
       plugins,
 
       // NOTE(EvanBacon): We heavily leverage the caller functionality to mutate the babel config.
@@ -142,6 +368,7 @@ const transform: BabelTransformer['transform'] = ({
       // Additionally, by moving everything Babel-related to the Babel preset, it makes it easier for users to reason
       // about the requirements of an Expo project, making it easier to migrate to other transpilers in the future.
       caller: getBabelCaller({ filename, options }),
+      envName: options.dev ? 'development' : 'production',
     };
 
     const result = transformSync(src, babelConfig, options);
@@ -150,20 +377,69 @@ const transform: BabelTransformer['transform'] = ({
     if (!result) {
       // BabelTransformer specifies that the `ast` can never be null but
       // the function returns here. Discovered when typing `BabelNode`.
+      // @ts-expect-error: see https://github.com/facebook/react-native/blob/401991c3f073bf734ee04f9220751c227d2abd31/packages/react-native-babel-transformer/src/index.js#L220-L224
       return { ast: null };
     }
 
     assert(result.ast);
     return { ast: result.ast, metadata: result.metadata };
   } finally {
-    if (OLD_BABEL_ENV) {
+    done('babel', { file: debugEvent.path(filename) });
+    // Restore the old process.env.BABEL_ENV
+    if (OLD_BABEL_ENV == null) {
+      // We have to treat this as a special case because writing undefined to
+      // an environment variable coerces it to the string 'undefined'. To
+      // unset it, we must delete it.
+      // See https://github.com/facebook/metro/pull/446
+      delete process.env.BABEL_ENV;
+    } else {
       process.env.BABEL_ENV = OLD_BABEL_ENV;
     }
   }
 };
 
-const babelTransformer: BabelTransformer = {
+/**
+ * Generates a cache key component based on the user's Babel configuration files.
+ * This uses Babel's loadPartialConfig to resolve which config files apply
+ * to the project, and includes their contents in the cache key so that changes
+ * to babel.config.js, .babelrc, or any file they reference will invalidate the
+ * transform cache.
+ *
+ * This is called once by the main thread (not on worker instances).
+ */
+function getCacheKey(options?: ExpoBabelTransformerCacheKeyOptions): string {
+  if (options?.projectRoot == null || options.enableBabelRCLookup === false) {
+    return '';
+  }
+
+  // In Expo, we pass the `extendsBabelConfigPath` ourselves, but if we're not using this with the Expo CLI
+  // we re-resolve the Babel config, same as in `loadBabelConfig`
+  const configName = options.extendsBabelConfigPath ?? resolveBabelrcName(options.projectRoot);
+  if (!configName) {
+    return '';
+  }
+
+  const partialConfig = loadPartialConfigSync({
+    cwd: options.projectRoot,
+    root: options.projectRoot,
+    extends: path.resolve(options.projectRoot, configName),
+    configFile: false,
+    babelrc: false,
+  });
+
+  const files = partialConfig?.files;
+  if (files == null || files.size === 0) {
+    return '';
+  }
+
+  return getFileCacheKey([...files].sort());
+}
+
+const babelTransformer: ExpoBabelTransformer = {
   transform,
+  getCacheKey,
+  // This is an Expo extension consumed by the matching Metro worker.
+  isDefaultConfig,
 };
 
 module.exports = babelTransformer;

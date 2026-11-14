@@ -25,11 +25,24 @@ public enum CheckAutomaticallyConfig: Int {
   }
 }
 
-@objc(EXUpdatesConfigError)
-public enum UpdatesConfigError: Int, Error {
+public enum UpdatesConfigError: Error, Sendable, LocalizedError {
   case ExpoUpdatesConfigPlistError
   case ExpoUpdatesConfigMissingURLError
   case ExpoUpdatesMissingRuntimeVersionError
+  case ExpoUpdatesInvalidMaxUpdatesToKeepError
+
+  public var errorDescription: String? {
+    switch self {
+    case .ExpoUpdatesConfigPlistError:
+      return "Expo.plist not found in bundle or invalid"
+    case .ExpoUpdatesConfigMissingURLError:
+      return "Config for expo-updates missing URL"
+    case .ExpoUpdatesMissingRuntimeVersionError:
+      return "Config for expo-updates missing runtime version"
+    case .ExpoUpdatesInvalidMaxUpdatesToKeepError:
+      return "Config for expo-updates max updates to keep must be an integer of at least 2"
+    }
+  }
 }
 
 public enum UpdatesConfigurationValidationResult {
@@ -38,6 +51,27 @@ public enum UpdatesConfigurationValidationResult {
   case InvalidPlistError
   case InvalidMissingURL
   case InvalidMissingRuntimeVersion
+  case InvalidMaxUpdatesToKeep
+
+  /**
+   The `reason` value of the configuration log entries, the same on iOS and Android.
+   */
+  var logReason: String {
+    switch self {
+    case .Valid:
+      return "valid"
+    case .InvalidNotEnabled:
+      return "notEnabled"
+    case .InvalidPlistError:
+      return "invalidPlist"
+    case .InvalidMissingURL:
+      return "missingUrl"
+    case .InvalidMissingRuntimeVersion:
+      return "missingRuntimeVersion"
+    case .InvalidMaxUpdatesToKeep:
+      return "invalidMaxUpdatesToKeep"
+    }
+  }
 }
 
 /**
@@ -69,6 +103,10 @@ public final class UpdatesConfig: NSObject {
   public static let EXUpdatesConfigCodeSigningIncludeManifestResponseCertificateChainKey = "EXUpdatesCodeSigningIncludeManifestResponseCertificateChain"
   public static let EXUpdatesConfigCodeSigningAllowUnsignedManifestsKey = "EXUpdatesConfigCodeSigningAllowUnsignedManifests"
   public static let EXUpdatesConfigEnableExpoUpdatesProtocolV0CompatibilityModeKey = "EXUpdatesConfigEnableExpoUpdatesProtocolV0CompatibilityMode"
+  public static let EXUpdatesConfigDisableAntiBrickingMeasures = "EXUpdatesDisableAntiBrickingMeasures"
+  public static let EXUpdatesConfigEnableBsdiffPatchSupportKey = "EXUpdatesEnableBsdiffPatchSupport"
+  public static let EXUpdatesConfigExcludeFromBackupKey = "EXUpdatesExcludeFromBackup"
+  public static let EXUpdatesConfigMaxUpdatesToKeepKey = "EXUpdatesMaxUpdatesToKeep"
 
   public static let EXUpdatesConfigCheckOnLaunchValueAlways = "ALWAYS"
   public static let EXUpdatesConfigCheckOnLaunchValueWifiOnly = "WIFI_ONLY"
@@ -79,42 +117,67 @@ public final class UpdatesConfig: NSObject {
 
   public let scopeKey: String
   public let updateUrl: URL
+  public let originalEmbeddedUpdateUrl: URL
   public let requestHeaders: [String: String]
+  public let originalEmbeddedRequestHeaders: [String: String]
   public let launchWaitMs: Int
   public let checkOnLaunch: CheckAutomaticallyConfig
   public let codeSigningConfiguration: CodeSigningConfiguration?
-
   // used only in Expo Go to prevent loading rollbacks and other directives, which don't make much sense in the context of Expo Go
   public let enableExpoUpdatesProtocolV0CompatibilityMode: Bool
-
+  public let enableBsdiffPatchSupport: Bool
   public let runtimeVersion: String
-
   public let hasEmbeddedUpdate: Bool
+  public let originalHasEmbeddedUpdate: Bool
+  public let disableAntiBrickingMeasures: Bool
+  public let excludeFromBackup: Bool
+  public let maxUpdatesToKeep: Int
+  public let hasUpdatesOverride: Bool
+
+  private let cachedConfigDictionary: [String: Any]
 
   internal required init(
+    cachedConfigDictionary: [String: Any],
     scopeKey: String,
     updateUrl: URL,
+    originalEmbeddedUpdateUrl: URL,
     requestHeaders: [String: String],
+    originalEmbeddedRequestHeaders: [String: String],
     launchWaitMs: Int,
     checkOnLaunch: CheckAutomaticallyConfig,
     codeSigningConfiguration: CodeSigningConfiguration?,
     runtimeVersion: String,
     hasEmbeddedUpdate: Bool,
-    enableExpoUpdatesProtocolV0CompatibilityMode: Bool
+    originalHasEmbeddedUpdate: Bool,
+    enableExpoUpdatesProtocolV0CompatibilityMode: Bool,
+    enableBsdiffPatchSupport: Bool,
+    disableAntiBrickingMeasures: Bool,
+    excludeFromBackup: Bool,
+    maxUpdatesToKeep: Int,
+    hasUpdatesOverride: Bool
   ) {
+    self.cachedConfigDictionary = cachedConfigDictionary
     self.scopeKey = scopeKey
     self.updateUrl = updateUrl
+    self.originalEmbeddedUpdateUrl = originalEmbeddedUpdateUrl
     self.requestHeaders = requestHeaders
+    self.originalEmbeddedRequestHeaders = originalEmbeddedRequestHeaders
     self.launchWaitMs = launchWaitMs
     self.checkOnLaunch = checkOnLaunch
     self.codeSigningConfiguration = codeSigningConfiguration
     self.runtimeVersion = runtimeVersion
     self.hasEmbeddedUpdate = hasEmbeddedUpdate
+    self.originalHasEmbeddedUpdate = originalHasEmbeddedUpdate
     self.enableExpoUpdatesProtocolV0CompatibilityMode = enableExpoUpdatesProtocolV0CompatibilityMode
+    self.enableBsdiffPatchSupport = enableBsdiffPatchSupport
+    self.disableAntiBrickingMeasures = disableAntiBrickingMeasures
+    self.excludeFromBackup = excludeFromBackup
+    self.maxUpdatesToKeep = maxUpdatesToKeep
+    self.hasUpdatesOverride = hasUpdatesOverride
   }
 
   private static func configDictionaryWithExpoPlist(mergingOtherDictionary: [String: Any]?) throws -> [String: Any] {
-    guard let configPlistPath = Bundle.main.path(forResource: PlistName, ofType: "plist") else {
+    guard let configPlistPath = updatesBundle.path(forResource: PlistName, ofType: "plist") else {
       throw UpdatesConfigError.ExpoUpdatesConfigPlistError
     }
 
@@ -159,24 +222,36 @@ public final class UpdatesConfig: NSObject {
     return runtimeVersion
   }
 
-  public static func getUpdatesConfigurationValidationResult(mergingOtherDictionary: [String: Any]?) -> UpdatesConfigurationValidationResult {
+  public static func getUpdatesConfigurationValidationResult(
+    mergingOtherDictionary: [String: Any]?,
+    configOverride: UpdatesConfigOverride? = UpdatesConfigOverride.load()
+  ) -> UpdatesConfigurationValidationResult {
     guard let dictionary = try? configDictionaryWithExpoPlist(mergingOtherDictionary: mergingOtherDictionary) else {
       return UpdatesConfigurationValidationResult.InvalidPlistError
     }
 
+    return getUpdatesConfigurationValidationResult(fromDictionary: dictionary, configOverride: configOverride)
+  }
+
+  internal static func getUpdatesConfigurationValidationResult(
+    fromDictionary dictionary: [String: Any],
+    configOverride: UpdatesConfigOverride?
+  ) -> UpdatesConfigurationValidationResult {
     guard dictionary.optionalValue(forKey: EXUpdatesConfigEnabledKey) ?? true else {
       return UpdatesConfigurationValidationResult.InvalidNotEnabled
     }
 
-    let updateUrl: URL? = dictionary.optionalValue(forKey: EXUpdatesConfigUpdateUrlKey).let { it in
-      URL(string: it)
-    }
+    let updateUrl = getUpdateUrl(fromDictionary: dictionary, configOverride: configOverride)
     guard updateUrl != nil else {
       return UpdatesConfigurationValidationResult.InvalidMissingURL
     }
 
-    guard getRuntimeVersion(mergingOtherDictionary: mergingOtherDictionary) != nil else {
+    guard getRuntimeVersion(fromDictionary: dictionary) != nil else {
       return UpdatesConfigurationValidationResult.InvalidMissingRuntimeVersion
+    }
+
+    guard (try? getMaxUpdatesToKeep(fromDictionary: dictionary)) != nil else {
+      return .InvalidMaxUpdatesToKeep
     }
 
     return UpdatesConfigurationValidationResult.Valid
@@ -188,19 +263,31 @@ public final class UpdatesConfig: NSObject {
   }
 
   public static func config(fromDictionary config: [String: Any]) throws -> UpdatesConfig {
-    guard let updateUrl = URL(string: config.requiredValue(forKey: EXUpdatesConfigUpdateUrlKey)) else {
+    return try UpdatesConfig.config(fromDictionary: config, configOverride: UpdatesConfigOverride.load())
+  }
+
+  internal static func config(
+    fromDictionary config: [String: Any],
+    configOverride: UpdatesConfigOverride?
+  ) throws -> UpdatesConfig {
+    guard let updateUrl = getUpdateUrl(fromDictionary: config, configOverride: configOverride) else {
+      throw UpdatesConfigError.ExpoUpdatesConfigMissingURLError
+    }
+    guard let originalEmbeddedUpdateUrl = getOriginalEmbeddedUpdateUrl(fromDictionary: config) else {
       throw UpdatesConfigError.ExpoUpdatesConfigMissingURLError
     }
     let scopeKey = config.optionalValue(forKey: EXUpdatesConfigScopeKeyKey) ?? UpdatesConfig.normalizedURLOrigin(url: updateUrl)
 
-    let requestHeaders: [String: String] = config.optionalValue(forKey: EXUpdatesConfigRequestHeadersKey) ?? [:]
+    let requestHeaders = getRequestHeaders(fromDictionary: config, configOverride: configOverride)
+    let originalEmbeddedRequestHeaders = getOriginalEmbeddedRequestHeaders(fromDictionary: config)
     let launchWaitMs = config.optionalValue(forKey: EXUpdatesConfigLaunchWaitMsKey).let { (it: Any) in
       // The only way I can figure out how to detect numbers is to do a is NSNumber (is any Numeric didn't work).
       // This might be able to change when we switch out the plist decoder above
       // swiftlint:disable:next legacy_objc_type
       if let it = it as? NSNumber {
         return it.intValue
-      } else if let it = it as? String {
+      }
+      if let it = it as? String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .none
         return formatter.number(from: it)?.intValue
@@ -227,7 +314,8 @@ public final class UpdatesConfig: NSObject {
       throw UpdatesConfigError.ExpoUpdatesMissingRuntimeVersionError
     }
 
-    let hasEmbeddedUpdate = config.optionalValue(forKey: EXUpdatesConfigHasEmbeddedUpdateKey) ?? true
+    let hasEmbeddedUpdate = getHasEmbeddedUpdate(fromDictionary: config, configOverride: configOverride)
+    let originalHasEmbeddedUpdate = getOriginalHasEmbeddedUpdate(fromDictionary: config)
 
     let codeSigningConfiguration = config.optionalValue(forKey: EXUpdatesConfigCodeSigningCertificateKey).let { (certificateString: String) in
       let codeSigningMetadata: [String: String] = config.requiredValue(forKey: EXUpdatesConfigCodeSigningMetadataKey)
@@ -245,18 +333,36 @@ public final class UpdatesConfig: NSObject {
     }
 
     let enableExpoUpdatesProtocolV0CompatibilityMode = config.optionalValue(forKey: EXUpdatesConfigEnableExpoUpdatesProtocolV0CompatibilityModeKey) ?? false
+    let enableBsdiffPatchSupport = config.optionalValue(forKey: EXUpdatesConfigEnableBsdiffPatchSupportKey) ?? true
+    let maxUpdatesToKeep = try getMaxUpdatesToKeep(fromDictionary: config)
 
     return UpdatesConfig(
+      cachedConfigDictionary: config,
       scopeKey: scopeKey,
       updateUrl: updateUrl,
+      originalEmbeddedUpdateUrl: originalEmbeddedUpdateUrl,
       requestHeaders: requestHeaders,
+      originalEmbeddedRequestHeaders: originalEmbeddedRequestHeaders,
       launchWaitMs: launchWaitMs,
       checkOnLaunch: checkOnLaunch,
       codeSigningConfiguration: codeSigningConfiguration,
       runtimeVersion: runtimeVersion,
       hasEmbeddedUpdate: hasEmbeddedUpdate,
-      enableExpoUpdatesProtocolV0CompatibilityMode: enableExpoUpdatesProtocolV0CompatibilityMode
+      originalHasEmbeddedUpdate: originalHasEmbeddedUpdate,
+      enableExpoUpdatesProtocolV0CompatibilityMode: enableExpoUpdatesProtocolV0CompatibilityMode,
+      enableBsdiffPatchSupport: enableBsdiffPatchSupport,
+      disableAntiBrickingMeasures: getDisableAntiBrickingMeasures(fromDictionary: config),
+      excludeFromBackup: config.optionalValue(forKey: EXUpdatesConfigExcludeFromBackupKey) ?? false,
+      maxUpdatesToKeep: maxUpdatesToKeep,
+      hasUpdatesOverride: configOverride != nil
     )
+  }
+
+  internal static func config(
+    fromConfig config: UpdatesConfig,
+    configOverride: UpdatesConfigOverride?
+  ) throws -> UpdatesConfig {
+    return try UpdatesConfig.config(fromDictionary: config.cachedConfigDictionary, configOverride: configOverride)
   }
 
   private static func codeSigningConfigurationForCodeSigningCertificate(
@@ -307,4 +413,105 @@ public final class UpdatesConfig: NSObject {
       return nil
     }
   }
+
+  private static func getDisableAntiBrickingMeasures(fromDictionary config: [String: Any]) -> Bool {
+    return config.optionalValue(forKey: EXUpdatesConfigDisableAntiBrickingMeasures) ?? false
+  }
+
+  private static func getMaxUpdatesToKeep(fromDictionary config: [String: Any]) throws -> Int {
+    guard let value = config[EXUpdatesConfigMaxUpdatesToKeepKey] else {
+      return 2
+    }
+
+    let maxUpdatesToKeep: Int?
+    // An exact cast rejects fractional, non-finite and out-of-range numbers instead of truncating them.
+    // swiftlint:disable:next legacy_objc_type
+    if let number = value as? NSNumber {
+      maxUpdatesToKeep = number as? Int
+    } else if let string = value as? String {
+      maxUpdatesToKeep = Int(string)
+    } else {
+      maxUpdatesToKeep = nil
+    }
+
+    guard let maxUpdatesToKeep, maxUpdatesToKeep >= 2 else {
+      throw UpdatesConfigError.ExpoUpdatesInvalidMaxUpdatesToKeepError
+    }
+
+    return maxUpdatesToKeep
+  }
+
+  private static func getHasEmbeddedUpdate(
+    fromDictionary config: [String: Any],
+    configOverride: UpdatesConfigOverride?
+  ) -> Bool {
+    if getDisableAntiBrickingMeasures(fromDictionary: config) && configOverride != nil {
+      return false
+    }
+    return getOriginalHasEmbeddedUpdate(fromDictionary: config)
+  }
+
+  private static func getOriginalHasEmbeddedUpdate(fromDictionary config: [String: Any]) -> Bool {
+    return config.optionalValue(forKey: EXUpdatesConfigHasEmbeddedUpdateKey) ?? true
+  }
+
+  private static func getUpdateUrl(
+    fromDictionary config: [String: Any],
+    configOverride: UpdatesConfigOverride?
+  ) -> URL? {
+    if getDisableAntiBrickingMeasures(fromDictionary: config),
+      let updateUrl = configOverride?.updateUrl {
+      return updateUrl
+    }
+    return getOriginalEmbeddedUpdateUrl(fromDictionary: config)
+  }
+
+  private static func getOriginalEmbeddedUpdateUrl(fromDictionary config: [String: Any]) -> URL? {
+    return config.optionalValue(forKey: EXUpdatesConfigUpdateUrlKey).let { it in
+      URL(string: it)
+    }
+  }
+
+  private static func getRequestHeaders(
+    fromDictionary config: [String: Any],
+    configOverride: UpdatesConfigOverride?
+  ) -> [String: String] {
+    if let requestHeaders = configOverride?.requestHeaders {
+      if isValidRequestHeadersOverride(
+        originalEmbeddedRequestHeaders: getOriginalEmbeddedRequestHeaders(fromDictionary: config),
+        requestHeadersOverride: requestHeaders
+      ) || getDisableAntiBrickingMeasures(fromDictionary: config) {
+        return requestHeaders
+      }
+
+      NSLog("Invalid update requestHeaders override, falling back to embedded requestHeaders - override requestHeaders: %@", requestHeaders)
+    }
+    return getOriginalEmbeddedRequestHeaders(fromDictionary: config)
+  }
+
+  private static func getOriginalEmbeddedRequestHeaders(fromDictionary config: [String: Any]) -> [String: String] {
+    return config.optionalValue(forKey: EXUpdatesConfigRequestHeadersKey) ?? [:]
+  }
+
+  internal static func isValidRequestHeadersOverride(
+    originalEmbeddedRequestHeaders: [String: String],
+    requestHeadersOverride: [String: String]?
+  ) -> Bool {
+    guard let overrideHeaders = requestHeadersOverride else {
+      return true
+    }
+
+    let originalEmbeddedKeys = Set(originalEmbeddedRequestHeaders.keys.map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) })
+
+    // disallow `Host` override to prevent malicious request rewrite
+    let disallowHeaderKeys: Set<String> = ["host"]
+
+    let overrideKeys = overrideHeaders.keys.map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    // ensure none are disallowed AND all are in the original set
+    return overrideKeys.allSatisfy { !disallowHeaderKeys.contains($0) } &&
+      overrideKeys.allSatisfy { originalEmbeddedKeys.contains($0) }
+  }
 }
+
+// swiftlint:enable identifier_name

@@ -1,19 +1,20 @@
 import spawnAsync from '@expo/spawn-async';
-import fs from 'fs-extra';
-import getenv from 'getenv';
-import os from 'os';
-import path from 'path';
+import chalk from 'chalk';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
-import { installDependencies } from './packageManager';
-import { PackageManagerName } from './resolvePackageManager';
-import { SubstitutionData } from './types';
-import { newStep } from './utils';
+import { usesExpoUI } from './features';
+import { installDependencies, type PackageManagerName } from './packageManager';
+import { getTemplateDistTag } from './templateUtils';
+import type { SubstitutionData } from './types';
+import { env } from './utils/env';
+import { newStep } from './utils/ora';
 
 const debug = require('debug')('create-expo-module:createExampleApp') as typeof console.log;
 
 // These dependencies will be removed from the example app (`expo init` adds them)
 const DEPENDENCIES_TO_REMOVE = ['expo-status-bar', 'expo-splash-screen'];
-const EXPO_BETA = getenv.boolish('EXPO_BETA', false);
 
 /**
  * Initializes a new Expo project as an example app.
@@ -32,23 +33,31 @@ export async function createExampleApp(
   // Path to the target example dir
   const appTargetPath = path.join(targetDir, 'example');
 
-  if (!(await fs.pathExists(appTargetPath))) {
+  if (!fs.existsSync(appTargetPath)) {
     // The template doesn't include the example app, so just skip this phase
     return;
   }
 
   await newStep('Initializing the example app', async (step) => {
-    const templateVersion = EXPO_BETA ? 'next' : 'latest';
-    const template = `expo-template-blank-typescript@${templateVersion}`;
-    debug(`Using example template: ${template}`);
-    await spawnAsync(
-      packageManager,
-      ['create', 'expo-app', '--', exampleProjectSlug, '--template', template, '--yes'],
-      {
-        cwd: targetDir,
-        stdio: 'ignore',
+    // Pin the example template to the same SDK as the module template (derived from the CLI's own
+    // version), so `create-expo-module@sdk-XX` scaffolds an SDK XX example rather than always using
+    // `latest`. Fall back to `latest` when the SDK can't be determined or its template isn't published.
+    const distTag = env.EXPO_BETA ? 'next' : getTemplateDistTag(require('../package.json').version);
+
+    try {
+      await initExampleApp(packageManager, exampleProjectSlug, targetDir, distTag);
+    } catch (error: any) {
+      if (env.EXPO_BETA || distTag === 'latest') {
+        throw error;
       }
-    );
+
+      console.warn(
+        chalk.yellow(`Failed to use the "${distTag}" example template, falling back to "latest".`)
+      );
+
+      await initExampleApp(packageManager, exampleProjectSlug, targetDir, 'latest');
+    }
+
     step.succeed('Initialized the example app');
   });
 
@@ -58,52 +67,126 @@ export async function createExampleApp(
     await moveFiles(appTargetPath, appTmpPath);
 
     // Cleanup the "example" dir
-    await fs.rmdir(appTargetPath);
+    await fs.promises.rm(appTargetPath, { recursive: true, force: true });
 
     // Clean up the ".git" from example app
     // note, this directory has contents, rmdir will throw
-    await fs.remove(path.join(appTmpPath, '.git'));
+    await fs.promises.rm(path.join(appTmpPath, '.git'), { recursive: true, force: true });
 
     // Move the temporary example app to "example" dir
-    await fs.rename(appTmpPath, appTargetPath);
+    await fs.promises.rename(appTmpPath, appTargetPath);
 
     await addMissingAppConfigFields(appTargetPath, data);
 
     step.succeed('Configured the example app');
   });
 
-  await prebuildExampleApp(appTargetPath);
-
   await modifyPackageJson(appTargetPath);
 
+  // Install once the template files are in place, so that the example app's own
+  // `pnpm-workspace.yaml` keeps it out of the module's pnpm workspace.
   await newStep('Installing dependencies in the example app', async (step) => {
     await installDependencies(packageManager, appTargetPath);
+    if (usesExpoUI(data.project.features)) {
+      await installExpoUI(appTargetPath);
+    }
+    step.succeed('Installed dependencies in the example app');
+  });
+
+  await prebuildExampleApp(appTargetPath);
+
+  await newStep('Installing CocoaPods in the example app', async (step) => {
     if (os.platform() === 'darwin') {
       await podInstall(appTargetPath);
-      step.succeed('Installed dependencies in the example app');
+      step.succeed('Installed CocoaPods in the example app');
     } else {
-      step.succeed('Installed dependencies in the example app (skipped installing CocoaPods)');
+      step.succeed('Skipped installing CocoaPods in the example app, CocoaPods requires macOS');
     }
   });
 }
 
 /**
- * Copies files from one directory to another.
+ * Installs `@expo/ui` in the example app using `expo install` so the version is
+ * resolved against the example app's bundled native module versions.
+ */
+async function installExpoUI(exampleAppPath: string): Promise<void> {
+  await spawnAsync('npx', ['expo', 'install', '@expo/ui'], {
+    cwd: exampleAppPath,
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+}
+
+/**
+ * Initializes the example app from `expo-template-blank-typescript` at the given dist-tag.
+ */
+async function initExampleApp(
+  packageManager: PackageManagerName,
+  exampleProjectSlug: string,
+  targetDir: string,
+  distTag: string
+): Promise<void> {
+  const template = `expo-template-blank-typescript@${distTag}`;
+  debug(`Using example template: ${template}`);
+  const command = createCommand(packageManager, exampleProjectSlug, template);
+
+  try {
+    await spawnAsync(packageManager, command, {
+      cwd: targetDir,
+    });
+  } catch (error: any) {
+    throw new Error(
+      `${command.join(' ')} failed with exit code: ${error?.status}.\n\nError stack:\n${error?.stderr}`
+    );
+  }
+}
+
+function createCommand(
+  packageManager: PackageManagerName,
+  exampleProjectSlug: string,
+  template: string
+): string[] {
+  const command = ['create', 'expo-app'];
+  if (packageManager === 'npm') {
+    command.push('--');
+  }
+  return command.concat([exampleProjectSlug, '--template', template, '--yes', '--no-install']);
+}
+
+/**
+ * Moves files from one directory to another.
  */
 async function moveFiles(fromPath: string, toPath: string): Promise<void> {
-  for (const file of await fs.readdir(fromPath)) {
-    await fs.move(path.join(fromPath, file), path.join(toPath, file), {
-      overwrite: true,
-    });
+  // Make sure that the target directory exists
+  await fs.promises.mkdir(toPath, { recursive: true });
+  for (const file of await fs.promises.readdir(fromPath)) {
+    // First, remove target, so there are no conflicts (explicit overwrite)
+    await fs.promises.rm(path.join(toPath, file), { force: true, recursive: true });
+    try {
+      // Then, rename the file to move it to the destination
+      await fs.promises.rename(path.join(fromPath, file), path.join(toPath, file));
+    } catch (error: any) {
+      if (error.code === 'EXDEV') {
+        // If the file is on a different device/disk, copy it instead and delete the original
+        await fs.promises.cp(fromPath, toPath, { errorOnExist: true, recursive: true });
+        await fs.promises.rm(fromPath, { recursive: true, force: true });
+      } else {
+        throw error;
+      }
+    }
   }
 }
 
 /**
- * Adds missing configuration that are required to run `npx expo prebuild`.
+ * Adds the app config that the example app needs: the app IDs required to run `npx expo prebuild`,
+ * and module resolution that keeps a single copy of each package in the bundle.
  */
-async function addMissingAppConfigFields(appPath: string, data: SubstitutionData): Promise<void> {
+export async function addMissingAppConfigFields(
+  appPath: string,
+  data: SubstitutionData
+): Promise<void> {
   const appConfigPath = path.join(appPath, 'app.json');
-  const appConfig = await fs.readJson(appConfigPath);
+  const appConfigContent = await fs.promises.readFile(appConfigPath, 'utf8');
+  const appConfig = JSON.parse(appConfigContent);
   const appId = `${data.project.package}.example`;
 
   // Android package name needs to be added to app.json
@@ -118,9 +201,12 @@ async function addMissingAppConfigFields(appPath: string, data: SubstitutionData
   }
   appConfig.expo.ios.bundleIdentifier = appId;
 
-  await fs.writeJson(appConfigPath, appConfig, {
-    spaces: 2,
-  });
+  // The module's devDependencies install a second copy of react-native, expo and other packages
+  // in its node_modules. Make Metro resolve them to the copies that autolinking uses for the
+  // example app, so that the bundle includes only one copy of each package.
+  appConfig.expo.experiments = { ...appConfig.expo.experiments, autolinkingModuleResolution: true };
+
+  await fs.promises.writeFile(appConfigPath, JSON.stringify(appConfig, null, 2), 'utf8');
 }
 
 /**
@@ -129,7 +215,8 @@ async function addMissingAppConfigFields(appPath: string, data: SubstitutionData
  */
 async function modifyPackageJson(appPath: string): Promise<void> {
   const packageJsonPath = path.join(appPath, 'package.json');
-  const packageJson = await fs.readJson(packageJsonPath);
+  const packageJsonContent = await fs.promises.readFile(packageJsonPath, 'utf8');
+  const packageJson = JSON.parse(packageJsonContent);
 
   if (!packageJson.expo) {
     packageJson.expo = {};
@@ -146,9 +233,7 @@ async function modifyPackageJson(appPath: string): Promise<void> {
     delete packageJson.dependencies[dependencyToRemove];
   }
 
-  await fs.writeJson(packageJsonPath, packageJson, {
-    spaces: 2,
-  });
+  await fs.promises.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf8');
 }
 
 /**

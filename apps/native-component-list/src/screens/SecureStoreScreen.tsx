@@ -1,16 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import * as React from 'react';
-import {
-  Alert,
-  Platform,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-  Switch,
-  StyleSheet,
-} from 'react-native';
+import { Alert, Platform, ScrollView, TextInput, View, Switch, StyleSheet } from 'react-native';
 
+import { BodyText } from '../components/BodyText';
 import ListButton from '../components/ListButton';
 import Colors from '../constants/Colors';
 import { useResolvedValue } from '../utilities/useResolvedValue';
@@ -32,7 +24,7 @@ export default function SecureStoreScreen() {
   if (warning) {
     return (
       <View style={{ justifyContent: 'center', alignItems: 'center', flex: 1 }}>
-        <Text>{warning}</Text>
+        <BodyText>{warning}</BodyText>
       </View>
     );
   }
@@ -44,68 +36,68 @@ function SecureStoreView() {
   const [key, setKey] = React.useState<string | undefined>();
   const [value, setValue] = React.useState<string | undefined>();
   const [service, setService] = React.useState<string | undefined>();
-  const [requireAuth, setRequireAuth] = React.useState<boolean | undefined>();
+  const [authMethod, setAuthMethod] = React.useState<SecureStore.AuthenticationMethod>('none');
+  const [requireConfirmation, setRequireConfirmation] = React.useState<boolean>(true);
+  const [byteSize, setByteSize] = React.useState<string>('4096');
 
-  const toggleAuth = async () => {
-    setRequireAuth(!requireAuth);
-  };
+  const canUseBiometric = SecureStore.canUseBiometricAuthentication();
+  const canUseDeviceCredentials = SecureStore.canUseDeviceCredentialsAuthentication();
+  const availableAuthMethods: SecureStore.AuthenticationMethod[] = [
+    'none',
+    ...(canUseBiometric ? (['biometry'] as const) : []),
+    ...(canUseDeviceCredentials ? (['deviceCredentials'] as const) : []),
+  ];
+
+  const storeOptions = React.useMemo<SecureStore.SecureStoreOptions>(
+    () => ({
+      keychainService: service,
+      requireAuthentication: authMethod,
+      authenticationPrompt: authMethod === 'none' ? undefined : 'Authenticate',
+      ...(Platform.OS === 'android' ? { requireConfirmation } : {}),
+    }),
+    [authMethod, requireConfirmation, service]
+  );
 
   async function storeValueAsync(value: string, key: string) {
     try {
-      await SecureStore.setItemAsync(key, value, {
-        keychainService: service,
-        requireAuthentication: requireAuth,
-        authenticationPrompt: 'Authenticate',
-      });
+      await SecureStore.setItemAsync(key, value, storeOptions);
       Alert.alert('Success!', 'Value: ' + value + ', stored successfully for key: ' + key, [
         { text: 'OK', onPress: () => {} },
       ]);
-    } catch (e) {
+    } catch (e: any) {
       Alert.alert('Error!', e.message, [{ text: 'OK', onPress: () => {} }]);
     }
   }
 
   function storeValue(value: string, key: string) {
     try {
-      SecureStore.setItem(key, value, {
-        keychainService: service,
-        requireAuthentication: requireAuth,
-        authenticationPrompt: 'Authenticate',
-      });
+      SecureStore.setItem(key, value, storeOptions);
       Alert.alert('Success!', 'Value: ' + value + ', stored successfully for key: ' + key, [
         { text: 'OK', onPress: () => {} },
       ]);
-    } catch (e) {
+    } catch (e: any) {
       Alert.alert('Error!', e.message, [{ text: 'OK', onPress: () => {} }]);
     }
   }
 
   async function getValueAsync(key: string) {
     try {
-      const fetchedValue = await SecureStore.getItemAsync(key, {
-        keychainService: service,
-        requireAuthentication: requireAuth,
-        authenticationPrompt: 'Authenticate',
-      });
+      const fetchedValue = await SecureStore.getItemAsync(key, storeOptions);
       Alert.alert('Success!', 'Fetched value: ' + fetchedValue, [
         { text: 'OK', onPress: () => {} },
       ]);
-    } catch (e) {
+    } catch (e: any) {
       Alert.alert('Error!', e.message, [{ text: 'OK', onPress: () => {} }]);
     }
   }
 
   function getValue(key: string) {
     try {
-      const fetchedValue = SecureStore.getItem(key, {
-        keychainService: service,
-        requireAuthentication: requireAuth,
-        authenticationPrompt: 'Authenticate',
-      });
+      const fetchedValue = SecureStore.getItem(key, storeOptions);
       Alert.alert('Success!', 'Fetched value: ' + fetchedValue, [
         { text: 'OK', onPress: () => {} },
       ]);
-    } catch (e) {
+    } catch (e: any) {
       Alert.alert('Error!', e.message, [{ text: 'OK', onPress: () => {} }]);
     }
   }
@@ -114,20 +106,53 @@ function SecureStoreView() {
     try {
       await SecureStore.deleteItemAsync(key, { keychainService: service });
       Alert.alert('Success!', 'Value deleted', [{ text: 'OK', onPress: () => {} }]);
-    } catch (e) {
+    } catch (e: any) {
       Alert.alert('Error!', e.message, [{ text: 'OK', onPress: () => {} }]);
     }
   }
 
+  async function runStorageSizeDemo() {
+    const parsedBytes = Number.parseInt(byteSize, 10);
+    if (!Number.isFinite(parsedBytes) || parsedBytes <= 0) {
+      Alert.alert('Invalid size', 'Enter a positive number to generate the test string.');
+      return;
+    }
+
+    const nearLimitValue = 'a'.repeat(parsedBytes);
+    const overLimitValue = 'a'.repeat(parsedBytes + 1);
+    const nearLimitKey = `size-demo-${Platform.OS}-safe-${parsedBytes}`;
+    const overLimitKey = `size-demo-${Platform.OS}-over-${parsedBytes + 1}`;
+    const results: string[] = [`Platform: ${Platform.OS}`];
+
+    try {
+      await SecureStore.setItemAsync(nearLimitKey, nearLimitValue, storeOptions);
+      results.push(`Successfully stored ${parsedBytes} bytes.`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      results.push(`Failed to store ${parsedBytes} bytes: ${message}`);
+    }
+
+    try {
+      await SecureStore.setItemAsync(overLimitKey, overLimitValue, storeOptions);
+      results.push(`Unexpectedly stored ${parsedBytes + 1} bytes without error.`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      results.push(`Storing ${parsedBytes + 1} bytes failed with native error: ${message}`);
+    }
+
+    try {
+      await SecureStore.deleteItemAsync(nearLimitKey, storeOptions);
+      await SecureStore.deleteItemAsync(overLimitKey, storeOptions);
+    } catch {}
+
+    Alert.alert('SecureStore size demo', results.join('\n\n'));
+  }
+
   return (
-    <ScrollView style={styles.container}>
-      <TextInput
-        style={styles.textInput}
-        placeholder="Enter a value to store (ex. pw123!)"
-        placeholderTextColor={Colors.secondaryText}
-        value={value}
-        onChangeText={setValue}
-      />
+    <ScrollView
+      style={styles.container}
+      keyboardDismissMode="interactive"
+      keyboardShouldPersistTaps="handled">
       <TextInput
         style={styles.textInput}
         placeholder="Enter a key for the value (ex. password)"
@@ -137,18 +162,35 @@ function SecureStoreView() {
       />
       <TextInput
         style={styles.textInput}
+        placeholder="Enter a value to store (ex. pw123!)"
+        placeholderTextColor={Colors.secondaryText}
+        value={value}
+        onChangeText={setValue}
+      />
+      <TextInput
+        style={styles.textInput}
         placeholder="Enter a service name (may be blank)"
         placeholderTextColor={Colors.secondaryText}
         value={service}
         onChangeText={setService}
       />
-      <Text style={{ marginBottom: 10 }}>
-        Can use biometric authentication: {SecureStore.canUseBiometricAuthentication().toString()}
-      </Text>
-      {SecureStore.canUseBiometricAuthentication() && (
-        <View style={styles.authToggleContainer}>
-          <Text>Requires authentication:</Text>
-          <Switch value={requireAuth} onValueChange={toggleAuth} />
+      <BodyText style={{ marginBottom: 10 }}>
+        Can use biometric authentication: {canUseBiometric.toString()}
+      </BodyText>
+      <BodyText style={{ marginBottom: 10 }}>
+        Can use device credentials authentication: {canUseDeviceCredentials.toString()}
+      </BodyText>
+      {availableAuthMethods.length > 1 &&
+        availableAuthMethods.map((method) => (
+          <View key={method} style={[styles.authToggleContainer, { marginBottom: 10 }]}>
+            <BodyText>Authentication: {method}</BodyText>
+            <Switch value={authMethod === method} onValueChange={() => setAuthMethod(method)} />
+          </View>
+        ))}
+      {Platform.OS === 'android' && authMethod !== 'none' && (
+        <View style={[styles.authToggleContainer, { marginBottom: 10 }]}>
+          <BodyText>Requires confirmation:</BodyText>
+          <Switch value={requireConfirmation} onValueChange={setRequireConfirmation} />
         </View>
       )}
       {value && key && (
@@ -163,6 +205,18 @@ function SecureStoreView() {
       )}
       {key && <ListButton onPress={() => getValue(key)} title="Get value with key synchronously" />}
       {key && <ListButton onPress={() => deleteValue(key)} title="Delete value with key" />}
+      <BodyText style={styles.demoDescription}>
+        Enter a byte length to test the storage limit on this platform.
+      </BodyText>
+      <TextInput
+        style={styles.textInput}
+        placeholder="Length in bytes (e.g. 4096)"
+        placeholderTextColor={Colors.secondaryText}
+        keyboardType="number-pad"
+        value={byteSize}
+        onChangeText={setByteSize}
+      />
+      <ListButton onPress={runStorageSizeDemo} title="Run storage size demo" />
     </ScrollView>
   );
 }
@@ -192,5 +246,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  demoDescription: {
+    marginTop: 16,
+    marginBottom: 8,
+    color: Colors.secondaryText,
   },
 });

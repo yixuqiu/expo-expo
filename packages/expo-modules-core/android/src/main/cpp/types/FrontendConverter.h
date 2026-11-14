@@ -2,10 +2,10 @@
 
 #pragma once
 
-#include "CppType.h"
+#include <algorithm>
 
-#include <jsi/jsi.h>
-#include <fbjni/fbjni.h>
+#include "../ExpoHeader.pch"
+#include "CppType.h"
 
 namespace jni = facebook::jni;
 namespace jsi = facebook::jsi;
@@ -37,6 +37,16 @@ public:
     JNIEnv *env,
     const jsi::Value &value
   ) const = 0;
+
+  /**
+   * Whether the JS value has to stay alive until an async call that received it is settled.
+   * It's true for converters that pass only a reference to Kotlin, like the shared object id.
+   * The native body works with the object behind that reference, so the JS value must not be
+   * garbage collected before the call ends. Composite converters ask their element converters.
+   */
+  virtual bool retainsJSValue() const {
+    return false;
+  }
 };
 
 /**
@@ -179,6 +189,28 @@ public:
   bool canConvert(jsi::Runtime &rt, const jsi::Value &value) const override;
 };
 
+class ArrayBufferFrontendConverter : public FrontendConverter {
+public:
+  jobject convert(
+    jsi::Runtime &rt,
+    JNIEnv *env,
+    const jsi::Value &value
+  ) const override;
+
+  bool canConvert(jsi::Runtime &rt, const jsi::Value &value) const override;
+};
+
+class NativeArrayBufferFrontendConverter : public FrontendConverter {
+public:
+  jobject convert(
+    jsi::Runtime &rt,
+    JNIEnv *env,
+    const jsi::Value &value
+  ) const override;
+
+  bool canConvert(jsi::Runtime &rt, const jsi::Value &value) const override;
+};
+
 /**
  * Converter from any js value to [expo.modules.kotlin.jni.JavaScriptValue].
  */
@@ -222,6 +254,20 @@ public:
 };
 
 /**
+ * Converter from js function to [expo.modules.kotlin.jni.JavaScriptArrayBuffer].
+ */
+class JavaScriptArrayBufferFrontendConverter : public FrontendConverter {
+public:
+  jobject convert(
+    jsi::Runtime &rt,
+    JNIEnv *env,
+    const jsi::Value &value
+  ) const override;
+
+  bool canConvert(jsi::Runtime &rt, const jsi::Value &value) const override;
+};
+
+/**
  * Converter from js view object to int.
  */
 class ViewTagFrontendConverter : public FrontendConverter {
@@ -247,6 +293,10 @@ public:
   ) const override;
 
   bool canConvert(jsi::Runtime &rt, const jsi::Value &value) const override;
+
+  bool retainsJSValue() const override {
+    return true;
+  }
 };
 
 /**
@@ -282,6 +332,12 @@ public:
     JNIEnv *env,
     const jsi::Value &value
   ) const override;
+
+  bool retainsJSValue() const override {
+    return std::any_of(converters.begin(), converters.end(), [](const auto &converter) {
+      return converter->retainsJSValue();
+    });
+  }
 
 private:
   std::vector<std::shared_ptr<FrontendConverter>> converters;
@@ -320,6 +376,42 @@ private:
 };
 
 /**
+ * Converter from js array object to Java array.
+ */
+class ArrayFrontendConverter : public FrontendConverter {
+public:
+  ArrayFrontendConverter(
+    jni::local_ref<jni::JavaClass<SingleType>::javaobject> expectedType
+  );
+
+  jobject convert(
+    jsi::Runtime &rt,
+    JNIEnv *env,
+    const jsi::Value &value
+  ) const override;
+
+  bool canConvert(jsi::Runtime &rt, const jsi::Value &value) const override;
+
+  bool retainsJSValue() const override {
+    return parameterConverter->retainsJSValue();
+  }
+
+private:
+  /**
+   * A string representation of desired Java type.
+   */
+  std::string javaType;
+  /**
+   * Bare parameter type.
+   */
+  CppType parameterType;
+  /**
+   * Converter used to convert array elements.
+   */
+  std::shared_ptr<FrontendConverter> parameterConverter;
+};
+
+/**
  * Converter from js array object to [java.utils.ArrayList].
  */
 class ListFrontendConverter : public FrontendConverter {
@@ -335,11 +427,21 @@ public:
   ) const override;
 
   bool canConvert(jsi::Runtime &rt, const jsi::Value &value) const override;
+
+  bool retainsJSValue() const override {
+    return parameterConverter->retainsJSValue();
+  }
 private:
   /**
    * Converter used to convert array elements.
    */
   std::shared_ptr<FrontendConverter> parameterConverter;
+
+  jobject convertSingleValue(
+    jsi::Runtime &rt,
+    JNIEnv *env,
+    const jsi::Value &value
+  ) const;
 };
 
 /**
@@ -358,6 +460,10 @@ public:
   ) const override;
 
   bool canConvert(jsi::Runtime &rt, const jsi::Value &value) const override;
+
+  bool retainsJSValue() const override {
+    return valueConverter->retainsJSValue();
+  }
 private:
   /**
    * Converter used to convert values.
@@ -383,4 +489,47 @@ private:
   DoubleFrontendConverter doubleConverter;
   StringFrontendConverter stringConverter;
 };
+
+class NullableFrontendConverter : public FrontendConverter {
+public:
+  NullableFrontendConverter(
+    jni::local_ref<jni::JavaClass<SingleType>::javaobject> expectedType
+  );
+
+  jobject convert(
+    jsi::Runtime &rt,
+    JNIEnv *env,
+    const jsi::Value &value
+  ) const override;
+
+  bool canConvert(jsi::Runtime &rt, const jsi::Value &value) const override;
+
+  bool retainsJSValue() const override {
+    return parameterConverter->retainsJSValue();
+  }
+private:
+  std::shared_ptr<FrontendConverter> parameterConverter;
+};
+
+class ValueOrUndefinedFrontendConverter : public FrontendConverter {
+public:
+  ValueOrUndefinedFrontendConverter(
+    jni::local_ref<jni::JavaClass<SingleType>::javaobject> expectedType
+  );
+
+  jobject convert(
+    jsi::Runtime &rt,
+    JNIEnv *env,
+    const jsi::Value &value
+  ) const override;
+
+  bool canConvert(jsi::Runtime &rt, const jsi::Value &value) const override;
+
+  bool retainsJSValue() const override {
+    return parameterConverter->retainsJSValue();
+  }
+private:
+  std::shared_ptr<FrontendConverter> parameterConverter;
+};
+
 } // namespace expo

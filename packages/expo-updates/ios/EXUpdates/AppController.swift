@@ -9,7 +9,36 @@ import ExpoModulesCore
 import EXUpdatesInterface
 
 public struct UpdatesModuleConstants {
+  public init(
+    launchedUpdate: Update?,
+    launchDuration: Double?,
+    embeddedUpdate: Update?,
+    emergencyLaunchException: Error?,
+    isEnabled: Bool,
+    isUsingEmbeddedAssets: Bool,
+    runtimeVersion: String?,
+    checkOnLaunch: CheckAutomaticallyConfig,
+    requestHeaders: [String: String],
+    assetFilesMap: [String: Any]?,
+    shouldDeferToNativeForAPIMethodAvailabilityInDevelopment: Bool,
+    initialContext: UpdatesStateContext
+  ) {
+    self.launchedUpdate = launchedUpdate
+    self.launchDuration = launchDuration
+    self.embeddedUpdate = embeddedUpdate
+    self.emergencyLaunchException = emergencyLaunchException
+    self.isEnabled = isEnabled
+    self.isUsingEmbeddedAssets = isUsingEmbeddedAssets
+    self.runtimeVersion = runtimeVersion
+    self.checkOnLaunch = checkOnLaunch
+    self.requestHeaders = requestHeaders
+    self.assetFilesMap = assetFilesMap
+    self.shouldDeferToNativeForAPIMethodAvailabilityInDevelopment = shouldDeferToNativeForAPIMethodAvailabilityInDevelopment
+    self.initialContext = initialContext
+  }
+
   let launchedUpdate: Update?
+  let launchDuration: Double?
   let embeddedUpdate: Update?
   let emergencyLaunchException: Error?
   let isEnabled: Bool
@@ -34,6 +63,37 @@ public struct UpdatesModuleConstants {
    calls to go through.
    */
   let shouldDeferToNativeForAPIMethodAvailabilityInDevelopment: Bool
+
+  let initialContext: UpdatesStateContext
+
+  public func toModuleConstantsMap() -> [String: Any?] {
+    var mutableMap: [String: Any?] = [
+      "isEmergencyLaunch": emergencyLaunchException != nil,
+      "emergencyLaunchReason": emergencyLaunchException?.localizedDescription,
+      "isEmbeddedLaunch": embeddedUpdate != nil && embeddedUpdate?.updateId == launchedUpdate?.updateId,
+      "isEnabled": isEnabled,
+      "launchDuration": launchDuration,
+      "isUsingEmbeddedAssets": isUsingEmbeddedAssets,
+      "runtimeVersion": runtimeVersion ?? "",
+      "checkAutomatically": checkOnLaunch.asString,
+      "channel": requestHeaders["expo-channel-name"] ?? "",
+      "shouldDeferToNativeForAPIMethodAvailabilityInDevelopment":
+        shouldDeferToNativeForAPIMethodAvailabilityInDevelopment || UpdatesUtils.isNativeDebuggingEnabled(),
+      "initialContext": initialContext.json
+    ]
+
+    if let launchedUpdate = launchedUpdate {
+      mutableMap["updateId"] = launchedUpdate.updateId.uuidString
+      mutableMap["commitTime"] = UInt64(floor(launchedUpdate.commitTime.timeIntervalSince1970 * 1000))
+      mutableMap["manifest"] = launchedUpdate.manifest.rawManifestJSON()
+    }
+
+    if let assetFilesMap = assetFilesMap {
+      mutableMap["localAssets"] = assetFilesMap
+    }
+
+    return mutableMap
+  }
 }
 
 public enum CheckForUpdateResult {
@@ -59,9 +119,9 @@ public protocol AppControllerInterface {
   @objc weak var delegate: AppControllerDelegate? { get set }
 
   /**
-   The URL on disk to source asset for the RCTBridge.
+   The URL on disk of the JavaScript bundle to launch.
    Will be null until the AppController delegate method is called.
-   This should be provided in the `sourceURLForBridge:` method of RCTBridgeDelegate.
+   Return this URL from the React Native factory delegate's `bundleURL()` method.
    */
   @objc func launchAssetUrl() -> URL?
 
@@ -70,8 +130,6 @@ public protocol AppControllerInterface {
    Currently it's only active for `EnabledAppController`.
    */
   @objc var isActiveController: Bool { get }
-
-  @objc var isStarted: Bool { get }
 
   /**
    Starts the update process to launch a previously-loaded update and (if configured to do so)
@@ -86,15 +144,13 @@ public protocol AppControllerInterface {
 }
 
 public protocol InternalAppControllerInterface: AppControllerInterface {
-  /**
-   The AppContext from expo-modules-core.
-   This is optional, but required for expo-updates module events to work.
-   */
-  var appContext: AppContext? { get set }
-
   var updatesDirectory: URL? { get }
 
-  var shouldEmitJsEvents: Bool { get set }
+  var reloadScreenManager: Reloadable? { get }
+
+  var eventManager: UpdatesEventManager { get }
+  var isStarted: Bool { get }
+  func onEventListenerStartObserving()
 
   func getConstantsForModule() -> UpdatesModuleConstants
   func requestRelaunch(
@@ -119,10 +175,8 @@ public protocol InternalAppControllerInterface: AppControllerInterface {
     success successBlockArg: @escaping () -> Void,
     error errorBlockArg: @escaping (_ error: Exception) -> Void
   )
-  func getNativeStateMachineContext(
-    success successBlockArg: @escaping (_ stateMachineContext: UpdatesStateContext) -> Void,
-    error errorBlockArg: @escaping (_ error: Exception) -> Void
-  )
+  func setUpdateURLAndRequestHeadersOverride(_ configOverride: UpdatesConfigOverride?) throws
+  func setUpdateRequestHeadersOverride(_ requestHeaders: [String: String]?) throws
 }
 
 @objc(EXUpdatesAppControllerDelegate)
@@ -166,9 +220,10 @@ public class AppController: NSObject {
       // which expo-dev-client can access.
       let devLauncherController = initializeAsDevLauncherWithoutStarting()
       _sharedInstance = devLauncherController
-      UpdatesControllerRegistry.sharedInstance.controller = devLauncherController
+      UpdatesControllerRegistry.sharedInstance.controller = devLauncherController as (any UpdatesDevLauncherInterface)
       #else
       _sharedInstance = DisabledAppController(error: nil)
+      UpdatesControllerRegistry.sharedInstance.controller = _sharedInstance as? (any UpdatesInterface)
       #endif
       return
     }
@@ -191,23 +246,25 @@ public class AppController: NSObject {
         return config
       case .InvalidPlistError:
         logger.warn(
-          message: "The expo-updates system is disabled due to an invalid configuration. Ensure a valid Expo.plist is present in the application bundle.",
-          code: .initializationError
+          .configDisabledInvalidConfiguration,
+          values: ["reason": updatesConfigurationValidationResult.logReason, "cause": "Ensure a valid Expo.plist is present in the application bundle."]
         )
       case .InvalidNotEnabled:
-        logger.warn(
-          message: "The expo-updates system is explicitly disabled. To enable it, set the enabled setting to true.",
-          code: .initializationError
-        )
+        logger.warn(.configDisabledExplicitly)
       case .InvalidMissingURL:
         logger.warn(
-          message: "The expo-updates system is disabled due to an invalid configuration. Ensure a valid URL is supplied.",
-          code: .initializationError
+          .configDisabledInvalidConfiguration,
+          values: ["reason": updatesConfigurationValidationResult.logReason, "cause": "Ensure a valid URL is supplied."]
+        )
+      case .InvalidMaxUpdatesToKeep:
+        logger.warn(
+          .configDisabledInvalidConfiguration,
+          values: ["reason": updatesConfigurationValidationResult.logReason, "cause": "Ensure EXUpdatesMaxUpdatesToKeep is an integer of at least 2."]
         )
       case .InvalidMissingRuntimeVersion:
         logger.warn(
-          message: "The expo-updates system is disabled due to an invalid configuration. Ensure a runtime version is supplied.",
-          code: .initializationError
+          .configDisabledInvalidConfiguration,
+          values: ["reason": updatesConfigurationValidationResult.logReason, "cause": "Ensure a runtime version is supplied."]
         )
       }
       return nil
@@ -218,14 +275,15 @@ public class AppController: NSObject {
       let updatesDatabase = UpdatesDatabase()
       do {
         let directory = try initializeUpdatesDirectory()
-        try initializeUpdatesDatabase(updatesDatabase: updatesDatabase, inUpdatesDirectory: directory)
+        UpdatesUtils.setExcludedFromBackup(directory, excluded: config.excludeFromBackup, logger: logger)
+        try initializeUpdatesDatabase(updatesDatabase: updatesDatabase, inUpdatesDirectory: directory, logger: logger)
         _sharedInstance = EnabledAppController(config: config, database: updatesDatabase, updatesDirectory: directory)
+        UpdatesControllerRegistry.sharedInstance.controller = _sharedInstance as? (any UpdatesInterface)
       } catch {
-        logger.error(
-          message: "The expo-updates system is disabled due to an error during initialization: \(error.localizedDescription)",
-          code: .initializationError
-        )
-        _sharedInstance = DisabledAppController(error: error)
+        let cause = UpdatesError.appControllerInitializationError(cause: error)
+        logger.error(.controllerInitializationFailed, cause: error)
+        _sharedInstance = DisabledAppController(error: cause)
+        UpdatesControllerRegistry.sharedInstance.controller = _sharedInstance as? (any UpdatesInterface)
         return
       }
     } else {
@@ -242,10 +300,10 @@ public class AppController: NSObject {
       do {
         _overrideConfig = try UpdatesConfig.configWithExpoPlist(mergingOtherDictionary: configuration)
       } catch {
-        UpdatesLogger().warn(message: "Failed to overrideConfiguration: invalid configuration: Cannot load configuration from Expo.plist")
+        UpdatesLogger().warn(.configOverrideInvalid, values: ["reason": UpdatesConfigurationValidationResult.InvalidPlistError.logReason])
       }
     } else {
-      UpdatesLogger().warn(message: "Failed to overrideConfiguration: \(updatesConfigurationValidationResult)")
+      UpdatesLogger().warn(.configOverrideInvalid, values: ["reason": updatesConfigurationValidationResult.logReason])
     }
   }
 
@@ -257,12 +315,14 @@ public class AppController: NSObject {
       config = try? UpdatesConfig.configWithExpoPlist(mergingOtherDictionary: nil)
     }
 
+    let logger = UpdatesLogger()
+
     var updatesDirectory: URL?
     let updatesDatabase = UpdatesDatabase()
     var directoryDatabaseException: Error?
     do {
       updatesDirectory = try initializeUpdatesDirectory()
-      try initializeUpdatesDatabase(updatesDatabase: updatesDatabase, inUpdatesDirectory: updatesDirectory!)
+      try initializeUpdatesDatabase(updatesDatabase: updatesDatabase, inUpdatesDirectory: updatesDirectory!, logger: logger)
     } catch {
       directoryDatabaseException = error
     }
@@ -281,12 +341,12 @@ public class AppController: NSObject {
     return try UpdatesUtils.initializeUpdatesDirectory()
   }
 
-  private static func initializeUpdatesDatabase(updatesDatabase: UpdatesDatabase, inUpdatesDirectory updatesDirectory: URL) throws {
+  private static func initializeUpdatesDatabase(updatesDatabase: UpdatesDatabase, inUpdatesDirectory updatesDirectory: URL, logger: UpdatesLogger) throws {
     var dbError: Error?
     let semaphore = DispatchSemaphore(value: 0)
     updatesDatabase.databaseQueue.async {
       do {
-        try updatesDatabase.openDatabase(inDirectory: updatesDirectory)
+        try updatesDatabase.openDatabase(inDirectory: updatesDirectory, logger: logger)
       } catch {
         dbError = error
       }
@@ -300,19 +360,13 @@ public class AppController: NSObject {
     }
   }
 
-  /**
-   For `UpdatesModule` to set the `shouldEmitJsEvents` property
-   */
-  internal static var shouldEmitJsEvents: Bool {
-    get { _sharedInstance?.shouldEmitJsEvents ?? false }
-    set { _sharedInstance?.shouldEmitJsEvents = newValue }
+  internal static func setUpdatesEventManagerObserver(_ observer: UpdatesEventManagerObserver) {
+    _sharedInstance?.eventManager.observer = observer
+    _sharedInstance?.onEventListenerStartObserving()
   }
 
-  /**
-   Binds the `AppContext` instance from `UpdatesModule`.
-   */
-  internal static func bindAppContext(_ appContext: AppContext?) {
-    _sharedInstance?.appContext = appContext
+  internal static func removeUpdatesEventManagerObserver() {
+    _sharedInstance?.eventManager.observer = nil
   }
 }
 

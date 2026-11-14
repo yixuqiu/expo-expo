@@ -8,40 +8,68 @@
  * Fork of the Metro transformer worker, but with additional transforms moved to `babel-preset-expo` and modifications made for web support.
  * https://github.com/facebook/metro/blob/412771475c540b6f85d75d9dcd5a39a6e0753582/packages/metro-transform-worker/src/index.js#L1
  */
-import { transformFromAstSync } from '@babel/core';
-import type { ParseResult, PluginItem } from '@babel/core';
+import { transformFromAstSync, parse, types as t, template } from '@babel/core';
+import type { ParseResult, PluginItem, NodePath } from '@babel/core';
 import generate from '@babel/generator';
-import * as babylon from '@babel/parser';
-import * as types from '@babel/types';
-import type { TransformResultDependency } from 'metro/src/DeltaBundler';
-import JsFileWrapping from 'metro/src/ModuleGraph/worker/JsFileWrapping';
-import collectDependencies, {
-  InvalidRequireCallError as InternalInvalidRequireCallError,
-  Dependency,
-} from 'metro/src/ModuleGraph/worker/collectDependencies';
+import type { BabelTransformer, BabelTransformerArgs } from '@expo/metro/metro-babel-transformer';
+import { stableHash } from '@expo/metro/metro-cache';
+import { getCacheKey as getMetroCacheKey } from '@expo/metro/metro-cache-key';
+import { functionMapBabelPlugin } from '@expo/metro/metro-source-map';
+import type { FBSourceFunctionMap } from '@expo/metro/metro-source-map';
+import * as metroTransformPlugins from '@expo/metro/metro-transform-plugins';
 import type {
-  DependencyTransformer,
-  DynamicRequiresBehavior,
-} from 'metro/src/ModuleGraph/worker/collectDependencies';
-import generateImportNames from 'metro/src/ModuleGraph/worker/generateImportNames';
-import countLines from 'metro/src/lib/countLines';
-import type { BabelTransformer, BabelTransformerArgs } from 'metro-babel-transformer';
-import { stableHash } from 'metro-cache';
-import getMetroCacheKey from 'metro-cache-key';
+  JsTransformerConfig,
+  JsTransformOptions,
+  Type,
+} from '@expo/metro/metro-transform-worker';
+import * as JsFileWrapping from '@expo/metro/metro/ModuleGraph/worker/JsFileWrapping';
+import generateImportNames from '@expo/metro/metro/ModuleGraph/worker/generateImportNames';
 import {
-  fromRawMappings,
-  functionMapBabelPlugin,
-  toBabelSegments,
-  toSegmentTuple,
-} from 'metro-source-map';
-import type { FBSourceFunctionMap, MetroSourceMapSegmentTuple } from 'metro-source-map';
-import metroTransformPlugins from 'metro-transform-plugins';
-import { JsOutput, JsTransformerConfig, JsTransformOptions, Type } from 'metro-transform-worker';
-import getMinifier from 'metro-transform-worker/src/utils/getMinifier';
+  importLocationsPlugin,
+  locToKey,
+} from '@expo/metro/metro/ModuleGraph/worker/importLocationsPlugin';
 import assert from 'node:assert';
 
+import type { ExpoBabelTransformer as ExpoBabelTransformerWithCacheKey } from '../babel-transformer';
+import { embedCurrentFingerprints, type CacheVaryDim } from '../cache-vary/ambient';
+import type { ExpoJsOutput, ReconcileTransformSettings } from '../serializer/jsOutput';
+import {
+  composeSourceMaps,
+  rawMappingsToEncodedMap,
+  vlqMapFromDecodedMap,
+  vlqMapFromEncodedMap,
+  type BabelDecodedMap,
+  type BabelSourceMapSegment,
+  type EncodedMappings,
+  type EncodedTransformerSourceMap,
+  type VlqMap,
+} from '../serializer/sourceMap';
+import { importExportPlugin, importExportLiveBindingsPlugin } from '../transform-plugins';
 import * as assetTransformer from './asset-transformer';
+import type {
+  Dependency,
+  DependencyTransformer,
+  DynamicRequiresBehavior,
+  CollectedDependencies,
+  Options as CollectDependenciesOptions,
+  State,
+} from './collect-dependencies';
+import collectDependencies, {
+  InvalidRequireCallError as InternalInvalidRequireCallError,
+} from './collect-dependencies';
+import { debugEvent } from './events';
+import {
+  getNoxcturnalCacheKeyFiles,
+  isNoxcturnalTransformWorkerEnabled,
+  tryTransformJSWithNoxcturnal,
+} from './noxcturnal/metro-transform-worker';
+import {
+  transformAssetWithNoxcturnalSync,
+  type NoxcturnalMetroTransformAttempt,
+} from './noxcturnal/noxcturnal-transformer';
 import { shouldMinify } from './resolveOptions';
+import type { ExpoBabelFileMetadata, ExpoJsTransformerConfig } from './types';
+import { getMinifier, resolveMinifier } from './utils/getMinifier';
 
 export { JsTransformOptions };
 
@@ -58,9 +86,22 @@ interface AssetFile extends BaseFile {
 type JSFileType = 'js/script' | 'js/module' | 'js/module/asset';
 
 interface JSFile extends BaseFile {
-  readonly ast?: ParseResult | null;
+  readonly ast?: ParseResult | t.File | null;
   readonly type: JSFileType;
   readonly functionMap: FBSourceFunctionMap | null;
+  readonly unstable_importDeclarationLocs?: ReadonlySet<string> | null;
+  readonly reactServerReference?: string;
+  readonly reactClientReference?: string;
+  readonly expoDomComponentReference?: string;
+  readonly loaderReference?: string;
+  readonly hasCjsExports?: boolean;
+  readonly performConstantFolding?: boolean;
+  readonly inputSourceMap?: {
+    readonly mappings: string;
+    readonly names: string[];
+    readonly originalCode: string;
+  };
+  readonly cacheVary?: readonly CacheVaryDim[];
 }
 
 interface JSONFile extends BaseFile {
@@ -68,20 +109,58 @@ interface JSONFile extends BaseFile {
 }
 
 interface TransformationContext {
-  readonly config: JsTransformerConfig;
+  readonly config: ExpoJsTransformerConfig;
   readonly projectRoot: string;
   readonly options: JsTransformOptions;
 }
 
 interface TransformResponse {
-  readonly dependencies: readonly TransformResultDependency[];
-  readonly output: readonly JsOutput[];
+  readonly dependencies: CollectedDependencies['dependencies'];
+  readonly output: readonly ExpoJsOutput[];
 }
 
-// asserts non-null
-function nullthrows<T extends object>(x: T | null, message?: string): NonNullable<T> {
+export class InvalidRequireCallError extends Error {
+  innerError: InternalInvalidRequireCallError;
+  filename: string;
+
+  constructor(innerError: InternalInvalidRequireCallError, filename: string) {
+    super(`${filename}:${innerError.message}`);
+    this.innerError = innerError;
+    this.filename = filename;
+  }
+}
+
+function asWritable<T>(input: T): { -readonly [K in keyof T]: T[K] } {
+  return input;
+}
+
+function nullthrows<T extends object>(x: T | null | undefined, message?: string): NonNullable<T> {
   assert(x != null, message);
   return x;
+}
+
+function isDefaultExpoBabelTransformer(
+  transformerPath: string,
+  transformer: BabelTransformer
+): boolean {
+  const defaultTransformer: BabelTransformer = require('../babel-transformer');
+  if (transformer.transform === defaultTransformer.transform) return true;
+  // Jest resolves the package export to build/ while this source-relative import resolves src/.
+  // Both are canonical @expo/metro-config entry points; arbitrary transformer paths stay excluded.
+  return /[/\\]@expo[/\\]metro-config[/\\](?:build|src)[/\\]babel-transformer\.[cm]?js$/.test(
+    transformerPath
+  );
+}
+
+type ExpoBabelTransformer = BabelTransformer & {
+  isDefaultConfig?: (args: BabelTransformerArgs) => boolean;
+};
+
+function hasNonDefaultProjectBabelConfig(
+  transformer: ExpoBabelTransformer,
+  args: BabelTransformerArgs
+): boolean {
+  return transformer.isDefaultConfig?.(args) === false;
 }
 
 function getDynamicDepsBehavior(
@@ -98,33 +177,23 @@ function getDynamicDepsBehavior(
   }
 }
 
-const minifyCode = async (
-  config: JsTransformerConfig,
-  projectRoot: string,
+export const minifyCode = async (
+  config: Pick<JsTransformerConfig, 'minifierPath' | 'minifierConfig'>,
   filename: string,
   code: string,
   source: string,
-  map: MetroSourceMapSegmentTuple[],
-  reserved: string[] = []
+  rawMappings: readonly BabelSourceMapSegment[],
+  reserved: string[] = [],
+  inputSourceMap?: EncodedTransformerSourceMap
 ): Promise<{
   code: string;
-  map: MetroSourceMapSegmentTuple[];
+  map: EncodedMappings;
 }> => {
-  const sourceMap = fromRawMappings([
-    {
-      code,
-      source,
-      map,
-      // functionMap is overridden by the serializer
-      functionMap: null,
-      path: filename,
-      // isIgnored is overriden by the serializer
-      isIgnored: false,
-    },
-  ]).toMap(undefined, {});
+  const sourceMap = inputSourceMap ?? rawMappingsToEncodedMap({ filename, source, rawMappings });
 
   const minify = getMinifier(config.minifierPath);
 
+  const done = debugEvent.span();
   try {
     const minified = await minify({
       code,
@@ -134,9 +203,10 @@ const minifyCode = async (
       config: config.minifierConfig,
     });
 
+    done('minify', { file: debugEvent.path(filename) });
     return {
       code: minified.code,
-      map: minified.map ? toBabelSegments(minified.map).map(toSegmentTuple) : [],
+      map: minified.map ?? { mappings: '', names: [] },
     };
   } catch (error: any) {
     if (error.constructor.name === 'JS_Parse_Error') {
@@ -147,36 +217,7 @@ const minifyCode = async (
   }
 };
 
-const disabledDependencyTransformer: DependencyTransformer = {
-  transformSyncRequire: () => {},
-  transformImportCall: () => {},
-  transformPrefetch: () => {},
-  transformIllegalDynamicRequire: () => {},
-};
-
-class InvalidRequireCallError extends Error {
-  innerError: InternalInvalidRequireCallError;
-  filename: string;
-
-  constructor(innerError: InternalInvalidRequireCallError, filename: string) {
-    super(`${filename}:${innerError.message}`);
-    this.innerError = innerError;
-    this.filename = filename;
-  }
-}
-
-async function transformJS(
-  file: JSFile,
-  { config, options, projectRoot }: TransformationContext
-): Promise<TransformResponse> {
-  // Transformers can output null ASTs (if they ignore the file). In that case
-  // we need to parse the module source code to get their AST.
-  let ast: babylon.ParseResult<types.File> =
-    file.ast ?? babylon.parse(file.code, { sourceType: 'unambiguous' });
-
-  // NOTE(EvanBacon): This can be really expensive on larger files. We should replace it with a cheaper alternative that just iterates and matches.
-  const { importDefault, importAll } = generateImportNames(ast);
-
+function applyUseStrictDirective(ast: t.File) {
   // Add "use strict" if the file was parsed as a module, and the directive did
   // not exist yet.
   const { directives } = ast.program;
@@ -186,9 +227,52 @@ async function transformJS(
     directives != null &&
     directives.findIndex((d) => d.value.value === 'use strict') === -1
   ) {
-    directives.push(types.directive(types.directiveLiteral('use strict')));
+    directives.push(t.directive(t.directiveLiteral('use strict')));
   }
+}
 
+function getImportNames(options: JsTransformOptions, ast: t.File) {
+  if (
+    options.experimentalImportSupport === true &&
+    options.customTransformOptions?.liveBindings !== 'false'
+  ) {
+    // NOTE(@kitten): The live bindings import/export plugin doesn't use these helpers
+    // If it's used, we can assume that there's no conflicts (since we reserve this name, and assume users won't use it)
+    // and skip the expensive `generateImportNames` call
+    return {
+      importAll: '_$$_IMPORT_ALL',
+      importDefault: '_$$_IMPORT_DEFAULT',
+    };
+  }
+  // NOTE(EvanBacon): This can be really expensive on larger files. We should replace it with a cheaper alternative that just iterates and matches.
+  return generateImportNames(ast);
+}
+
+export function applyImportSupport<TFile extends t.File>(
+  ast: TFile,
+  {
+    filename,
+    options,
+    importDefault,
+    importAll,
+    collectLocations,
+    performConstantFolding,
+  }: {
+    filename: string;
+
+    options: Pick<
+      JsTransformOptions,
+      | 'experimentalImportSupport'
+      | 'inlineRequires'
+      | 'nonInlinedRequires'
+      | 'customTransformOptions'
+    >;
+    importDefault: string;
+    importAll: string;
+    collectLocations?: boolean;
+    performConstantFolding?: boolean;
+  }
+): { ast: TFile; metadata?: any } {
   // Perform the import-export transform (in case it's still needed), then
   // fold requires and perform constant folding (if in dev).
   const plugins: PluginItem[] = [];
@@ -199,10 +283,21 @@ async function transformJS(
     importAll,
   };
 
+  if (collectLocations) {
+    plugins.push(
+      // TODO: Only enable this during reconciling.
+      importLocationsPlugin
+    );
+  }
+
   // NOTE(EvanBacon): This is effectively a replacement for the `@babel/plugin-transform-modules-commonjs`
-  // plugin that's running in `@@react-native/babel-preset`, but with shared names for inlining requires.
+  // plugin that's running in `@react-native/babel-preset`, but with shared names for inlining requires.
   if (options.experimentalImportSupport === true) {
-    plugins.push([metroTransformPlugins.importExportPlugin, babelPluginOpts]);
+    const liveBindings = options.customTransformOptions?.liveBindings !== 'false';
+    plugins.push([
+      liveBindings ? importExportLiveBindingsPlugin : importExportPlugin,
+      { ...babelPluginOpts, performConstantFolding },
+    ]);
   }
 
   // NOTE(EvanBacon): This can basically never be safely enabled because it doesn't respect side-effects and
@@ -222,15 +317,15 @@ async function transformJS(
 
   // TODO: This MUST be run even though no plugins are added, otherwise the babel runtime generators are broken.
   if (plugins.length) {
-    ast = nullthrows<babylon.ParseResult<types.File>>(
-      // @ts-expect-error
+    const done = debugEvent.span();
+    const result = nullthrows(
       transformFromAstSync(ast, '', {
         ast: true,
         babelrc: false,
         code: false,
         configFile: false,
         comments: true,
-        filename: file.filename,
+        filename,
         plugins,
         sourceMaps: false,
 
@@ -243,79 +338,171 @@ async function transformJS(
         // > either because one of the plugins is doing something funky or Babel messes up some caches.
         // > Make sure to test the above mentioned case before flipping the flag back to false.
         cloneInputAst: false,
-      }).ast!
+      })
+    );
+    done('import_support', { file: debugEvent.path(filename) });
+    return {
+      ast: result.ast as TFile,
+      metadata: result.metadata,
+    };
+  }
+  return { ast };
+}
+
+function performConstantFolding(ast: t.File | ParseResult, { filename }: { filename: string }) {
+  // NOTE(kitten): Any Babel helpers that have been added (`path.hub.addHelper(...)`) will usually not have any
+  // references, and hence the `constantFoldingPlugin` below will remove them.
+  // To fix the references we add an explicit `programPath.scope.crawl()`. Alternatively, we could also wipe the
+  // Babel traversal cache (`traverse.cache.clear()`)
+  const clearProgramScopePlugin: PluginItem = {
+    visitor: {
+      Program: {
+        enter(path) {
+          path.scope.crawl();
+        },
+      },
+    },
+  };
+
+  // Run the constant folding plugin in its own pass, avoiding race conditions
+  // with other plugins that have exit() visitors on Program (e.g. the ESM
+  // transform).
+  const done = debugEvent.span();
+  const result = transformFromAstSync(ast, '', {
+    ast: true,
+    babelrc: false,
+    code: false,
+    configFile: false,
+    comments: true,
+    filename,
+    plugins: [clearProgramScopePlugin, metroTransformPlugins.constantFoldingPlugin],
+    sourceMaps: false,
+
+    // NOTE(kitten): In Metro, this is also false, but only works because the prior run of `transformFromAstSync` was always
+    // running with `cloneInputAst: true`.
+    // This isn't needed anymore since `clearProgramScopePlugin` re-crawls the AST’s scope instead.
+    cloneInputAst: false,
+  })?.ast;
+  done('constant_folding', { file: debugEvent.path(filename) });
+
+  return nullthrows(result) as ParseResult;
+}
+
+async function transformJS(
+  file: JSFile,
+  { config, options }: TransformationContext
+): Promise<TransformResponse> {
+  const targetEnv = options.customTransformOptions?.environment;
+  const isServerEnv = targetEnv === 'node' || targetEnv === 'react-server';
+
+  const optimize =
+    // Ensure we don't enable tree shaking for scripts or assets.
+    file.type === 'js/module' &&
+    String(options.customTransformOptions?.optimize) === 'true' &&
+    // Disable tree shaking on JSON files.
+    !file.filename.match(/\.(json|s?css|sass)$/);
+
+  const unstable_disableModuleWrapping = optimize || config.unstable_disableModuleWrapping;
+
+  if (optimize && !options.experimentalImportSupport) {
+    // Add a warning so devs can incrementally migrate since experimentalImportSupport may cause other issues in their app.
+    throw new Error(
+      'Experimental graph optimizations only work with experimentalImportSupport enabled.'
     );
   }
 
-  if (!options.dev) {
-    // NOTE(kitten): Any Babel helpers that have been added (`path.hub.addHelper(...)`) will usually not have any
-    // references, and hence the `constantFoldingPlugin` below will remove them.
-    // To fix the references we add an explicit `programPath.scope.crawl()`. Alternatively, we could also wipe the
-    // Babel traversal cache (`traverse.cache.clear()`)
-    const clearProgramScopePlugin: PluginItem = {
-      visitor: {
-        Program: {
-          enter(path) {
-            path.scope.crawl();
-          },
-        },
-      },
-    };
+  // Transformers can output null ASTs (if they ignore the file). In that case
+  // we need to parse the module source code to get their AST.
+  let ast: t.File | ParseResult =
+    file.ast ?? nullthrows(parse(file.code, { sourceType: 'unambiguous' }));
 
-    // Run the constant folding plugin in its own pass, avoiding race conditions
-    // with other plugins that have exit() visitors on Program (e.g. the ESM
-    // transform).
-    ast = nullthrows<babylon.ParseResult<types.File>>(
-      // @ts-expect-error
-      transformFromAstSync(ast, '', {
-        ast: true,
-        babelrc: false,
-        code: false,
-        configFile: false,
-        comments: true,
-        filename: file.filename,
-        plugins: [
-          clearProgramScopePlugin,
-          [metroTransformPlugins.constantFoldingPlugin, babelPluginOpts],
-        ],
-        sourceMaps: false,
+  const { importDefault, importAll } = getImportNames(options, ast);
 
-        // NOTE(kitten): In Metro, this is also false, but only works because the prior run of `transformFromAstSync` was always
-        // running with `cloneInputAst: true`.
-        // This isn't needed anymore since `clearProgramScopePlugin` re-crawls the AST’s scope instead.
-        cloneInputAst: false,
-      }).ast
-    );
+  // Add "use strict" if the file was parsed as a module, and the directive did
+  // not exist yet.
+  applyUseStrictDirective(ast);
+
+  const unstable_useStaticHermesModuleFactory = Boolean(
+    options.customTransformOptions?.unstable_staticHermesOptimizedRequire
+  );
+
+  // NOTE(@hassankhan): Constant folding can be an expensive/slow operation, so we limit it to
+  // production builds, or files that have specifically seen a change in their exports
+  if (!options.dev || file.performConstantFolding) {
+    ast = performConstantFolding(ast, { filename: file.filename });
+  }
+
+  // Disable all Metro single-file optimizations when full-graph optimization will be used.
+  if (!optimize) {
+    ast = applyImportSupport(ast, {
+      filename: file.filename,
+      performConstantFolding: Boolean(file.performConstantFolding),
+      options,
+      importDefault,
+      importAll,
+    }).ast;
   }
 
   let dependencyMapName: string = '';
   let dependencies: readonly Dependency[];
-  let wrappedAst: types.File | undefined;
+  let wrappedAst: t.File;
 
   // If the module to transform is a script (meaning that is not part of the
   // dependency graph and it code will just be prepended to the bundle modules),
   // we need to wrap it differently than a commonJS module (also, scripts do
   // not have dependencies).
+  let collectDependenciesOptions: CollectDependenciesOptions | undefined;
   if (file.type === 'js/script') {
     dependencies = [];
     wrappedAst = JsFileWrapping.wrapPolyfill(ast);
   } else {
     try {
-      const opts = {
+      const importDeclarationLocs = file.unstable_importDeclarationLocs ?? null;
+
+      // These values must be serializable to JSON as they're stored in the transform cache when tree shaking is enabled.
+      collectDependenciesOptions = {
         asyncRequireModulePath: config.asyncRequireModulePath,
         dependencyTransformer:
           config.unstable_disableModuleWrapping === true
             ? disabledDependencyTransformer
             : undefined,
-        dynamicRequires: getDynamicDepsBehavior(config.dynamicDepsInPackages, file.filename),
+        dynamicRequires: isServerEnv
+          ? // NOTE(EvanBacon): Allow arbitrary imports in server environments.
+            // This requires a patch to Metro collectDeps.
+            'warn'
+          : getDynamicDepsBehavior(config.dynamicDepsInPackages, file.filename),
         inlineableCalls: [importDefault, importAll],
         keepRequireNames: options.dev,
         allowOptionalDependencies: config.allowOptionalDependencies,
         dependencyMapName: config.unstable_dependencyMapReservedName,
         unstable_allowRequireContext: config.unstable_allowRequireContext,
+        unstable_isESMImportAtSource: null,
+        // If tree shaking is enabled, then preserve the original require calls.
+        // This ensures require.context calls are not broken.
+        collectOnly: optimize === true,
       };
 
-      ({ ast, dependencies, dependencyMapName } = collectDependencies(ast, opts));
+      const doneDeps = debugEvent.span();
+      ({ ast, dependencies, dependencyMapName } = collectDependencies(ast, {
+        ...collectDependenciesOptions,
+        // This setting shouldn't be shared with the tree shaking transformer.
+        dependencyTransformer:
+          unstable_disableModuleWrapping === true ? disabledDependencyTransformer : undefined,
+        unstable_isESMImportAtSource:
+          importDeclarationLocs != null
+            ? (loc: t.SourceLocation) => importDeclarationLocs.has(locToKey(loc))
+            : null,
+      }));
+      doneDeps('collect_dependencies', {
+        file: debugEvent.path(file.filename),
+        count: dependencies.length,
+      });
+
+      // Ensure we use the same name for the second pass of the dependency collection in the serializer.
+      collectDependenciesOptions = {
+        ...collectDependenciesOptions,
+        dependencyMapName,
+      };
     } catch (error) {
       if (error instanceof InternalInvalidRequireCallError) {
         throw new InvalidRequireCallError(error, file.filename);
@@ -323,7 +510,7 @@ async function transformJS(
       throw error;
     }
 
-    if (config.unstable_disableModuleWrapping === true) {
+    if (unstable_disableModuleWrapping === true) {
       wrappedAst = ast;
     } else {
       // TODO: Replace this with a cheaper transform that doesn't require AST.
@@ -332,21 +519,27 @@ async function transformJS(
         importDefault,
         importAll,
         dependencyMapName,
-        config.globalPrefix
+        config.globalPrefix,
+        { unstable_useStaticHermesModuleFactory }
       ));
     }
   }
+  const minify = shouldMinify(options);
+
+  const shouldNormalizePseudoGlobals =
+    minify &&
+    file.inputFileSize <= config.optimizationSizeLimit &&
+    !config.unstable_disableNormalizePseudoGlobals;
+
   const reserved: string[] = [];
   if (config.unstable_dependencyMapReservedName != null) {
     reserved.push(config.unstable_dependencyMapReservedName);
   }
 
-  const minify = shouldMinify(options);
-
   if (
-    minify &&
-    file.inputFileSize <= config.optimizationSizeLimit &&
-    !config.unstable_disableNormalizePseudoGlobals
+    shouldNormalizePseudoGlobals &&
+    // TODO: If the module wrapping is disabled then the normalize function needs to change to account for not being in a body.
+    !unstable_disableModuleWrapping
   ) {
     // NOTE(EvanBacon): Simply pushing this function will mutate the AST, so it must run before the `generate` step!!
     reserved.push(
@@ -356,6 +549,7 @@ async function transformJS(
     );
   }
 
+  const doneCodegen = debugEvent.span();
   const result = generate(
     wrappedAst,
     {
@@ -368,34 +562,131 @@ async function transformJS(
     },
     file.code
   );
+  doneCodegen('codegen', { file: debugEvent.path(file.filename) });
 
-  // @ts-expect-error: incorrectly typed upstream
-  let map = result.rawMappings ? result.rawMappings.map(toSegmentTuple) : [];
+  // `rawMappings` is omitted from `@types/babel__generator`'s
+  // `GeneratorResult`, but Babel emits it whenever `sourceMaps: true`.
+  const rawMappings =
+    (result as { rawMappings?: BabelSourceMapSegment[] } | null)?.rawMappings ?? [];
+  const generatedSourceMap = file.inputSourceMap
+    ? composeSourceMaps([
+        {
+          version: 3,
+          mappings: file.inputSourceMap.mappings,
+          names: file.inputSourceMap.names,
+          sources: [file.filename],
+          sourcesContent: [file.inputSourceMap.originalCode],
+        },
+        rawMappingsToEncodedMap({
+          filename: file.filename,
+          source: file.code,
+          rawMappings,
+        }),
+      ])
+    : null;
   let code = result.code;
+  let lineCount: number;
+  let map: VlqMap;
 
+  // NOTE: We might want to enable this on native + hermes when tree shaking is enabled.
   if (minify) {
-    ({ map, code } = await minifyCode(
+    let minifiedMap: EncodedMappings;
+    ({ map: minifiedMap, code } = await minifyCode(
       config,
-      projectRoot,
       file.filename,
       result.code,
       file.code,
-      map,
-      reserved
+      rawMappings,
+      reserved,
+      generatedSourceMap
+        ? {
+            ...generatedSourceMap,
+            version: 3,
+            sources: generatedSourceMap.sources.map((source) => source ?? file.filename),
+          }
+        : undefined
+    ));
+    ({ lineCount, map } = vlqMapFromEncodedMap(minifiedMap, code));
+  } else if (generatedSourceMap) {
+    ({ lineCount, map } = vlqMapFromEncodedMap(generatedSourceMap, code));
+  } else {
+    ({ lineCount, map } = vlqMapFromDecodedMap(
+      (result as { decodedMap?: BabelDecodedMap } | null)?.decodedMap,
+      code
     ));
   }
 
-  const output: JsOutput[] = [
+  const possibleReconcile: ReconcileTransformSettings | undefined =
+    optimize && collectDependenciesOptions
+      ? {
+          inlineRequires: options.inlineRequires,
+          importDefault,
+          importAll,
+          normalizePseudoGlobals: shouldNormalizePseudoGlobals,
+          globalPrefix: config.globalPrefix,
+          unstable_compactOutput: config.unstable_compactOutput,
+          collectDependenciesOptions,
+          minify: minify
+            ? {
+                minifierPath: config.minifierPath,
+                minifierConfig: config.minifierConfig,
+              }
+            : undefined,
+          unstable_dependencyMapReservedName: config.unstable_dependencyMapReservedName,
+          optimizationSizeLimit: config.optimizationSizeLimit,
+          unstable_disableNormalizePseudoGlobals: config.unstable_disableNormalizePseudoGlobals,
+          unstable_useStaticHermesModuleFactory,
+        }
+      : undefined;
+
+  // Clean the AST for tree shaking by stripping non-serializable values (Symbols, functions, etc.)
+  // that React Compiler and other Babel plugins may add.
+  const output: ExpoJsOutput[] = [
     {
       data: {
         code,
-        lineCount: countLines(code),
-        map,
+        lineCount,
+        // Reconcile re-runs Babel codegen and replaces `data.map` before any reader sees it.
+        map: possibleReconcile ? { mappings: '', names: [] } : map,
         functionMap: file.functionMap,
+        hasCjsExports: file.hasCjsExports,
+        reactServerReference: file.reactServerReference,
+        reactClientReference: file.reactClientReference,
+        expoDomComponentReference: file.expoDomComponentReference,
+        loaderReference: file.loaderReference,
+        expoCacheVary: await embedCurrentFingerprints(file.cacheVary),
+        ...(possibleReconcile
+          ? {
+              ast: wrappedAst,
+              // Store settings for the module that will be used to finish transformation after graph-based optimizations
+              // have finished.
+              reconcile: possibleReconcile,
+            }
+          : {}),
       },
       type: file.type,
     },
   ];
+
+  if (possibleReconcile) {
+    // TODO(@kitten): Check why `reactCompilerFlag === true` is checked below
+    const reactCompilerFlag = options.customTransformOptions?.reactCompiler as
+      | 'true'
+      | true
+      | undefined;
+    if (reactCompilerFlag === true || reactCompilerFlag === 'true') {
+      try {
+        return {
+          dependencies,
+          // React compiler adds symbols to the AST which break threading. This will ensure the
+          // AST and other properties are fully serialized before being sent to the worker.
+          output: JSON.parse(JSON.stringify(output)),
+        };
+      } catch (error: any) {
+        throw new Error(`Failed to serialize output for file ${file.filename}: ${error}`);
+      }
+    }
+  }
 
   return {
     dependencies,
@@ -409,19 +700,54 @@ async function transformAsset(
   context: TransformationContext
 ): Promise<TransformResponse> {
   const { assetRegistryPath, assetPlugins } = context.config;
+  const assetArgs = {
+    filename: file.filename,
+    options: {
+      platform: context.options.platform,
+      customTransformOptions: context.options.customTransformOptions,
+      projectRoot: context.projectRoot,
+      publicPath: context.config.publicPath,
+    },
+  };
 
-  // TODO: Add web asset hashing in production.
-  const result = await assetTransformer.transform(
-    getBabelTransformArgs(file, context),
-    assetRegistryPath,
-    assetPlugins
-  );
+  if (isNoxcturnalTransformWorkerEnabled(context.config)) {
+    const result = await assetTransformer.transformToSource(
+      assetArgs,
+      assetRegistryPath,
+      assetPlugins
+    );
+    const jsFile: JSFile = {
+      ...file,
+      code: result.code,
+      type: 'js/module/asset',
+      functionMap: null,
+      hasCjsExports: true,
+      reactClientReference: result.reactClientReference,
+    };
+    const done = debugEvent.span();
+    const native = transformAssetWithNoxcturnalSync({
+      filename: file.filename,
+      source: result.code,
+      projectRoot: context.projectRoot,
+      options: context.options,
+      config: context.config,
+    });
+    done('noxcturnal:full', {
+      file: debugEvent.path(file.filename),
+      status: native.status,
+    });
+    return completeFullNoxcturnalTransform(jsFile, context, native);
+  }
+
+  const result = await assetTransformer.transform(assetArgs, assetRegistryPath, assetPlugins);
 
   const jsFile: JSFile = {
     ...file,
     type: 'js/module/asset',
     ast: result.ast,
     functionMap: null,
+    hasCjsExports: true,
+    reactClientReference: result.reactClientReference,
   };
 
   return transformJS(jsFile, context);
@@ -436,12 +762,195 @@ async function transformJSWithBabel(
   context: TransformationContext
 ): Promise<TransformResponse> {
   const { babelTransformerPath } = context.config;
-  const transformer: BabelTransformer = require(babelTransformerPath);
+  const transformer: ExpoBabelTransformer = require(babelTransformerPath);
+  const sourceDefaultTransformer: ExpoBabelTransformer = require('../babel-transformer');
+  const babelConfigArgs = getBabelTransformArgs(file, context);
+  const isDefaultExpoTransformer = isDefaultExpoBabelTransformer(babelTransformerPath, transformer);
+  const hasNonDefaultBabelConfig =
+    isDefaultExpoTransformer &&
+    hasNonDefaultProjectBabelConfig(
+      transformer.isDefaultConfig ? transformer : sourceDefaultTransformer,
+      babelConfigArgs
+    );
 
-  const transformResult = await transformer.transform(
-    // functionMapBabelPlugin populates metadata.metro.functionMap
-    getBabelTransformArgs(file, context, [functionMapBabelPlugin])
+  if (!isNoxcturnalTransformWorkerEnabled(context.config)) {
+    enableExperimentalImportSupportForReactCompiler(context);
+    return transformJSWithBabelFallback(file, context, transformer);
+  }
+
+  const noxcturnal = await tryTransformJSWithNoxcturnal<
+    JSFile,
+    TransformationContext,
+    TransformResponse
+  >(
+    file,
+    context,
+    {
+      hasNonDefaultBabelConfig,
+      isDefaultExpoTransformer,
+    },
+    {
+      completeFullTransform: completeNoxcturnalSourceTransform,
+    }
   );
+  if (noxcturnal.status === 'complete') {
+    return noxcturnal.response;
+  }
+
+  enableExperimentalImportSupportForReactCompiler(context);
+  return transformJSWithBabelFallback(file, context, transformer);
+}
+
+function enableExperimentalImportSupportForReactCompiler(context: TransformationContext): void {
+  // HACK: React Compiler injects import statements and exits the Babel process which leaves the code in
+  // a malformed state. For now, we'll enable the experimental import support which compiles import statements
+  // outside of the standard Babel process.
+  if (!context.options.experimentalImportSupport) {
+    // TODO(@kitten): Check why `reactCompilerFlag === true` is checked below
+    const reactCompilerFlag = context.options.customTransformOptions?.reactCompiler as
+      | 'true'
+      | true
+      | undefined;
+    if (reactCompilerFlag === true || reactCompilerFlag === 'true') {
+      asWritable(context.options).experimentalImportSupport = true;
+    }
+  }
+}
+
+async function completeNoxcturnalSourceTransform(
+  file: JSFile,
+  context: TransformationContext,
+  fullNoxcturnal: Extract<NoxcturnalMetroTransformAttempt, { status: 'complete' }>
+): Promise<TransformResponse> {
+  const cacheVary = fullNoxcturnal.result.metadata.cacheVary as readonly CacheVaryDim[] | undefined;
+  // Graph optimization still needs the Babel AST and import metadata from transformJS.
+  if (String(context.options.customTransformOptions?.optimize) === 'true') {
+    return transformJS(
+      {
+        ...file,
+        code: fullNoxcturnal.result.code,
+        ast: null,
+        inputSourceMap: {
+          ...fullNoxcturnal.result.map,
+          originalCode: file.code,
+        },
+        hasCjsExports:
+          typeof fullNoxcturnal.result.metadata.hasCjsExports === 'boolean'
+            ? fullNoxcturnal.result.metadata.hasCjsExports
+            : file.hasCjsExports,
+        reactServerReference:
+          typeof fullNoxcturnal.result.metadata.reactServerReference === 'string'
+            ? fullNoxcturnal.result.metadata.reactServerReference
+            : file.reactServerReference,
+        reactClientReference:
+          typeof fullNoxcturnal.result.metadata.reactClientReference === 'string'
+            ? fullNoxcturnal.result.metadata.reactClientReference
+            : file.reactClientReference,
+        expoDomComponentReference:
+          typeof fullNoxcturnal.result.metadata.expoDomComponentReference === 'string'
+            ? fullNoxcturnal.result.metadata.expoDomComponentReference
+            : file.expoDomComponentReference,
+        loaderReference:
+          typeof fullNoxcturnal.result.metadata.loaderReference === 'string'
+            ? fullNoxcturnal.result.metadata.loaderReference
+            : file.loaderReference,
+        functionMap: fullNoxcturnal.result.functionMap ?? file.functionMap,
+        cacheVary,
+      },
+      context
+    );
+  }
+
+  return completeFullNoxcturnalTransform(file, context, fullNoxcturnal);
+}
+
+async function completeFullNoxcturnalTransform(
+  file: JSFile,
+  context: TransformationContext,
+  fullNoxcturnal: Extract<NoxcturnalMetroTransformAttempt, { status: 'complete' }>
+): Promise<TransformResponse> {
+  const cacheVary = fullNoxcturnal.result.metadata.cacheVary as readonly CacheVaryDim[] | undefined;
+  let code = fullNoxcturnal.result.code;
+  let lineCount: number;
+  let map: VlqMap;
+  if (shouldMinify(context.options)) {
+    const reserved =
+      context.config.unstable_dependencyMapReservedName == null
+        ? []
+        : [context.config.unstable_dependencyMapReservedName];
+    let minifiedMap: EncodedMappings;
+    ({ code, map: minifiedMap } = await minifyCode(
+      context.config,
+      file.filename,
+      code,
+      file.code,
+      [],
+      reserved,
+      {
+        version: 3,
+        sources: [file.filename],
+        sourcesContent: [file.code],
+        names: fullNoxcturnal.result.map.names,
+        mappings: fullNoxcturnal.result.map.mappings,
+      }
+    ));
+    ({ lineCount, map } = vlqMapFromEncodedMap(minifiedMap, code));
+  } else {
+    ({ lineCount, map } = vlqMapFromEncodedMap(fullNoxcturnal.result.map, code));
+  }
+
+  return {
+    dependencies: fullNoxcturnal.dependencies,
+    output: [
+      {
+        type: file.type,
+        data: {
+          code,
+          lineCount,
+          map,
+          functionMap: fullNoxcturnal.result.functionMap ?? file.functionMap,
+          hasCjsExports:
+            typeof fullNoxcturnal.result.metadata.hasCjsExports === 'boolean'
+              ? fullNoxcturnal.result.metadata.hasCjsExports
+              : file.hasCjsExports,
+          reactServerReference:
+            typeof fullNoxcturnal.result.metadata.reactServerReference === 'string'
+              ? fullNoxcturnal.result.metadata.reactServerReference
+              : file.reactServerReference,
+          reactClientReference:
+            typeof fullNoxcturnal.result.metadata.reactClientReference === 'string'
+              ? fullNoxcturnal.result.metadata.reactClientReference
+              : file.reactClientReference,
+          expoDomComponentReference:
+            typeof fullNoxcturnal.result.metadata.expoDomComponentReference === 'string'
+              ? fullNoxcturnal.result.metadata.expoDomComponentReference
+              : file.expoDomComponentReference,
+          loaderReference:
+            typeof fullNoxcturnal.result.metadata.loaderReference === 'string'
+              ? fullNoxcturnal.result.metadata.loaderReference
+              : file.loaderReference,
+          expoCacheVary: await embedCurrentFingerprints(cacheVary),
+        },
+      },
+    ],
+  };
+}
+
+async function transformJSWithBabelFallback(
+  file: JSFile,
+  context: TransformationContext,
+  transformer: ExpoBabelTransformer
+): Promise<TransformResponse> {
+  // TODO: Add a babel plugin which returns if the module has commonjs, and if so, disable all tree shaking optimizations early.
+  const transformResult = await transformer.transform(
+    getBabelTransformArgs(file, context, [
+      // functionMapBabelPlugin populates metadata.metro.functionMap
+      functionMapBabelPlugin,
+      // importLocationsPlugin populates metadata.metro.unstable_importDeclarationLocs
+      importLocationsPlugin,
+    ])
+  );
+  const metadata = transformResult.metadata as ExpoBabelFileMetadata | undefined;
 
   const jsFile: JSFile = {
     ...file,
@@ -451,6 +960,15 @@ async function transformJSWithBabel(
       // Fallback to deprecated explicitly-generated `functionMap`
       transformResult.functionMap ??
       null,
+    unstable_importDeclarationLocs:
+      transformResult?.metadata?.metro?.unstable_importDeclarationLocs,
+    hasCjsExports: metadata?.hasCjsExports,
+    reactServerReference: metadata?.reactServerReference,
+    reactClientReference: metadata?.reactClientReference,
+    expoDomComponentReference: metadata?.expoDomComponentReference,
+    loaderReference: metadata?.loaderReference,
+    performConstantFolding: metadata?.performConstantFolding,
+    cacheVary: metadata?.cacheVary,
   };
 
   return await transformJS(jsFile, context);
@@ -458,18 +976,18 @@ async function transformJSWithBabel(
 
 async function transformJSON(
   file: JSONFile,
-  { options, config, projectRoot }: TransformationContext
+  { options, config }: TransformationContext
 ): Promise<TransformResponse> {
   let code =
     config.unstable_disableModuleWrapping === true
       ? JsFileWrapping.jsonToCommonJS(file.code)
       : JsFileWrapping.wrapJson(file.code, config.globalPrefix);
-  let map: MetroSourceMapSegmentTuple[] = [];
+  let encodedMap: EncodedMappings = { mappings: '', names: [] };
 
   const minify = shouldMinify(options);
 
   if (minify) {
-    ({ map, code } = await minifyCode(config, projectRoot, file.filename, code, file.code, map));
+    ({ map: encodedMap, code } = await minifyCode(config, file.filename, code, file.code, []));
   }
 
   let jsType: JSFileType;
@@ -482,9 +1000,11 @@ async function transformJSON(
     jsType = 'js/module';
   }
 
-  const output: JsOutput[] = [
+  const { lineCount, map } = vlqMapFromEncodedMap(encodedMap, code);
+
+  const output: ExpoJsOutput[] = [
     {
-      data: { code, lineCount: countLines(code), map, functionMap: null },
+      data: { code, lineCount, map, functionMap: null },
       type: jsType,
     },
   ];
@@ -506,7 +1026,12 @@ function getBabelTransformArgs(
     options: {
       ...babelTransformerOptions,
       enableBabelRCLookup: config.enableBabelRCLookup,
-      enableBabelRuntime: config.enableBabelRuntime,
+      // NOTE(@kitten): Hint for babel transformer on where to look up Babel config from
+      extendsBabelConfigPath:
+        config.enableBabelRCLookup !== false ? config.extendsBabelConfigPath : undefined,
+      // NOTE(@kitten): This shouldn't be relevant via this code path. However, in case it does,
+      // this prevents us from adding imports/requires to @babel/runtime when we're transforming a script
+      enableBabelRuntime: options.type === 'script' ? false : config.enableBabelRuntime,
       hermesParser: config.hermesParser,
       projectRoot,
       publicPath: config.publicPath,
@@ -519,7 +1044,7 @@ function getBabelTransformArgs(
 }
 
 export async function transform(
-  config: JsTransformerConfig,
+  config: ExpoJsTransformerConfig,
   projectRoot: string,
   filename: string,
   data: Buffer,
@@ -578,23 +1103,110 @@ export async function transform(
   return transformJSWithBabel(file, context);
 }
 
-export function getCacheKey(config: JsTransformerConfig): string {
-  const { babelTransformerPath, minifierPath, ...remainingConfig } = config;
+// NOTE: Increment if cache becomes incompatible (original value would be '')
+// 1. Added new packed source map format
+// 3. Replaced the packed source map format with Metro's compact `VlqMap`
+// 4. `expoCacheVary` is embedded in cached transform results
+const CACHE_VERSION = '4';
 
+export function getCacheKey(
+  config: ExpoJsTransformerConfig,
+  opts?: Readonly<{ projectRoot: string }>
+): string {
+  const {
+    // The `expo_customTransformerPath` from `./supervising-transform-worker` should not be part of the cache key
+    expo_customTransformerPath: _customTransformerPath,
+    babelTransformerPath,
+    minifierPath,
+    ...remainingConfig
+  } = config;
+
+  // TODO(@kitten): We can now tie this into `@expo/metro`, which could also simply export a static version export
   const filesKey = getMetroCacheKey([
     require.resolve(babelTransformerPath),
-    require.resolve(minifierPath),
-    require.resolve('metro-transform-worker/src/utils/getMinifier'),
+    resolveMinifier(minifierPath),
+    require.resolve('@expo/metro/metro-transform-worker/utils/getMinifier'),
+    require.resolve('./collect-dependencies'),
     require.resolve('./asset-transformer'),
-    require.resolve('metro/src/ModuleGraph/worker/generateImportNames'),
-    require.resolve('metro/src/ModuleGraph/worker/JsFileWrapping'),
+    require.resolve('./resolveOptions'),
+    require.resolve('@expo/metro/metro/ModuleGraph/worker/generateImportNames'),
+    require.resolve('@expo/metro/metro/ModuleGraph/worker/JsFileWrapping'),
     ...metroTransformPlugins.getTransformPluginCacheKeyFiles(),
+    ...getNoxcturnalCacheKeyFiles(),
   ]);
 
-  const babelTransformer = require(babelTransformerPath);
-  return [
-    filesKey,
-    stableHash(remainingConfig).toString('hex'),
-    babelTransformer.getCacheKey ? babelTransformer.getCacheKey() : '',
-  ].join('$');
+  let babelTransformer: ExpoBabelTransformerWithCacheKey = require(babelTransformerPath);
+
+  // NOTE(@kitten): Many custom Babel transformers won't have `getCacheKey` yet and won't
+  // pass ours through. We should still try to derive a cache key though, since the default
+  // looks at a user's Babel config, if they have one
+  if (config.extendsBabelConfigPath && !babelTransformer.getCacheKey) {
+    babelTransformer = require('../babel-transformer');
+  }
+
+  const babelTransformerCacheKey = babelTransformer.getCacheKey
+    ? babelTransformer.getCacheKey({
+        projectRoot: opts?.projectRoot,
+        enableBabelRCLookup: config.enableBabelRCLookup,
+        // NOTE(@kitten): Custom modification to pass this custom Babel resolution option to `getCacheKey` for consistency
+        extendsBabelConfigPath: config.extendsBabelConfigPath,
+      })
+    : '';
+
+  const keyParts: string[] = [];
+  if (CACHE_VERSION) {
+    keyParts.push(CACHE_VERSION);
+  }
+  keyParts.push(filesKey, stableHash(remainingConfig).toString('hex'), babelTransformerCacheKey);
+  return keyParts.join('$');
+}
+
+/**
+ * Produces a Babel template that transforms an "import(...)" call into a
+ * "require(...)" call to the asyncRequire specified.
+ */
+const makeShimAsyncRequireTemplate = template.expression(`require(ASYNC_REQUIRE_MODULE_PATH)`);
+
+type InternalDependency = any;
+
+const disabledDependencyTransformer: DependencyTransformer = {
+  transformSyncRequire: (path) => {},
+  transformImportMaybeSyncCall: () => {},
+  transformImportCall: (path: NodePath, dependency: InternalDependency, state: State) => {
+    // TODO: Prevent extraneous includes of the async require for normal imports.
+    // HACK: Ensure the async import code is included in the bundle when an import() call is found.
+    let topParent: NodePath & { _handled?: true } = path;
+    while (topParent.parentPath) {
+      topParent = topParent.parentPath;
+    }
+
+    if (topParent._handled) {
+      return;
+    }
+
+    path.insertAfter(
+      makeShimAsyncRequireTemplate({
+        ASYNC_REQUIRE_MODULE_PATH: nullthrows(state.asyncRequireModulePathStringLiteral),
+      })
+    );
+    topParent._handled = true;
+  },
+  transformPrefetch: () => {},
+  transformIllegalDynamicRequire: () => {},
+};
+
+export function collectDependenciesForShaking(ast: t.File, options: CollectDependenciesOptions) {
+  const collectDependenciesOptions = {
+    ...options,
+
+    // If tree shaking is enabled, then preserve the original require calls.
+    // This ensures require.context calls are not broken.
+    collectOnly: true,
+  };
+
+  return collectDependencies(ast, {
+    ...collectDependenciesOptions,
+    // This setting shouldn't be shared with the tree shaking transformer.
+    dependencyTransformer: disabledDependencyTransformer,
+  });
 }

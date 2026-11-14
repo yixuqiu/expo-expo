@@ -77,7 +77,13 @@ class SharedPreferencesNotificationCategoriesStore(context: Context) {
         notificationCategory.encodedInBase64()
       )
       .commit()
-      .let { if (it) notificationCategory else null }
+      .let {
+        if (it) {
+          notificationCategory
+        } else {
+          null
+        }
+      }
 
   /**
    * Removes notification category for the given identifier.
@@ -86,14 +92,15 @@ class SharedPreferencesNotificationCategoriesStore(context: Context) {
    * @return Return true if category was deleted, false if not.
    */
   fun removeNotificationCategory(identifier: String): Boolean {
+    val id = preferencesNotificationCategoryKey(identifier)
     sharedPreferences.getString(
-      preferencesNotificationCategoryKey(identifier),
+      id,
       null
-    ).let { if (it == null) return false }
+    ) ?: return false
 
     return sharedPreferences
       .edit()
-      .remove(preferencesNotificationCategoryKey(identifier))
+      .remove(id)
       .commit()
   }
 

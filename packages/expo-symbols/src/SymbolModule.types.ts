@@ -1,34 +1,39 @@
-import { ViewProps } from 'react-native';
+import type { ColorValue, ProcessedColorValue, ViewProps } from 'react-native';
 import type { SFSymbol } from 'sf-symbols-typescript';
+
+import type { AndroidSymbol, AndroidSymbolWeight } from './android/index.js';
 
 export type SymbolViewProps = {
   /**
-   * The name of the symbol. Symbols can be viewed in the [Apple SF Symbols app](https://developer.apple.com/sf-symbols/).
+   * The name of the symbol. iOS Symbols can be viewed in the [Apple SF Symbols app](https://developer.apple.com/sf-symbols/).
    */
-  name: SFSymbol;
+  name: SFSymbol | { ios?: SFSymbol; android?: AndroidSymbol; web?: AndroidSymbol };
   /**
-   * Fallback to render on Android where `SF Symbols` are not available.
+   * Fallback to render when a symbol for the given platform is not defined.
    */
   fallback?: React.ReactNode;
   /**
    * Determines the symbol variant to use.
    * @default 'monochrome'
+   * @platform ios
    */
   type?: SymbolType;
   /**
    * The scale of the symbol to render.
    * @default 'unspecified'
+   * @platform ios
    */
   scale?: SymbolScale;
   /**
-   * The weight of the symbol to render.
+   * The weight of the symbol to render. On Android and web import from `expo-symbols/androidWeights/{weight}`.
    * @default 'unspecified'
    */
-  weight?: SymbolWeight;
+  weight?: SymbolWeight | { ios: SymbolWeight; android: AndroidSymbolWeight };
   /**
    * An array of colors to use when the {@link SymbolType} is `palette`.
+   * @platform ios
    */
-  colors?: string | string[] | null;
+  colors?: ColorValue | ColorValue[];
   /**
    * The size of the symbol.
    * @default 24
@@ -36,16 +41,17 @@ export type SymbolViewProps = {
   size?: number;
   /**
    * The tint color to apply to the symbol.
-   * @default null
    */
-  tintColor?: string | null;
+  tintColor?: ColorValue;
   /**
    * Determines how the image should be resized to fit its container.
-   * @default 'scaleToAspectFit'
+   * @default 'scaleAspectFit'
+   * @platform ios
    */
   resizeMode?: ContentMode;
   /**
    * The animation configuration to apply to the symbol.
+   * @platform ios
    */
   animationSpec?: AnimationSpec;
 } & ViewProps;
@@ -55,13 +61,13 @@ export type SymbolViewProps = {
  * @hidden
  */
 export interface NativeSymbolViewProps extends ViewProps {
-  name: string;
+  name?: string;
   type: SymbolType;
   scale?: SymbolScale;
   weight?: SymbolWeight;
   animated: boolean;
-  colors?: string | string[];
-  tint?: string;
+  colors: (ProcessedColorValue | null | undefined)[];
+  tint: ProcessedColorValue | null | undefined;
   resizeMode?: ContentMode;
   animationSpec?: AnimationSpec;
 }

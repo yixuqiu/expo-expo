@@ -1,0 +1,27 @@
+fragment CurrentUserActorData on Actor {
+  __typename
+  id
+  displayName
+  accounts {
+    id
+    name
+    ownerUserActor {
+      id
+      username
+      primaryAccountProfileImageUrl
+      firstName
+      fullName
+      lastName
+    }
+  }
+  ... on UserActor {
+    username
+    firstName
+    lastName
+    primaryAccountProfileImageUrl
+    bestContactEmail
+  }
+  ... on PartnerActor {
+    username
+  }
+}

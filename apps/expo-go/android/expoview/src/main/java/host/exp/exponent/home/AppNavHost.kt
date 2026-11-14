@@ -1,0 +1,326 @@
+package host.exp.exponent.home
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarDefaults
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
+import host.exp.expoview.R
+import kotlinx.serialization.Serializable
+
+@Serializable
+sealed interface Destination {
+  @Serializable
+  object Home : Destination
+
+  @Serializable
+  object Settings : Destination
+
+  @Serializable
+  object Projects : Destination
+
+  @Serializable
+  class ProjectDetails(val appId: String) : Destination
+
+  @Serializable
+  object Snacks : Destination
+
+  @Serializable
+  class Branches(val appId: String) : Destination
+
+  @Serializable
+  class BranchDetails(val branchName: String, val appId: String) : Destination
+
+  @Serializable
+  object Feedback : Destination
+}
+
+data class BottomBarDestination(
+  val destination: Destination,
+  val label: String,
+  val contentDescription: String,
+  val icon: Int
+)
+
+val bottomBarDestinations = listOf(
+  BottomBarDestination(
+    Destination.Home,
+    "Home",
+    "Home",
+    R.drawable.home
+  ),
+  BottomBarDestination(
+    Destination.Settings,
+    "Settings",
+    "Settings",
+    R.drawable.settings
+  )
+)
+
+@Composable
+fun RootNavigation(
+  viewModel: HomeAppViewModel
+) {
+  val navController = rememberNavController()
+
+  val themeSetting by viewModel.selectedTheme.collectAsStateWithLifecycle()
+  var openUriError by remember { mutableStateOf<String?>(null) }
+
+  HomeAppTheme(themeSetting = themeSetting) {
+    openUriError?.let { error ->
+      AlertDialog(
+        onDismissRequest = { openUriError = null },
+        title = { Text("Can't open this project") },
+        text = { Text(error) },
+        confirmButton = {
+          TextButton(onClick = { openUriError = null }) {
+            Text("OK")
+          }
+        }
+      )
+    }
+    CompositionLocalProvider(
+      LocalUriHandler provides rememberLocalNetworkGatedUriHandler(viewModel, onOpenError = { openUriError = it })
+    ) {
+      Box(
+        modifier = Modifier
+          .fillMaxSize()
+          .background(MaterialTheme.colorScheme.background)
+      ) {
+        AppNavHost(
+          navController = navController,
+          startDestination = Destination.Home,
+          viewModel = viewModel
+        )
+      }
+    }
+  }
+}
+
+@Composable
+fun AppNavHost(
+  navController: NavHostController,
+  startDestination: Destination,
+  viewModel: HomeAppViewModel
+) {
+  val selectedAccount by viewModel.selectedAccount.collectAsStateWithLifecycle()
+  var showsAccountSheet by rememberSaveable { mutableStateOf(false) }
+
+  fun goBack(backStackEntry: NavBackStackEntry) {
+    // Ignore callbacks from outgoing screens and never pop the last destination.
+    if (navController.currentBackStackEntry == backStackEntry && navController.previousBackStackEntry != null) {
+      navController.popBackStack()
+    }
+  }
+
+  @Composable
+  fun NavAccountHeaderAction() {
+    AccountHeaderAction(
+      account = selectedAccount,
+      onLoginClick = { viewModel.login() },
+      onAccountClick = { showsAccountSheet = true }
+    )
+    Spacer(Modifier.padding(8.dp))
+  }
+
+  NavHost(
+    navController = navController,
+    startDestination = startDestination
+  ) {
+    composable<Destination.Home> {
+      HomeScreen(
+        viewModel = viewModel,
+        navigateToProjects = { navController.navigate(Destination.Projects) },
+        navigateToSnacks = { navController.navigate(Destination.Snacks) },
+        onLoginClick = { viewModel.login() },
+        navigateToProjectDetails = { appId ->
+          navController.navigate(Destination.ProjectDetails(appId = appId))
+        },
+        navigateToFeedback = {
+          navController.navigate(Destination.Feedback)
+        },
+        bottomBar = {
+          BottomBar(
+            navController = navController,
+            currentDestination = Destination.Home
+          )
+        },
+        accountHeader = { NavAccountHeaderAction() }
+      )
+    }
+
+    composable<Destination.Settings> {
+      SettingsScreen(
+        viewModel = viewModel,
+        bottomBar = {
+          BottomBar(
+            navController = navController,
+            currentDestination = Destination.Settings
+          )
+        },
+        accountHeader = { NavAccountHeaderAction() }
+      )
+    }
+
+    composable<Destination.Projects> { backStackEntry ->
+      ProjectsScreen(
+        viewModel = viewModel,
+        onGoBack = { goBack(backStackEntry) },
+        bottomBar = {
+          BottomBar(
+            navController = navController,
+            currentDestination = Destination.Home
+          )
+        },
+        navigateToProjectDetails = { appId ->
+          navController.navigate(Destination.ProjectDetails(appId = appId))
+        }
+      )
+    }
+
+    composable<Destination.Snacks> { backStackEntry ->
+      SnacksScreen(
+        viewModel = viewModel,
+        onGoBack = { goBack(backStackEntry) },
+        bottomBar = {
+          BottomBar(
+            navController = navController,
+            currentDestination = Destination.Home
+          )
+        }
+      )
+    }
+
+    composable<Destination.Feedback> { backStackEntry ->
+      FeedbackScreen(
+        viewModel = viewModel,
+        onGoBack = { goBack(backStackEntry) }
+      )
+    }
+
+    composable<Destination.ProjectDetails> { backStackEntry ->
+      val args = backStackEntry.toRoute<Destination.ProjectDetails>()
+      val appFlow = remember { viewModel.app(args.appId) }
+      ProjectDetailsScreen(
+        viewModel = viewModel,
+        onGoBack = { goBack(backStackEntry) },
+        appFlow = appFlow,
+        onBranchClick = { branchName ->
+          navController.navigate(
+            Destination.BranchDetails(
+              branchName = branchName,
+              appId = args.appId
+            )
+          )
+        },
+        onShowAllBranchesClick = {
+          navController.navigate(Destination.Branches(appId = args.appId))
+        }
+      )
+    }
+
+    composable<Destination.Branches> { backStackEntry ->
+      val args = backStackEntry.toRoute<Destination.Branches>()
+
+      BranchesScreen(
+        viewModel = viewModel,
+        onGoBack = { goBack(backStackEntry) },
+        appId = args.appId,
+        navigateToBranchDetails = { appId, branchName ->
+          navController.navigate(Destination.BranchDetails(branchName, appId))
+        },
+        bottomBar = {
+          BottomBar(
+            navController = navController,
+            currentDestination = Destination.Home
+          )
+        }
+      )
+    }
+
+    composable<Destination.BranchDetails> { backStackEntry ->
+      val args = backStackEntry.toRoute<Destination.BranchDetails>()
+      val branchRefreshableFlow = remember(args.branchName, args.appId) {
+        viewModel.branch(args.branchName, args.appId)
+      }
+
+      BranchDetailsScreen(
+        onGoBack = { goBack(backStackEntry) },
+        branchRefreshableFlow = branchRefreshableFlow,
+        bottomBar = {
+          BottomBar(
+            navController = navController,
+            currentDestination = Destination.Home
+          )
+        }
+      )
+    }
+  }
+
+  if (showsAccountSheet) {
+    AccountSwitcherSheet(
+      viewModel = viewModel,
+      onDismiss = { showsAccountSheet = false }
+    )
+  }
+}
+
+@Composable
+fun BottomBar(
+  navController: NavHostController,
+  currentDestination: Destination
+) {
+  NavigationBar(
+    windowInsets = NavigationBarDefaults.windowInsets,
+    containerColor = MaterialTheme.colorScheme.surface
+  ) {
+    bottomBarDestinations.forEach { item ->
+      NavigationBarItem(
+        selected = currentDestination == item.destination,
+        onClick = {
+          navController.navigate(item.destination) {
+            popUpTo(navController.graph.findStartDestination().id) {
+              saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+          }
+        },
+        icon = {
+          Icon(
+            painter = painterResource(item.icon),
+            contentDescription = item.contentDescription
+          )
+        },
+        label = { Text(item.label) }
+      )
+    }
+  }
+}

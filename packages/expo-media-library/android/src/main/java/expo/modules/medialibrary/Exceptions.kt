@@ -17,6 +17,9 @@ class AlbumPathException :
 class AlbumNotFound :
   CodedException("Couldn't find album")
 
+class AssetNotFound(assetId: String) :
+  CodedException("Couldn't find asset with id: $assetId")
+
 class AssetQueryException :
   CodedException("Could not get asset. Query returns null")
 
@@ -31,3 +34,15 @@ class ContentEntryException :
 
 class AssetFileException(message: String) :
   CodedException(message)
+
+class UnableToLoadPermissionException(message: String, cause: Throwable? = null) :
+  CodedException(message, cause)
+
+class UnableToLoadException(message: String, cause: Throwable? = null) :
+  CodedException(message, cause)
+
+class UnableToDeleteException(message: String, cause: Throwable? = null) :
+  CodedException(message, cause)
+
+class UnableToSaveException(message: String, cause: Throwable? = null) :
+  CodedException(message, cause)

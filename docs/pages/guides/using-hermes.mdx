@@ -1,35 +1,28 @@
 ---
-title: Use Hermes Engine
-sidebar_title: Use Hermes
+title: Using Hermes engine
+sidebar_title: Using Hermes
 description: A guide on configuring Hermes for both Android and iOS in an Expo project.
 ---
-
-import { Collapsible } from '~/ui/components/Collapsible';
 
 [Hermes](https://hermesengine.dev/) is a JavaScript engine optimized for React Native. By compiling JavaScript into bytecode ahead of time, Hermes can improve your app start-up time. The binary size of Hermes is also smaller than other JavaScript engines, such as JavaScriptCore (JSC). It also uses less memory at runtime, which is particularly valuable on lower-end Android devices.
 
 ## Support
 
-The Hermes engine is the default JavaScript engine used by Expo and it is fully supported across all Expo tooling. See the table below to check if your project is using a compatible version:
-
-| Platform | Expo Go | [Development Builds](/develop/development-builds/introduction/) |
-| -------- | ------- | --------------------------------------------------------------- |
-| Android  | SDK 42  | SDK 42                                                          |
-| iOS      | SDK 47  | SDK 43                                                          |
+The Hermes engine is the default JavaScript engine used by Expo and it is fully supported across all Expo tooling.
 
 ### Switch JavaScript engine on a specific platform
 
-You may want to use Hermes on one platform and JSC on another. One way to do this is to set the `"jsEngine"` to `"hermes"` at the top level and then override it with `"jsc"` under the `"ios"` key. You may alternatively prefer to explicitly set `"hermes"` on just the `"android"` key in this case.
+You may want to use Hermes on one platform and JSC on another. One way to do this is to set the `"jsEngine"` to `"hermes"` at the top level in app config and then override it with `"jsc"` under the `"ios"` key. You may alternatively prefer to explicitly set `"hermes"` on just the `"android"` key in this case.
 
 {/* prettier-ignore */}
-```js
+```json app.json
 {
   "expo": {
     "jsEngine": "hermes",
     "ios": {
       /* @info jsEngine inside platform section will take precedence over the common field */
       "jsEngine": "jsc"
-    /* @end */
+      /* @end */
     }
   }
 }
@@ -39,26 +32,22 @@ You may want to use Hermes on one platform and JSC on another. One way to do thi
 
 Publishing updates with `eas update` and `npx expo export` will generate Hermes bytecode bundles and their source maps.
 
-Please note that the Hermes bytecode format may change between different Hermes versions — an update produced for a specific version of Hermes will not run on a different version of Hermes. Starting from Expo SDK 46 (React Native 0.69), [Hermes is bundled within React Native](https://reactnative.dev/architecture/bundled-hermes). Updating React Native version or Hermes version can be thought of in the same way as updating any other native module. So if you update the `react-native` version you should also update the `runtimeVersion` in **app.json**. If you don't do this, your app may crash on launch because the update may be loaded by an existing binary that uses an older Hermes version that is incompatible with the updated bytecode format. See [`runtimeVersion`](/eas-update/runtime-versions/) for more information.
+Note that the Hermes bytecode format may change between different Hermes versions — an update produced for a specific version of Hermes will not run on a different version of Hermes. Starting from Expo SDK 46 (React Native 0.69), [Hermes is bundled within React Native](https://reactnative.dev/architecture/bundled-hermes). Updating React Native version or Hermes version can be thought of in the same way as updating any other native module. So if you update the `react-native` version you should also update the `runtimeVersion` in **app.json**. If you don't do this, your app may crash on launch because the update may be loaded by an existing binary that uses an older Hermes version that is incompatible with the updated bytecode format. See [`runtimeVersion`](/eas-update/runtime-versions/) for more information.
 
 ## JavaScript debugger
 
-To debug JavaScript code running with Hermes, you can start your project with `npx expo start` then press <kbd>j</kbd> to open the debugger in Google Chrome or Microsoft Edge. The developer menu of development builds and Expo Go also have the **Open JS Debugger** option to do the same.
+To debug JavaScript code running with Hermes, you can start your project with `npx expo start` then press <kbd>J</kbd> to open the debugger in Google Chrome or Microsoft Edge. The developer menu of development builds and Expo Go also have the **Open DevTools** (formerly **Open JS Debugger**) option to do the same.
 
-Alternatively, you can use the JavaScript inspector from the following tools:
-
-- [Open Google Chrome DevTools manually](https://reactnative.dev/docs/hermes#debugging-js-on-hermes-using-google-chromes-devtools)
-- [Flipper](https://fbflipper.com/)
+Alternatively, you can use the JavaScript inspector by opening [Google Chrome DevTools manually](https://reactnative.dev/docs/other-debugging-methods#remote-javascript-debugging-deprecated)
 
 ### Troubleshooting
 
 > **warning** `No compatible apps connected. JavaScript Debugging can only be used with the Hermes engine.` when opening the debugger.
 
-- Make sure you [set up Hermes in the `jsEngine` field](#setup).
+- Make sure you [set up Hermes in the `jsEngine` field](#switch-javascript-engine-on-a-specific-platform).
 - If your app is built by `eas build`, `npx expo run:android` or `npx expo run:ios`, make sure it is a debug build.
 - Internally, the app will establish a WebSocket connection, make sure your app is connected to the development server.
-
-  - Try to reload the app by pressing <kbd>r</kbd> in the Expo CLI Terminal UI.
+  - Try to reload the app by pressing <kbd>R</kbd> in the Expo CLI Terminal UI.
   - Test debugging availability by running the command: `curl http://127.0.0.1:8081/json/list` (adjust the `127.0.0.1:8081` to match your dev server URL). The HTTP response should be an array, as shown below. If it is an empty response, add either the `--localhost` or `--tunnel` flag to the `npx expo start` command.
 
   ```json

@@ -1,13 +1,14 @@
 import { mergeClasses } from '@expo/styleguide';
 import React, { ReactNode, ComponentType, HTMLAttributes, PropsWithChildren } from 'react';
 
-import { FileStatus } from './FileStatus';
-
 import { LABEL } from '~/ui/components/Text';
+
+import { FileStatus } from './FileStatus';
 
 export type SnippetHeaderProps = PropsWithChildren<{
   title: string | ReactNode;
   Icon?: ComponentType<HTMLAttributes<SVGSVGElement>>;
+  titleSlot?: ReactNode;
   alwaysDark?: boolean;
   float?: boolean;
   operationType?: 'delete' | 'add' | 'modify' | undefined;
@@ -18,28 +19,31 @@ export const SnippetHeader = ({
   title,
   children,
   Icon,
+  titleSlot,
   float,
   alwaysDark = false,
   operationType,
   showOperation = false,
 }: SnippetHeaderProps) => (
   <div
+    data-md="snippet-header"
     className={mergeClasses(
-      'flex pl-4 overflow-hidden justify-between bg-default border border-default min-h-[40px]',
-      !float && 'rounded-t-md border-b-0',
-      float && 'rounded-md my-4',
+      'flex min-h-10 justify-between overflow-hidden border border-default bg-default pl-4',
+      !float && 'rounded-t-3xl border-b-0',
+      float && 'rounded-3xl',
       Icon && 'pl-3',
-      alwaysDark && 'dark-theme pr-2 dark:border-transparent !bg-palette-gray3'
+      alwaysDark && 'dark-theme bg-palette-gray3! pr-2 dark:border-transparent'
     )}>
     <LABEL
       className={mergeClasses(
-        'flex items-center gap-2 h-10 !leading-10 pr-4 select-none font-medium truncate',
+        'flex min-h-10 w-full items-center gap-2 overflow-x-auto py-1 pr-4 leading-tight! font-medium',
         alwaysDark && 'text-palette-white'
       )}>
-      {Icon && <Icon className="icon-sm" />}
-      {title}
+      {Icon && <Icon aria-hidden="true" className="icon-sm shrink-0" />}
+      <span className="w-max max-w-[60dvw] truncate wrap-break-word">{title}</span>
       {showOperation && operationType ? <FileStatus type={operationType} /> : null}
+      {titleSlot}
     </LABEL>
-    {!!children && <div className="flex justify-end items-center">{children}</div>}
+    {!!children && <div className="flex items-center justify-end">{children}</div>}
   </div>
 );

@@ -2,39 +2,25 @@
 
 #pragma once
 
+#include "ExpoHeader.pch"
 #include "JavaScriptRuntime.h"
 #include "JavaScriptModuleObject.h"
 #include "JavaScriptValue.h"
 #include "JavaScriptObject.h"
-#include "JavaReferencesCache.h"
 #include "JSReferencesCache.h"
 #include "JNIDeallocator.h"
+#include "ThreadSafeJNIGlobalRef.h"
+#include "javaclasses/JSRunnable.h"
 
-#include <fbjni/fbjni.h>
-#include <jsi/jsi.h>
-#include <ReactCommon/CallInvokerHolder.h>
 #include <ReactCommon/CallInvoker.h>
-
-#if IS_NEW_ARCHITECTURE_ENABLED
-
-#include <ReactCommon/RuntimeExecutor.h>
-#include <react/jni/JRuntimeExecutor.h>
-
-#endif
-
-#if REACT_NATIVE_TARGET_VERSION >= 73
-
-#include <ReactCommon/NativeMethodCallInvokerHolder.h>
-
-#endif
-
-#include <memory>
 
 namespace jni = facebook::jni;
 namespace jsi = facebook::jsi;
 namespace react = facebook::react;
 
 namespace expo {
+
+class JSHeapAccessExecutorHolder;
 
 /**
  * A JNI wrapper to initialize CPP part of modules and access all data from the module registry.
@@ -44,37 +30,21 @@ public:
   static auto constexpr kJavaDescriptor = "Lexpo/modules/kotlin/jni/JSIContext;";
   static auto constexpr TAG = "JSIContext";
 
-  static jni::local_ref<jhybriddata> initHybrid(jni::alias_ref<jhybridobject> jThis);
-
   static void registerNatives();
 
-  /**
-   * Initializes the `ExpoModulesHostObject` and adds it to the global object.
-   */
-  void installJSI(
-    jlong jsRuntimePointer,
-    jni::alias_ref<JNIDeallocator::javaobject> jniDeallocator,
-    jni::alias_ref<react::CallInvokerHolder::javaobject> jsInvokerHolder
+  static jni::local_ref<JSIContext::javaobject> newJavaInstance(
+    jni::local_ref<jni::detail::HybridData> hybridData,
+    jni::alias_ref<jni::JWeakReference<jobject>::javaobject> runtimeContextHolder
   );
 
-#if IS_NEW_ARCHITECTURE_ENABLED
+  JSIContext(
+    jlong jsRuntimePointer,
+    jni::alias_ref<JNIDeallocator::javaobject> jniDeallocator,
+    std::shared_ptr<react::CallInvoker> callInvoker
+  );
 
-  /**
-     * Initializes the `ExpoModulesHostObject` and adds it to the global object.
-     */
-    void installJSIForBridgeless(
-      jlong jsRuntimePointer,
-      jni::alias_ref<JNIDeallocator::javaobject> jniDeallocator,
-      jni::alias_ref<react::JRuntimeExecutor::javaobject> runtimeExecutor
-    );
-
-#endif
-
-  /**
-   * Initializes the test runtime. Shouldn't be used in the production.
-   */
-  void installJSIForTests(
-    jni::alias_ref<JNIDeallocator::javaobject> jniDeallocator
+  void bindToJavaPart(
+    jni::local_ref<JSIContext::javaobject> jThis
   );
 
   /**
@@ -83,34 +53,31 @@ public:
    * @param moduleName
    * @return An instance of `JavaScriptModuleObject`
    */
-  jni::local_ref<JavaScriptModuleObject::javaobject> getModule(const std::string &moduleName) const;
+  [[nodiscard]] jni::local_ref<JavaScriptModuleObject::javaobject> getModule(const std::string &moduleName) const;
 
-  bool hasModule(const std::string &moduleName) const;
+  [[nodiscard]] bool hasModule(const std::string &moduleName) const;
 
   /**
    * Gets names of all available modules.
    */
-  jni::local_ref<jni::JArrayClass<jni::JString>> getModulesName() const;
+  [[nodiscard]] jni::local_ref<jni::JArrayClass<jni::JString>> getModulesName() const;
 
   /**
    * Exposes a `JavaScriptRuntime::evaluateScript` function to Kotlin
    */
   jni::local_ref<JavaScriptValue::javaobject> evaluateScript(jni::JString script);
 
+  void evaluateVoidScript(jni::JString script);
+
   /**
    * Exposes a `JavaScriptRuntime::global` function to Kotlin
    */
-  jni::local_ref<JavaScriptObject::javaobject> global();
+  jni::local_ref<JavaScriptObject::javaobject> global() noexcept;
 
   /**
    * Exposes a `JavaScriptRuntime::createObject` function to Kotlin
    */
-  jni::local_ref<JavaScriptObject::javaobject> createObject();
-
-  /**
-  * Gets a core module.
-  */
-  jni::local_ref<JavaScriptModuleObject::javaobject> getCoreModule() const;
+  jni::local_ref<JavaScriptObject::javaobject> createObject() noexcept;
 
   /**
    * Adds a shared object to the internal registry
@@ -122,10 +89,24 @@ public:
     jni::local_ref<JavaScriptObject::javaobject> js
   );
 
+  /**
+   * Gets a shared object from the internal registry
+   * @param objectId
+   * @return
+   */
+  jni::local_ref<JavaScriptObject::javaobject> getSharedObject(
+    int objectId
+  );
+
   static void deleteSharedObject(
     jni::alias_ref<JSIContext::javaobject> javaObject,
     int objectId
   );
+
+  /**
+   * Schedules a lambda to run on the JS thread via the RuntimeScheduler.
+   */
+  void scheduleOnJSThread(jni::alias_ref<JSRunnable::javaobject> runnable);
 
   /**
    * Exposes a `JavaScriptRuntime::drainJSEventLoop` function to Kotlin
@@ -135,59 +116,63 @@ public:
   std::shared_ptr<JavaScriptRuntime> runtimeHolder;
   std::unique_ptr<JSReferencesCache> jsRegistry;
   jni::global_ref<JNIDeallocator::javaobject> jniDeallocator;
+  std::shared_ptr<JSHeapAccessExecutorHolder> jsHeapAccessExecutor;
 
   void registerClass(jni::local_ref<jclass> native,
                      jni::local_ref<JavaScriptObject::javaobject> jsClass);
 
   jni::local_ref<JavaScriptObject::javaobject> getJavascriptClass(jni::local_ref<jclass> native);
 
-  ~JSIContext();
+  /**
+   * Installs module class prototypes and `SharedObject.__resolveInWorklet` in this runtime.
+   */
+  void installModuleClasses();
 
-  void prepareForDeallocation();
+  void prepareForDeallocation() noexcept;
 
-  bool wasDeallocated() const;
+  [[nodiscard]] bool wasDeallocated() const noexcept;
 
+  /*
+   * We store two global references to the Java part of the JSIContext.registerClass
+   * However, one is wrapped in additional abstraction to make it thread-safe,
+   * which increase the access time. For most operations, we should use the bare reference.
+   * Only for operations that are executed on different threads that aren't attached to JVM,
+   * we should use the thread-safe reference.
+   */
+  jni::global_ref<JSIContext::javaobject> javaPart_;
+  std::shared_ptr<ThreadSafeJNIGlobalRef<JSIContext::javaobject>> threadSafeJThis;
 private:
   friend HybridBase;
-  jni::global_ref<JSIContext::javaobject> javaPart_;
 
   bool wasDeallocated_ = false;
 
-  explicit JSIContext(jni::alias_ref<jhybridobject> jThis);
+  jni::local_ref<JavaScriptObject::javaobject> ensureClassInstalled(jsi::Runtime &rt, jni::local_ref<jclass> nativeClass);
+  jsi::Value resolveSharedObjectInstance(jsi::Runtime &rt, int objectId, jni::local_ref<JavaScriptObject::javaobject> jsClassObj);
 
-  inline jni::local_ref<JavaScriptModuleObject::javaobject>
+  [[nodiscard]] inline jni::local_ref<JavaScriptModuleObject::javaobject>
   callGetJavaScriptModuleObjectMethod(const std::string &moduleName) const;
 
-  inline jni::local_ref<jni::JArrayClass<jni::JString>> callGetJavaScriptModulesNames() const;
+  [[nodiscard]] inline jni::local_ref<jni::JArrayClass<jni::JString>> callGetJavaScriptModulesNames() const;
 
-  inline jni::local_ref<JavaScriptModuleObject::javaobject> callGetCoreModuleObject() const;
-
-  inline bool callHasModule(const std::string &moduleName) const;
+  [[nodiscard]] inline bool callHasModule(const std::string &moduleName) const;
 
   void prepareJSIContext(
     jlong jsRuntimePointer,
     jni::alias_ref<JNIDeallocator::javaobject> jniDeallocator,
     std::shared_ptr<react::CallInvoker> callInvoker
-  );
+  ) noexcept;
 
-  void prepareRuntime();
+  void prepareRuntime() noexcept;
 
   void jniSetNativeStateForSharedObject(
     int id,
     jni::alias_ref<JavaScriptObject::javaobject> jsObject
-  );
+  ) noexcept;
 };
 
 /**
- * We are binding the JSIContext to the runtime using a thread-local map.
- * This is a simplification of how we're accessing the JSIContext from different places.
- * We're using a thread-local map to prevent from accessing the wrong JSIContext from a different thread.
- * It's much safer than passing around the JSIContext as a parameter.
- */
-extern thread_local std::unordered_map<uintptr_t, JSIContext *> jsiContexts;
-
-/**
  * Binds the JSIContext to the runtime.
+ * Thread-safe: uses exclusive lock.
  * @param runtime
  * @param jsiContext
  */
@@ -195,22 +180,18 @@ void bindJSIContext(const jsi::Runtime &runtime, JSIContext *jsiContext);
 
 /**
  * Unbinds the JSIContext from the runtime.
+ * Thread-safe: uses exclusive lock.
  * @param runtime
  */
 void unbindJSIContext(const jsi::Runtime &runtime);
 
 /**
  * Gets the JSIContext for the given runtime.
+ * Thread-safe: uses exclusive lock.
  * @param runtime
  * @return JSIContext * - it should never be stored when received from this function.
- * It might throw an exception if the JSIContext for the given runtime doesn't exist.
+ * @throws std::invalid_argument if the JSIContext for the given runtime doesn't exist.
  */
-inline JSIContext *getJSIContext(const jsi::Runtime &runtime) {
-  const auto iterator = jsiContexts.find(reinterpret_cast<uintptr_t>(&runtime));
-  if (iterator == jsiContexts.end()) {
-    throw std::invalid_argument("JSIContext for the given runtime doesn't exist");
-  }
-  return iterator->second;
-}
+JSIContext *getJSIContext(const jsi::Runtime &runtime);
 
 } // namespace expo

@@ -1,4 +1,4 @@
-import { StyleProp, ViewStyle, ViewProps } from 'react-native';
+import type { StyleProp, ViewStyle, ViewProps } from 'react-native';
 
 // @needsAudit
 export declare type AppleAuthenticationButtonProps = ViewProps & {
@@ -173,7 +173,7 @@ export type AppleAuthenticationCredential = {
 
 // @needsAudit @docsMissing
 /**
- * An object representing the tokenized portions of the user's full name. Any of all of the fields
+ * An object representing the tokenized portions of the user's full name. Any or all of the fields
  * may be `null`. Only applicable fields that the user has allowed your app to access will be nonnull.
  */
 export type AppleAuthenticationFullName = {
@@ -184,6 +184,21 @@ export type AppleAuthenticationFullName = {
   nameSuffix: string | null;
   nickname: string | null;
 };
+
+// @needsAudit @docsMissing
+/**
+ * A value to specify the style for formatting a name.
+ *
+ * @see [Apple
+ * Documentation](https://developer.apple.com/documentation/foundation/personnamecomponentsformatter)
+ * for more details.
+ */
+export type AppleAuthenticationFullNameFormatStyle =
+  | 'default'
+  | 'short'
+  | 'medium'
+  | 'long'
+  | 'abbreviated';
 
 // @needsAudit @docsMissing
 /**

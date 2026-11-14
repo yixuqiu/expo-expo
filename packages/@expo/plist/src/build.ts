@@ -1,4 +1,3 @@
-/* eslint-disable */
 /* (The MIT License)
 
 Copyright (c) 2010-2017 Nathan Rajlich <nathan@tootallnate.net>
@@ -24,7 +23,6 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE. */
 
-import base64 from 'base64-js';
 import xmlbuilder from 'xmlbuilder';
 
 /**
@@ -67,7 +65,7 @@ function ISODateString(d: Date): string {
 const toString = Object.prototype.toString;
 function type(obj: object): string | null {
   const m = toString.call(obj).match(/\[object (.*)\]/);
-  return m ? m[1] : m;
+  return m?.[1] ?? null;
 }
 
 /**
@@ -115,7 +113,7 @@ function walk_obj(next: any, next_child: any): void {
   let tag_type, i, prop;
   const name = type(next);
 
-  if (name == 'Undefined') {
+  if (name === 'Undefined') {
   } else if (Array.isArray(next)) {
     next_child = next_child.ele('array');
     for (i = 0; i < next.length; i++) {
@@ -123,29 +121,29 @@ function walk_obj(next: any, next_child: any): void {
     }
   } else if (Buffer.isBuffer(next)) {
     next_child.ele('data').raw(next.toString('base64'));
-  } else if (name == 'Object') {
+  } else if (name === 'Object') {
     next_child = next_child.ele('dict');
     for (prop in next) {
-      if (next.hasOwnProperty(prop) && next[prop] !== undefined) {
+      if (Object.prototype.hasOwnProperty.call(next, prop) && next[prop] !== undefined) {
         next_child.ele('key').txt(prop);
         walk_obj(next[prop], next_child);
       }
     }
-  } else if (name == 'Number') {
+  } else if (name === 'Number') {
     // detect if this is an integer or real
     // TODO: add an ability to force one way or another via a "cast"
     tag_type = next % 1 === 0 ? 'integer' : 'real';
     next_child.ele(tag_type).txt(next.toString());
-  } else if (name == 'Date') {
+  } else if (name === 'Date') {
     next_child.ele('date').txt(ISODateString(new Date(next)));
-  } else if (name == 'Boolean') {
+  } else if (name === 'Boolean') {
     next_child.ele(next ? 'true' : 'false');
-  } else if (name == 'String') {
+  } else if (name === 'String') {
     next_child.ele('string').txt(next);
-  } else if (name == 'ArrayBuffer') {
-    next_child.ele('data').raw(base64.fromByteArray(next));
-  } else if (next && next.buffer && type(next.buffer) == 'ArrayBuffer') {
+  } else if (name === 'ArrayBuffer') {
+    next_child.ele('data').raw(Buffer.from(next).toString('base64'));
+  } else if (next && next.buffer && type(next.buffer) === 'ArrayBuffer') {
     // a typed array
-    next_child.ele('data').raw(base64.fromByteArray(new Uint8Array(next.buffer)));
+    next_child.ele('data').raw(Buffer.from(next.buffer).toString('base64'));
   }
 }

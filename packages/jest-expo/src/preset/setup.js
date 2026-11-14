@@ -4,13 +4,15 @@
  */
 'use strict';
 
-const findUp = require('find-up');
+const fs = require('fs');
+const merge = require('lodash/merge');
 const path = require('path');
-const mockNativeModules = require('react-native/Libraries/BatchedBridge/NativeModules');
+const mockNativeModules = require('react-native/Libraries/BatchedBridge/NativeModules').default;
 const stackTrace = require('stacktrace-js');
 
-const publicExpoModules = require('./expoModules');
-const internalExpoModules = require('./internalExpoModules');
+const publicExpoModules = require('./moduleMocks/expoModules');
+const internalExpoModules = require('./moduleMocks/internalExpoModules');
+const thirdPartyModules = require('./moduleMocks/thirdPartyModules');
 
 // window isn't defined as of react-native 0.45+ it seems
 if (typeof window !== 'object') {
@@ -51,14 +53,7 @@ Object.defineProperty(mockNativeModules, 'LinkingManager', {
   get: () => mockNativeModules.Linking,
 });
 
-const expoModules = {
-  ...publicExpoModules,
-  ...internalExpoModules,
-};
-
-// Mock the experience URL in development mode for asset setup
-expoModules.NativeUnimoduleProxy.modulesConstants.mockDefinition.ExponentConstants.experienceUrl.mock =
-  'exp://192.168.1.200:8081';
+const expoModules = merge(publicExpoModules, merge(thirdPartyModules, internalExpoModules));
 
 function mock(property, customMock) {
   const propertyType = property.type;
@@ -128,8 +123,34 @@ Object.keys(mockNativeModules.NativeUnimoduleProxy.viewManagersMetadata).forEach
   }
 );
 
+// Mock Expo's default async require messaging sockets when running tests
+[
+  'expo/src/async-require/messageSocket',
+  'expo/src/async-require/messageSocket.native',
+  'expo/build/async-require/messageSocket',
+  'expo/build/async-require/messageSocket.native',
+].forEach((moduleName) => {
+  try {
+    jest.doMock(require.resolve(moduleName), () => undefined);
+  } catch {
+    jest.doMock(moduleName, () => undefined, { virtual: true });
+  }
+});
+
+[
+  '../../../expo/src/async-require/messageSocket.ts',
+  '../../../expo/src/async-require/messageSocket.native.ts',
+  '../../../expo/build/async-require/messageSocket.js',
+  '../../../expo/build/async-require/messageSocket.native.js',
+]
+  .map((modulePath) => path.resolve(__dirname, modulePath))
+  .filter((modulePath) => fs.existsSync(modulePath))
+  .forEach((modulePath) => {
+    jest.doMock(modulePath, () => undefined);
+  });
+
 try {
-  jest.mock('expo-file-system', () => ({
+  jest.mock('expo-file-system/legacy', () => ({
     downloadAsync: jest.fn(() => Promise.resolve({ md5: 'md5', uri: 'uri' })),
     getInfoAsync: jest.fn(() => Promise.resolve({ exists: true, md5: 'md5', uri: 'uri' })),
     readAsStringAsync: jest.fn(() => Promise.resolve()),
@@ -148,7 +169,7 @@ try {
   }
 }
 
-jest.mock('@react-native/assets-registry/registry', () => ({
+jest.mock('react-native/asset-registry', () => ({
   registerAsset: jest.fn(() => 1),
   getAssetByID: jest.fn(() => ({
     fileSystemLocation: '/full/path/to/directory',
@@ -165,45 +186,80 @@ jest.mock('@react-native/assets-registry/registry', () => ({
   })),
 }));
 
-jest.doMock('react-native/Libraries/BatchedBridge/NativeModules', () => mockNativeModules);
+// `import { AssetRegistry } from 'react-native'` loads this private module directly, not
+// `react-native/asset-registry`. It is not in the `exports` map, so it needs an absolute path.
+const reactNativeAssetRegistryPath = path.join(
+  path.dirname(require.resolve('react-native/package.json')),
+  'src/private/assets/AssetRegistry.js'
+);
+if (fs.existsSync(reactNativeAssetRegistryPath)) {
+  jest.doMock(reactNativeAssetRegistryPath, () => ({
+    AssetRegistry: jest.requireMock('react-native/asset-registry'),
+  }));
+}
 
-jest.doMock('react-native/Libraries/LogBox/LogBox', () => ({
-  ignoreLogs: (patterns) => {
-    // Do nothing.
-  },
-  ignoreAllLogs: (value) => {
-    // Do nothing.
-  },
-  install: () => {
-    // Do nothing.
-  },
-  uninstall: () => {
-    // Do nothing.
-  },
+jest.doMock('react-native/Libraries/BatchedBridge/NativeModules', () => ({
+  __esModule: true,
+  default: mockNativeModules,
 }));
 
-// Mock the `createSnapshotFriendlyRef` to return an ref that can be serialized in snapshots.
-jest.doMock('expo-modules-core/build/Refs', () => ({
-  createSnapshotFriendlyRef: () => {
-    const { createSnapshotFriendlyRef } = jest.requireActual('expo-modules-core/build/Refs');
-    // Fixes: `cannot define property "toJSON", object is not extensible
-    const ref = Object.create(createSnapshotFriendlyRef());
-    Object.defineProperty(ref, 'toJSON', {
-      value: () => '[React.ref]',
-    });
-    return ref;
+jest.doMock('react-native/Libraries/LogBox/LogBox', () => ({
+  __esModule: true,
+  default: {
+    ignoreLogs: (patterns) => {
+      // Do nothing.
+    },
+    ignoreAllLogs: (value) => {
+      // Do nothing.
+    },
+    install: () => {
+      // Do nothing.
+    },
+    uninstall: () => {
+      // Do nothing.
+    },
   },
 }));
 
 function attemptLookup(moduleName) {
   // hack to get the package name from the module name
-  const filePath = stackTrace.getSync().find((line) => line.fileName.includes(moduleName));
+  const filePath = stackTrace.getSync().find((line) => {
+    if (line.fileName.includes(moduleName)) {
+      return true;
+    }
+
+    // Jest's own files never call requireNativeModule, and reading them dominates the lookup cost.
+    if (/[\\/]node_modules[\\/](?:@jest[\\/]|jest-[^\\/]+[\\/])/.test(line.fileName)) {
+      return false;
+    }
+    if (!fs.existsSync(line.fileName)) {
+      return false;
+    }
+    const fileContents = fs.readFileSync(line.fileName, { encoding: 'utf8' });
+    // Matches requireNativeModule<OptionalGeneric>("ModuleName")
+    const regexPattern = new RegExp(
+      `require(?:Optional)?NativeModule\\s*(?:<${moduleName}Module>)?\\s*\\(['"]${moduleName}['"]\\)`
+    );
+
+    if (regexPattern.test(fileContents)) {
+      return true;
+    }
+    return false;
+  });
   if (!filePath) {
     return null;
   }
-  const modulePath = findUp.sync('package.json', { cwd: filePath.fileName });
-  const moduleMockPath = path.join(modulePath, '..', 'mocks', moduleName);
 
+  let modulePath = null;
+  for (let dir = filePath.fileName; path.dirname(dir) !== dir; dir = path.dirname(dir)) {
+    const file = path.resolve(dir, 'package.json');
+    if (fs.existsSync(file)) {
+      modulePath = file;
+      break;
+    }
+  }
+
+  const moduleMockPath = path.join(modulePath, '..', 'mocks', moduleName);
   try {
     const mockedPackageNativeModule = jest.requireActual(moduleMockPath);
     return mockedPackageNativeModule;
@@ -212,67 +268,120 @@ function attemptLookup(moduleName) {
   }
 }
 
-try {
-  jest.doMock('expo-modules-core', () => {
-    const ExpoModulesCore = jest.requireActual('expo-modules-core');
-    const uuid = jest.requireActual('expo-modules-core/build/uuid/uuid.web');
+// TODO(@kitten): This is an invalid dependency chain
+jest.doMock('expo-modules-core', () => {
+  const ExpoModulesCore = jest.requireActual('expo-modules-core');
 
-    const { EventEmitter, NativeModule, SharedObject } = globalThis.expo;
+  const { EventEmitter, NativeModule, SharedObject } = globalThis.expo;
 
-    // support old hard-coded mocks TODO: remove this
-    const { NativeModulesProxy } = ExpoModulesCore;
+  // support old hard-coded mocks TODO: remove this
+  const { NativeModulesProxy } = ExpoModulesCore;
 
-    // Mock the `uuid` object with the implementation for web.
-    ExpoModulesCore.uuid.v4 = uuid.default.v4;
-    ExpoModulesCore.uuid.v5 = uuid.default.v5;
+  // After the NativeModules mock is set up, we can mock NativeModuleProxy's functions that call
+  // into the native proxy module. We're not really interested in checking whether the underlying
+  // method is called, just that the proxy method is called, since we have unit tests for the
+  // adapter and believe it works correctly.
+  //
+  // NOTE: The adapter validates the number of arguments, which we don't do in the mocked functions.
+  // This means the mock functions will not throw validation errors the way they would in an app.
 
-    // After the NativeModules mock is set up, we can mock NativeModuleProxy's functions that call
-    // into the native proxy module. We're not really interested in checking whether the underlying
-    // method is called, just that the proxy method is called, since we have unit tests for the
-    // adapter and believe it works correctly.
-    //
-    // NOTE: The adapter validates the number of arguments, which we don't do in the mocked functions.
-    // This means the mock functions will not throw validation errors the way they would in an app.
-
-    for (const moduleName of Object.keys(NativeModulesProxy)) {
-      const nativeModule = NativeModulesProxy[moduleName];
-      for (const propertyName of Object.keys(nativeModule)) {
-        if (typeof nativeModule[propertyName] === 'function') {
-          nativeModule[propertyName] = jest.fn(async () => {});
-        }
+  for (const moduleName of Object.keys(NativeModulesProxy)) {
+    const nativeModule = NativeModulesProxy[moduleName];
+    for (const propertyName of Object.keys(nativeModule)) {
+      if (typeof nativeModule[propertyName] === 'function') {
+        nativeModule[propertyName] = jest.fn(async () => {});
       }
     }
-    return {
-      ...ExpoModulesCore,
-
-      // Use web implementations for the common classes written natively
-      EventEmitter,
-      NativeModule,
-      SharedObject,
-
-      requireNativeModule(name) {
-        // Support auto-mocking of expo-modules that:
-        // 1. have a mock in the `mocks` directory
-        // 2. the native module (e.g. ExpoCrypto) name matches the package name (expo-crypto)
-        const nativeModuleMock = attemptLookup(name) ?? ExpoModulesCore.requireNativeModule(name);
-        const nativeModule = new NativeModule();
-
-        for (const [key, value] of Object.entries(nativeModuleMock)) {
-          nativeModule[key] = typeof value === 'function' ? jest.fn(value) : value;
-        }
-        return nativeModule;
-      },
-    };
-  });
-} catch (error) {
-  // Allow this module to be optional for bare-workflow
-  if (error.code !== 'MODULE_NOT_FOUND') {
-    throw error;
   }
-}
 
-// Installs web implementations of global things that are normally installed through JSI.
-require('expo-modules-core/build/web/index.web');
+  function requireMockModule(name) {
+    // Support auto-mocking of expo-modules that:
+    // 1. have a mock in the `mocks` directory
+    // 2. the native module (e.g. ExpoCrypto) name matches the package name (expo-crypto)
+    const nativeModuleMock =
+      attemptLookup(name) ?? ExpoModulesCore.requireOptionalNativeModule(name);
+    if (!nativeModuleMock) {
+      return null;
+    }
 
+    const nativeModule = new NativeModule();
+    for (const [key, value] of Object.entries(nativeModuleMock)) {
+      if (typeof value === 'function') {
+        // Don't wrap classes with jest.fn() as it destroys the prototype chain
+        // needed for `extends` (e.g. File extends ExpoFileSystem.FileSystemFile).
+        const isClass = Object.getOwnPropertyNames(value.prototype ?? {}).length > 1;
+        nativeModule[key] = isClass ? value : jest.fn(value);
+      } else {
+        nativeModule[key] = value;
+      }
+    }
+    return nativeModule;
+  }
+
+  return {
+    ...ExpoModulesCore,
+
+    // Use web implementations for the common classes written natively
+    EventEmitter,
+    NativeModule,
+    SharedObject,
+
+    // Mock the `createSnapshotFriendlyRef` to return an ref that can be serialized in snapshots.
+    createSnapshotFriendlyRef: () => {
+      // We cannot use `createRef` since it is not extensible.
+      const ref = { current: null };
+      Object.defineProperty(ref, 'toJSON', {
+        value: () => '[React.ref]',
+      });
+      return ref;
+    },
+
+    requireOptionalNativeModule: requireMockModule,
+    requireNativeModule(moduleName) {
+      const module = requireMockModule(moduleName);
+      if (!module) {
+        throw new Error(`Cannot find native module '${moduleName}'`);
+      }
+      return module;
+    },
+    requireNativeViewManager: (name) => {
+      const nativeModuleMock = attemptLookup(name);
+      if (!nativeModuleMock || !nativeModuleMock.View) {
+        return ExpoModulesCore.requireNativeViewManager(name);
+      }
+      return nativeModuleMock.View;
+    },
+  };
+});
+
+// Installs web implementations of the global.expo object for all platforms to polyfill APIs that are normally installed through JSI.
+require('expo-modules-core/src/polyfill/dangerous-internal').installExpoGlobalPolyfill();
+
+// `expo/fetch` defines `class FetchResponse extends ExpoFetchModule.NativeResponse`
+// at module load — provide stub classes so tests that transitively import fetch
+// don't need to mock `ExpoFetchModule` themselves.
+globalThis.expo.modules.ExpoFetchModule = {
+  NativeRequest: class extends globalThis.expo.SharedObject {
+    start() {}
+    cancel() {}
+  },
+  NativeResponse: class extends globalThis.expo.SharedObject {
+    startStreaming() {}
+    cancelStreaming() {}
+    arrayBuffer() {}
+    text() {}
+  },
+};
+
+jest.doMock('expo/src/winter/FormData', () => ({
+  // The `installFormDataPatch` function is for native runtime only,
+  // so we don't need to patch `FormData` for the jest runtime.
+  installFormDataPatch: jest.fn(),
+}));
 // Ensure the environment globals are installed before the first test runs.
-require('expo/build/winter');
+require('expo/src/winter');
+
+// Normally injected by Metro.
+if (process.env.EXPO_OS !== 'web' && typeof window !== 'undefined') {
+  require('expo/virtual/streams');
+}

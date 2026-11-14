@@ -1,0 +1,444 @@
+// @ts-ignore-next-line: no @types/node
+import fs from 'fs/promises';
+
+import { openDatabaseSync } from '../SQLiteDatabase';
+import { SQLiteStorage } from '../Storage';
+import { createDatabasePath } from '../pathUtils';
+
+jest.mock('expo/devtools', () => ({
+  getDevToolsPluginClientAsync: jest.fn(),
+}));
+jest.mock('../ExpoSQLite', () => require('../__mocks__/ExpoSQLite'));
+
+describe('SQLiteStorage asynchronous', () => {
+  let storage: SQLiteStorage;
+
+  beforeEach(async () => {
+    storage = new SQLiteStorage('TestStorage');
+    await storage.clearAsync();
+  });
+
+  afterEach(async () => {
+    await storage.clearAsync();
+    await storage.closeAsync();
+  });
+
+  afterAll(async () => {
+    await fs.unlink('TestStorage').catch(() => {});
+  });
+
+  it('should set and get an item', async () => {
+    await storage.setItemAsync('key1', 'value1');
+    const value = await storage.getItemAsync('key1');
+    expect(value).toBe('value1');
+  });
+
+  it('should update item using setItemAsync updater function', async () => {
+    await storage.setItemAsync('key1', 'initialValue');
+    const updater = jest.fn((prevValue) => `${prevValue}_updated`);
+    await storage.setItemAsync('key1', updater);
+    const value = await storage.getItemAsync('key1');
+    expect(updater).toHaveBeenCalledWith('initialValue');
+    expect(value).toBe('initialValue_updated');
+  });
+
+  it('should remove an item', async () => {
+    await storage.setItemAsync('key1', 'value1');
+    const removed = await storage.removeItemAsync('key1');
+    expect(removed).toBe(true);
+    const value = await storage.getItemAsync('key1');
+    expect(value).toBeNull();
+  });
+
+  it('should get all keys', async () => {
+    await storage.setItemAsync('key1', 'value1');
+    await storage.setItemAsync('key2', 'value2');
+    const keys = await storage.getAllKeysAsync();
+    expect(keys).toEqual(expect.arrayContaining(['key1', 'key2']));
+  });
+
+  it('should clear all items', async () => {
+    await storage.setItemAsync('key1', 'value1');
+    await storage.setItemAsync('key2', 'value2');
+    const cleared = await storage.clearAsync();
+    expect(cleared).toBe(true);
+    const keys = await storage.getAllKeysAsync();
+    expect(keys).toHaveLength(0);
+  });
+
+  it('should get length', async () => {
+    await storage.setItemAsync('key1', 'value1');
+    await storage.setItemAsync('key2', 'value2');
+    const length = await storage.getLengthAsync();
+    expect(length).toBe(2);
+  });
+
+  it('should get key by index', async () => {
+    await storage.setItemAsync('key', 'value');
+    await storage.setItemAsync('key2', 'value2');
+
+    expect(await storage.getKeyByIndexAsync(0)).toBe('key');
+
+    expect(await storage.getKeyByIndexAsync(-1)).toBe(null);
+    expect(await storage.getKeyByIndexAsync(0.5)).toBe('key');
+    // @ts-expect-error
+    expect(await storage.getKeyByIndexAsync(true)).toBe('key2');
+    // @ts-expect-error
+    expect(await storage.getKeyByIndexAsync(false)).toBe('key');
+    // @ts-expect-error
+    expect(await storage.getKeyByIndexAsync({ valueOf: () => 1 })).toBe('key2');
+
+    expect(await storage.getKeyByIndexAsync(Number.MAX_SAFE_INTEGER)).toBe(null);
+    expect(await storage.getKeyByIndexAsync(Number.MAX_SAFE_INTEGER + 1)).toBe('key');
+    expect(await storage.getKeyByIndexAsync(Number.MAX_VALUE)).toBe('key');
+    expect(await storage.getKeyByIndexAsync(NaN)).toBe('key');
+    expect(await storage.getKeyByIndexAsync(Infinity)).toBe('key');
+    expect(await storage.getKeyByIndexAsync(-Infinity)).toBe('key');
+  });
+});
+
+describe('SQLiteStorage synchronous', () => {
+  let storage: SQLiteStorage;
+
+  beforeEach(() => {
+    storage = new SQLiteStorage(':memory:');
+    storage.clearSync();
+  });
+
+  afterEach(() => {
+    storage.clearSync();
+    storage.closeSync();
+  });
+
+  it('should set and get an item', () => {
+    storage.setItemSync('key1', 'value1');
+    const value = storage.getItemSync('key1');
+    expect(value).toBe('value1');
+  });
+
+  it('should update item using setItemSync updater function', () => {
+    storage.setItemSync('key1', 'initialValue');
+    const updater = jest.fn((prevValue) => `${prevValue}_updated`);
+    storage.setItemSync('key1', updater);
+    const value = storage.getItemSync('key1');
+    expect(updater).toHaveBeenCalledWith('initialValue');
+    expect(value).toBe('initialValue_updated');
+  });
+
+  it('should remove an item', () => {
+    storage.setItemSync('key1', 'value1');
+    const removed = storage.removeItemSync('key1');
+    expect(removed).toBe(true);
+    const value = storage.getItemSync('key1');
+    expect(value).toBeNull();
+  });
+
+  it('should get all keys', () => {
+    storage.setItemSync('key1', 'value1');
+    storage.setItemSync('key2', 'value2');
+    const keys = storage.getAllKeysSync();
+    expect(keys).toEqual(expect.arrayContaining(['key1', 'key2']));
+  });
+
+  it('should clear all items', () => {
+    storage.setItemSync('key1', 'value1');
+    storage.setItemSync('key2', 'value2');
+    const cleared = storage.clearSync();
+    expect(cleared).toBe(true);
+    const keys = storage.getAllKeysSync();
+    expect(keys).toHaveLength(0);
+  });
+
+  it('should get length', () => {
+    storage.setItemSync('key1', 'value1');
+    storage.setItemSync('key2', 'value2');
+    const length = storage.getLengthSync();
+    expect(length).toBe(2);
+  });
+
+  it('should get key by index', () => {
+    storage.setItemSync('key', 'value');
+    storage.setItemSync('key2', 'value2');
+
+    expect(storage.getKeyByIndexSync(0)).toBe('key');
+
+    expect(storage.getKeyByIndexSync(-1)).toBe(null);
+    expect(storage.getKeyByIndexSync(0.5)).toBe('key');
+    // @ts-expect-error
+    expect(storage.getKeyByIndexSync(true)).toBe('key2');
+    // @ts-expect-error
+    expect(storage.getKeyByIndexSync(false)).toBe('key');
+    // @ts-expect-error
+    expect(storage.getKeyByIndexSync({ valueOf: () => 1 })).toBe('key2');
+
+    expect(storage.getKeyByIndexSync(Number.MAX_SAFE_INTEGER)).toBe(null);
+    expect(storage.getKeyByIndexSync(Number.MAX_SAFE_INTEGER + 1)).toBe('key');
+    expect(storage.getKeyByIndexSync(Number.MAX_VALUE)).toBe('key');
+    expect(storage.getKeyByIndexSync(NaN)).toBe('key');
+    expect(storage.getKeyByIndexSync(Infinity)).toBe('key');
+    expect(storage.getKeyByIndexSync(-Infinity)).toBe('key');
+  });
+});
+
+describe('react-native-async-storage API compatibility', () => {
+  let storage: SQLiteStorage;
+
+  beforeEach(async () => {
+    storage = new SQLiteStorage('TestStorage');
+    await storage.clearAsync();
+  });
+
+  afterEach(async () => {
+    await storage.clearAsync();
+    await storage.closeAsync();
+  });
+
+  afterAll(async () => {
+    await fs.unlink('TestStorage').catch(() => {});
+  });
+
+  it('should set and get an item', async () => {
+    await storage.setItem('key1', 'value1');
+    const value = await storage.getItem('key1');
+    expect(value).toBe('value1');
+  });
+
+  it('should remove an item', async () => {
+    await storage.setItem('key1', 'value1');
+    await storage.removeItem('key1');
+    const value = await storage.getItem('key1');
+    expect(value).toBeNull();
+  });
+
+  it('should get all keys', async () => {
+    await storage.setItem('key1', 'value1');
+    await storage.setItem('key2', 'value2');
+    const keys = await storage.getAllKeys();
+    expect(keys).toEqual(expect.arrayContaining(['key1', 'key2']));
+  });
+
+  it('should clear all items', async () => {
+    await storage.setItem('key1', 'value1');
+    await storage.setItem('key2', 'value2');
+    await storage.clear();
+    const keys = await storage.getAllKeys();
+    expect(keys).toHaveLength(0);
+  });
+
+  it('should merge item', async () => {
+    await storage.setItem('key1', JSON.stringify({ a: 1, b: 2 }));
+    await storage.mergeItem('key1', JSON.stringify({ b: 3, c: 4 }));
+    const value = await storage.getItem('key1');
+    expect(value).toBe(JSON.stringify({ a: 1, b: 3, c: 4 }));
+  });
+
+  it('should merge item official doc test case', async () => {
+    const USER_1 = {
+      name: 'Tom',
+      age: 20,
+      traits: {
+        hair: 'black',
+        eyes: 'blue',
+      },
+    };
+
+    const USER_2 = {
+      name: 'Sarah',
+      age: 21,
+      hobby: 'cars',
+      traits: {
+        eyes: 'green',
+      },
+    };
+    await storage.setItem('@MyApp_user', JSON.stringify(USER_1));
+    await storage.mergeItem('@MyApp_user', JSON.stringify(USER_2));
+    const currentUser = await storage.getItem('@MyApp_user');
+    expect(JSON.parse(currentUser ?? '')).toEqual({
+      name: 'Sarah',
+      age: 21,
+      hobby: 'cars',
+      traits: {
+        eyes: 'green',
+        hair: 'black',
+      },
+    });
+  });
+
+  it('should support multiGet', async () => {
+    await storage.setItem('key1', 'value1');
+    await storage.setItem('key2', 'value2');
+    await storage.setItem('key3', 'value3');
+
+    const result = await storage.multiGet(['key1', 'key2', 'key3']);
+    expect(result).toEqual([
+      ['key1', 'value1'],
+      ['key2', 'value2'],
+      ['key3', 'value3'],
+    ]);
+  });
+
+  it('should support multiSet', async () => {
+    await storage.multiSet([
+      ['key1', 'value1'],
+      ['key2', 'value2'],
+      ['key3', 'value3'],
+    ]);
+
+    const result = await storage.multiGet(['key1', 'key2', 'key3']);
+    expect(result).toEqual([
+      ['key1', 'value1'],
+      ['key2', 'value2'],
+      ['key3', 'value3'],
+    ]);
+  });
+
+  it('should support multiRemove', async () => {
+    await storage.multiSet([
+      ['key1', 'value1'],
+      ['key2', 'value2'],
+      ['key3', 'value3'],
+    ]);
+
+    await storage.multiRemove(['key1', 'key2']);
+
+    const result = await storage.multiGet(['key1', 'key2', 'key3']);
+    expect(result).toEqual([
+      ['key1', null],
+      ['key2', null],
+      ['key3', 'value3'],
+    ]);
+  });
+
+  it('should support multiMerge', async () => {
+    await storage.multiSet([
+      ['key1', JSON.stringify({ a: 1, b: 2 })],
+      ['key2', JSON.stringify({ x: 10, y: 20 })],
+    ]);
+
+    await storage.multiMerge([
+      ['key1', JSON.stringify({ b: 3, c: 4 })],
+      ['key2', JSON.stringify({ y: 30, z: 40 })],
+    ]);
+
+    const value1 = await storage.getItem('key1');
+    const value2 = await storage.getItem('key2');
+    expect(value1).toBe(JSON.stringify({ a: 1, b: 3, c: 4 }));
+    expect(value2).toBe(JSON.stringify({ x: 10, y: 30, z: 40 }));
+  });
+});
+
+describe('SQLiteStorage migration', () => {
+  const databaseName = 'TestStorageMigration';
+  // Any version above the `DATABASE_VERSION` the source is currently at.
+  const FUTURE_DATABASE_VERSION = 99;
+
+  async function removeDatabaseFile() {
+    await fs.unlink(createDatabasePath(databaseName)).catch(() => {});
+  }
+
+  /**
+   * Seeds a database file that is already at `user_version = 1` but has no `storage` table.
+   * This is the state a device can be left in when `getDbSync()` races with an in-progress
+   * `getDbAsync()` migration on the same cached native connection. See https://github.com/expo/expo/issues/47448.
+   */
+  function seedDatabaseWithoutStorageTable() {
+    const db = openDatabaseSync(databaseName);
+    db.execSync('PRAGMA user_version = 1');
+    db.closeSync();
+  }
+
+  function readUserVersion(): number {
+    const db = openDatabaseSync(databaseName);
+    const result = db.getFirstSync<{ user_version: number }>('PRAGMA user_version');
+    db.closeSync();
+    return result?.user_version ?? 0;
+  }
+
+  function tableExists(): boolean {
+    const db = openDatabaseSync(databaseName);
+    const result = db.getFirstSync<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'storage'"
+    );
+    db.closeSync();
+    return result != null;
+  }
+
+  beforeEach(removeDatabaseFile);
+  afterEach(removeDatabaseFile);
+
+  it('should recreate the storage table when the database is at the current version but the table is missing (sync)', () => {
+    seedDatabaseWithoutStorageTable();
+    expect(tableExists()).toBe(false);
+
+    const storage = new SQLiteStorage(databaseName);
+    try {
+      expect(storage.getItemSync('key1')).toBeNull();
+      storage.setItemSync('key1', 'value1');
+      expect(storage.getItemSync('key1')).toBe('value1');
+    } finally {
+      storage.closeSync();
+    }
+    expect(tableExists()).toBe(true);
+  });
+
+  it('should recreate the storage table when the database is at the current version but the table is missing (async)', async () => {
+    seedDatabaseWithoutStorageTable();
+    expect(tableExists()).toBe(false);
+
+    const storage = new SQLiteStorage(databaseName);
+    try {
+      await expect(storage.getItemAsync('key1')).resolves.toBeNull();
+      await storage.setItemAsync('key1', 'value1');
+      await expect(storage.getItemAsync('key1')).resolves.toBe('value1');
+    } finally {
+      await storage.closeAsync();
+    }
+    expect(tableExists()).toBe(true);
+  });
+
+  it('should migrate a fresh database and bump the user version', () => {
+    const storage = new SQLiteStorage(databaseName);
+    try {
+      storage.setItemSync('key1', 'value1');
+    } finally {
+      storage.closeSync();
+    }
+    expect(tableExists()).toBe(true);
+    expect(readUserVersion()).toBe(1);
+  });
+
+  it('should leave a database from a newer version untouched', () => {
+    const db = openDatabaseSync(databaseName);
+    db.execSync('CREATE TABLE IF NOT EXISTS storage (key TEXT PRIMARY KEY NOT NULL, value TEXT);');
+    db.execSync("INSERT INTO storage (key, value) VALUES ('key1', 'value1');");
+    db.execSync(`PRAGMA user_version = ${FUTURE_DATABASE_VERSION}`);
+    db.closeSync();
+
+    const storage = new SQLiteStorage(databaseName);
+    try {
+      expect(storage.getItemSync('key1')).toBe('value1');
+    } finally {
+      storage.closeSync();
+    }
+    // The migration must never downgrade `user_version`, otherwise the next launch would replay
+    // migrations that have already run.
+    expect(readUserVersion()).toBe(FUTURE_DATABASE_VERSION);
+  });
+
+  it('should keep existing data when reopening an already migrated database', () => {
+    const storage = new SQLiteStorage(databaseName);
+    storage.setItemSync('key1', 'value1');
+    storage.setItemSync('key2', 'value2');
+    storage.closeSync();
+
+    const reopened = new SQLiteStorage(databaseName);
+    try {
+      expect(reopened.getItemSync('key1')).toBe('value1');
+      expect(reopened.getItemSync('key2')).toBe('value2');
+      expect(reopened.getLengthSync()).toBe(2);
+    } finally {
+      reopened.closeSync();
+    }
+    expect(readUserVersion()).toBe(1);
+  });
+});

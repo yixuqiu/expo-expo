@@ -21,15 +21,16 @@ final class HomeAppLoader: AppLoader {
   required init(
     manifestAndAssetRequestHeaders: ManifestAndAssetRequestHeaders,
     config: UpdatesConfig,
+    logger: UpdatesLogger,
     database: UpdatesDatabase,
     directory: URL,
     launchedUpdate: Update?,
     completionQueue: DispatchQueue
   ) {
     self.manifestAndAssetRequestHeaders = manifestAndAssetRequestHeaders
-    self.downloader = FileDownloader(config: config)
+    self.downloader = FileDownloader(config: config, logger: logger, updatesDirectory: directory, database: database)
     self.completionQueue = completionQueue
-    super.init(config: config, database: database, directory: directory, launchedUpdate: launchedUpdate, completionQueue: completionQueue)
+    super.init(config: config, logger: logger, database: database, directory: directory, launchedUpdate: launchedUpdate, completionQueue: completionQueue)
   }
 
   func loadHome(
@@ -70,7 +71,7 @@ final class HomeAppLoader: AppLoader {
     }
   }
 
-  override func downloadAsset(_ asset: UpdateAsset) {
+  override func downloadAsset(_ asset: UpdateAsset, extraHeaders: [String: Any]) {
     let urlOnDisk = self.directory.appendingPathComponent(asset.filename)
 
     FileDownloader.assetFilesQueue.async {
@@ -82,23 +83,18 @@ final class HomeAppLoader: AppLoader {
       } else {
         guard let assetUrl = asset.url else {
           self.handleAssetDownload(
-            withError: NSError(
-              domain: HomeAppLoader.ErrorDomain,
-              code: 1006,
-              userInfo: [
-                NSLocalizedDescriptionKey: "Failed to download asset with no URL provided"
-              ]
-            ),
+            withError: UpdatesError.remoteAppLoaderAssetMissingUrl,
             asset: asset
           )
           return
         }
 
         self.downloader.downloadAsset(
+          asset: asset,
           fromURL: assetUrl,
           verifyingHash: asset.expectedHash,
           toPath: urlOnDisk.path,
-          extraHeaders: asset.extraRequestHeaders ?? [:]
+          extraHeaders: extraHeaders.merging(asset.extraRequestHeaders ?? [:]) { current, _ in current }
         ) { data, response, _ in
           DispatchQueue.global().async {
             self.handleAssetDownload(withData: data, response: response, asset: asset)

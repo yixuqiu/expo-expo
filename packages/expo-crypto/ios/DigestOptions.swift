@@ -2,11 +2,11 @@
 
 import ExpoModulesCore
 
-internal struct DigestOptions: Record {
-  @Field
+@Record
+internal struct DigestOptions {
   var encoding: Encoding = .hex
 
-  internal enum Encoding: String, EnumArgument {
+  internal enum Encoding: String, Enumerable {
     case hex = "hex"
     case base64 = "base64"
   }

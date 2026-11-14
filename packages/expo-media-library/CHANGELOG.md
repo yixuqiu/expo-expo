@@ -1,14 +1,469 @@
 # Changelog
 
-## Unpublished
+## 58.0.12
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Restore `accessPrivileges` on the `PermissionResponse` returned by `getPermissionsAsync`, `requestPermissionsAsync`, and `usePermissions`. ([#52053](https://github.com/expo/expo/pull/52053) by [@Wenszel](https://github.com/Wenszel))
+
+## 58.0.11
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-core@58.0.23. ([#51823](https://github.com/expo/expo/pull/51823) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.10
+
+### Patch Changes
+
+- [iOS] Add `Query.contains()` and `AssetField.MEDIA_SUBTYPES` to filter assets by `MediaSubtype`, for example screenshots or Live Photos. ([#51515](https://github.com/expo/expo/pull/51515) by [@Wenszel](https://github.com/Wenszel))
+
+## 58.0.9
+
+### Patch Changes
+
+- [iOS] Add `mediaSubtypes` to `AssetInfo` and `AssetMetadata`, so `Asset.getInfo()` and `Query.exeForMetadata()` return an asset's subtypes. ([#51514](https://github.com/expo/expo/pull/51514) by [@Wenszel](https://github.com/Wenszel))
+- [iOS] Add the `animation` and `screenRecording` media subtypes. ([#51513](https://github.com/expo/expo/pull/51513) by [@Wenszel](https://github.com/Wenszel))
+
+## 58.0.8
+
+### Patch Changes
+
+- [Internal] Bump precompiled artifacts due to ABI breakage in expo-modules-jsi, which makes `JavaScriptValue` a non-copyable struct. ([#51368](https://github.com/expo/expo/pull/51368) by [@tsapeta](https://github.com/tsapeta))
+
+## 58.0.7
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-core@58.0.13. ([#51138](https://github.com/expo/expo/pull/51138) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.6
+
+### Patch Changes
+
+- [Android] Fix assets moved with `Album.create` (with `moveAssets` set to `true`) or `album.add` sometimes disappearing from the media library. The file was moved, but its MediaStore entry was deleted, so it only showed up again after a rescan, with a new ID. ([#50817](https://github.com/expo/expo/pull/50817) by [@devonik](https://github.com/devonik))
+
+## 58.0.5
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.4
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- [iOS] Fix `Album.getAll()` not returning albums nested inside folders. ([#47822](https://github.com/expo/expo/pull/47822) by [@Wenszel](https://github.com/Wenszel))
+- [iOS] Add `Album.getSmartAlbums()` and `Album.getType()`. ([#47822](https://github.com/expo/expo/pull/47822) by [@Wenszel](https://github.com/Wenszel))
+- Add `Album.getAlbumsMetadata()` for cheap bulk album listing and `album.getAssetCount()`. ([#47903](https://github.com/expo/expo/pull/47903) by [@Wenszel](https://github.com/Wenszel))
+
+## 58.0.3 — 2026-09-28
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-25
 
 ### 🐛 Bug fixes
 
+- [Android] Fix `Album.create` naming copied assets (with `moveAssets` set to `false`) after the full `file://` path of the original, e.g. `file____storage_emulated_0_DCIM_Camera_IMG_1234.jpg`, instead of its file name. ([#50621](https://github.com/expo/expo/pull/50621) by [@devonik](https://github.com/devonik))
+
+## 58.0.1 — 2026-09-22
+
+### 🐛 Bug fixes
+
+- [iOS] Request a single high-quality delivery for Live Photos. Under the default `.opportunistic` delivery mode `requestLivePhoto` invokes its result handler more than once, and the first, degraded pass could resolve `getAssetInfoAsync` without `pairedVideoAsset`. ([#50295](https://github.com/expo/expo/pull/50295) by [@henriquegpb](https://github.com/henriquegpb))
+
+## 58.0.0 — 2026-09-10
+
+### 🛠 Breaking changes
+
+- [iOS] `Asset.getUri()` and `AssetInfo.uri` now resolve a video to the version currently shown in the Photos app instead of the originally captured file. Pass `version: AssetUriVersion.ORIGINAL` to `getUri()` to keep the previous behavior. Note that only `getUri()` accepts the option; `AssetInfo.uri` from `getInfo()` always resolves the current version. ([#48640](https://github.com/expo/expo/pull/48640) by [@barthap](https://github.com/barthap))
+
+### 🎉 New features
+
+- [iOS] Add a `version` option to `Asset.getUri()` for choosing between the current and the original rendition of an asset. ([#48640](https://github.com/expo/expo/pull/48640) by [@barthap](https://github.com/barthap))
+- [Android] Add `PhotographicSensitivity` to returned EXIF metadata. ([#47222](https://github.com/expo/expo/pull/47222) by [@Wenszel](https://github.com/Wenszel))
+
+### 🐛 Bug fixes
+
+- [Android] Parallelize per-file EXIF and location reads in `getAssetsAsync` when `resolveWithFullInfo` is true, speeding up large library scans. ([#48637](https://github.com/expo/expo/pull/48637) by [@hsource](https://github.com/hsource) and [@robin-pham](https://github.com/robin-pham))
+- [iOS] Include GPS `location` in `getAssetsAsync` batch results and return numeric latitude/longitude instead of strings for `Asset.location` and `Album.approximateLocation` (matching the documented `Location` type). ([#49188](https://github.com/expo/expo/pull/49188) by [@hsource](https://github.com/hsource) and [@fractalbeauty](https://github.com/fractalbeauty))
+- [Android] Fix transposed `width`/`height` for rotated assets (portrait photos and videos): `Asset.getInfo()`, `getWidth()`/`getHeight()`/`getShape()` and `Query.exeForMetadata()` now honor MediaStore `ORIENTATION`, matching the legacy API. ([#48150](https://github.com/expo/expo/pull/48150) by [@oeddyo](https://github.com/oeddyo))
+
 ### 💡 Others
+
+- Re-organize TS code ([#45953](https://github.com/expo/expo/pull/45953) by [@Wenszel](https://github.com/Wenszel))
+
+## 57.0.3 - 2026-07-17
+
+### 🐛 Bug fixes
+
+- [Android] Fix saving files larger than ~2 GB (e.g. `createAssetAsync` with large videos) failing with "Unable to copy file into external storage" by looping `FileChannel.transferTo` until the whole file is copied. ([#47811](https://github.com/expo/expo/pull/47811) by [@jiunshinn](https://github.com/jiunshinn))
+
+## 57.0.2 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+### 🎉 New features
+
+- Add filtering by `isFavorite` to `Query` ([#45769](https://github.com/expo/expo/pull/45769) by [@Wenszel](https://github.com/Wenszel))
+- Add `Query.exeForMetadata()` for cheap bulk fetch ([#46485](https://github.com/expo/expo/pull/46485) by [@Wenszel](https://github.com/Wenszel))
+
+### 🐛 Bug fixes
+
+- [iOS] Fix resolving iCloud-offloaded assets ("Optimize iPhone Storage"): allow network access when extracting asset URIs so `Asset.getUri()`, `getInfo()`, `getExif()` and `getOrientation()` can download originals from iCloud, matching the legacy API's `shouldDownloadFromNetwork` default. ([#47790](https://github.com/expo/expo/pull/47790) by [@oeddyo](https://github.com/oeddyo))
+- Add `accessPrivileges` to `PermissionResponse` type ([#47177](https://github.com/expo/expo/pull/47177) by [@Wenszel](https://github.com/Wenszel))
+- [iOS] Fix permission guards for limited and write-only photo library access. ([#47216](https://github.com/expo/expo/pull/47216) by [@Wenszel](https://github.com/Wenszel))
+
+### 💡 Others
+
+- [android] Add `getAssetContentUriAsync` for legacy ID migration ([#46854](https://github.com/expo/expo/pull/45769) by [@Wenszel](https://github.com/Wenszel)) ([#45769](https://github.com/expo/expo/pull/45769) by [@Wenszel](https://github.com/Wenszel))
+
+## 56.0.7 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.5 — 2026-05-20
+
+### 🛠 Breaking changes
+
+- Promote the object-oriented MediaLibrary API to the root `expo-media-library` import and move the legacy API to `expo-media-library/legacy`. ([#46030](https://github.com/expo/expo/pull/46030) by [@Wenszel](https://github.com/Wenszel))
+
+### 🎉 New features
+
+- [android] Add `getFavorite()`/`setFavorite()` ([#45768](https://github.com/expo/expo/pull/45768) by [@Wenszel](https://github.com/Wenszel))
+
+## 56.0.4 — 2026-05-13
+
+### 💡 Others
+
+- Updated permission hooks and permission type imports to be imported from `expo` instead of `expo-modules-core` ([#45565](https://github.com/expo/expo/pull/45565) by [@Wenszel](https://github.com/Wenszel))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- [next] Add support for listeners ([#44326](https://github.com/expo/expo/pull/44326) by [@Wenszel](https://github.com/Wenszel))
+- [next] Add `presentPermissionsPicker` ([#44432](https://github.com/expo/expo/pull/44432) by [@Wenszel](https://github.com/Wenszel))
+- [next][iOS] Add `asset.getMediaSubtypes()`, `asset.getLivePhotoVideoUri()`, `asset.getIsInCloud()`, and `asset.getOrientation()` ([#44568](https://github.com/expo/expo/pull/44568) by [@Wenszel](https://github.com/Wenszel))
+- [next] Add `asset.getAlbums()` ([#44604](https://github.com/expo/expo/pull/44604) by [@Wenszel](https://github.com/Wenszel))
+- [next] Add `Album.getAll()` ([#44446](https://github.com/expo/expo/pull/44446) by [@Wenszel](https://github.com/Wenszel))
+- [next][iOS] Add `album.removeAssets()` ([#44455](https://github.com/expo/expo/pull/44455) by [@Wenszel](https://github.com/Wenszel))
+- [next] Add usePermissions ([#44403](https://github.com/expo/expo/pull/44403) by [@Wenszel](https://github.com/Wenszel))
+- [next][iOS] Fixed `Query.limit(0)` returning all assets instead of an empty array ([#44245](https://github.com/expo/expo/pull/44245) by [@Wenszel](https://github.com/Wenszel))
+- [next] Add getPermissionsAsync ([#44244](https://github.com/expo/expo/pull/44244) by [@Wenszel](https://github.com/Wenszel))
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+- [next][iOS] Added support to add or remove assets from Favorites smart album ([#43598](https://github.com/expo/expo/pull/43598) by [@awaisanjumx2](https://github.com/awaisanjumx2))
+- [iOS] Added support to add or remove assets to Favorites smart album ([#43459](https://github.com/expo/expo/pull/43459) by [@awaisanjumx2](https://github.com/awaisanjumx2))
+
+### 💡 Others
+
+- Mark legacy API deprecated ([#44605](https://github.com/expo/expo/pull/44605) by [@Wenszel](https://github.com/Wenszel))
+- [next] Replace JS static overrides with StaticAsyncFunction ([#44473](https://github.com/expo/expo/pull/44473) by [@Wenszel](https://github.com/Wenszel))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.84.x. ([#43018](https://github.com/expo/expo/pull/43018) by [@chrfalch](https://github.com/chrfalch))
+
+## 55.0.16 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-04-21
+
+### 🐛 Bug fixes
+
+- [Android] Read video dimensions from MediaStore cursor instead of opening each file with `MediaMetadataRetriever`, fixing extremely slow `getAssetsAsync` on devices with many videos. ([#44714](https://github.com/expo/expo/pull/44714) by [@oeddyo](https://github.com/oeddyo))
+
+## 55.0.14 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🎉 New features
+
+- [next] Add `asset.getShape()` ([#40110](https://github.com/expo/expo/pull/40110) by [@Wenszel](https://github.com/Wenszel))
+- [next] Add `asset.getInfo()` ([#40146](https://github.com/expo/expo/pull/40146) by [@Wenszel](https://github.com/Wenszel))
+- [next] Add exif support ([#39992](https://github.com/expo/expo/pull/39992) by [@Wenszel](https://github.com/Wenszel))
+- [next] Add `Album.get(title)` ([#39717](https://github.com/expo/expo/pull/39717) by [@Wenszel](https://github.com/Wenszel))
+
+### 🐛 Bug fixes
+
+- [next][android] Fix Failed To Build Unique File exception ([#42222](https://github.com/expo/expo/pull/42222) by [@Wenszel](https://github.com/Wenszel))
+- [next][android] Fix creating album with name with spaces ([#42220](https://github.com/expo/expo/pull/42220) by [@Wenszel](https://github.com/Wenszel))
+- Fix `endCursor` description in the documentation. ([#39120](https://github.com/expo/expo/pull/39120) by [@Wenszel](https://github.com/Wenszel))
+- [next][iOS] Convert `id` to URI format ([#39920](https://github.com/expo/expo/pull/39920) by [@Wenszel](https://github.com/Wenszel))
+- [next][android] Fix `delete()` throwing security exception ([#39914](https://github.com/expo/expo/pull/39914) by [@Wenszel](https://github.com/Wenszel))
+- [next][android] Change default root directory to Pictures ([#39716](https://github.com/expo/expo/pull/39716) by [@Wenszel](https://github.com/Wenszel))
+- [next] Fix `asset.getModificationTime` to return milliseconds ([#39715](https://github.com/expo/expo/pull/39715) by [@Wenszel](https://github.com/Wenszel))
+
+### 💡 Others
+
+- [next][android] Refactor permissions ([#40076](https://github.com/expo/expo/pull/40076) by [@Wenszel](https://github.com/Wenszel))
+- [next] Add test screens ([#39951](https://github.com/expo/expo/pull/39951) by [@Wenszel](https://github.com/Wenszel))
+- [next] Add documentation ([#39754](https://github.com/expo/expo/pull/39754) by [@Wenszel](https://github.com/Wenszel))
+- mark `removeSubscription` calls as deprecated ([#42098](https://github.com/expo/expo/pull/42098) by [@vonovak](https://github.com/vonovak))
+- Remove tests related files from the published package content. ([#39551](https://github.com/expo/expo/pull/39551) by [@Simek](https://github.com/Simek))
+- [Android] Add `android:maxSdkVersion` annotation to `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` permissions. ([#40976](https://github.com/expo/expo/pull/40976) by [@behenate](https://github.com/behenate))
+
+## 18.2.1 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 18.2.0 — 2025-09-16
+
+### 🎉 New features
+
+- [next] Add Query ([#39559](https://github.com/expo/expo/pull/39559) by [@Wenszel](https://github.com/Wenszel))
+
+## 18.1.1 — 2025-09-10
+
+### 💡 Others
+
+- Extracted the read permission check from `FileSystemUtilities` ([#39210](https://github.com/expo/expo/pull/39210) by [@kosmydel](https://github.com/kosmydel))
+
+## 18.1.0 — 2025-09-08
+
+### 🎉 New features
+
+- Add MediaLibrary@Next. ([#38835](https://github.com/expo/expo/pull/38835) by [@Wenszel](https://github.com/wenszel))
+
+## 18.0.6 — 2025-09-02
+
+### 💡 Others
+
+- Change Constants to Constant/Property. ([#38926](https://github.com/expo/expo/pull/38926) by [@jakex7](https://github.com/jakex7))
+
+## 18.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.0 — 2025-08-13
+
+### 🛠 Breaking changes
+
+- [Android] Fix `getAssetsAsync` loading performance, add `resolveWithFullInfo` option to control whether to load full EXIF data for images. This is a breaking change for Android apps, as it might break the orientation of images in some cases. ([#37957](https://github.com/expo/expo/pull/37957) by [@kosmydel](https://github.com/kosmydel)).
+
+### 🎉 New features
+
+- [iOS] Add support for filtering assets by media subtype. by [@clarkg](https://github.com/clarkg) ([#36756](https://github.com/expo/expo/pull/36756) by [@clarkg](https://github.com/clarkg))
+
+### 🐛 Bug fixes
+
+- [iOS] Fix tvOS compilation errors. ([#38085](https://github.com/expo/expo/pull/38085) by [@douglowder](https://github.com/douglowder))
+
+### 💡 Others
+
+- [Android] Migrate to coroutines. ([#38193](https://github.com/expo/expo/pull/38193) by [@Wenszel](http://github.com/wenszel))
+
+## 17.1.7 - 2025-06-04
+
+### 🐛 Bug fixes
+
+- [Android] Fix `deleteAssetsAsync` not working on android 11 or above ([#33211](https://github.com/expo/expo/pull/33211) by [@Zeeshan404](https://github.com/Zeeshan404))
+
+## 17.1.6 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 17.1.5 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 17.1.4 — 2025-04-25
+
+### 🐛 Bug fixes
+
+- Fixed `medialibraryassetschangeevent` listener not capturing assets changes. ([#36459](https://github.com/expo/expo/pull/36459) by [@aleqsio](https://github.com/aleqsio))
+- Fixed build error from **AppDelegate.swift** integration. ([#36368](https://github.com/expo/expo/pull/36368) by [@kudo](https://github.com/kudo))
+
+## 17.1.3 — 2025-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 17.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 17.1.1 — 2025-04-09
+
+### 💡 Others
+
+- [Android] Add `granularPermissions` option to config plugin. ([#36142](https://github.com/expo/expo/pull/36142) by [@bang9](https://github.com/bang9))
+
+## 17.1.0 — 2025-04-04
+
+### 🎉 New features
+
+- [iOS] Adding `pairedVideoAsset` for Live Photo support. ([#33274](https://github.com/expo/expo/pull/33274) by [@entiendoNull](https://github.com/entiendoNull))
+- Add `album` parameter to `createAssetAsync`. ([#35686](https://github.com/expo/expo/pull/35686) by [@behenate](https://github.com/behenate))
+- Add `initialAssetLocalUri` to `createAlbumAsync`. ([#35692](https://github.com/expo/expo/pull/35692) by [@behenate](https://github.com/behenate))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35288](https://github.com/expo/expo/pull/35288) by [@behenate](https://github.com/behenate)), ([#35428](https://github.com/expo/expo/pull/35428) by [@behenate](https://github.com/behenate))
+- [iOS] Add `preventAutomaticLimitedAccessAlert` option to config plugin. ([#35515](https://github.com/expo/expo/pull/35515) by [@fobos531](https://github.com/fobos531))
+
+## 17.0.6 - 2025-02-14
+
+### 💡 Others
+
+- Add guards when using the module in expo go. ([#34738](https://github.com/expo/expo/pull/34738) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 17.0.5 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.4 - 2024-12-19
+
+### 🐛 Bug fixes
+
+- [iOS] Fix `unknown` file type being returned for video files. ([#33589](https://github.com/expo/expo/pull/33589) by [@behenate](https://github.com/behenate))
+
+## 17.0.3 — 2024-11-22
+
+### 🐛 Bug fixes
+
+- [iOS] Add back image loader to handle `ph://` and `assets-library://` scheme for New Architecture. ([#30116](https://github.com/expo/expo/issues/30116)) by [@coolsoftwaretyler](https://github.com/coolsoftwaretyler) ([#33097](https://github.com/expo/expo/pull/33097) by [@coolsoftwaretyler](https://github.com/coolsoftwaretyler))
+
+## 17.0.2 — 2024-11-05
+
+### 🐛 Bug fixes
+
+- [iOS] Fixes asset types not returned correctly. ([#32621](https://github.com/expo/expo/pull/32621) by [@aleqsio](https://github.com/aleqsio))
+
+## 17.0.1 — 2024-11-04
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840), [#30863](https://github.com/expo/expo/pull/30863) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- [iOS] include more error information in native rejections ([#30504](https://github.com/expo/expo/pull/30504) by [@vonovak](https://github.com/vonovak))
+- On `Android 14+`, when user gave only partial asset access, `presentPermissionsPickerAsync()` presents the permissions dialog to allow the user to change the selected assets. ([#29882](https://github.com/expo/expo/pull/29882) by [@vonovak](https://github.com/vonovak))
+
+### 🐛 Bug fixes
+
+- On `iOS`, getAssets crashed when result was is empty ([#29969](https://github.com/expo/expo/pull/29969) by [@vonovak](https://github.com/vonovak))
+- On `Android`, throw an error when deleting an asset was unsuccessful. ([#29777](https://github.com/expo/expo/pull/29777) by [@mathieupost](https://github.com/mathieupost))
+- Add missing `react-native` peer dependencies for isolated modules. ([#30476](https://github.com/expo/expo/pull/30476) by [@byCedric](https://github.com/byCedric))
+- On `Android`, adding an asset to an album containing another album would throw an exception. ([#29777](https://github.com/expo/expo/pull/31027) by [@nafeij](https://github.com/Nafeij))
+- [Android] Fix exceptions when moving or deleting video assets. ([#31424](https://github.com/expo/expo/pull/31424) by [@behenate](https://github.com/behenate))
+
+### 💡 Others
+
+- Removed redundant usage of `EventEmitter` instance. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
+
+## 16.0.4 - 2024-06-20
+
+### 🐛 Bug fixes
+
+- On `iOS`, add back image loader to handle `ph://` and `assets-library://` schemes. ([#29747](https://github.com/expo/expo/pull/29747) by [@alanjhughes](https://github.com/alanjhughes))
 
 ## 16.0.3 — 2024-04-23
 

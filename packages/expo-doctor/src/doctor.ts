@@ -1,35 +1,27 @@
-import { ExpoConfig, getConfig } from '@expo/config';
+import { loadProjectEnv, type EnvMode } from '@expo/env';
 import chalk from 'chalk';
-import semver from 'semver';
 
-import { DirectPackageInstallCheck } from './checks/DirectPackageInstallCheck';
-import { ExpoConfigCommonIssueCheck } from './checks/ExpoConfigCommonIssueCheck';
-import { ExpoConfigSchemaCheck } from './checks/ExpoConfigSchemaCheck';
-import { GlobalPackageInstalledLocallyCheck } from './checks/GlobalPackageInstalledLocallyCheck';
-import { IllegalPackageCheck } from './checks/IllegalPackageCheck';
-import { InstalledDependencyVersionCheck } from './checks/InstalledDependencyVersionCheck';
-import { MetroConfigCheck } from './checks/MetroConfigCheck';
-import { NativeToolingVersionCheck } from './checks/NativeToolingVersionCheck';
-import { PackageJsonCheck } from './checks/PackageJsonCheck';
-import { PackageManagerVersionCheck } from './checks/PackageManagerVersionCheck';
-import { ProjectSetupCheck } from './checks/ProjectSetupCheck';
-import { SupportPackageVersionCheck } from './checks/SupportPackageVersionCheck';
-import { DoctorCheck, DoctorCheckParams, DoctorCheckResult } from './checks/checks.types';
+import type { DoctorCheck, DoctorCheckParams, DoctorCheckResult } from './checks/checks.types';
+import { resolveChecksInScope } from './utils/checkResolver';
 import { env } from './utils/env';
+import { isNetworkError } from './utils/errors';
+import { getProjectConfigAsync } from './utils/getProjectConfig';
 import { isInteractive } from './utils/interactive';
 import { Log } from './utils/log';
+import { getConfigEnvMode } from './utils/nodeEnv';
 import { logNewSection } from './utils/ora';
 import { endTimer, formatMilliseconds, startTimer } from './utils/timer';
 import { ltSdkVersion } from './utils/versions';
-import { warnUponCmdExe } from './warnings/windows';
 
-type CheckError = Error & { code?: string };
+declare namespace globalThis {
+  let __DEV__: boolean | undefined;
+}
 
 interface DoctorCheckRunnerJob {
   check: DoctorCheck;
   result: DoctorCheckResult;
   duration: number;
-  error?: CheckError;
+  error?: Error;
 }
 
 /**
@@ -42,26 +34,36 @@ function startSpinner(text: string): { stop(): void } {
     return logNewSection(text);
   }
   Log.log(text);
-  return {
-    stop() {},
-  };
+  return { stop() {} };
 }
 
-export async function printCheckResultSummaryOnComplete(job: DoctorCheckRunnerJob) {
+export async function printCheckResultSummaryOnComplete(
+  job: DoctorCheckRunnerJob,
+  showVerboseTestResults: boolean
+) {
   // These will log in order of completion, so they may change from run to run,
   // but outputting these just in time will make the EAS Build log timestamps for each line representative of the execution time.
-  Log.log(
-    `${job.result?.isSuccessful ? chalk.green('✔') : chalk.red('✖')} ${job.check.description}` +
-      (env.EXPO_DEBUG ? ` (${formatMilliseconds(job.duration)})` : '')
-  );
+  if (showVerboseTestResults) {
+    Log.log(
+      `${job.result?.isSuccessful ? chalk.green('✔') : chalk.red('✖')} ${job.check.description}` +
+        (env.EXPO_DEBUG ? ` (${formatMilliseconds(job.duration)})` : '')
+    );
+  }
   // print unexpected errors inline with check completion
   if (job.error) {
     Log.error(`Unexpected error while running '${job.check.description}' check:`);
-    Log.exception(job.error!);
-    if (job.error?.code === 'ENOTFOUND') {
+    Log.exception(job.error);
+    const networkError = isNetworkError(job.error);
+    if (networkError) {
+      Log.error(`${job.error.cause}`);
       Log.error(
-        'This check requires a connection to the Expo API. Please check your network connection.'
+        'This check requires a connection to the Expo API. Ensure your network connection is stable.'
       );
+      if (env.EXPO_DOCTOR_WARN_ON_NETWORK_ERRORS) {
+        Log.warn(
+          'EXPO_DOCTOR_WARN_ON_NETWORK_ERRORS is enabled. Ignoring network error for this check.'
+        );
+      }
     }
   }
 }
@@ -75,12 +77,17 @@ export async function printFailedCheckIssueAndAdvice(job: DoctorCheckRunnerJob) 
     return;
   }
 
+  Log.log(chalk.red(`✖ ${job.check.description}`));
+
   if (result.issues.length) {
     for (const issue of result.issues) {
-      Log.warn(chalk.yellow(`${issue}`));
+      Log.log(chalk.yellow(issue));
     }
-    if (result.advice) {
-      Log.log(chalk.green(`Advice: ${result.advice}`));
+    if (result.advice.length) {
+      Log.log(chalk.green(`Advice:`));
+      for (const advice of result.advice) {
+        Log.log(chalk.green(`${advice}`));
+      }
     }
     Log.log();
   }
@@ -98,16 +105,19 @@ export async function runChecksAsync(
   checkParams: DoctorCheckParams,
   onCheckComplete: (checkRunnerJob: DoctorCheckRunnerJob) => void
 ): Promise<DoctorCheckRunnerJob[]> {
+  const cache = Object.create(null);
   return await Promise.all(
     checks.map((check) =>
       (async function () {
         const job = { check } as DoctorCheckRunnerJob;
         try {
           startTimer(check.description);
-          job.result = await check.runAsync(checkParams);
+          job.result = await check.runAsync(checkParams, cache);
           job.duration = endTimer(check.description);
-        } catch (e: any) {
-          job.error = e;
+        } catch (e) {
+          if (e instanceof Error) {
+            job.error = e;
+          }
           job.result = { isSuccessful: false } as DoctorCheckResult;
         }
         onCheckComplete(job);
@@ -117,75 +127,91 @@ export async function runChecksAsync(
   );
 }
 
-export function getChecksInScopeForProject(exp: ExpoConfig) {
-  // add additional checks here
-  const checks = [
-    new PackageManagerVersionCheck(),
-    new IllegalPackageCheck(),
-    new GlobalPackageInstalledLocallyCheck(),
-    new SupportPackageVersionCheck(),
-    new ExpoConfigSchemaCheck(),
-    new ExpoConfigCommonIssueCheck(),
-    new DirectPackageInstallCheck(),
-    new PackageJsonCheck(),
-    new ProjectSetupCheck(),
-    new MetroConfigCheck(),
-    new NativeToolingVersionCheck(),
-  ];
-  if (env.EXPO_DOCTOR_SKIP_DEPENDENCY_VERSION_CHECK) {
-    Log.log(
-      chalk.yellow(
-        'Checking dependencies for compatibility with the installed Expo SDK version is disabled. Unset the EXPO_DOCTOR_SKIP_DEPENDENCY_VERSION_CHECK environment variable to re-enable this check.'
-      )
-    );
-  } else {
-    checks.push(new InstalledDependencyVersionCheck());
+function maybeLoadEnv(projectRoot: string, mode: EnvMode) {
+  try {
+    loadProjectEnv(projectRoot, { mode });
+  } catch {
+    // NOTE(@kitten): It's unclear why we load env files here in expo-doctor, and it's likely optional, even with us loading the project config
+    // If this fails, e.g. because the Node.js version is too out of date, ignore the error
   }
-  return checks.filter(
-    (check) =>
-      exp.sdkVersion === 'UNVERSIONED' || semver.satisfies(exp.sdkVersion!, check.sdkVersionRange)
-  );
 }
 
-export async function actionAsync(projectRoot: string) {
-  await warnUponCmdExe();
-
-  const projectConfig = getConfig(projectRoot);
-
-  // expo-doctor relies on versioned CLI, which is only available for 44+
+/**
+ * Run the expo-doctor checks on the project.
+ * @param projectRoot The root of the project to check.
+ * @param showVerboseTestResults if true, show passes and failures; otherwise show number of tests passed and failure details only
+ */
+export async function actionAsync(projectRoot: string, showVerboseTestResults: boolean) {
   try {
+    const mode = getConfigEnvMode();
+    globalThis.__DEV__ = mode === 'development';
+    maybeLoadEnv(projectRoot, mode);
+
+    const projectConfig = await getProjectConfigAsync(projectRoot, mode);
+
+    // expo-doctor relies on versioned CLI, which is only available for 44+
     if (ltSdkVersion(projectConfig.exp, '46.0.0')) {
       Log.exit(
         chalk.red(`expo-doctor supports Expo SDK 46+. Use 'expo-cli doctor' for SDK 45 and lower.`)
       );
       return;
     }
+
+    const checksInScope = resolveChecksInScope(projectConfig.exp, projectConfig.pkg);
+
+    const spinner = startSpinner(`Running ${checksInScope.length} checks on your project...`);
+
+    const checkParams = { projectRoot, ...projectConfig };
+
+    const jobs = await runChecksAsync(checksInScope, checkParams, (job: DoctorCheckRunnerJob) =>
+      printCheckResultSummaryOnComplete(job, showVerboseTestResults)
+    );
+
+    spinner.stop();
+
+    const failedJobs = jobs.filter((job) => !job.result.isSuccessful);
+
+    if (showVerboseTestResults) {
+      Log.log();
+    }
+
+    if (failedJobs.length) {
+      if (failedJobs.some((job) => job.result.issues?.length)) {
+        Log.log(
+          chalk.red(
+            `${checksInScope.length - failedJobs.length}/${checksInScope.length} checks passed. ${failedJobs.length} checks failed. Possible issues detected:`
+          )
+        );
+        if (!showVerboseTestResults) {
+          Log.log('Use the --verbose flag to see more details about passed checks.');
+        }
+        Log.log();
+        // actual issues will output in order of the sequence of tests, due to rules of Promise.all()
+        failedJobs.forEach((job) => printFailedCheckIssueAndAdvice(job));
+      }
+      // check if all checks failed due to a network error if the flag to override network errors is enabled
+      if (env.EXPO_DOCTOR_WARN_ON_NETWORK_ERRORS) {
+        const failedJobsDueToNetworkError = failedJobs.filter((job) => isNetworkError(job.error));
+        if (failedJobsDueToNetworkError.length === failedJobs.length) {
+          Log.warn(
+            'One or more checks failed due to network errors, but EXPO_DOCTOR_WARN_ON_NETWORK_ERRORS is enabled, so these errors will not fail Doctor. Run Doctor to retry these checks once the network is available.'
+          );
+          return;
+        }
+      }
+      Log.exit(
+        chalk.red(
+          `${failedJobs.length} ${failedJobs.length === 1 ? 'check' : 'checks'} failed, indicating possible issues with the project.`
+        )
+      );
+    } else {
+      Log.log(
+        chalk.green(
+          `${checksInScope.length}/${checksInScope.length} checks passed. No issues detected!`
+        )
+      );
+    }
   } catch (e: any) {
     Log.exit(e);
-    return;
-  }
-
-  const filteredChecks = getChecksInScopeForProject(projectConfig.exp);
-
-  const spinner = startSpinner(`Running ${filteredChecks.length} checks on your project...`);
-
-  const checkParams = { projectRoot, ...projectConfig };
-
-  const jobs = await runChecksAsync(filteredChecks, checkParams, printCheckResultSummaryOnComplete);
-
-  spinner.stop();
-
-  if (jobs.some((job) => !job.result.isSuccessful)) {
-    if (jobs.some((job) => job.result.issues?.length)) {
-      Log.log();
-      Log.log(chalk.underline('Detailed check results:'));
-      Log.log();
-      // actual issues will output in order of the sequence of tests, due to rules of Promise.all()
-      jobs.forEach((job) => printFailedCheckIssueAndAdvice(job));
-    }
-    Log.exit(chalk.red('One or more checks failed, indicating possible issues with the project.'));
-  } else {
-    Log.log();
-    Log.log(chalk.green(`Didn't find any issues with the project!`));
   }
 }

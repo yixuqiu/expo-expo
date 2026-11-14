@@ -1,14 +1,11 @@
 {
-  "extends": "../../tsconfig.node",
+  "extends": "@expo/internal-scripts/tsconfig.node",
   "include": ["./src"],
-  "exclude": ["**/__mocks__/*", "**/__tests__/*"],
   "compilerOptions": {
-    "outDir": "build",
-    "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "moduleResolution": "node",
-    "declaration": false,
-    "composite": false,
+    "noEmit": true,
+    "customConditions": [],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "rootDir": "./src"
   }
 }

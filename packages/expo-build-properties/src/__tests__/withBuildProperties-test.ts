@@ -1,14 +1,20 @@
-import { AndroidConfig, withGradleProperties, withPodfileProperties } from 'expo/config-plugins';
+import type { AndroidConfig } from 'expo/config-plugins';
+import {
+  WarningAggregator,
+  withGradleProperties,
+  withPodfileProperties,
+} from 'expo/config-plugins';
 
-import { compileMockModWithResultsAsync } from './mockMods';
 import type { PluginConfigType } from '../pluginConfig';
 import { withBuildProperties } from '../withBuildProperties';
+import { compileMockModWithResultsAsync } from './mockMods';
 
 jest.mock('expo/config-plugins', () => {
   const plugins = jest.requireActual('expo/config-plugins');
   return {
     ...plugins,
     withDangerousMod: jest.fn().mockImplementation((config) => config),
+    WarningAggregator: { addWarningIOS: jest.fn() },
   };
 });
 
@@ -157,6 +163,33 @@ describe(withBuildProperties, () => {
     }).rejects.toThrow();
   });
 
+  it('should not overwrite existing properties by undefined properties', async () => {
+    // Run withPodfileProperties twice
+    // The first run to pass `ccacheEnabled: true`, and the second run to pass empty props.
+    // Ultimately, ccacheEnabled should be true
+    const { modResults } = await compileMockModWithResultsAsync(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps: { ios: { ccacheEnabled: true } },
+        mod: withPodfileProperties,
+        modResults: {},
+      }
+    );
+    const { modResults: iosModResultsEnabled } = await compileMockModWithResultsAsync(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps: {},
+        mod: withPodfileProperties,
+        modResults,
+      }
+    );
+    expect(iosModResultsEnabled).toMatchObject({
+      'apple.ccacheEnabled': 'true',
+    });
+  });
+
   it('generates the apple.ccacheEnabled property', async () => {
     const { modResults: iosModResultsEnabled } = await compileMockModWithResultsAsync(
       {},
@@ -185,5 +218,326 @@ describe(withBuildProperties, () => {
     expect(iosModResultsEnabled).toMatchObject({
       'apple.privacyManifestAggregationEnabled': 'true',
     });
+  });
+
+  it('generates the ios.buildReactNativeFromSource property', async () => {
+    const { modResults: iosModResultsEnabled } = await compileMockModWithResultsAsync(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps: { ios: { buildReactNativeFromSource: true } },
+        mod: withPodfileProperties,
+        modResults: {},
+      }
+    );
+    expect(iosModResultsEnabled).toMatchObject({
+      'ios.buildReactNativeFromSource': 'true',
+      EX_DEV_CLIENT_NETWORK_INSPECTOR: 'true',
+      'apple.privacyManifestAggregationEnabled': 'true',
+    });
+  });
+
+  it('generates the ios.forceStaticLinking property', async () => {
+    const { modResults: iosModResultsEnabled } = await compileMockModWithResultsAsync(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps: { ios: { forceStaticLinking: ['Test'] } },
+        mod: withPodfileProperties,
+        modResults: {},
+      }
+    );
+    expect(iosModResultsEnabled).toMatchObject({
+      EX_DEV_CLIENT_NETWORK_INSPECTOR: 'true',
+      'ios.forceStaticLinking': '["Test"]',
+    });
+  });
+
+  it('generates the android.buildArchs property', async () => {
+    const pluginProps: PluginConfigType = {
+      android: { buildArchs: ['armeabi-v7a', 'arm64-v8a'] },
+    };
+
+    const { modResults: androidModResults } = await compileMockModWithResultsAsync<
+      AndroidConfig.Properties.PropertiesItem[],
+      PluginConfigType
+    >(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps,
+        mod: withGradleProperties,
+        modResults: [],
+      }
+    );
+    expect(androidModResults).toContainEqual({
+      type: 'property',
+      key: 'reactNativeArchitectures',
+      value: 'armeabi-v7a,arm64-v8a',
+    });
+  });
+
+  it('generates the android.exclusiveMavenMirror property', async () => {
+    const pluginProps: PluginConfigType = {
+      android: { exclusiveMavenMirror: 'https://my.internal.proxy.net/' },
+    };
+
+    const { modResults: androidModResults } = await compileMockModWithResultsAsync<
+      AndroidConfig.Properties.PropertiesItem[],
+      PluginConfigType
+    >(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps,
+        mod: withGradleProperties,
+        modResults: [],
+      }
+    );
+    expect(androidModResults).toContainEqual({
+      type: 'property',
+      key: 'exclusiveEnterpriseRepository',
+      value: 'https://my.internal.proxy.net/',
+    });
+  });
+
+  it('generates the android.buildExpoModulesCoreFromSource property', async () => {
+    const pluginProps: PluginConfigType = {
+      android: { buildExpoModulesCoreFromSource: true },
+    };
+
+    const { modResults: androidModResults } = await compileMockModWithResultsAsync<
+      AndroidConfig.Properties.PropertiesItem[],
+      PluginConfigType
+    >(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps,
+        mod: withGradleProperties,
+        modResults: [],
+      }
+    );
+    expect(androidModResults).toContainEqual({
+      type: 'property',
+      key: 'expo.core.buildFromSource',
+      value: 'true',
+    });
+  });
+
+  it('does not generate the expo.core.buildFromSource property when unset', async () => {
+    const { modResults: androidModResults } = await compileMockModWithResultsAsync<
+      AndroidConfig.Properties.PropertiesItem[],
+      PluginConfigType
+    >(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps: { android: {} },
+        mod: withGradleProperties,
+        modResults: [],
+      }
+    );
+    expect(androidModResults.map((item) => (item as any).key)).not.toContain(
+      'expo.core.buildFromSource'
+    );
+  });
+
+  it('generates the android.cmakeVersion property', async () => {
+    const pluginProps: PluginConfigType = {
+      android: { cmakeVersion: '3.31.6' },
+    };
+
+    const { modResults: androidModResults } = await compileMockModWithResultsAsync<
+      AndroidConfig.Properties.PropertiesItem[],
+      PluginConfigType
+    >(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps,
+        mod: withGradleProperties,
+        modResults: [],
+      }
+    );
+    expect(androidModResults).toContainEqual({
+      type: 'property',
+      key: 'android.cmakeVersion',
+      value: '3.31.6',
+    });
+  });
+
+  it('generates the android.reactNativeReleaseLevel property', async () => {
+    const pluginProps: PluginConfigType = {
+      android: { reactNativeReleaseLevel: 'canary' },
+    };
+
+    const { modResults: androidModResults } = await compileMockModWithResultsAsync<
+      AndroidConfig.Properties.PropertiesItem[],
+      PluginConfigType
+    >(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps,
+        mod: withGradleProperties,
+        modResults: [],
+      }
+    );
+    expect(androidModResults).toContainEqual({
+      type: 'property',
+      key: 'reactNativeReleaseLevel',
+      value: 'canary',
+    });
+  });
+
+  it('generates the expo.gif.enabled property', async () => {
+    const pluginProps: PluginConfigType = {
+      android: { gifEnabled: false },
+    };
+
+    const { modResults: androidModResults } = await compileMockModWithResultsAsync<
+      AndroidConfig.Properties.PropertiesItem[],
+      PluginConfigType
+    >(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps,
+        mod: withGradleProperties,
+        modResults: [],
+      }
+    );
+    expect(androidModResults).toContainEqual({
+      type: 'property',
+      key: 'expo.gif.enabled',
+      value: 'false',
+    });
+  });
+
+  it('generates the expo.webp.enabled property', async () => {
+    const pluginProps: PluginConfigType = {
+      android: { webpEnabled: false },
+    };
+
+    const { modResults: androidModResults } = await compileMockModWithResultsAsync<
+      AndroidConfig.Properties.PropertiesItem[],
+      PluginConfigType
+    >(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps,
+        mod: withGradleProperties,
+        modResults: [],
+      }
+    );
+    expect(androidModResults).toContainEqual({
+      type: 'property',
+      key: 'expo.webp.enabled',
+      value: 'false',
+    });
+  });
+
+  it('generates the expo.webp.animated property', async () => {
+    const pluginProps: PluginConfigType = {
+      android: { webpAnimated: true },
+    };
+
+    const { modResults: androidModResults } = await compileMockModWithResultsAsync<
+      AndroidConfig.Properties.PropertiesItem[],
+      PluginConfigType
+    >(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps,
+        mod: withGradleProperties,
+        modResults: [],
+      }
+    );
+    expect(androidModResults).toContainEqual({
+      type: 'property',
+      key: 'expo.webp.animated',
+      value: 'true',
+    });
+  });
+});
+
+describe('shared config fields', () => {
+  it('should apply top-level buildReactNativeFromSource to iOS', async () => {
+    const pluginProps: PluginConfigType = {
+      buildReactNativeFromSource: true,
+    };
+
+    const { modResults: iosModResults } = await compileMockModWithResultsAsync(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps,
+        mod: withPodfileProperties,
+        modResults: {},
+      }
+    );
+    expect(iosModResults).toMatchObject({
+      'ios.buildReactNativeFromSource': 'true',
+    });
+  });
+
+  it('should apply top-level reactNativeReleaseLevel to Android', async () => {
+    const pluginProps: PluginConfigType = {
+      reactNativeReleaseLevel: 'experimental',
+    };
+
+    const { modResults: androidModResults } = await compileMockModWithResultsAsync<
+      AndroidConfig.Properties.PropertiesItem[],
+      PluginConfigType
+    >(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps,
+        mod: withGradleProperties,
+        modResults: [],
+      }
+    );
+    expect(androidModResults).toContainEqual({
+      type: 'property',
+      key: 'reactNativeReleaseLevel',
+      value: 'experimental',
+    });
+  });
+
+  it('should allow platform-specific override of top-level buildReactNativeFromSource', async () => {
+    const pluginProps: PluginConfigType = {
+      buildReactNativeFromSource: true,
+      ios: { buildReactNativeFromSource: false },
+    };
+
+    const { modResults: iosModResults } = await compileMockModWithResultsAsync(
+      {},
+      {
+        plugin: withBuildProperties,
+        pluginProps,
+        mod: withPodfileProperties,
+        modResults: {},
+      }
+    );
+    expect(iosModResults).toMatchObject({
+      'ios.buildReactNativeFromSource': 'false',
+    });
+  });
+});
+
+describe('ios.enableSceneSupport', () => {
+  it('should run the scene support plugin', () => {
+    const config = { sdkVersion: '58.0.0' } as any;
+
+    withBuildProperties(config, { ios: { enableSceneSupport: true } });
+
+    expect(WarningAggregator.addWarningIOS).toHaveBeenCalledWith(
+      'ios.enableSceneSupport',
+      expect.stringContaining('no longer required')
+    );
   });
 });

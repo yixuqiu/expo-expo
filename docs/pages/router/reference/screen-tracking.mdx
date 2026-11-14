@@ -1,6 +1,6 @@
 ---
 title: Screen tracking for analytics
-description: Learn how to enable screen tracking for analytic when using Expo Router.
+description: Learn how to enable screen tracking for analytics when using Expo Router.
 hideTOC: true
 ---
 
@@ -11,9 +11,9 @@ Unlike React Navigation, Expo Router always has access to a URL. This means scre
 1. Create a higher-order component that observes the currently selected URL
 2. Track the URL in your analytics provider
 
-<FileTree files={['app/_layout.js']} />
+<FileTree files={['src/app/_layout.tsx']} />
 
-```jsx app/_layout.js
+```tsx src/app/_layout.tsx
 import { useEffect } from 'react';
 import { usePathname, useGlobalSearchParams, Slot } from 'expo-router';
 
@@ -32,6 +32,51 @@ export default function Layout() {
 ```
 
 Now when the user changes routes, the analytics provider will be notified.
+
+## Tracking focused screens
+
+> **info** Available in **SDK 58 and later**.
+
+Expo Router records performance marks for navigation events. You can observe these marks and send their details to your analytics provider. This is useful when you need to track when a screen becomes focused, including when a previously mounted screen regains focus.
+
+Enable the experimental performance integration before the root layout mounts. Observe `expo-router:page-focused` marks and send their details to your provider:
+
+```tsx src/app/_layout.tsx
+import { useEffect } from 'react';
+import {
+  Slot,
+  unstable_enablePerformanceIntegration,
+  unstable_PerformanceObserver,
+  type RouterPageFocusedMark,
+} from 'expo-router';
+
+unstable_enablePerformanceIntegration();
+
+export default function Layout() {
+  useEffect(() => {
+    const observer = new unstable_PerformanceObserver(list => {
+      for (const entry of list.getEntriesByName('expo-router:page-focused')) {
+        // The mark name determines the type of its detail.
+        const { detail } = entry as RouterPageFocusedMark;
+        analytics.track({
+          pathname: detail.pathname,
+          params: detail.params,
+          screenId: detail.screenId,
+        });
+      }
+    });
+
+    observer.observe({ type: 'mark', buffered: true });
+    return () => observer.disconnect();
+  }, []);
+
+  return <Slot />;
+}
+```
+
+Replace `analytics.track` with your provider's event method. The `buffered` option includes marks recorded before the observer starts, including the initial screen. A preloaded screen does not produce a focus mark until the user navigates to it. Each mark also has a `startTime` in milliseconds, measured from `performance.timeOrigin`. If your provider expects a Unix timestamp, send `performance.timeOrigin + entry.startTime`.
+
+Expo Router also records `expo-router:page-preloaded`, `expo-router:page-blurred`, `expo-router:page-removed`, `expo-router:action-enqueued`, and `expo-router:action-dispatched` marks. Observe these names if your solution needs more navigation events. This API is experimental and its names may change.
 
 ## Migrating from React Navigation
 

@@ -1,14 +1,426 @@
 # Changelog
 
-## Unpublished
+## 58.0.8
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Avoid duplicate entries in `updates` arrays, such as `updates.assetPatternsToBeBundled`, when `modifyConfigAsync` merges modifications. ([`4a6ae65`](https://github.com/expo/expo/commit/4a6ae6527e2e46e2b0cbc5af1151a82e30c844d4) by [@douglowder](https://github.com/douglowder))
+
+## 58.0.7
+
+### Patch Changes
+
+- Updated dependencies. ([#51986](https://github.com/expo/expo/pull/51986))
+  - @expo/config-plugins@58.0.10
+
+## 58.0.6
+
+### Patch Changes
+
+- Updated dependencies. ([#51535](https://github.com/expo/expo/pull/51535))
+  - @expo/require-utils@58.0.4
+  - @expo/config-plugins@58.0.9
+
+## 58.0.5
+
+### Patch Changes
+
+- Updated dependencies. ([#50536](https://github.com/expo/expo/pull/50536))
+  - @expo/config-types@58.0.3
+  - @expo/config-plugins@58.0.8
+
+## 58.0.4
+
+### Patch Changes
+
+- Add @expo/platforms and consume it across tooling. ([#49418](https://github.com/expo/expo/pull/49418) by [@douglowder](https://github.com/douglowder))
+- Updated dependencies. ([`0bf5424`](https://github.com/expo/expo/commit/0bf54244ba22f2953bd6e187e39b8d7206f10eb4), [#49418](https://github.com/expo/expo/pull/49418))
+  - @expo/config-plugins@58.0.7
+  - @expo/platforms@58.0.1
+
+## 58.0.3
+
+### Patch Changes
+
+- Updated dependencies. ([#51080](https://github.com/expo/expo/pull/51080), [#51076](https://github.com/expo/expo/pull/51076), [#51089](https://github.com/expo/expo/pull/51089))
+  - @expo/config-plugins@58.0.6
+  - @expo/require-utils@58.0.3
+
+## 58.0.2
+
+### Patch Changes
+
+- Bump `semver` to `^7.7.4`. ([#50391](https://github.com/expo/expo/pull/50391) by [@hassankhan](https://github.com/hassankhan))
+- Updated dependencies. ([#50955](https://github.com/expo/expo/pull/50955), [#50391](https://github.com/expo/expo/pull/50391))
+  - @expo/config-plugins@58.0.5
+
+## 58.0.1
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762), [#45964](https://github.com/expo/expo/pull/45964))
+  - @expo/config-plugins@58.0.4
+  - @expo/config-types@58.0.2
+  - @expo/json-file@11.2.1
+  - @expo/require-utils@58.0.2
+
+## 58.0.0 — 2026-09-10
+
+### 💡 Others
+
+- Add experimental `tvos` and `macos` platforms gated by `expriments.outOfTreePlatforms` in config ([#46344](https://github.com/expo/expo/pull/46344) by [@kitten](https://github.com/kitten))
+
+## 57.0.6 - 2026-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-07
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-27
+
+### 💡 Others
+
+- Update for `experiments.outOfTreePlatforms` typing ([#46497](https://github.com/expo/expo/pull/46497) by [@kitten](https://github.com/kitten))
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.9 — 2026-05-23
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-20
+
+### 💡 Others
+
+- [Internal] Switch app config resolution to `@expo/require-utils` ([#45989](https://github.com/expo/expo/pull/45989) by [@kitten](https://github.com/kitten))
+
+## 56.0.7 — 2026-05-19
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 💡 Others
+
+- Removed unused `ExpoConfigSplash` re-export. ([#44598](https://github.com/expo/expo/pull/44598) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.16 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-04-13
 
 ### 🐛 Bug fixes
 
+- Fix `convertEntryPointToRelative` implementation not resolving from real server root to entrypoint ([#44699](https://github.com/expo/expo/pull/44699) by [@kitten](https://github.com/kitten))
+
+## 55.0.14 - 2026-04-09
+
+### 🐛 Bug fixes
+
+- Switch to `@expo/require-utils`'s `resolveFrom` to resolve unresolved entrypoint ([#44114](https://github.com/expo/expo/pull/44114) by [@kitten](https://github.com/kitten))
+- Align `convertEntryPointToRelative` implementation with `@expo/cli`'s `mainModuleName` expectations, but mark as deprecated, since it shouldn't be reused in the future ([#44414](https://github.com/expo/expo/pull/44414) by [@kitten](https://github.com/kitten))
+
+## 55.0.13 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-03-27
+
 ### 💡 Others
+
+- Memoize server root detection ([#44101](https://github.com/expo/expo/pull/44101) by [@kitten](https://github.com/kitten))
+
+## 55.0.10 - 2026-03-18
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+### 💡 Others
+
+- Support loading configs from `app.config.{mts,cts,mjs,cjs}` ([#43243](https://github.com/expo/expo/pull/43242))
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-16
+
+### 💡 Others
+
+- Replace `require-from-string` and `sucrase` with `@expo/require-utils` ([#42884](https://github.com/expo/expo/pull/42884) by [@kitten](https://github.com/kitten))
+
+## 55.0.4 — 2026-02-03
+
+### 💡 Others
+
+- Loosen `@babel/code-frame` dependency range ([#42485](https://github.com/expo/expo/pull/42485) by [@kitten](https://github.com/kitten))
+
+## 55.0.3 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-23
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 💡 Others
+
+- Export sub-types from `@expo/config-types` ([#41453](https://github.com/expo/expo/pull/41453) by [@kitten](https://github.com/kitten))
+
+## 12.0.11 - 2025-12-04
+
+### 💡 Others
+
+- Update to `glob@^13.0.0` ([#41079](https://github.com/expo/expo/pull/41079) by [@kitten](https://github.com/kitten))
+- Update to `sucrase@~3.35.1` ([#41079](https://github.com/expo/expo/pull/41079) by [@kitten](https://github.com/kitten))
+
+## 12.0.10 - 2025-10-01
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.9 — 2025-09-12
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.8 — 2025-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.7 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.6 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.5 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.4 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.3 — 2025-08-19
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.13 - 2025-07-08
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.12 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.11 - 2025-07-01
+
+### 🐛 Bug fixes
+
+- Update to `getenv@2.0.0` to support upper case boolean environment variables ([#36688](https://github.com/expo/expo/pull/36688) by [@stephenlacy](https://github.com/stephenlacy))
+
+### 💡 Others
+
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+
+## 11.0.10 — 2025-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.9 — 2025-05-06
+
+### 💡 Others
+
+- Rename remote build cache provider to build cache provider and deprecate `remoteBuildCache` field ([#36643](https://github.com/expo/expo/pull/36643) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 11.0.8 — 2025-05-03
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.7 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.6 — 2025-04-30
+
+### 🎉 New features
+
+Add remote build cache provider types ([#36448](https://github.com/expo/expo/pull/36448) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 11.0.5 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.4 — 2025-04-22
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.3 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.2 — 2025-04-11
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.0 — 2025-04-04
+
+### 🛠 Breaking changes
+
+- Remove getAccountUsername from package exports ([#33249](https://github.com/expo/expo/pull/33249) by [@wschurman](https://github.com/wschurman))
+
+## 10.0.11 - 2025-03-11
+
+_This version does not introduce any user-facing changes._
+
+## 10.0.10 - 2025-02-14
+
+_This version does not introduce any user-facing changes._
+
+## 10.0.9 - 2025-02-10
+
+_This version does not introduce any user-facing changes._
+
+## 10.0.8 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 10.0.7 - 2025-01-08
+
+_This version does not introduce any user-facing changes._
+
+## 10.0.6 - 2024-12-05
+
+### 💡 Others
+
+- Drop unintentional `console.log` when modifying config. ([#33330](https://github.com/expo/expo/pull/33330) by [@byCedric](https://github.com/byCedric))
+
+## 10.0.5 — 2024-11-20
+
+_This version does not introduce any user-facing changes._
+
+## 10.0.4 — 2024-11-14
+
+### 🐛 Bug fixes
+
+- Skip modifying the plugins array in app.json when using a dynamic app config as well ([#32882](https://github.com/expo/expo/pull/32882) by [@brentvatne](https://github.com/brentvatne))
+
+## 10.0.3 — 2024-11-11
+
+_This version does not introduce any user-facing changes._
+
+## 10.0.2 — 2024-10-28
+
+### 🐛 Bug fixes
+
+- Properly handle app manifest plugin modifications. ([#32405](https://github.com/expo/expo/pull/32405) by [@byCedric](https://github.com/byCedric))
+
+## 10.0.1 — 2024-10-25
+
+### 💡 Others
+
+- Bump `sucrase@3.34.0` to `sucrase@3.35.0` to remove transitive dependency on `glob@7` ([#32274](https://github.com/expo/expo/pull/32274) by [@kitten](https://github.com/kitten))
+
+## 10.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Change the `config` return type from `AppJSONConfig` to `ExpoConfig` in `modifyConfigAsync`. ([#30783](https://github.com/expo/expo/pull/30783) by [@byCedric](https://github.com/byCedric))
+
+### 🎉 New features
+
+- Automatically write an `app.json` when attempting to modify a config and no file exists. ([#30026](https://github.com/expo/expo/pull/30026) by [@EvanBacon](https://github.com/EvanBacon))
+- Add `resolveRelativeEntryPoint` that takes possible server root into account. ([#30633](https://github.com/expo/expo/pull/30633) by [@byCedric](https://github.com/byCedric))
+- Export `getMetroServerRoot` method for monorepo root detection with bun, npm, pnpm, and yarn. ([#31124](https://github.com/expo/expo/pull/31124) by [@byCedric](https://github.com/byCedric))
+- Add support for static and extending dynamic config modifications. ([#30782](https://github.com/expo/expo/pull/30782) by [@byCedric](https://github.com/byCedric))
+- Add `getMetroWorkspaceGlobs` helper to set up pnpm monorepos properly. ([#31973](https://github.com/expo/expo/pull/31973) by [@byCedric](https://github.com/byCedric))
+
+### 🐛 Bug fixes
+
+- Move entry point path modifications to Node script instead of Gradle plugin. ([#30654](https://github.com/expo/expo/pull/30654) by [@byCedric](https://github.com/byCedric))
+- Enable web as a default platform when `react-dom` is installed. ([#32149](https://github.com/expo/expo/pull/32149) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Upgrade `glob@7` to `glob@10`. ([#30425](https://github.com/expo/expo/pull/30425) by [@byCedric](https://github.com/byCedric))
+
+## 9.0.2 — 2024-05-16
+
+_This version does not introduce any user-facing changes._
 
 ## 9.0.1 — 2024-04-24
 

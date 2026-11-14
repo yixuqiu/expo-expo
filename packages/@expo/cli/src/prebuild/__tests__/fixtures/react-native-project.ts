@@ -1069,7 +1069,6 @@ export default {
           }
           repositories {
               google()
-              jcenter()
           }
           dependencies {
               classpath("com.android.tools.build:gradle:3.5.3")
@@ -1092,7 +1091,6 @@ export default {
               }
       
               google()
-              jcenter()
               maven { url 'https://www.jitpack.io' }
           }
       }`,
@@ -1109,7 +1107,7 @@ export default {
       apply from: "../../node_modules/expo-updates/scripts/create-manifest-android.gradle"
       
       def enableSeparateBuildPerCPUArchitecture = false
-      def enableProguardInReleaseBuilds = false
+      def enableMinifyInReleaseBuilds = false
       def jscFlavor = 'org.webkit:android-jsc:+'
       def enableHermes = project.ext.react.get("enableHermes", false);
       
@@ -1150,8 +1148,8 @@ export default {
               }
               release {
                   signingConfig signingConfigs.debug
-                  minifyEnabled enableProguardInReleaseBuilds
-                  proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+                  minifyEnabled enableMinifyInReleaseBuilds
+                  proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
               }
           }
           applicationVariants.all { variant ->

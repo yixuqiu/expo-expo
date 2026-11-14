@@ -1,10 +1,11 @@
 import { existsSync, readFileSync } from 'fs';
-import { sync as globSync } from 'glob';
 import * as path from 'path';
+import { globSync } from 'tinyglobby';
 
-import * as Entitlements from './Entitlements';
 import { UnexpectedError } from '../utils/errors';
+import { withSortedGlobResult } from '../utils/glob';
 import { addWarningIOS } from '../utils/warnings';
+import * as Entitlements from './Entitlements';
 
 const ignoredPaths = ['**/@(Carthage|Pods|vendor|node_modules)/**'];
 
@@ -20,11 +21,13 @@ export type PodfileProjectFile = ProjectFile<'rb'>;
 export type AppDelegateProjectFile = ProjectFile<AppleLanguage>;
 
 export function getAppDelegateHeaderFilePath(projectRoot: string): string {
-  const [using, ...extra] = globSync('ios/*/AppDelegate.h', {
-    absolute: true,
-    cwd: projectRoot,
-    ignore: ignoredPaths,
-  });
+  const [using, ...extra] = withSortedGlobResult(
+    globSync('ios/*/AppDelegate.h', {
+      absolute: true,
+      cwd: projectRoot,
+      ignore: ignoredPaths,
+    })
+  );
 
   if (!using) {
     throw new UnexpectedError(
@@ -46,11 +49,13 @@ export function getAppDelegateHeaderFilePath(projectRoot: string): string {
 }
 
 export function getAppDelegateFilePath(projectRoot: string): string {
-  const [using, ...extra] = globSync('ios/*/AppDelegate.@(m|mm|swift)', {
-    absolute: true,
-    cwd: projectRoot,
-    ignore: ignoredPaths,
-  });
+  const [using, ...extra] = withSortedGlobResult(
+    globSync('ios/*/AppDelegate.@(m|mm|swift)', {
+      absolute: true,
+      cwd: projectRoot,
+      ignore: ignoredPaths,
+    })
+  );
 
   if (!using) {
     throw new UnexpectedError(`Could not locate a valid AppDelegate at root: "${projectRoot}"`);
@@ -70,11 +75,13 @@ export function getAppDelegateFilePath(projectRoot: string): string {
 }
 
 export function getAppDelegateObjcHeaderFilePath(projectRoot: string): string {
-  const [using, ...extra] = globSync('ios/*/AppDelegate.h', {
-    absolute: true,
-    cwd: projectRoot,
-    ignore: ignoredPaths,
-  });
+  const [using, ...extra] = withSortedGlobResult(
+    globSync('ios/*/AppDelegate.h', {
+      absolute: true,
+      cwd: projectRoot,
+      ignore: ignoredPaths,
+    })
+  );
 
   if (!using) {
     throw new UnexpectedError(`Could not locate a valid AppDelegate.h at root: "${projectRoot}"`);
@@ -94,27 +101,11 @@ export function getAppDelegateObjcHeaderFilePath(projectRoot: string): string {
 }
 
 export function getPodfilePath(projectRoot: string): string {
-  const [using, ...extra] = globSync('ios/Podfile', {
-    absolute: true,
-    cwd: projectRoot,
-    ignore: ignoredPaths,
-  });
-
-  if (!using) {
+  const podfilePath = path.resolve(projectRoot, 'ios', 'Podfile');
+  if (!existsSync(podfilePath)) {
     throw new UnexpectedError(`Could not locate a valid Podfile at root: "${projectRoot}"`);
   }
-
-  if (extra.length) {
-    warnMultipleFiles({
-      tag: 'podfile',
-      fileName: 'Podfile',
-      projectRoot,
-      using,
-      extra,
-    });
-  }
-
-  return using;
+  return podfilePath;
 }
 
 function getLanguage(filePath: string): AppleLanguage {
@@ -154,11 +145,13 @@ export function getSourceRoot(projectRoot: string): string {
 }
 
 export function findSchemePaths(projectRoot: string): string[] {
-  return globSync('ios/*.xcodeproj/xcshareddata/xcschemes/*.xcscheme', {
-    absolute: true,
-    cwd: projectRoot,
-    ignore: ignoredPaths,
-  });
+  return withSortedGlobResult(
+    globSync('ios/*.xcodeproj/xcshareddata/xcschemes/*.xcscheme', {
+      absolute: true,
+      cwd: projectRoot,
+      ignore: ignoredPaths,
+    })
+  );
 }
 
 export function findSchemeNames(projectRoot: string): string[] {
@@ -168,21 +161,26 @@ export function findSchemeNames(projectRoot: string): string[] {
 
 export function getAllXcodeProjectPaths(projectRoot: string): string[] {
   const iosFolder = 'ios';
-  const pbxprojPaths = globSync('ios/**/*.xcodeproj', { cwd: projectRoot, ignore: ignoredPaths })
-    .filter(
-      (project) => !/test|example|sample/i.test(project) || path.dirname(project) === iosFolder
-    )
-    // sort alphabetically to ensure this works the same across different devices (Fail in CI (linux) without this)
-    .sort()
-    .sort((a, b) => {
-      const isAInIos = path.dirname(a) === iosFolder;
-      const isBInIos = path.dirname(b) === iosFolder;
-      // preserve previous sort order
-      if ((isAInIos && isBInIos) || (!isAInIos && !isBInIos)) {
-        return 0;
-      }
-      return isAInIos ? -1 : 1;
-    });
+  const pbxprojPaths = withSortedGlobResult(
+    globSync('ios/**/*.xcodeproj', {
+      onlyFiles: false,
+      expandDirectories: false,
+      cwd: projectRoot,
+      ignore: ignoredPaths,
+    })
+      .map((filePath) => filePath.replace(/\/$/, ''))
+      .filter(
+        (project) => !/test|example|sample/i.test(project) || path.dirname(project) === iosFolder
+      )
+  ).sort((a, b) => {
+    const isAInIos = path.dirname(a) === iosFolder;
+    const isBInIos = path.dirname(b) === iosFolder;
+    // preserve previous sort order
+    if ((isAInIos && isBInIos) || (!isAInIos && !isBInIos)) {
+      return 0;
+    }
+    return isAInIos ? -1 : 1;
+  });
 
   if (!pbxprojPaths.length) {
     throw new UnexpectedError(
@@ -196,7 +194,7 @@ export function getAllXcodeProjectPaths(projectRoot: string): string[] {
  * Get the pbxproj for the given path
  */
 export function getXcodeProjectPath(projectRoot: string): string {
-  const [using, ...extra] = getAllXcodeProjectPaths(projectRoot);
+  const [using = '', ...extra] = getAllXcodeProjectPaths(projectRoot);
 
   if (extra.length) {
     warnMultipleFiles({
@@ -226,7 +224,7 @@ export function getAllPBXProjectPaths(projectRoot: string): string[] {
 }
 
 export function getPBXProjectPath(projectRoot: string): string {
-  const [using, ...extra] = getAllPBXProjectPaths(projectRoot);
+  const [using = '', ...extra] = getAllPBXProjectPaths(projectRoot);
 
   if (extra.length) {
     warnMultipleFiles({
@@ -242,11 +240,13 @@ export function getPBXProjectPath(projectRoot: string): string {
 }
 
 export function getAllInfoPlistPaths(projectRoot: string): string[] {
-  const paths = globSync('ios/*/Info.plist', {
-    absolute: true,
-    cwd: projectRoot,
-    ignore: ignoredPaths,
-  }).sort(
+  const paths = withSortedGlobResult(
+    globSync('ios/*/Info.plist', {
+      absolute: true,
+      cwd: projectRoot,
+      ignore: ignoredPaths,
+    })
+  ).sort(
     // longer name means more suffixes, we want the shortest possible one to be first.
     (a, b) => a.length - b.length
   );
@@ -260,7 +260,7 @@ export function getAllInfoPlistPaths(projectRoot: string): string[] {
 }
 
 export function getInfoPlistPath(projectRoot: string): string {
-  const [using, ...extra] = getAllInfoPlistPaths(projectRoot);
+  const [using = '', ...extra] = getAllInfoPlistPaths(projectRoot);
 
   if (extra.length) {
     warnMultipleFiles({

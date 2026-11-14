@@ -1,14 +1,198 @@
 # Changelog
 
-## Unpublished
+## 58.0.3
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.2
+
+### Patch Changes
+
+- Add a Jest mock for the Android-only `ExpoIntentLauncher` native module, so importing `expo-intent-launcher` under the `jest-expo/android` preset no longer throws `Cannot find native module 'ExpoIntentLauncher'`. ([#50796](https://github.com/expo/expo/pull/50796) by [@Abdulrahman3fify](https://github.com/Abdulrahman3fify))
+
+## 58.0.1
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-20
 
 ### 🐛 Bug fixes
 
+- [Android] Fixed `getApplicationIcon` throwing an error on Android below API 26. ([#46043](https://github.com/expo/expo/pull/46043) by [@lukmccall](https://github.com/lukmccall))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+### 🐛 Bug fixes
+
+- [Android] Fixed Double to Long conversion for intent extras to support calendar timestamps and other large numeric values. ([#42386](https://github.com/expo/expo/pull/42386) by [@brianomchugh](https://github.com/brianomchugh))
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
 ### 💡 Others
+
+- [Android] Removed unused `androidx.annotation:annotation` dependency. ([#39760](https://github.com/expo/expo/pull/39760) by [@lukmccall](https://github.com/lukmccall))
+
+## 13.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.0 — 2025-08-13
+
+### 🛠 Breaking changes
+
+- Updated intent actions list. ([#38131](https://github.com/expo/expo/pull/38131) by [@jakex7](https://github.com/jakex7))
+
+### 🎉 New features
+
+- Added `APP_OPEN_BY_DEFAULT_SETTINGS` action. ([#38054](https://github.com/expo/expo/pull/38054) by [@jakex7](https://github.com/jakex7))
+
+## 12.1.5 - 2025-06-06
+
+_This version does not introduce any user-facing changes._
+
+## 12.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 12.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 12.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 12.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 12.1.0 — 2025-04-04
+
+### 🎉 New features
+
+- Added a synchronous function `openApplication` to open an application by its package name. ([#25468](https://github.com/expo/expo/pull/25468) by [@reichhartd](https://github.com/reichhartd))
+- Added an asynchronous function `getApplicationIconAsync` to retrieve the icon of an application by its package name. ([#25468](https://github.com/expo/expo/pull/25468) by [@reichhartd](https://github.com/reichhartd))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+
+## 12.0.2 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.1 — 2024-10-22
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.0 — 2024-10-22
+
+_This version does not introduce any user-facing changes._
 
 ## 11.0.1 — 2024-04-23
 

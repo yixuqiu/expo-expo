@@ -1,14 +1,2177 @@
 # Changelog
 
-## Unpublished
+## 58.1.15
+
+### Patch Changes
+
+- Pass the matched route and its params to the server renderer. ([#51961](https://github.com/expo/expo/pull/51961) by [@hassankhan](https://github.com/hassankhan))
+- Updated dependencies. ([`4a6ae65`](https://github.com/expo/expo/commit/4a6ae6527e2e46e2b0cbc5af1151a82e30c844d4), [#51961](https://github.com/expo/expo/pull/51961))
+  - @expo/config@58.0.8
+  - @expo/router-server@58.0.17
+  - expo-server@58.0.6
+  - @expo/prebuild-config@58.0.16
+  - @expo/metro-config@58.0.17
+
+## 58.1.14
+
+### Patch Changes
+
+- Fix native builds from `expo run:android` and `expo run:ios` bundling with the CLI's development `BABEL_ENV`. ([#51872](https://github.com/expo/expo/pull/51872) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Stop setting `BABEL_ENV` in Expo commands. ([#51946](https://github.com/expo/expo/pull/51946) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Updated dependencies. ([#51986](https://github.com/expo/expo/pull/51986), [#51946](https://github.com/expo/expo/pull/51946), [#51937](https://github.com/expo/expo/pull/51937), [#52008](https://github.com/expo/expo/pull/52008), [#51868](https://github.com/expo/expo/pull/51868), [#51872](https://github.com/expo/expo/pull/51872), [#51932](https://github.com/expo/expo/pull/51932), [#51714](https://github.com/expo/expo/pull/51714), [#51913](https://github.com/expo/expo/pull/51913))
+  - @expo/config-plugins@58.0.10
+  - @expo/env@2.5.3
+  - @expo/metro-config@58.0.16
+  - @expo/log-box@58.0.13
+  - @expo/prebuild-config@58.0.15
+  - @expo/config@58.0.7
+  - @expo/inline-modules@0.2.7
+  - @expo/router-server@58.0.16
+
+## 58.1.13
+
+### Patch Changes
+
+- Updated dependencies.
+  - @expo/router-server@58.0.15
+
+## 58.1.12
+
+### Patch Changes
+
+- Updated dependencies. ([#51712](https://github.com/expo/expo/pull/51712), [#51663](https://github.com/expo/expo/pull/51663), [#51687](https://github.com/expo/expo/pull/51687))
+  - @expo/metro-config@58.0.15
+
+## 58.1.11
+
+### Patch Changes
+
+- Updated dependencies. ([#51635](https://github.com/expo/expo/pull/51635))
+  - @expo/schema-utils@58.0.2
+
+## 58.1.10
+
+### Patch Changes
+
+- Request a development code signing certificate only when the credentials used for the request have the `RUN` permission on the account that owns the project. A user with the Runner role can now get a certificate. A scoped access token or session without `RUN` no longer requests a certificate. ([#51626](https://github.com/expo/expo/pull/51626) by [@wschurman](https://github.com/wschurman))
+
+## 58.1.9
+
+### Patch Changes
+
+- Upgrade React Native to 0.88.0. ([#51613](https://github.com/expo/expo/pull/51613) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Fixed `npx expo run:ios` and `npx expo run:android` crashing with `ERR_IMPORT_ATTRIBUTE_MISSING` when `buildCacheProvider` is set to `eas`. ([#51601](https://github.com/expo/expo/pull/51601) by [@konrad-armatys](https://github.com/konrad-armatys))
+- Drop legacy Node `url` usage in favor of `URL` ([#51602](https://github.com/expo/expo/pull/51602) by [@byCedric](https://github.com/byCedric))
+- Updated dependencies. ([#51613](https://github.com/expo/expo/pull/51613), [#51598](https://github.com/expo/expo/pull/51598), [#51602](https://github.com/expo/expo/pull/51602), [#51540](https://github.com/expo/expo/pull/51540))
+  - @expo/metro-config@58.0.14
+  - @expo/prebuild-config@58.0.14
+  - @expo/router-server@58.0.14
+  - @expo/package-manager@1.14.2
+
+## 58.1.8
+
+### Patch Changes
+
+- Update minimum required Expo Atlas version to `0.5.0` ([#51546](https://github.com/expo/expo/pull/51546) by [@byCedric](https://github.com/byCedric))
+- Notify about changes to `metro.config.{cjs,mjs,ts,cts,mts}` and `.config/metro.*`, not just `metro.config.js` and `metro.config.json`. ([#50406](https://github.com/expo/expo/pull/50406) by [@AlexErrant](https://github.com/AlexErrant))
+- Update to `@expo/metro@~58.0.0` (promoted to stable for SDK 58). ([#51549](https://github.com/expo/expo/pull/51549) by [@kitten](https://github.com/kitten))
+- [iOS] Added a preview `experiments.swiftPackageManager` app config setting; when enabled, `expo prebuild` sets up iOS with Swift Package Manager instead of CocoaPods, and `expo run:ios` no longer runs `pod install`. ([#51023](https://github.com/expo/expo/pull/51023) by [@chrfalch](https://github.com/chrfalch))
+- Improve error and log coverage in event logs and fix bundle progress, completion, and server lifecycle reporting. ([#51347](https://github.com/expo/expo/pull/51347) by [@kitten](https://github.com/kitten))
+- Bump to `2g@1.0.0` and provide process metadata, such as `port` for commands like `expo start`. ([#51338](https://github.com/expo/expo/pull/51338) by [@kitten](https://github.com/kitten))
+- Update to `2g@^1.0.1` ([#51517](https://github.com/expo/expo/pull/51517) by [@kitten](https://github.com/kitten))
+- Add `expo command:events` and `expo command:ps` sub-commands and updated related help texts to reference these commands. ([#51344](https://github.com/expo/expo/pull/51344) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#51549](https://github.com/expo/expo/pull/51549), [#51536](https://github.com/expo/expo/pull/51536), [#51526](https://github.com/expo/expo/pull/51526), [#51338](https://github.com/expo/expo/pull/51338), [#51517](https://github.com/expo/expo/pull/51517), [#51535](https://github.com/expo/expo/pull/51535))
+  - @expo/metro-config@58.0.13
+  - @expo/metro-file-map@58.0.5
+  - @expo/require-utils@58.0.4
+  - @expo/prebuild-config@58.0.13
+  - @expo/config@58.0.6
+  - @expo/config-plugins@58.0.9
+  - @expo/image-utils@0.12.5
+  - @expo/inline-modules@0.2.6
+  - @expo/router-server@58.0.13
+
+## 58.1.7
+
+### Patch Changes
+
+- Load externalized modules from the project root during development for static/server rendering. ([#51417](https://github.com/expo/expo/pull/51417) by [@hassankhan](https://github.com/hassankhan))
+- Allow interfaces extending `UnknownOutputParams` to declare optional params, so an omitted query parameter can be typed as optional, e.g. `interface MyParams extends UnknownOutputParams { id?: string }`. ([#51219](https://github.com/expo/expo/pull/51219) by [@Ubax](https://github.com/Ubax))
+- [web] Add experimental granular bundle splitting for production exports with async routes. ([#50536](https://github.com/expo/expo/pull/50536) by [@hassankhan](https://github.com/hassankhan))
+- Use the streaming renderer for SSG output. ([#46526](https://github.com/expo/expo/pull/46526) by [@hassankhan](https://github.com/hassankhan))
+- Updated dependencies. ([#51321](https://github.com/expo/expo/pull/51321), [#50536](https://github.com/expo/expo/pull/50536), [#51255](https://github.com/expo/expo/pull/51255), [#46526](https://github.com/expo/expo/pull/46526))
+  - @expo/env@2.5.2
+  - @expo/metro-config@58.0.12
+  - @expo/router-server@58.0.12
+  - expo-server@58.0.5
+  - @expo/prebuild-config@58.0.12
+  - @expo/config@58.0.5
+  - @expo/config-plugins@58.0.8
+  - @expo/inline-modules@0.2.5
+
+## 58.1.6
+
+### Patch Changes
+
+- `expo serve` now refuses to start on development exports that include server code. ([#50522](https://github.com/expo/expo/pull/50522) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Load `.env` files in the bundle's mode in `expo export:embed` instead of keeping values loaded by a parent Expo process. ([#51227](https://github.com/expo/expo/pull/51227) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Fixed tsconfig path normalization, including absolute targets and `${configDir}` expansion in extended configs. ([#51027](https://github.com/expo/expo/pull/51027) by [@911RS](https://github.com/911RS))
+- Add @expo/platforms and consume it across tooling. ([#49418](https://github.com/expo/expo/pull/49418) by [@douglowder](https://github.com/douglowder))
+- Remove legacy `AssetRegistry` virtual module in favor of public `AssetRegistry` API from React Native 0.87+. ([#51247](https://github.com/expo/expo/pull/51247) by [@byCedric](https://github.com/byCedric))
+- Updated dependencies. ([`0bf5424`](https://github.com/expo/expo/commit/0bf54244ba22f2953bd6e187e39b8d7206f10eb4), [#51260](https://github.com/expo/expo/pull/51260), [#50522](https://github.com/expo/expo/pull/50522), [#49418](https://github.com/expo/expo/pull/49418), [#51185](https://github.com/expo/expo/pull/51185))
+  - @expo/config-plugins@58.0.7
+  - @expo/log-box@58.0.12
+  - expo-server@58.0.4
+  - @expo/platforms@58.0.1
+  - @expo/config@58.0.4
+  - @expo/metro-config@58.0.11
+  - @expo/prebuild-config@58.0.11
+  - @expo/log-box-utils@58.0.2
+  - @expo/inline-modules@0.2.4
+  - @expo/router-server@58.0.11
+
+## 58.1.5
+
+### Patch Changes
+
+- Fix stack traces for errors thrown in API routes and server data loaders during `expo start`, which pointed into the server bundle or at the wrong source file. ([#51179](https://github.com/expo/expo/pull/51179) by [@robhogan](https://github.com/robhogan))
+- [Internal] Bootstrap React Native through `react-native/setup-env` instead of `InitializeCore`. ([#50863](https://github.com/expo/expo/pull/50863) by [@huntie](https://github.com/huntie))
+- Updated dependencies. ([#50863](https://github.com/expo/expo/pull/50863), [#50860](https://github.com/expo/expo/pull/50860), [#51177](https://github.com/expo/expo/pull/51177))
+  - @expo/metro-config@58.0.10
+  - @expo/log-box@58.0.11
+  - @expo/prebuild-config@58.0.10
+  - @expo/router-server@58.0.10
+
+## 58.1.4
+
+### Patch Changes
+
+- Updated dependencies. ([#50976](https://github.com/expo/expo/pull/50976))
+  - @expo/log-box@58.0.10
+  - @expo/router-server@58.0.9
+
+## 58.1.3
+
+### Patch Changes
+
+- Prevent the internal `set()` object utility from writing to `Object.prototype` when a path contains `__proto__`, `constructor`, or `prototype`. ([#51066](https://github.com/expo/expo/pull/51066) by [@byCedric](https://github.com/byCedric))
+- Fix `expo start` exiting on Node before v22.14.0 when an API route calls `console.log`. Stack frames whose source map fails to load are printed without source mapping instead of throwing. ([#51089](https://github.com/expo/expo/pull/51089) by [@robhogan](https://github.com/robhogan))
+- Replace `resolve-from` with `@expo/require-utils` for `expo/template.tgz` resolution to allow for direct file resolution. ([#51125](https://github.com/expo/expo/pull/51125) by [@kitten](https://github.com/kitten))
+- Update `@expo/code-signing-certificates` to `^0.0.7`. ([#51085](https://github.com/expo/expo/pull/51085) by [@kitten](https://github.com/kitten))
+- Bump `node-forge` to `^1.4.0`. ([#51085](https://github.com/expo/expo/pull/51085) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#51080](https://github.com/expo/expo/pull/51080), [#49878](https://github.com/expo/expo/pull/49878), [#51076](https://github.com/expo/expo/pull/51076), [#50989](https://github.com/expo/expo/pull/50989), [#51093](https://github.com/expo/expo/pull/51093), [#51089](https://github.com/expo/expo/pull/51089))
+  - @expo/config-plugins@58.0.6
+  - @expo/router-server@58.0.8
+  - @expo/require-utils@58.0.3
+  - @expo/metro-config@58.0.9
+  - @expo/metro-file-map@58.0.4
+  - @expo/config@58.0.3
+  - @expo/inline-modules@0.2.3
+  - @expo/prebuild-config@58.0.9
+  - @expo/image-utils@0.12.4
+
+## 58.1.2
+
+### Patch Changes
+
+- Bump `@expo/devcert` to `^1.2.2`, `@expo/ws-tunnel` to `^2.0.1`, and `@expo/xcpretty` to `^4.4.6`. ([#50955](https://github.com/expo/expo/pull/50955) by [@kitten](https://github.com/kitten))
+- Show the call stack of a thrown error in the terminal even when all of its frames are collapsed. ([#50975](https://github.com/expo/expo/pull/50975) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Keep stack frames from `node_modules` when logging server rendering errors, so they are symbolicated instead of printed raw. ([#50974](https://github.com/expo/expo/pull/50974) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Preserve bundled, external, and inline stylesheet order across static and server rendering. ([#50016](https://github.com/expo/expo/pull/50016) by [@hassankhan](https://github.com/hassankhan))
+- Fix `createJsInspectorMiddleware`'s `Content-Length` header to reflect the UTF-8 byte length of the response, instead of its UTF-16 string length, which undersized the header for any inspector app metadata (e.g. a device name) containing non-ASCII characters. ([#49305](https://github.com/expo/expo/pull/49305) by [@Rakshit-gen](https://github.com/Rakshit-gen))
+- Bump `semver` to `^7.7.4`. ([#50391](https://github.com/expo/expo/pull/50391) by [@hassankhan](https://github.com/hassankhan))
+- Updated dependencies. ([#50955](https://github.com/expo/expo/pull/50955), [#50016](https://github.com/expo/expo/pull/50016), [#50458](https://github.com/expo/expo/pull/50458), [#50973](https://github.com/expo/expo/pull/50973), [#50391](https://github.com/expo/expo/pull/50391))
+  - @expo/config-plugins@58.0.5
+  - @expo/metro-config@58.0.8
+  - @expo/router-server@58.0.7
+  - expo-server@58.0.3
+  - @expo/log-box@58.0.9
+  - @expo/config@58.0.2
+  - @expo/image-utils@0.12.3
+  - @expo/prebuild-config@58.0.8
+  - @expo/inline-modules@0.2.2
+
+## 58.1.1
+
+### Patch Changes
+
+- Resolve Android resource names and `drawable-*` folders with `@react-native/asset-utils`, matching how React Native resolves embedded assets at runtime. Scales outside the standard set map to a `drawable-<n>dpi` folder instead of failing the export, and assets referenced through `?unstable_path=` drop that prefix from their resource name. ([#50861](https://github.com/expo/expo/pull/50861) by [@huntie](https://github.com/huntie))
+- Resolve Expo Updates runtime version for the dev server in development mode. ([#49508](https://github.com/expo/expo/pull/49508) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Resolve the legacy `react-native/Libraries/Image/AssetRegistry` import to the shared asset registry. React Native 0.87 removed this module, which broke libraries that still import it, such as `@shopify/react-native-skia` on web. ([#50887](https://github.com/expo/expo/pull/50887) by [@1kuko3](https://github.com/1kuko3))
+- Fix `CorsMiddleware`'s local-hostname check to require a literal dot between IPv4 octets, instead of an unescaped regex wildcard that let non-loopback hostnames starting with `127` (e.g. `127a1b1c1`) bypass the dev server's cross-origin request guard. ([#49302](https://github.com/expo/expo/pull/49302) by [@Rakshit-gen](https://github.com/Rakshit-gen))
+- Updated dependencies. ([#50867](https://github.com/expo/expo/pull/50867))
+  - @expo/metro-config@58.0.7
+  - @expo/router-server@58.0.6
+  - @expo/prebuild-config@58.0.7
+
+## 58.1.0
+
+### Minor Changes
+
+- Emit `{scheme}://?__expo_url={manifestUrl}` development build launch URLs instead of the legacy `{scheme}://expo-development-client/?url={manifestUrl}` form.
+
+  Add `EXPO_NO_DEV_MENU=1` to append the reserved `__expo_*` params that keep the dev menu closed to Expo Go and development build launch URLs: the terminal URL, the QR code, `/_expo/link`, `/_expo/open`, `expo start --ios/--android` and `expo run:*`.
+
+  ([#50290](https://github.com/expo/expo/pull/50290) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### Patch Changes
+
+- Use development for Xcode configurations with `Debug` in the name and production otherwise in `expo run:ios`. ([#49555](https://github.com/expo/expo/pull/49555) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Use React Native's default `debuggableVariants` to pick the mode in `expo run:android`. ([#50204](https://github.com/expo/expo/pull/50204) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Note in `expo start --help` that setting `CI=1` turns off file watching and Fast Refresh, and how to run without the interactive UI instead. ([#50843](https://github.com/expo/expo/pull/50843) by [@huntie](https://github.com/huntie))
+- Remove `EXPO_UNSTABLE_TUNNEL_V2` env flag, and instead make Expo Tunnels the default. `--tunnel ngrok` may be used to switch to the legacy tunnels. ([#50829](https://github.com/expo/expo/pull/50829) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#49529](https://github.com/expo/expo/pull/49529))
+  - @expo/log-box@58.0.8
+  - @expo/router-server@58.0.5
+
+## 58.0.9
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762), [#45964](https://github.com/expo/expo/pull/45964), [#49791](https://github.com/expo/expo/pull/49791))
+  - @expo/config@58.0.1
+  - @expo/config-plugins@58.0.4
+  - @expo/env@2.5.1
+  - @expo/image-utils@0.12.2
+  - @expo/inline-modules@0.2.1
+  - @expo/json-file@11.2.1
+  - @expo/log-box@58.0.7
+  - @expo/log-box-utils@58.0.1
+  - @expo/metro-config@58.0.6
+  - @expo/metro-file-map@58.0.3
+  - @expo/osascript@2.8.1
+  - @expo/package-manager@1.14.1
+  - @expo/plist@0.10.1
+  - @expo/prebuild-config@58.0.6
+  - @expo/require-utils@58.0.2
+  - @expo/router-server@58.0.4
+  - @expo/schema-utils@58.0.1
+  - expo-server@58.0.2
+
+## 58.0.8 — 2026-09-28
+
+### 💡 Others
+
+- [Internal] Fix the `BundleOptions` import in `internal/unstable-expo-updates-exports.d.ts`, which pointed at a subpath `@expo/metro` doesn't ship. ([#50651](https://github.com/expo/expo/pull/50651) by [@robhogan](https://github.com/robhogan))
+- [Internal] Depend on the exact `@expo/metro-config` version the CLI is published with. ([#50651](https://github.com/expo/expo/pull/50651) by [@robhogan](https://github.com/robhogan))
+
+## 58.0.7 — 2026-09-25
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.6 — 2026-09-23
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.5 — 2026-09-22
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.4 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.3 — 2026-09-16
 
 ### 🛠 Breaking changes
 
+- `web.output: 'server'` now renders HTML pages on each request instead of prerendering them during export. ([#50120](https://github.com/expo/expo/pull/50120) by [@hassankhan](https://github.com/hassankhan))
+- Remove the fallback resolver for packages importing themselves by name. Metro now resolves self-references natively, but, like Node.js, only for packages that declare `exports`. ([#50238](https://github.com/expo/expo/pull/50238) by [@robhogan](https://github.com/robhogan))
+
 ### 🎉 New features
+
+- Enable data loaders by default for static and server output ([#50118](https://github.com/expo/expo/pull/50118) by [@hassankhan](https://github.com/hassankhan))
+- Enable server rendering by default for `web.output: "server"` ([#50120](https://github.com/expo/expo/pull/50120) by [@hassankhan](https://github.com/hassankhan))
+- Add the `apiRoutes` config plugin option to support API routes with static rendering. ([#50148](https://github.com/expo/expo/pull/50148) by [@hassankhan](https://github.com/hassankhan))
 
 ### 🐛 Bug fixes
 
+- Fix cache pollution in production by inlined environment variable values with a vary-cache approach ([#47750](https://github.com/expo/expo/pull/47750) by [@kitten](https://github.com/kitten))
+
 ### 💡 Others
+
+- Add `VaryingCacheStore` and embed `expoCacheVary` fingerprints into transform results so a cache output never holds on to stale values inline ([#47750](https://github.com/expo/expo/pull/47750) by [@kitten](https://github.com/kitten))
+
+## 58.0.2 — 2026-09-15
+
+### 🛠 Breaking changes
+
+- Bundle source maps served by `expo start` and written by `expo export` are now [index maps](https://tc39.es/ecma426/#sec-index-source-map), as Metro now always emits them. ([#50135](https://github.com/expo/expo/pull/50135) by [@robhogan](https://github.com/robhogan))
+
+### 🎉 New features
+
+- Enable server middleware by default ([#49000](https://github.com/expo/expo/pull/49000) by [@hassankhan](https://github.com/hassankhan))
+
+### 🐛 Bug fixes
+
+- Remove Expo Router compatibility checks for `@react-navigation` packages. ([#50176](https://github.com/expo/expo/pull/50176) by [@Ubax](https://github.com/Ubax))
+- Fix app names in prebuild templates: derive project identifiers from the raw name in XML and plists ('A & B' gave 'AampB' in plists but 'AB' elsewhere), and escape display names for Android resources and plists. ([#49143](https://github.com/expo/expo/pull/49143) by [@vonovak](https://github.com/vonovak))
+
+### 💡 Others
+
+- Bump to `@expo/metro@58.0.0-rc.0` and `metro@0.87.1` ([#50135](https://github.com/expo/expo/pull/50135) by [@robhogan](https://github.com/robhogan))
+
+## 58.0.1 — 2026-09-14
+
+### 💡 Others
+
+- Upgrade React Native to 0.88.0-rc.0 ([#49910](https://github.com/expo/expo/pull/49910) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 58.0.0 — 2026-09-10
+
+### 🛠 Breaking changes
+
+- Remove `EXPO_ROUTER_DISABLE_NATIVE_TABS_MD`. Uninstall `expo-symbols` to exclude Material Symbols support from Android apps. ([#49738](https://github.com/expo/expo/pull/49738) by [@Ubax](https://github.com/Ubax))
+- Remove the `EXPO_UNSTABLE_WEB_MODAL` environment variable and its Expo Router module alias. ([#49204](https://github.com/expo/expo/pull/49204) by [@Ubax](https://github.com/Ubax))
+- Use the Expo command mode to set `NODE_ENV` and load **.env** files. ([#48741](https://github.com/expo/expo/pull/48741) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Make browser-based login the default for `expo login`. Use `--no-browser` (or pass `--username`/`--password`) for username/password login. Non-interactive environments such as CI continue to use username/password login. ([#46832](https://github.com/expo/expo/pull/46832) by [@byronkarlen](https://github.com/byronkarlen))
+- Raise minimum Node.js version to `^22.13.0` ([#47202](https://github.com/expo/expo/pull/47202) by [@kitten](https://github.com/kitten))
+
+### 🎉 New features
+
+- Add `pageHeaders` to exported routes manifests ([#47429](https://github.com/expo/expo/pull/47429) by [@hassankhan](https://github.com/hassankhan))
+- Apply `pageHeaders` when serving static exports with `expo serve` ([#47781](https://github.com/expo/expo/pull/47781) by [@hassankhan](https://github.com/hassankhan))
+- Create `pageHeaders` rules from loader-declared `Cache-Control` headers for SSG ([#47774](https://github.com/expo/expo/pull/47774) by [@hassankhan](https://github.com/hassankhan))
+- Emit relative asset URLs and `bundleUrl` in manifest responses conditionally ([#47255](https://github.com/expo/expo/pull/47255) by [@kitten](https://github.com/kitten))
+- Resolve `hostUri`, `debuggerHost`, and `/_expo/link` deep links from forwarded request addresses ([#48267](https://github.com/expo/expo/pull/48267) by [@kitten](https://github.com/kitten))
+- Preserve loader `Cache-Control` headers in development ([#48497](https://github.com/expo/expo/pull/48497) by [@hassankhan](https://github.com/hassankhan))
+- Use default loader `Cache-Control` header value of `no-store` for loader responses in development ([#48497](https://github.com/expo/expo/pull/48497) by [@hassankhan](https://github.com/hassankhan))
+- Use default `Cache-Control` header value of `public, max-age=0, must-revalidate` for SSG loader files and their pages ([#48497](https://github.com/expo/expo/pull/48497) by [@hassankhan](https://github.com/hassankhan))
+- Use default `Cache-Control` header value of `no-store` for SSR loader responses ([#48497](https://github.com/expo/expo/pull/48497) by [@hassankhan](https://github.com/hassankhan))
+- Add `experiments.noxcturnalTransformWorker` with native transformer experiment ([#48443](https://github.com/expo/expo/pull/48443) by [@kitten](https://github.com/kitten))
+
+### 🐛 Bug fixes
+
+- Stop writing DOM component source maps into the app binary during `expo export:embed`, so Android release builds no longer ship `www.bundle` source maps with the original app source. ([#49480](https://github.com/expo/expo/pull/49480) by [@expo-bot](https://github.com/expo-bot))
+- Serve relative manifest URLs only when the client itself sends the RFC 7239 `Forwarded` header, so that proxied requests from clients without relative-URL support, like released Expo Go versions through the WS tunnel, keep absolute URLs. ([#48997](https://github.com/expo/expo/pull/48997) by [@expo-bot](https://github.com/expo-bot))
+- Fail when `--private-key-path` is passed without `updates.codeSigningCertificate` in the resolved app config, instead of ignoring the flag and continuing without signing.
+- Show the Xcode build log path when `run:ios` fails. ([#48624](https://github.com/expo/expo/pull/48624) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Fix iOS asset catalog scale-to-file pairing for assets with non-standard scales. ([#48525](https://github.com/expo/expo/pull/48525) by [@janicduplessis](https://github.com/janicduplessis))
+- [Internal] Fix `LogStream.destroy()` racing a pending write and dropping log data ([#47181](https://github.com/expo/expo/pull/47181) by [@kitten](https://github.com/kitten))
+- Ignore simulators reported by `devicectl` and support json version 5 on Xcode 27 ([#48001](https://github.com/expo/expo/pull/48001) by [@crockalet](https://github.com/crockalet))
+- In non-interactive shells, automatically roll over to the next available port when default is busy, unless a specific port is specified with `--port` or `RCT_METRO_PORT` ([#47771](https://github.com/expo/expo/pull/47771) by [@kitten](https://github.com/kitten))
+- Ignore a whitespace-only `REACT_NATIVE_PACKAGER_HOSTNAME` instead of failing to start the dev server ([#48236](https://github.com/expo/expo/pull/48236) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Fix opening web from the Terminal UI when the dev server was started without `--web` ([#48236](https://github.com/expo/expo/pull/48236) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Ignore an invalid `--port` or an out-of-range `RCT_METRO_PORT` and start on the preferred port instead of prompting to use port `null` ([#48300](https://github.com/expo/expo/pull/48300) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Resolve the signed-in username for partner provisioned actors so Expo Go can verify the account match ([#48354](https://github.com/expo/expo/pull/48354) by [@davidko604](https://github.com/davidko604))
+- Switch `ManifestMiddleware` to `expo-server`'s response helpers to avoid cancellations being surfaced as exceptions ([#48700](https://github.com/expo/expo/pull/48700) by [@kitten](https://github.com/kitten))
+- Support npm@12's dictionary-based `npm pack --json` format ([#48761](https://github.com/expo/expo/pull/48761) by [@kitten](https://github.com/kitten))
+- Fix wirelessly connected iOS 16 and older devices being omitted from `expo run:ios --device` selection. ([#48127](https://github.com/expo/expo/pull/48127) by [@davellanedam](https://github.com/davellanedam))
+- Fix resolution of ESLint failing in `expo lint` after prerequisites check installs it ([#46223](https://github.com/expo/expo/pull/46223) by [@claritystorm](https://github.com/claritystorm))
+- Make Android tooling (avd and adb) handling safer, more reliable, and cancellable ([#49258](https://github.com/expo/expo/pull/49258) by [@kitten](https://github.com/kitten))
+- Serve one virtual Metro asset registry to every consumer on React Native 0.87 — Metro's generated asset modules, `react-native/asset-registry` and legacy `@react-native/assets-registry` imports, and React Native core's internal registry imports — so Metro-registered assets and React Native's `<Image>` share one registry instance. ([#49444](https://github.com/expo/expo/pull/49444) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Depend on `@react-native/js-polyfills` directly for the web polyfills instead of the `react-native/rn-get-polyfills` subpath removed in React Native 0.87. ([#47729](https://github.com/expo/expo/pull/47729) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 💡 Others
+
+- [Internal] Use `@expo/env` to read the EAS config mode and keep older EAS Build versions in production mode. ([#48938](https://github.com/expo/expo/pull/48938) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Add sandbox detection to telemetry context ([#47928](https://github.com/expo/expo/pull/47928) by [@davidmokos](https://github.com/davidmokos))
+- [Internal] Remove the unreachable port fallbacks and increase consistency in port selection logic ([#47771](https://github.com/expo/expo/pull/47771) by [@kitten](https://github.com/kitten))
+- Add experimental `tvos` and `macos` autolinking gated by `expriments.outOfTreePlatforms` ([#46344](https://github.com/expo/expo/pull/46344) by [@kitten](https://github.com/kitten))
+- [Internal] Update logbox imports ([#46640](https://github.com/expo/expo/pull/46640) by [@kitten](https://github.com/kitten))
+- [Internal] Align find-up `package.json` search utilities ([#47127](https://github.com/expo/expo/pull/47127) by [@kitten](https://github.com/kitten))
+- Bump to `dnssd-advertise@^1.1.6` ([#47183](https://github.com/expo/expo/pull/47183) by [@kitten](https://github.com/kitten))
+- [Internal] Migrate structured event logging to the `2g` package ([#46667](https://github.com/expo/expo/pull/46667) by [@kitten](https://github.com/kitten))
+- [Internal] Migrate an initial set of events to `2g` ([#47655](https://github.com/expo/expo/pull/47655) by [@kitten](https://github.com/kitten))
+- [Internal] Resolve the dev server port once instead of re-deriving it, and read the URL environment variables outside the `UrlCreator` ([#48236](https://github.com/expo/expo/pull/48236) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Update `expo start --private-key-path` help text ([#47795](https://github.com/expo/expo/pull/47795) by [@kitten](https://github.com/kitten))
+- Re-enable sextant QR code for Zed ([#48382](https://github.com/expo/expo/pull/48382) by [@mchisolm0](https://github.com/mchisolm0))
+- [Internal] Fix the flaky `waitForActionAsync` timeout test by driving it with fake timers instead of real time. ([#48811](https://github.com/expo/expo/pull/48811) by [@expo-bot](https://github.com/expo-bot))
+- Bump to `multitars@1.0.2` to address symlink and unicode bugs ([#48833](https://github.com/expo/expo/pull/48833) by [@kitten](https://github.com/kitten))
+- [Internal] Move static HTML asset injection into `getStaticContent()`. ([#47006](https://github.com/expo/expo/pull/47006) by [@hassankhan](https://github.com/hassankhan))
+- Prewarm Metro transform workers while waiting for the first development bundle request ([#48836](https://github.com/expo/expo/pull/48836) by [@kitten](https://github.com/kitten))
+- Discover `.ts`, `.mts`, and `.cts` ESLint configs as well when checking for prerequisites for ESLint ([#46225](https://github.com/expo/expo/pull/46225) by [@claritystorm](https://github.com/claritystorm))
+- Bump to `@expo/metro@56.0.2` and `metro@0.84.5` ([#49161](https://github.com/expo/expo/pull/49161) by [@kitten](https://github.com/kitten))
+- [Internal] Align local annotations in the Metro integration with Metro's own types. ([#49669](https://github.com/expo/expo/pull/49669) by [@robhogan](https://github.com/robhogan))
+- [Internal] Import Expo's Metro type extensions from `@expo/metro-config` instead of relying on global type augmentations. ([#49670](https://github.com/expo/expo/pull/49670) by [@robhogan](https://github.com/robhogan))
+- Bump to `@expo/metro@56.1.0` and `metro@0.84.6` ([#49671](https://github.com/expo/expo/pull/49671) by [@robhogan](https://github.com/robhogan))
+- Remove the unused `confirm_account` query param from the browser login URL. ([#49891](https://github.com/expo/expo/pull/49891) by [@byronkarlen](https://github.com/byronkarlen))
+
+## 57.0.11 - 2026-07-29
+
+### 💡 Others
+
+- Preserve `watchFolders` external to `serverRoot` explicitly, when they've been manually added ([#48177](https://github.com/expo/expo/pull/48177) by [@kitten](https://github.com/kitten))
+
+## 57.0.10 - 2026-07-22
+
+### 🐛 Bug fixes
+
+- Prevent `expo export` from corrupting server bundles that contain `//# sourceMappingURL=` inside a string literal ([#47981](https://github.com/expo/expo/pull/47981) by [@hassankhan](https://github.com/hassankhan))
+
+## 57.0.9 - 2026-07-17
+
+### 🐛 Bug fixes
+
+- Fix GraphQL `data` results with all-null fields being treated as failed, obscuring underlying failure states ([#47860](https://github.com/expo/expo/pull/47860) by [@kitten](https://github.com/kitten))
+
+## 57.0.8 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.7 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.6 - 2026-07-07
+
+### 🐛 Bug fixes
+
+- Fall back to AGP's `output-metadata.json` when resolving APK filenames to support projects that override `outputFileName` in `applicationVariants` ([#47083](https://github.com/expo/expo/pull/47083) by [@NikhilVashistha](https://github.com/NikhilVashistha))
+- Surface the real `xcodebuild` error on `run:ios` failure instead of printing "0 error(s)" when the build formatter parsed none. ([#47748](https://github.com/expo/expo/pull/47748) by [@ramonclaudio](https://github.com/ramonclaudio))
+
+## 57.0.5 - 2026-07-07
+
+### 🐛 Bug fixes
+
+- Avoid writing a 500 response when a DevTools plugin server request has already started or aborted. ([#47192](https://github.com/expo/expo/pull/47192) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Pass a fetch API `Request` to DevTools plugin WebSocket handlers instead of `IncomingMessage`. ([#47410](https://github.com/expo/expo/pull/47410) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Use `loadModule` for MCP and DevTools plugin server module loading. ([#47139](https://github.com/expo/expo/pull/47139) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+
+### 💡 Others
+
+- [Internal] Unify the sync realpath helper and make fallback handling explicit. ([#47175](https://github.com/expo/expo/pull/47175) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+
+## 57.0.4 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-06-30
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-06-30
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+### 🛠 Breaking changes
+
+- Make `expo prebuild` clear and regenerate the native folders by default. Pass `--no-clean` to apply changes to the existing folders instead. ([#47209](https://github.com/expo/expo/pull/47209) by [@alanjhughes](https://github.com/alanjhughes))
+
+### 🐛 Bug fixes
+
+- Include external CSS imports in the production server manifest ([#46984](https://github.com/expo/expo/pull/46984) by [@hassankhan](https://github.com/hassankhan))
+
+### 💡 Others
+
+- [Internal] Unify favicon injection between SPA, SSG and SSR pipelines ([#46586](https://github.com/expo/expo/pull/46586) by [@hassankhan](https://github.com/hassankhan))
+
+## 56.1.16 - 2026-06-15
+
+### 🎉 New features
+
+- Add option to specify targets to use with inline modules ([#46698](https://github.com/expo/expo/pull/46698) by [@HubertBer](https://github.com/HubertBer))
+- Support Device Hub as Simulator replacement for Xcode 27+ ([#46757](https://github.com/expo/expo/pull/46757) by [@byCedric](https://github.com/byCedric), [@GersonRocha9](https://github.com/GersonRocha9))
+- Apply `headers` when serving static exports with `expo serve` ([#47780](https://github.com/expo/expo/pull/47780) by [@hassankhan](https://github.com/hassankhan))
+
+### 🐛 Bug fixes
+
+- Focus the booted device in Device Hub using its `devices://` deep link instead of only bringing the app forward. ([#46809](https://github.com/expo/expo/pull/46809) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+
+## 56.1.15 - 2026-06-10
+
+### 🐛 Bug fixes
+
+- Place static entries last in serialized HTML output ([#46539](https://github.com/expo/expo/pull/46539) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Bump to `@expo/ws-tunnel@^2.0.0` ([#46696](https://github.com/expo/expo/pull/46696) by [@kitten](https://github.com/kitten))
+
+## 56.1.14 - 2026-06-05
+
+### 🐛 Bug fixes
+
+- Symbolicate web error stacks in the dev server console. ([#46584](https://github.com/expo/expo/pull/46584) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Disable sextant QR code rendering for Windows Terminal ([#46455](https://github.com/expo/expo/pull/46455) by [@kitten](https://github.com/kitten))
+- Use favicon from app config when SSR is enabled ([#46570](https://github.com/expo/expo/pull/46570) by [@hassankhan](https://github.com/hassankhan))
+- Remove `@expo/metro-config` install from `expo customize metro.config.js` ([#46600](https://github.com/expo/expo/pull/46600) by [@kitten](https://github.com/kitten))
+
+## 56.1.13 - 2026-05-29
+
+### 🎉 New features
+
+- Support Bundler-managed CocoaPods installations ([#43605](https://github.com/expo/expo/pull/43605) by [@tiwari91](https://github.com/tiwari91), [@kitten](https://github.com/kitten))
+
+## 56.1.12 — 2026-05-26
+
+_This version does not introduce any user-facing changes._
+
+## 56.1.11 — 2026-05-23
+
+### 🐛 Bug fixes
+
+- Fix launching apps on physical iOS devices causing system-dependent crashes ([#46128](https://github.com/expo/expo/pull/46128) by [@kitten](https://github.com/kitten))
+- Fix post-rewrite resolutions failing since they may be resolved from a random module path ([#46172](https://github.com/expo/expo/pull/46172) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Disable sextant QR code rendering for Zed due to regression ([#46148](https://github.com/expo/expo/pull/46148) by [@kitten](https://github.com/kitten))
+- Offload Metro user config resolution to `@expo/metro-config`'s `loadUserConfig` ([#46155](https://github.com/expo/expo/pull/46155) by [@kitten](https://github.com/kitten))
+
+## 56.1.10 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.1.9 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.1.8 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.1.7 — 2026-05-20
+
+### 🎉 New features
+
+- Add `EXPO_RUN_PREFER_APP_CONFIG_ID=1` to prefer Expo config app IDs over native files when running apps ([#45774](https://github.com/expo/expo/pull/45774) by [@sebryu](https://github.com/sebryu))
+- Support disabling NativeTabs Material Symbols (`md`) icons on Android via the `EXPO_ROUTER_DISABLE_NATIVE_TABS_MD` environment variable ([#45857](https://github.com/expo/expo/pull/45857) by [@Ubax](https://github.com/Ubax))
+
+### 🐛 Bug fixes
+
+- Add missing HTML sanitization when serializing log-box error data ([#45885](https://github.com/expo/expo/pull/45885) by [@kitten](https://github.com/kitten))
+- Fix missing await on bundle/assets output copies in `export:embed` ([#45883](https://github.com/expo/expo/pull/45883) by [@kitten](https://github.com/kitten))
+- Prevalidate `easProjectId` before using it as cache path ([#45879](https://github.com/expo/expo/pull/45879) by [@kitten](https://github.com/kitten))
+- Persist `~/.expo/state.json` with owner-only file permissions ([#45873](https://github.com/expo/expo/pull/45873) by [@kitten](https://github.com/kitten))
+- Limit payload sizes and recorded entries for network debugger CDP state ([#45864](https://github.com/expo/expo/pull/45864) by [@kitten](https://github.com/kitten))
+- Add missing origin check to JS inspector middleware and add throttle to dev commands ([#45863](https://github.com/expo/expo/pull/45863) by [@kitten](https://github.com/kitten))
+- Replace inaccurate file-in-root checks with utility ([#45856](https://github.com/expo/expo/pull/45856) by [@kitten](https://github.com/kitten))
+- Add missing adb shell quoting where necessary ([#45853](https://github.com/expo/expo/pull/45853) by [@kitten](https://github.com/kitten))
+- Escape content inserted into interstitial page ([#45839](https://github.com/expo/expo/pull/45839) by [@kitten](https://github.com/kitten))
+- Read raw MCP URL env var only from original system env vars ([#45842](https://github.com/expo/expo/pull/45842) by [@kitten](https://github.com/kitten))
+- Read selected env vars only from original system env vars, not from `@expo/env` env files ([#45833](https://github.com/expo/expo/pull/45833) by [@kitten](https://github.com/kitten))
+- Fix inverted path check in Metro middleware ([#46006](https://github.com/expo/expo/pull/46006) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Use `osascript.escapeString` utility in `open.ts` ([#45890](https://github.com/expo/expo/pull/45890) by [@kitten](https://github.com/kitten))
+- [Internal] Isolate `expo-session` requests to Expo API and update `resolveTemplate ([#45875](https://github.com/expo/expo/pull/45875) by [@kitten](https://github.com/kitten))
+- Bump to `@expo/spawn-async@^1.8.0` ([#45999](https://github.com/expo/expo/pull/45999) by [@kitten](https://github.com/kitten))
+
+## 56.1.6 — 2026-05-19
+
+### 🎉 New features
+
+- Add `/_expo/open` middleware for programmatically resolving deep links and disambiguation pages for the running dev server. ([#45804](https://github.com/expo/expo/pull/45804) by [@EvanBacon](https://github.com/EvanBacon))
+- Upgrade react-native-tvos to the correct version on install/fix. ([#45816](https://github.com/expo/expo/pull/45816) by [@douglowder](https://github.com/douglowder))
+- Accept `expo login -p -` argument to read password from stdin ([#45877](https://github.com/expo/expo/pull/45877) by [@kitten](https://github.com/kitten))
+
+### 🐛 Bug fixes
+
+- Restrict `/message` client commands ([#45858](https://github.com/expo/expo/pull/45858) by [@kitten](https://github.com/kitten)
+- Enforce `routerRoot` to be within `projectRoot` to prevent unexpected errors ([#45892](https://github.com/expo/expo/pull/45892) by [@kitten](https://github.com/kitten))
+- Fix containment check in tar extraction to cover parallel folders with same prefix ([#45882](https://github.com/expo/expo/pull/45882) by [@kitten](https://github.com/kitten))
+- Forward the request HTTP method to the RSC renderer ([#45905](https://github.com/expo/expo/pull/45905) by [@kitten](https://github.com/kitten))
+- Add validation to check `EXPO_PUBLIC_FOLDER` is in project root ([#45866](https://github.com/expo/expo/pull/45866) by [@kitten](https://github.com/kitten))
+- Fix launching Android activity when activity name is fully specified ([#45773](https://github.com/expo/expo/pull/45773) by [@sebryu](https://github.com/sebryu))
+
+### 💡 Others
+
+- [Internal] Use `resolveRouterModule` helper for RSC router module resolution ([#45900](https://github.com/expo/expo/pull/45900) by [@kitten](https://github.com/kitten))
+- [Internal] Remove RSC render context ([#45908](https://github.com/expo/expo/pull/45908) by [@kitten](https://github.com/kitten))
+
+## 56.1.5 — 2026-05-15
+
+### 🐛 Bug fixes
+
+- Fix loader HMR when streaming SSR is enabled in dev mode ([#45702](https://github.com/expo/expo/pull/45702) by [@hassankhan](https://github.com/hassankhan))
+- Fix long project paths overflowing the dev server interstitial page by making the path scroll horizontally. ([#45808](https://github.com/expo/expo/pull/45808) by [@EvanBacon](https://github.com/EvanBacon))
+- Serve an unsigned Expo Go manifest instead of failing with HTTP 500 when `expo start` is unauthenticated in a non-interactive shell. ([#45809](https://github.com/expo/expo/pull/45809) by [@EvanBacon](https://github.com/EvanBacon))
+- Add troubleshooting guide link to simulator boot failure errors. ([#43786](https://github.com/expo/expo/pull/43786) by [@kadikraman](https://github.com/kadikraman))
+- Disallow devtools plugins to point to `webpageRoot` outside of their own bounds ([#45841](https://github.com/expo/expo/pull/45841) by [@kitten](https://github.com/kitten))
+- Pre-filter MCP-exposed commands to exclude ones marked as CLI-only ([#45845](https://github.com/expo/expo/pull/45845) by [@kitten](https://github.com/kitten))
+- Tighten checks on MCP plugins and ran commands ([#45845](https://github.com/expo/expo/pull/45845) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Add general `eslint-disable` comment to Router's type-gen output ([#41637](https://github.com/expo/expo/pull/41637) by [@matinzd](https://github.com/matinzd))
+- Drop `better-opn` ([#45654](https://github.com/expo/expo/pull/45654) by [@kitten](https://github.com/kitten))
+- Remove redundant env-var parsing in CLI resolver hot paths ([#45658](https://github.com/expo/expo/pull/45658) by [@kitten](https://github.com/kitten))
+
+## 56.1.4 — 2026-05-13
+
+### 💡 Others
+
+- [Internal] Thread `https` protocol state through from `runServer-fork` ([#45676](https://github.com/expo/expo/pull/45676) by [@kitten](https://github.com/kitten))
+
+## 56.1.3 — 2026-05-13
+
+### 💡 Others
+
+- Switch React Native Directory compatibility check request from POST to GET. ([#45673](https://github.com/expo/expo/pull/45673) by [@simek](https://github.com/simek))
+- Target only the first compatible device architecture during Android debug builds to speed up build time. ([#44907](https://github.com/expo/expo/pull/44907) by [@AntoineThibi](https://github.com/AntoineThibi))
+- Bump to `picomatch@^4.0.4` ([#45698](https://github.com/expo/expo/pull/45698) by [@kitten](https://github.com/kitten))
+
+## 56.1.2 — 2026-05-12
+
+_This version does not introduce any user-facing changes._
+
+## 56.1.1 — 2026-05-11
+
+### 🐛 Bug fixes
+
+- Fix regression hiding stderr output on fatal exit ([#45641](https://github.com/expo/expo/pull/45641) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Migrate `expo login --browser`/`--sso` to OAuth 2.0 authorization code flow with PKCE. ([#44938](https://github.com/expo/expo/pull/44938) by [@byronkarlen](https://github.com/byronkarlen))
+- Deserialize new `@expo/metro-config` packed source-map format and update to use new source-map representation internally ([#45594](https://github.com/expo/expo/pull/45594) by [@kitten](https://github.com/kitten))
+
+## 56.1.0 — 2026-05-08
+
+### 🎉 New features
+
+- Prefix web client logs with platform name in Metro terminal output. ([#45516](https://github.com/expo/expo/pull/45516) by [@EvanBacon](https://github.com/EvanBacon))
+- Improve the visiblity of errors for native-stack and drawer imports ([#45546](https://github.com/expo/expo/pull/45546) by [@Ubax](https://github.com/Ubax))
+
+### 🐛 Bug fixes
+
+- Fix Metro progress bars appearing as permanent output due to cursor corruption from stderr writes and stale status snapshots. ([#45523](https://github.com/expo/expo/pull/45523) by [@EvanBacon](https://github.com/EvanBacon))
+- Prevent Metro loading indicator from showing broken states in headless runs. ([#45513](https://github.com/expo/expo/pull/45513) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix `--port 0` exiting silently in `expo start` when the port is busy. ([#45513](https://github.com/expo/expo/pull/45513) by [@EvanBacon](https://github.com/EvanBacon))
+- Apply printf-style format substitution for web client logs forwarded from the browser. ([#45516](https://github.com/expo/expo/pull/45516) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix @react-navigation/core rewrite to expo-router/react-navigation ([#45543](https://github.com/expo/expo/pull/45543) by [@Ubax](https://github.com/Ubax))
+
+### 💡 Others
+
+- Slightly optimize `ignorePattern` passed to `@expo/metro-file-map` ([#45552](https://github.com/expo/expo/pull/45552) by [@kitten](https://github.com/kitten))
+- Replace deprecated `url.parse()` with WHATWG `URL` API in Metro dev server. ([#45524](https://github.com/expo/expo/pull/45524) by [@EvanBacon](https://github.com/EvanBacon))
+- Remove pinned dependencies ([#45520](https://github.com/expo/expo/pull/45520) by [@kitten](https://githun.com/kitten))
+- Adopt `experiments.onDemandFilesystem` on `@expo/config-types` ([#45555](https://github.com/expo/expo/pull/45555) by [@kitten](https://github.com/kitten))
+- Replace `source-map-support` package with `@expo/require-utils`'s built-in Node source-map support for reduced memory usage ([#45507](https://github.com/expo/expo/pull/45507) by [@kitten](https://github.com/kitten))
+
+## 56.0.6 — 2026-05-07
+
+### 🐛 Bug fixes
+
+- Drop obsolete webview installation check ([#45489](https://github.com/expo/expo/pull/45489) by [@kitten](https://github.com/kitten))
+- Pass `cache: false` to `evalModule` to prevent retaining server bundles in memory indefinitely ([#45509](https://github.com/expo/expo/pull/45509) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Bump to `@expo/xcpretty@^4.4.4` ([#45473](https://github.com/expo/expo/pull/45473) by [@EvanBacon](https://github.com/EvanBacon))
+- Tweak dependency check message and placement on `expo start` ([#45487](https://github.com/expo/expo/pull/45487) by [@kitten](https://github.com/kitten))
+- Reduce memory pressure/usage from `withMetroErrorReportingResolver` ([#45446](https://github.com/expo/expo/pull/45446) by [@kitten](https://github.com/kitten))
+
+## 56.0.5 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+### 🐛 Bug fixes
+
+- Prevent dangling timeouts (e.g. set in Metro config) from hanging `expo export` ([#45445](https://github.com/expo/expo/pull/45445) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Run `DevelopmentSession` API call and dependencies check without any startup delays ([#45417](https://github.com/expo/expo/pull/45417) by [@kitten](https://github.com/kitten))
+
+## 56.0.2 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🎉 New features
+
+- Output logs to `.expo` folder for agent processes. ([#44146](https://github.com/expo/expo/pull/44146) by [@EvanBacon](https://github.com/EvanBacon))
+- Add `--output` option to `expo run:ios` to copy built app binary to a specified directory. ([#43529](https://github.com/expo/expo/pull/43529) by [@evanbacon](https://github.com/evanbacon))
+- Add `--device generic` support to `expo run:ios` for build-only workflows without targeting a specific device. ([#43529](https://github.com/expo/expo/pull/43529) by [@evanbacon](https://github.com/evanbacon))
+- Show Xcode build progress bar in interactive terminals with retry logic for concurrent build DB lock failures. ([#43529](https://github.com/expo/expo/pull/43529) by [@evanbacon](https://github.com/evanbacon))
+- Enable parallel CocoaPods code signing to speed up device builds. ([#43529](https://github.com/expo/expo/pull/43529) by [@evanbacon](https://github.com/evanbacon))
+- Rewrite @react-navigation/core to expo-router for library compatibility ([#45039](https://github.com/expo/expo/pull/45039) by [@Ubax](https://github.com/Ubax))
+- Use stream rendering in SSR ([#43963](https://github.com/expo/expo/pull/43963) by [@hassankhan](https://github.com/hassankhan))
+- Add support for metadata in streaming SSR ([#44731](https://github.com/expo/expo/pull/44731) by [@hassankhan](https://github.com/hassankhan))
+- Support streaming SSR in development ([#45362](https://github.com/expo/expo/pull/45362) by [@hassankhan](https://github.com/hassankhan))
+- Add `experiments.onDemandFilesystem` (enabled by default) to allow files in the server root outside of `watchFolders` to be accessed and crawled lazily ([#45391](https://github.com/expo/expo/pull/45391) by [@kitten](https://github.com/kitten))
+- Add `createStaticLoader()` and `createServerLoader()` helpers ([#45401](https://github.com/expo/expo/pull/45401) by [@hassankhan](https://github.com/hassankhan))
+
+### 🐛 Bug fixes
+
+- Prevent opening Expo Go on Apple Watch. ([#44147](https://github.com/expo/expo/pull/44147) by [@EvanBacon](https://github.com/EvanBacon))
+- Support files >= 2 GiB in AFC device upload ([#43755](https://github.com/expo/expo/pull/43755) by [@yocontra](https://github.com/yocontra))
+- Revert the `-quiet` change to ensure build env vars are always printed. ([#43906](https://github.com/expo/expo/pull/43906) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix `react-native-web` install check being unconditional ([#44450](https://github.com/expo/expo/pull/44450) by [@kitten](https://github.com/kitten))
+- Fix mangled async chunk filenames for catch-all routes ([#43547](https://github.com/expo/expo/pull/43547) by [@hassankhan](https://github.com/hassankhan))
+- Avoid writing plugin state to app config when writing the package name or bundle identifier. ([#45136](https://github.com/expo/expo/pull/45136) by [@alanjhughes](https://github.com/alanjhughes))
+- Support TypeScript `tsconfig.json` with `paths` config without `baseUrl` properly, and `jsconfig.json` with full `extends` semantics ([#45227](https://github.com/expo/expo/pull/45227) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Prevent launching the browser or focusing the simulator in non-interactive environments. ([#44826](https://github.com/expo/expo/pull/44826) by [@EvanBacon](https://github.com/EvanBacon))
+- Remove react-native-web requirement for `expo start`. ([#44300](https://github.com/expo/expo/pull/44300) by [@EvanBacon](https://github.com/EvanBacon))
+- Drop `expo-router/doctor` install check ([#43461](https://github.com/expo/expo/pull/43461) by [@kitten](https://github.com/kitten))
+- Add `package.json:exports` with no-op reexport paths ([#44002](https://github.com/expo/expo/pull/44002) by [@kitten](https://github.com/kitten), [@hassankhan](https://github.com/hassankhan))
+- Replace `TransformStream`-based HTML injection with `ServerDocumentContext` for SSR metadata and assets ([#44827](https://github.com/expo/expo/pull/44827) by [@hassankhan](https://github.com/hassankhan))
+- Implement freestanding, faster TypeScript resolver ([#45227](https://github.com/expo/expo/pull/45227) by [@kitten](https://github.com/kitten))
+- Provide Babel config path hint to Expo Metro transformer ([#45260](https://github.com/expo/expo/pull/45260) by [@kitten](https://github.com/kitten))
+- Add `@expo/metro-file-map` fork ([#45373](https://github.com/expo/expo/pull/45373) by [@kitten](https://github.com/kitten))
+- Disable watchman by default ([#45378](https://github.com/expo/expo/pull/45378) by [@kitten](https://github.com/kitten))
+- Defer version check output to command table, and prefetch on start, to prevent it blocking/slowing down startup ([#45400](https://github.com/expo/expo/pull/45400) by [@kitten](https://github.com/kitten))
+- Bump to `@expo/metro@56.0.0` and `metro@0.84.4` ([#45404](https://github.com/expo/expo/pull/45404) by [@kitten](https://github.com/kitten))
+- Add link to expo router migration guide ([#45397](https://github.com/expo/expo/pull/45397) by [@Ubax](https://github.com/Ubax))
+
+## 55.0.29 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.28 - 2026-05-04
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.27 - 2026-05-01
+
+### 🐛 Bug fixes
+
+- Remove CDP target filter which was connecting to evaluate target properties; meant to exclude dev-menu ([#45201](https://github.com/expo/expo/pull/45201) by [@kitten](https://github.com/kitten))
+
+## 55.0.26 - 2026-04-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.25 - 2026-04-21
+
+### 🎉 New features
+
+- Prompt before clearing native folders when we detect project as a native module ([#44458](https://github.com/expo/expo/pull/44458) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- [Internal] Improve performance of internal debug logging ([#44706](https://github.com/expo/expo/pull/44706) by [@kitten](https://github.com/kitten))
+- Update to `multitars@^1.0.0` ([#44774](https://github.com/expo/expo/pull/44774) by [@kitten](https://github.com/kitten))
+
+## 55.0.24 - 2026-04-13
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.23 - 2026-04-09
+
+### 🐛 Bug fixes
+
+- Consistently resolve `mainModuleName`s using `convertEntryPointToRelative` and fix relative path semantics of `--entry-file` argumnts, which was previously expected to be relative to the server root rather than the project root. This fixes build issues when using export commands for projects in monorepos on Windows ([#44414](https://github.com/expo/expo/pull/44414) by [@kitten](https://github.com/kitten))
+- Add missing support for self-resolution via fallback resolver ([#44077](https://github.com/expo/expo/pull/44077) by [@kitten](https://github.com/kitten))
+- Add fallback resolution for `../../App` in `expo/AppEntry.js` ([#44084](https://github.com/expo/expo/pull/44084) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Update to `lan-network@^0.2.1` ([#44587](https://github.com/expo/expo/pull/44587) by [@kitten](https://github.com/kitten))
+- Update to `fetch-nodeshim@^0.4.10` ([#44588](https://github.com/expo/expo/pull/44588) by [@kitten](https://github.com/kitten))
+- Update to `dnssd-advertise@^1.1.4` ([#44589](https://github.com/expo/expo/pull/44589) by [@kitten](https://github.com/kitten))
+- Use `@expo/require-utils` for ngrok resolution ([#44236](https://github.com/expo/expo/pull/44236) by [@kitten](https://github.com/kitten))
+
+## 55.0.22 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.21 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.20 - 2026-04-02
+
+### 💡 Others
+
+- Add `react-native-web` to autolinking module resolution modules ([#44160](https://github.com/expo/expo/pull/44160) by [@kitten](https://github.com/kitten))
+
+## 55.0.19 - 2026-03-27
+
+### 🎉 New features
+
+- Allow `expo start`, `expo export`, and `expo config` to work without `react-native` installed for web-only projects. ([#44294](https://github.com/expo/expo/pull/44294) by [@EvanBacon](https://github.com/EvanBacon))
+- Pass optional name to metro require for async modules. ([#44224](https://github.com/expo/expo/pull/44224) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Fix device being incorrectly tracked for `run:ios --device` invocation ([#43673](https://github.com/expo/expo/pull/43673) by [@kitten](https://github.com/kitten))
+- Prevent out-of-monorepo `expo/expo` CLI detection to not mistrigger for user monorepos and update for pnpm compatibility ([#44101](https://github.com/expo/expo/pull/44101) by [@kitten](https://github.com/kitten))
+- Fall back to name-based `.MainActivity` lookup when no runnable activity with `MAIN`/`LAUNCHER` intent filters exists in the manifest. ([#43702](https://github.com/expo/expo/pull/43702) by [@hwhh](https://github.com/hwhh))
+
+### 💡 Others
+
+- Remove dom components warning. ([#44253](https://github.com/expo/expo/pull/44253) by [@EvanBacon](https://github.com/EvanBacon))
+- Limit `/open-stack-frame` to paths within server root ([#44039](https://github.com/expo/expo/pull/44039) by [@kitten](https://github.com/kitten))
+
+## 55.0.18 - 2026-03-18
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.17 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.16 - 2026-03-11
+
+### 🐛 Bug fixes
+
+- Fix `SimulatorAppPrerequisite` to fall back to reading `Simulator.app/Contents/Info.plist` directly when LaunchServices has not indexed the app (e.g. Xcode installed on an external or renamed volume). This prevents a spurious "Simulator is most likely not installed" error when running `expo run:ios --device` on a physical device. ([#43597](https://github.com/expo/expo/pull/43597) by [@ciospettw](https://github.com/ciospettw))
+
+## 55.0.15 - 2026-03-05
+
+### 🐛 Bug fixes
+
+- Fix server being started before Metro is ready, or, if it's started, status middleware responding too soon ([#43557](https://github.com/expo/expo/pull/43557) by [@kitten](https://github.com/kitten))
+- Don't let `expo start`'s dependency validation fail the `start` command ([#43619](https://github.com/expo/expo/pull/43619) by [@kitten](https://github.com/kitten))
+- Sort async chunks by route `entryPoints` order when `asyncRoutes` is enabled ([#43531](https://github.com/expo/expo/pull/43531) by [@hassankhan](https://github.com/hassankhan))
+- Prevent hanging when installing iOS apps on device. ([#43618](https://github.com/expo/expo/pull/43618) by [@EvanBacon](https://github.com/EvanBacon))
+- Avoid `ERR_TTY_INIT_FAILED` when `LOG_EVENTS=1` or `LOG_EVENTS=2` is used in non-interactive terminals. ([#43796](https://github.com/expo/expo/pull/43796) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+
+### 💡 Others
+
+- Add internal `--skip-server` flag to skip server bundling in `export:embed` ([#43602](https://github.com/expo/expo/pull/43602) by [@kitten](https://github.com/kitten))
+
+## 55.0.14 - 2026-02-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-02-26
+
+### 🐛 Bug fixes
+
+- Correctly handle JavaScript assets when `asyncRoutes: true` in SSR ([#43446](https://github.com/expo/expo/pull/43446) by [@hassankhan](https://github.com/hassankhan))
+
+### 💡 Others
+
+- Add `@react-navigation/core` and `@react-navigation/native` to autolinking resolution ([#43456](https://github.com/expo/expo/pull/43456) by [@kitten](https://github.com/kitten))
+- Pass on `tls` options from Metro config to Metro `runServer` fork ([#43186](https://github.com/expo/expo/pull/43186) by [@cortinico](https://github.com/cortinico))
+
+## 55.0.12 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 — 2026-02-25
+
+### 🐛 Bug fixes
+
+- Implement exponential retry for transient `devicectl` disconnects and fix null error logs. ([#43326](https://github.com/expo/expo/pull/43326) by [@balenamiaa](https://github.com/balenamiaa))
+
+### 💡 Others
+
+- Replace `minimatch` with `picomatch` and update ([#43323](https://github.com/expo/expo/pull/43323) by [@kitten](https://github.com/kitten))
+- Expand logging events ([#43247](https://github.com/expo/expo/pull/43247) by [@kitten](https://github.com/kitten))
+
+## 55.0.10 — 2026-02-20
+
+### 💡 Others
+
+- Force `forceNodeFilesystemAPI` when watchman is enabled (the default) but not present ([#43251](https://github.com/expo/expo/pull/43251) by [@kitten](https://github.com/kitten))
+- Add `EXPO_NO_QR_CODE` env variable to disable QR code generation ([#43187](https://github.com/expo/expo/pull/43187) by [@cortinico](https://github.com/cortinico))
+
+## 55.0.9 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-16
+
+### 🐛 Bug fixes
+
+- Add missing `Content-Type: application/json` to internal `/symbolicate` call ([#43074](https://github.com/expo/expo/pull/43074) by [@kitten](https://github.com/kitten))
+- Key loader data by `contextKey` instead of URL pathname ([#43017](https://github.com/expo/expo/pull/43017) by [@hassankhan]
+- Fix port prompt causing process hangs on some systems when checking the conflicting process's info ([#43054](https://github.com/expo/expo/pull/43054) by [@kitten](https://github.com/kitten))
+- Fix editor opening to not spawn terminal editors and have more fallbacks ([#43073](https://github.com/expo/expo/pull/43073) by [@kitten](https://github.com/kitten))
+- Fix `setResponseHeaders()` failing on responses with immutable headers ([#43111](https://github.com/expo/expo/pull/43111) by [@hassankhan](https://github.com/hassankhan))
+- Fixed DOM Components rendering issues on Android 9 devices. ([#43156](https://github.com/expo/expo/pull/43156) by [@kudo](https://github.com/kudo))
+
+### 💡 Others
+
+- Bump to `dnssd-advertise@^1.1.3` ([#42928](https://github.com/expo/expo/pull/42928) by [@kitten](https://github.com/kitten))
+- Add more compact QR code rendering for terminals that support it, unless `COLOR=0` is set or TTY is non-interactive ([#42834](https://github.com/expo/expo/pull/42834) by [@kitten](https://github.com/kitten))
+- Collapse usage guide on `expo start` if space is insufficient ([#42835](https://github.com/expo/expo/pull/42835) by [@kitten](https://gthub.com/kitten))
+- Drop obsolete `rawBody` parsing from Metro middleware stack ([#43074](https://github.com/expo/expo/pull/43074) by [@kitten](https://github.com/kitten))
+- Add minimum Node.js version check and warning to CLI startup ([#43076](https://github.com/expo/expo/pull/43076) by [@kitten](https://github.com/kitten))
+- Retrieve default route's IP address concurrently ([#42923](https://github.com/expo/expo/pull/42923) by [@kitten](https://github.com/kitten))
+- Replace `require-from-string` with `@expo/require-utils` ([#42884](https://github.com/expo/expo/pull/42884) by [@kitten](https://github.com/kitten))
+- Refactor env loading and reloading to unified logic and don't overwrite original system values ([#43038](https://github.com/expo/expo/pull/43038) by [@kitten](https://github.com/kitten))
+- Add initial event logging system ([#43013](https://github.com/expo/expo/pull/43013) by [@kitten](https://github.com/kitten))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.84.x. ([#43018](https://github.com/expo/expo/pull/43018) by [@chrfalch](https://github.com/chrfalch))
+
+## 55.0.7 — 2026-02-08
+
+### 🎉 New features
+
+- Add `--browser` option to `expo login`. ([#42614](https://github.com/expo/expo/pull/42614) by [@byronkarlen](https://github.com/byronkarlen))
+
+### 💡 Others
+
+- delete old expo go artifacts to save disk space ([#42860](https://github.com/expo/expo/pull/42860) by [@vonovak](https://github.com/vonovak))
+- Bump to `fetch-nodeshim@^0.4.5` ([#42896](https://github.com/expo/expo/pull/42896) by [@kitten](https://github.com/kitten))
+- Enable `experiments.autolinkingModuleResolution` by default for workspaces/monorepos ([#40606](https://github.com/expo/expo/pull/40606) by [@kitten](https://github.com/kitten))
+- Add flag to preconfigure other flags for headless environment ([#42909](https://github.com/expo/expo/pull/42909) by [@kitten](https://github.com/kitten))
+- (Beta) Enable Bonjour by default ([#42929](https://github.com/expo/expo/pull/42929) by [@kitten](https://github.com/kitten))
+
+## 55.0.6 — 2026-02-03
+
+### 🐛 Bug fixes
+
+- Listen only on `localhost` when `--localhost` is passed ([#42760](https://github.com/expo/expo/pull/42760) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Add `~/Android/Sdk` to detected Android SDK locations on Linux ([#42761](https://github.com/expo/expo/pull/42761) by [@kitten](https://github.com/kitten))
+- Bump to `fetch-nodeshim@^0.4.4` ([#42831](https://github.com/expo/expo/pull/42831) by [@kitten](https://github.com/kitten))
+
+## 55.0.5 — 2026-02-03
+
+### 🛠 Breaking changes
+
+- Remove legacy typed routes logic for SDK 51 projects ([#42604](https://github.com/expo/expo/pull/42604) by [@hassankhan](https://github.com/hassankhan))
+
+### 🐛 Bug fixes
+
+- Fix RSC support in development ([#42617](https://github.com/expo/expo/pull/42617) by [@hassankhan](https://github.com/hassankhan))
+- Fix loader URL resolution for nested `/index` paths ([#42629](https://github.com/expo/expo/pull/42629) by [@hassankhan](https://github.com/hassankhan))
+- [web] Ensure `<Head>` component re-renders when focus changes ([#42681](https://github.com/expo/expo/pull/42681) by [@hassankhan](https://github.com/hassankhan))
+- Mark `expo-router` as optional peer to prevent auto-installation ([#42728](https://github.com/expo/expo/pull/42728) by [@kitten](https://github.com/kitten))
+- [android] Support `debugOptimized` build variant for active architecture filtering ([#42766](https://github.com/expo/expo/pull/42766) by [@janicduplessis](https://github.com/janicduplessis))
+
+### 💡 Others
+
+- Bump `@expo/xcpretty` ([#42485](https://github.com/expo/expo/pull/42485) by [@kitten](https://github.com/kitten))
+- Refactor to replace GraphQL fetch client ([#42556](https://github.com/expo/expo/pull/42556) by [@kitten](https://github.com/kitten))
+- Replace tar dependency and `multipart/mixed` logic with `multitars` package ([#42472](https://github.com/expo/expo/pull/42472) by [@kitten](https://github.com/kitten))
+- Improve global resolution for `ExternalModule` resolution ([#42513](https://github.com/expo/expo/pull/42513) by [@kitten](https://github.com/kitten))
+- Replace `undici` dependency with `fetch-nodeshim` and Node built-ins ([#42720](https://github.com/expo/expo/pull/42720) by [@kitten](https://github.com/kitten))
+- Bump to `fetch-nodeshim@^0.4.3` ([#42765](https://github.com/expo/expo/pull/42765) by [@kitten](https://github.com/kitten))
+
+## 55.0.4 — 2026-01-27
+
+### 🐛 Bug fixes
+
+- Reallow connections on `/expo-dev-plugins/broadcast` broadcast socket to local connections ([#42538](https://github.com/expo/expo/pull/42538) by [@kitten](https://github.com/kitten)), ([#42705](https://github.com/expo/expo/pull/42705) by [@vonovak](https://github.com/vonovak))
+- Fix `freeport-async` replacement ([#42509](https://github.com/expo/expo/pull/42509) by [@kitten](https://github.com/kitten))
+- Use `require.resolve` to resolve `@expo/router-server` path ([#42516](https://github.com/expo/expo/pull/42516) by [@hassankhan](https://github.com/hassankhan))
+
+## 55.0.3 — 2026-01-26
+
+### 🎉 New features
+
+- Add `--source-maps inline` option to `expo export` for embedding source maps in JavaScript bundles. ([#42492](https://github.com/expo/expo/pull/42492) by [@brentvatne](https://github.com/brentvatne))
+
+### 💡 Others
+
+- Add allowedValues validation for string-or-boolean args ([#42523](https://github.com/expo/expo/pull/42523) by [@brentvatne](https://github.com/brentvatne))
+- Drop `freeport-async` dependency ([#42478](https://github.com/expo/expo/pull/42478) by [@kitten](https://github.com/kitten))
+- Drop `pretty-bytes` for `Intl.NumberFormat` call with fallback ([#42482](https://github.com/expo/expo/pull/42482) by [@kitten](https://github.com/kitten))
+- Warn when `@expo/fingerprint` is missing during build cache check ([#41910](https://github.com/expo/expo/pull/41910) by [@gustavoharff](https://github.com/gustavoharff))
+
+## 55.0.2 — 2026-01-23
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+### 🐛 Bug fixes
+
+- Treat both `null` and `undefined` loader responses as `null` ([#42419](https://github.com/expo/expo/pull/42419) by [@hassankhan](https://github.com/hassankhan))
+- Allow busting the cached manifest and SSR renderer during development ([#42411](https://github.com/expo/expo/pull/42411) by [@hassankhan](https://github.com/hassankhan))
+
+## 55.0.0 — 2026-01-21
+
+- Clarify Expo Go instructions for scanning QR Code. ([#34811](https://github.com/expo/expo/pull/34811) by [@betomoedano](https://github.com/betomoedano))
+
+### 🛠 Breaking changes
+
+- Drop `EXPO_USE_FAST_RESOLVER` flag and implementation ([#40673](https://github.com/expo/expo/pull/40673) by [@kitten](https://github.com/kitten))
+- Update to `tar@^7.5.2` ([#40732](https://github.com/expo/expo/pull/40732) by [@kitten](https://github.com/kitten))
+
+### 🎉 New features
+
+- Switch EXPO_NO_GIT_STATUS to default to true. ([#42026](https://github.com/expo/expo/pull/42026) by [@EvanBacon](https://github.com/EvanBacon))
+- Added support for exposing cli command extensions as MCP tools. ([#40826](https://github.com/expo/expo/pull/40826) by [@chrfalch](https://github.com/chrfalch))
+- Added support for cli command extension in expo modules ([#39598](https://github.com/expo/expo/pull/39598) by [@chrfalch](https://github.com/chrfalch))
+- Add support for server data loaders in development ([#39570](https://github.com/expo/expo/pull/39570) by [@hassankhan](https://github.com/hassankhan))
+- Added support for bundling apps with a new error overlay from `@expo/log-box` package ([#39958](https://github.com/expo/expo/pull/39958) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Ensure `loader()` functions are stripped from client bundles ([#40670](https://github.com/expo/expo/pull/40670) by [@hassankhan](https://github.com/hassankhan))
+- Add support for server data loaders in static export mode ([#40130](https://github.com/expo/expo/pull/40130) by [@hassankhan](https://github.com/hassankhan))
+- Improve SSR support ([#41477](https://github.com/expo/expo/pull/41477) by [@hassankhan](https://github.com/hassankhan))
+- Add support for server data loaders in server export mode ([#41934](https://github.com/expo/expo/pull/41934) by [@hassankhan](https://github.com/hassankhan))
+- Add `EXPO_UNSTABLE_BONJOUR` to activate Bonjour advertising ([#42138](https://github.com/expo/expo/pull/42138) by [@kitten](https://github.com/kitten))
+- Respect `web.output` configuration in dev server for loaders ([#42147](https://github.com/expo/expo/pull/42147) by [@hassankhan](https://github.com/hassankhan))
+- Allow returning `Response` objects from loader functions ([#42051](https://github.com/expo/expo/pull/42051) by [@hassankhan](https://github.com/hassankhan))
+
+### 🐛 Bug fixes
+
+- clean up hanging processes at the end of `expo export` better. ([#41692](https://github.com/expo/expo/pull/41692) by [@EvanBacon](https://github.com/EvanBacon))
+- refactor launching Expo Go on Android ([#40020](https://github.com/expo/expo/pull/40020) by [@vonovak](https://github.com/vonovak))
+- only skip dependency validation for `EXPO_NO_DEPENDENCY_VALIDATION=1` ([#40043](https://github.com/expo/expo/pull/40043) by [@kitten](https://github.com/kitten))
+- Report stack traces on unexpected `TransformerError`s and `SyntaxError`s from Metro ([#41468](https://github.com/expo/expo/pull/41468) by [@kitten](https://github.com/kitten))
+- resolve "Illegal invocation" errors in `workerd` runtime ([#41502](https://github.com/expo/expo/pull/41502) by [@hassankhan](https://github.com/hassankhan))
+- Fix running iOS builds on device without available simulators ([#41524](https://github.com/expo/expo/pull/41524) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Fix `expo install` not auto-adding config plugins for scoped packages ([#41613](https://github.com/expo/expo/pull/41613) by [@kitten](https://github.com/kitten))
+- Fix `metro-runtime/src/modules/empty-module.js` in RSC middleware ([#41687](https://github.com/expo/expo/pull/41687) by [@kitten](https://github.com/kitten))
+- Pass empty `nodeModulesPaths` when applying autolinking and fallback resolution to Metro resolver ([#41703](https://github.com/expo/expo/pull/41703) by [@kitten](https://github.com/kitten))
+- Restore `resetCache`, `maxWorkers`, and `port` override args when instantiating Metro ([#41854](https://github.com/expo/expo/pull/41854) by [@shottah](https://github.com/shottah))
+- Fix response streaming from dev server (remove compression) ([#41955](https://github.com/expo/expo/pull/41955) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Restrict debugger (`/inspector/network`) and devtools (`/expo-dev-plugins/broadcast`) sockets to local connections ([#42156](https://github.com/expo/expo/pull/42156) by [@kitten](https://github.com/kitten))
+- Use `ImmutableRequest` for loader functions ([#42149](https://github.com/expo/expo/pull/42149) by [@hassankhan](https://github.com/hassankhan))
+- Avoid module ID collision between loader and render bundles ([#42245](https://github.com/expo/expo/pull/42245) by [@hassankhan](https://github.com/hassankhan))
+- Correctly show output mode in CLI log when exporting app ([#42269](https://github.com/expo/expo/pull/42269) by [@hassankhan](https://github.com/hassankhan))
+- Preserve search params for loader data fetches ([#42227](https://github.com/expo/expo/pull/42227) by [@hassankhan](https://github.com/hassankhan))
+
+### 💡 Others
+
+- Remove `experiments.reactCanary` support in favor of built-in React +19.1 support. ([#40386](https://github.com/expo/expo/pull/40386) by [@EvanBacon](https://github.com/EvanBacon))
+- Migrate static rendering logic from `expo-router` to `@expo/router-server` ([#39374](https://github.com/expo/expo/pull/39374) by [@hassankhan](https://github.com/hassankhan))
+- Use Expo `HMRClient` in native apps ([#40449](https://github.com/expo/expo/pull/40449) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Migrate RSC logic from `expo-router` to `@expo/router-server` ([#40484](https://github.com/expo/expo/pull/40484) by [@hassankhan](https://github.com/hassankhan))
+- Migrate typed routes logic from `expo-router` to `@expo/router-server` ([#40576](https://github.com/expo/expo/pull/40576) by [@hassankhan](https://github.com/hassankhan))
+- Deduplicate shared types across `@expo/cli`, `@expo/router-server`, `expo-server` ([#40614](https://github.com/expo/expo/pull/40614) by [@hassankhan](https://github.com/hassankhan))
+- [Internal] Use local monorepo template for `expo/expo` development ([#41383](https://github.com/expo/expo/pull/41383) by [@kitten](https://github.com/kitten))
+- Replace type declaration override for `@expo/config-types` with cast ([#41453](https://github.com/expo/expo/pull/41453) by [@kitten](https://github.com/kitten))
+- [Internal] add `Async` suffix to `exportMiddleware` and `exportServerRoute` ([#41443](https://github.com/expo/expo/pull/41443) by [@hassankhan](https://github.com/hassankhan))
+- Skip adding unnecessary CORS response header for `localhost` requests ([#41542](https://github.com/expo/expo/pull/41542) by [@kitten](https://github.com/kitten))
+- Embed `/_expo/touch` templates ([#41541](https://github.com/expo/expo/pull/41541) by [@kitten](https://github.com/kitten))
+- Bump to `@expo/metro@54.2.0` and `metro@0.83.3` ([#41142](https://github.com/expo/expo/pull/41142) by [@kitten](https://github.com/kitten))
+- Support `devicectl` jsonVersion 3 for Xcode 26 ([#42859](https://github.com/expo/expo/pull/42859) by [@kimchi-developer](https://github.com/kimchi-developer))
+- Bump `node-forge` dependency range to `^1.3.3` ([#41753](https://github.com/expo/expo/pull/41753) by [@kitten](https://github.com/kitten))
+- Bump to `@expo/code-signing-certificates@^0.0.6` ([#41965](https://github.com/expo/expo/pull/41965) by [@kitten](https://github.com/kitten))
+- Unify nullish value handling for data loaders ([#42070](https://github.com/expo/expo/pull/42070) by [@hassankhan](https://github.com/hassankhan))
+- Add internal `EXPO_OVERRIDE_METRO_CONFIG` environment variable ([#42082](https://github.com/expo/expo/pull/42082) by [@kitten](https://github.com/kitten))
+- Remove auto-adding of missing android/ios npm scripts from prebuild ([#41964](https://github.com/expo/expo/pull/41964) by [@kitten](https://github.com/kitten))
+- Change loader function signature to `(request, params)` ([#42318](https://github.com/expo/expo/pull/42318) by [@hassankhan](https://github.com/hassankhan))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.82.x. ([#39678](https://github.com/expo/expo/pull/39678) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Added support for React Native 0.83.x. ([#41564](https://github.com/expo/expo/pull/41564) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 54.0.18 - 2025-12-05
+
+### 📚 3rd party library updates
+
+- Bumped `@expo/devcert@1.2.1`. ([#41438](https://github.com/expo/expo/pull/41438) by [@kudo](https://github.com/kudo))
+
+## 54.0.17 - 2025-12-04
+
+### 🐛 Bug fixes
+
+- Fix updated import wrapper to handle absolute paths ([#41349](https://github.com/expo/expo/pull/41349) by [@TheAmphibianX](https://github.com/TheAmphibianX))
+
+### 💡 Others
+
+- Update to `glob@^13.0.0` ([#41079](https://github.com/expo/expo/pull/41079) by [@kitten](https://github.com/kitten))
+- Use `@expo/mcp-tunnel` from `expo-mcp`. ([#41276](https://github.com/expo/expo/pull/41276) by [@kudo](https://github.com/kudo))
+- Allow MCP tunnel starting in background tasks. ([#41359](https://github.com/expo/expo/pull/41359) by [@kudo](https://github.com/kudo))
+
+## 54.0.16 - 2025-11-07
+
+### 🐛 Bug fixes
+
+- Fix RSC `[...rsc]+api.ts` template path resolution ([#40760](https://github.com/expo/expo/pull/40760) by [@kitten](https://github.com/kitten))
+
+## 54.0.15 - 2025-11-03
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.14 - 2025-10-28
+
+### 💡 Others
+
+- Alias `transformer.asyncRequireModulePath` via Node resolution, when provided ([#40584](https://github.com/expo/expo/pull/40584) by [@kitten](https://github.com/kitten))
+- Added MCP server handshaking and graceful shutdown. ([#40660](https://github.com/expo/expo/pull/40660) by [@kudo](https://github.com/kudo))
+
+## 54.0.13 - 2025-10-21
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.12 - 2025-10-20
+
+### 💡 Others
+
+- Bump to `@expo/metro@54.1.0` and `metro@0.83.2` ([#39826](https://github.com/expo/expo/pull/39826) by [@kitten](https://github.com/kitten))
+
+## 54.0.11 - 2025-10-09
+
+### 🎉 New features
+
+- Allow specifying user-defined headers for all routes ([#40173](https://github.com/expo/expo/pull/40173) by [@hassankhan](https://github.com/hassankhan))
+
+### 🐛 Bug fixes
+
+- Prevent externals logic from being applied to unreachable Node modules ([#40247](https://github.com/expo/expo/pull/40247) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Export `_expo/.routes.json` metadata file for `static` outputs ([#40243](https://github.com/expo/expo/pull/40243) by [@kitten](https://github.com/kitten))
+- Add environmental variable to enable experimental web modal implementation ([#40231](https://github.com/expo/expo/pull/40231) by [@Ubax](https://github.com/Ubax))
+
+## 54.0.10 - 2025-10-01
+
+### 💡 Others
+
+- Update usage of `@expo/server` API ([#39894](https://github.com/expo/expo/pull/39894) by [@kitten](https://github.com/kitten))
+- Rename to `@expo/server` to `expo-server` ([#40087](https://github.com/expo/expo/pull/40087) by [@kitten](https://github.com/kitten))
+
+## 54.0.7 - 2025-09-18
+
+### 💡 Others
+
+- fix typo in CLI error message when `expo-router` is not installed. ([#36608](https://github.com/expo/expo/pull/36608) by [@abraj](https://github.com/abraj))
+- Bump to `@expo/metro@~54.0.0` ([#39800](https://github.com/expo/expo/pull/39800) by [@kitten](https://github.com/kitten))
+
+## 54.0.6 — 2025-09-16
+
+### 💡 Others
+
+- Added MCP tunnel integration. ([#39392](https://github.com/expo/expo/pull/39392) by [@kudo](https://github.com/kudo))
+- Allow `experiments.autolinkingModuleResolution` to apply to web bundling ([#39701](https://github.com/expo/expo/pull/39701) by [@kitten](https://github.com/kitten))
+- Add `--api-only` as an alias for `--ssg-only` to `expo export -p web` ([#39709](https://github.com/expo/expo/pull/39709) by [@kitten](https://github.com/kitten))
+
+## 54.0.5 — 2025-09-13
+
+### 🐛 Bug fixes
+
+- fix undefined logs being printed. ([#39645](https://github.com/expo/expo/pull/39645) by [@EvanBacon](https://github.com/EvanBacon))
+- Prevent iOS device builds from being remotely cached ([#39621](https://github.com/expo/expo/pull/39621) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 54.0.4 — 2025-09-12
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.3 — 2025-09-12
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.2 — 2025-09-11
+
+### 🐛 Bug fixes
+
+- Fix fallback resolution for modules that failed to hoist (inside `expo` or `expo-router`'s child `node_modules` folder) ([#39581](https://github.com/expo/expo/pull/39581) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Replace usage of metro internals in `instantiateMetro` with `Terminal.log` ([#39531](https://github.com/expo/expo/pull/39531) by [@robhogan](https://github.com/robhogan))
+- Don't enforce `@expo/metro-runtime` for web exports anymore ([#39603](https://github.com/expo/expo/pull/39603) by [@kitten](https://github.com/kitten))
+
+## 54.0.1 — 2025-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0 — 2025-09-10
+
+### 💡 Others
+
+- Apply upstream changes to optional require runtime fork ([#39473](https://github.com/expo/expo/pull/39473) by [@kitten](https://github.com/kitten))
+- Fix fast refresh with live bindings by applying getter exception and always using forked module system ([#39525](https://github.com/expo/expo/pull/39525) by [@kitten](https://github.com/kitten))
+
+## 0.26.9 — 2025-09-08
+
+### 🐛 Bug fixes
+
+- Fix Expo Go docs link in ExpoGoInstaller ([#39394](https://github.com/expo/expo/pull/39394) by [@amandeepmittal](https://github.com/amandeepmittal))
+- Fix UTF-8 characters in project path causing `setHeader` error in Metro middleware ([#39285](https://github.com/expo/expo/pull/39285) by [@HMYang33](https://github.com/HMYang33))
+
+## 0.26.8 — 2025-09-03
+
+### 🎉 New features
+
+- [web] add matcher support for server middleware ([#39225](https://github.com/expo/expo/pull/39225) by [@hassankhan](https://github.com/hassankhan))
+
+### 🐛 Bug fixes
+
+- Parse and print code frames above import stack for native bundling errors ([#39150](https://github.com/expo/expo/pull/39150) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+
+## 0.26.7 — 2025-09-02
+
+### 🐛 Bug fixes
+
+- Fix unnecessary version warning when running prebuild for prerelease versions. ([#39298](https://github.com/expo/expo/pull/39298) by [@behenate](https://github.com/behenate))
+
+### 💡 Others
+
+- Promote buildCacheProvider to stable ([#39297](https://github.com/expo/expo/pull/39297) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 0.26.6 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 0.26.5 — 2025-08-28
+
+### 💡 Others
+
+- Bump to `@react-native/dev-middleware@0.81.1` ([#39206](https://github.com/expo/expo/pull/39206) by [@kitten](https://github.com/kitten))
+
+## 0.26.4 — 2025-08-27
+
+### 💡 Others
+
+- Remove unused `@babel/runtime` dependency from CLI ([#39040](https://github.com/expo/expo/pull/39040) by [@kitten](https://github.com/kitten))
+
+## 0.26.3 — 2025-08-25
+
+### 💡 Others
+
+- Prevent `EXPO_USE_FAST_RESOLVER` from being force enabled for other experiments ([#39073](https://github.com/expo/expo/pull/39073) by [@kitten](https://github.com/kitten))
+
+## 0.26.2 — 2025-08-21
+
+### 💡 Others
+
+- Replace `EXPO_USE_STICKY_RESOLVER` with `experiments.autolinkingModuleResolution` in app config ([#39044](https://github.com/expo/expo/pull/39044) by [@kitten](https://github.com/kitten))
+
+## 0.26.1 — 2025-08-21
+
+### 💡 Others
+
+- Apply supervisor transformer that wraps a user-configured custom transformer. This annotates initialization errors and enforces a single Metro version ([#38961](https://github.com/expo/expo/pull/38961) by [@kitten](https://github.com/kitten))
+
+## 0.26.0 — 2025-08-19
+
+### 🎉 New features
+
+- Render errors with multiple stacks in Metro Dev Server terminal ([#38871](https://github.com/expo/expo/pull/38871) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+
+## 0.25.2 — 2025-08-16
+
+### 💡 Others
+
+- Reuse `expo/internal/unstable-autolinking-exports` for `DevToolsPluginManager` ([#38913](https://github.com/expo/expo/pull/38913) by [@kitten](https://github.com/kitten))
+
+## 0.25.1 — 2025-08-15
+
+### 💡 Others
+
+- use relative paths in missing imports errors ([#38853](https://github.com/expo/expo/pull/38853) by [@EvanBacon](https://github.com/EvanBacon))
+- Reuse `derefSchema` from `@expo/schema-utils` ([#38863](https://github.com/expo/expo/pull/38863) by [@kitten](https://github.com/kitten))
+
+## 0.25.0 — 2025-08-13
+
+### 🛠 Breaking changes
+
+- Remove flipper hack support ([#37532](https://github.com/expo/expo/pull/37532) by [@EvanBacon](https://github.com/EvanBacon))
+- Use template tarball from expo package. ([#37334](https://github.com/expo/expo/pull/37334) by [@jakex7](https://github.com/jakex7))
+- CLI returns non-zero return code on Abort and Silent Errors ([#38365](https://github.com/expo/expo/pull/38365) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+
+### 🎉 New features
+
+- Add experimental `--unstable-hosted-native` flag to expo export. ([#38265](https://github.com/expo/expo/pull/38265) by [@EvanBacon](https://github.com/EvanBacon))
+- Enable async require by default. ([#36405](https://github.com/expo/expo/pull/36405) by [@EvanBacon](https://github.com/EvanBacon))
+- Support JSON output for install check. ([#37318](https://github.com/expo/expo/pull/37318) by [@betomoedano](https://github.com/betomoedano))
+- Add `EXPO_USE_STICKY_RESOLVER` to enable experimental sticky resolution to native modules ([#37201](https://github.com/expo/expo/pull/37201) by [@kitten](https://github.com/kitten))
+- Support external URLs with static redirects ([#38041](https://github.com/expo/expo/pull/38041) by [@hassankhan](https://github.com/hassankhan))
+- Add `EXPO_UNSTABLE_LIVE_BINDINGS` to allow developer to disable live binding in `experimentalImportSupport`. ([#38135](https://github.com/expo/expo/pull/38135) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Add `location.origin`, Expo SDK version and Hermes version to sitemap UI ([#38201](https://github.com/expo/expo/pull/38201) by [@hassankhan](https://github.com/hassankhan))
+- Allow running server middleware with `+middleware.ts` ([#38330](https://github.com/expo/expo/pull/38330) by [@hassankhan](https://github.com/hassankhan))
+- Create `metro-runtime` and `common` chunks when bundle splitting is enabled ([#38339](https://github.com/expo/expo/pull/38339) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+
+### 🐛 Bug fixes
+
+- Fix caching across devices. ([#38476](https://github.com/expo/expo/pull/38476) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix DOM component metadata overwriting causing WebView 404s after EAS updates. ([#38290](https://github.com/expo/expo/pull/38290) by [@danoc](https://github.com/danoc))
+- Support `--output-dir` being a directory outside of the project root. ([#38260](https://github.com/expo/expo/pull/38260) by [@EvanBacon](https://github.com/EvanBacon))
+- Update error message for ngrok ([#22469](https://github.com/expo/expo/pull/22469) by [@russorat](https://github.com/russorat))
+- Support SSR imports of internal node builtins such as `_http_agent`. ([#37494](https://github.com/expo/expo/pull/37494) by [@EvanBacon](https://github.com/EvanBacon))
+- Allow anonymous sessions even when `projectId` is set ([#36874](https://github.com/expo/expo/pull/36874) by [@kadikraman](https://github.com/kadikraman))
+- Add static rewrites support to export and server-side handling ([#37930](https://github.com/expo/expo/pull/37930) by [@hassankhan](https://github.com/hassankhan))
+- Fix missing Error import stack with `EXPO_METRO_UNSTABLE_ERRORS` enabled and no cause ([#38256](https://github.com/expo/expo/pull/38256)) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Enable inverse dependency stack trace (`EXPO_METRO_UNSTABLE_ERRORS`) for Metro bundling errors by default ([#38296](https://github.com/expo/expo/pull/38296) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Fix duplicate code frames printed in transformation error ([#38288](https://github.com/expo/expo/pull/38288) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Fix processing circular dependencies for inverse dependency resolver stack trace ([#38414](https://github.com/expo/expo/pull/38414) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Run prebuild only for the platforms specified in app config (if listed). ([#31752](https://github.com/expo/expo/pull/31752) by [@prathameshmm02](https://github.com/prathameshmm02))
+- Improve API Routes development errors (remove duplicates and misleading stack traces) ([#38465](https://github.com/expo/expo/pull/38465) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Resolve extensionless routes as HTML in static server ([#38610](https://github.com/expo/expo/pull/38610) by [@hassankhan](https://github.com/hassankhan))
+- Factor in no :hermes_enabled in Podfile ([#38664](https://github.com/expo/expo/pull/38664) by [@brentvatne](https://github.com/brentvatne))
+
+### 💡 Others
+
+- Extend list of blocked internal imports for react-native-web. ([#38381](https://github.com/expo/expo/pull/38381) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix typos. ([#38264](https://github.com/expo/expo/pull/38264) by [@EvanBacon](https://github.com/EvanBacon))
+- add modal component ([#37365](https://github.com/expo/expo/pull/37365) by [@Ubax](https://github.com/Ubax))
+- Use Vaul for modals and sheets on web with a custom stack ([#37767](https://github.com/expo/expo/pull/37767) by [@hirbod](https://github.com/hirbod))
+- fix web back/forward buttons ([#37747](https://github.com/expo/expo/pull/37747) by [@Ubax](https://github.com/Ubax))
+- Added CSS-Modules Fast Refresh E2E Coverage ([#37845](https://github.com/expo/expo/pull/37845) by [@hirbod](https://github.com/hirbod))
+- Added tests for modal stacking ([#37856](https://github.com/expo/expo/pull/37856) by [@hirbod](https://github.com/hirbod))
+- simplify/optimize web-modal tests ([#38025](https://github.com/expo/expo/pull/38025) by [@hirbod](https://github.com/hirbod))
+- Fix e2e start-test for local runs ([#38066](https://github.com/expo/expo/pull/38066) by [@Ubax](https://github.com/Ubax))
+- Switch Metro imports to `@expo/metro` wrapper package ([#38166](https://github.com/expo/expo/pull/38166) by [@kitten](https://github.com/kitten))
+- Treat Meta Quest devices as Android devices in `resolvePlatformFromUserAgentHeader` ([#37749](https://github.com/expo/expo/pull/37749) by [@behenate](https://github.com/behenate))
+- Add missing `expo-router` optional peer dependency and `@expo/server` dependency ([#38533](https://github.com/expo/expo/pull/38533) by [@kitten](https://github.com/kitten))
+- Update `@react-native/js-polyfills` to instead be loaded from `react-native/rn-get-polyfills` ([#38547](https://github.com/expo/expo/pull/38547) by [@kitten](https://github.com/kitten))
+- Add missing (reverse) peer dependency on `expo` ([#38547](https://github.com/expo/expo/pull/38547) by [@kitten](https://github.com/kitten))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.80.x. ([#37400](https://github.com/expo/expo/pull/37400) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 0.24.20 - 2025-07-08
+
+_This version does not introduce any user-facing changes._
+
+## 0.24.19 - 2025-07-07
+
+### 🐛 Bug fixes
+
+- Allow fast resolver to resolve nested `node_modules` packages in monorepos. ([#37769](https://github.com/expo/expo/pull/37769) by [@byCedric](https://github.com/byCedric))
+- Rewrite React canary resolution to rely on normal Node module resolution. ([#37770](https://github.com/expo/expo/pull/37770) by [@byCedric](https://github.com/byCedric))
+
+## 0.24.17 - 2025-07-02
+
+### 💡 Others
+
+- Bumped `playwright` version to 1.53.1. ([#37631](https://github.com/expo/expo/pull/37631) by [@kudo](https://github.com/kudo))
+
+## 0.24.16 - 2025-07-01
+
+_This version does not introduce any user-facing changes._
+
+## 0.24.15 - 2025-06-18
+
+_This version does not introduce any user-facing changes._
+
+## 0.24.14 - 2025-06-04
+
+### 🐛 Bug fixes
+
+- remove extraneous log ([#36801](https://github.com/expo/expo/pull/36801) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix virtual externalized module checking for `window` for web worker code ([#36852](https://github.com/expo/expo/pull/36852) by [@kitten](https://github.com/kitten))
+- Prevent module registry (from `metro-require` fork) to be reinstantiated outside of development ([#36828](https://github.com/expo/expo/pull/36828) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Update to `getenv@2.0.0` to support upper case boolean environment variables ([#36688](https://github.com/expo/expo/pull/36688) by [@stephenlacy](https://github.com/stephenlacy))
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+- Update tests to include new expo-router asset - arrow_down.png ([#36882](https://github.com/expo/expo/pull/36882) by [@Ubax](https://github.com/Ubax))
+
+## 0.24.13 — 2025-05-08
+
+### 🐛 Bug fixes
+
+- Update to `lan-network@^0.1.6` for VPN network local IP changes and Windows fixes ([#36747](https://github.com/expo/expo/pull/36747) by [@kitten](https://github.com/kitten))
+
+## 0.24.12 — 2025-05-06
+
+### 💡 Others
+
+- Remove EAS build cache provider implementation ([#36584](https://github.com/expo/expo/pull/36584) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Rename remote build cache provider to build cache provider ([#36643](https://github.com/expo/expo/pull/36643) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 0.24.11 — 2025-05-03
+
+_This version does not introduce any user-facing changes._
+
+## 0.24.10 — 2025-05-01
+
+### 🎉 New features
+
+- Prevent deleting project directory. ([#36514](https://github.com/expo/expo/pull/36514) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Improve error format when `npx expo export` (native) fails. ([#36533](https://github.com/expo/expo/pull/36533) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 0.24.9 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 0.24.8 — 2025-04-30
+
+### 🐛 Bug fixes
+
+- Fix fallback resolution strategy for non-monorepo Node module installations (e.g. isolated dependencies with pnpm without workspaces) ([#36181](https://github.com/expo/expo/pull/36181) by [@kitten](https://github.com/kitten))
+
+## 0.24.7 — 2025-04-28
+
+### 🎉 New features
+
+- Add support for custom remote build cache providers ([#36314](https://github.com/expo/expo/pull/36314) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 0.24.6 — 2025-04-28
+
+### 🎉 New features
+
+- Inject web stream support when bundling for native platforms. ([#36407](https://github.com/expo/expo/pull/36407) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Remove absolute paths from server components output. ([#35276](https://github.com/expo/expo/pull/35276) by [@EvanBacon](https://github.com/EvanBacon))
+- Move virtual RSC client boundary entry point to `expo`. ([#36408](https://github.com/expo/expo/pull/36408) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 0.24.5 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 0.24.4 — 2025-04-23
+
+### 🎉 New features
+
+- Add more options to `npx expo lint` command. ([#36262](https://github.com/expo/expo/pull/36262) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Exclude directories from prebuild "magic string" renaming operations. ([#36325](https://github.com/expo/expo/pull/36325) by [@byCedric](https://github.com/byCedric))
+
+## 0.24.3 — 2025-04-21
+
+### 🐛 Bug fixes
+
+- Fix support for using build variants with remote build cache ([#36165](https://github.com/expo/expo/pull/36165) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Add `exporting` config option for serializer to generate correct entry bundle file name. ([#35563](https://github.com/expo/expo/pull/35563) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Add HMR for environment variables in development ([#36189](https://github.com/expo/expo/pull/36189) by [@EvanBacon](https://github.com/EvanBacon))
+- Drop `internal-ip` and determine local network IP address and gateway with UDP sockets. ([#35102](https://github.com/expo/expo/pull/35102) by [@kitten](https://github.com/kitten))
+- Improve ability to open stacks from command line. ([#36272](https://github.com/expo/expo/pull/36272) by [@EvanBacon](https://github.com/EvanBacon))
+- Exclude `@expo/*` packages from the New Architecture compatibility check. ([#36175](https://github.com/expo/expo/pull/36175) by [@Simek](https://github.com/Simek))
+
+## 0.24.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 0.24.1 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 0.24.0 — 2025-04-11
+
+### 🎉 New features
+
+- Output recommended versions in prebuild ([#35941](https://github.com/expo/expo/pull/35941) by [@jakex7](https://github.com/jakex7))
+
+### 💡 Others
+
+- Add a warning for users to upgrade their `eas-cli` when using `remoteBuildCache`. ([#36103](https://github.com/expo/expo/pull/36103) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 0.23.4 — 2025-04-11
+
+### 💡 Others
+
+- Mark `--https` as deprecated in favor of `--tunnel`. ([#36083](https://github.com/expo/expo/pull/36083) by [@EvanBacon](https://github.com/EvanBacon))
+- Use `eas-cli fingerprint:generate` to generate fingerprints for remote builds cache. ([#36085](https://github.com/expo/expo/pull/36085) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 0.23.3 — 2025-04-10
+
+### 🎉 New features
+
+- Add support for using remote builds as cache ([#36029](https://github.com/expo/expo/pull/36029), [#36047](https://github.com/expo/expo/pull/36047) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 0.23.2 — 2025-04-09
+
+### 🐛 Bug fixes
+
+- Ensure fast resolver is enabled when react canary is enabled. ([#36053](https://github.com/expo/expo/pull/36053) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 0.23.1 — 2025-04-08
+
+### 🎉 New features
+
+- Upgrade React canary to 19.1 ([#36021](https://github.com/expo/expo/pull/36021) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Fix fusebox log formatting and silence migration warning. ([#35911](https://github.com/expo/expo/pull/35911) by [@EvanBacon](https://github.com/EvanBacon))
+- Hide BRIDGE tags in webview logs. ([#35920](https://github.com/expo/expo/pull/35920) by [@EvanBacon](https://github.com/EvanBacon))
+- Fixed React Native Devtools opening issue. ([#35935](https://github.com/expo/expo/pull/35935), [#35952](https://github.com/expo/expo/pull/35952) by [@kudo](https://github.com/kudo))
+
+### 💡 Others
+
+- Add backup stack trace ([#35913](https://github.com/expo/expo/pull/35913) by [@EvanBacon](https://github.com/EvanBacon))
+- Add helpful recommendation to the standard "Xcode not installed" error message. ([#36024](https://github.com/expo/expo/pull/36024) by [@quantizor](https://github.com/quantizor)
+
+## 0.23.0 — 2025-04-04)
+
+### 🛠 Breaking changes
+
+- upgrade RN to 0.78 ([#35050](https://github.com/expo/expo/pull/35050) by [@vonovak](https://github.com/vonovak))
+- Force NODE_ENV during npx expo export and do not allow overwriting outside of `--dev` flag. ([#34533](https://github.com/expo/expo/pull/34533) by [@EvanBacon](https://github.com/EvanBacon))
+- Removed react-devtools integration from CLI. ([#35741](https://github.com/expo/expo/pull/35741) by [@kudo](https://github.com/kudo))
+
+### 🎉 New features
+
+- Symbolicate React error stacks in terminal logs. ([#35866](https://github.com/expo/expo/pull/35866) by [@EvanBacon](https://github.com/EvanBacon))
+- Add improved error message for missing optional imports. ([#35239](https://github.com/expo/expo/pull/35239) by [@EvanBacon](https://github.com/EvanBacon))
+- Estimate Xcode binary path in minimal builds. ([#33415](https://github.com/expo/expo/pull/33415) by [@EvanBacon](https://github.com/EvanBacon))
+- Support GitHub shorthand for templates ([#33383](https://github.com/expo/expo/pull/33383) by [@satya164](https://github.com/satya164))
+- Create `keep.xml` to prevent resource shrinking on Android. ([#35465](https://github.com/expo/expo/pull/35465) by [@jakex7](https://github.com/jakex7))
+- Bump version of React Navigation ([#35595](https://github.com/expo/expo/pull/35595) by [@marklawlor](https://github.com/marklawlor))
+- Expo Router static redirects ([#34734](https://github.com/expo/expo/pull/34734) by [@marklawlor](https://github.com/marklawlor))
+- Add flat config support to `npx expo lint`. ([#34029](https://github.com/expo/expo/pull/34371) by [@kadikraman](https://github.com/kadikraman))
+
+### 🐛 Bug fixes
+
+- Force react-navigation to resolve to the same condition each time.
+- Silence missing favicon file error. ([#35357](https://github.com/expo/expo/pull/35357) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix importing `@radix-ui/colors` in CSS files. ([#35213](https://github.com/expo/expo/pull/35213) by [@EvanBacon](https://github.com/EvanBacon))
+- Ensure HMR updates use the same serializer pass as initial bundles. ([#35110](https://github.com/expo/expo/pull/35110) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix async bundling. ([#34986](https://github.com/expo/expo/pull/34986) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix application identifier suggestion. ([#34843](https://github.com/expo/expo/pull/34843) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix `static` and `server` projects not starting up correctly when project path contains URI-unsafe characters like spaces. ([#34289](https://github.com/expo/expo/pull/34289) by [@kitten](https://github.com/kitten))
+- Add fallback resolution strategy for dependencies and optional peer dependencies of `expo` and `expo-router` to prevent broken resolution for isolated dependencies and hoisting issues. ([#34286](https://github.com/expo/expo/pull/34286) by [@kitten](https://github.com/kitten))
+- Preserve proxy leases on webcontainers ([#34831](https://github.com/expo/expo/pull/34831) by [@kitten](https://github.com))
+- Add support for `isESMImport` in fast resolver and React Server resolution. ([#35520](https://github.com/expo/expo/pull/35520) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Remove ridiculous **NOBRIDGE** tag from logs. ([#35868](https://github.com/expo/expo/pull/35868) by [@EvanBacon](https://github.com/EvanBacon))
+- Upgrade readiness status of React Server Components. ([#35467](https://github.com/expo/expo/pull/35467) by [@EvanBacon](https://github.com/EvanBacon))
+- Add tests for `Worker` and `require.unstable_resolveWorker()`. ([#34938](https://github.com/expo/expo/pull/34938) by [@EvanBacon](https://github.com/EvanBacon))
+- Replace cacache in fetch cache with lighter implementation. ([#34983](https://github.com/expo/expo/pull/34983) by [@EvanBacon](https://github.com/EvanBacon))
+- Move getAccountUsername from `@expo/config` to CLI for internal usage ([#33249](https://github.com/expo/expo/pull/33249) by [@wschurman](https://github.com/wschurman))
+- Add e2e tests for browser history and hash param ([#33524](https://github.com/expo/expo/pull/33524) by [@stephentuso](https://github.com/stephentuso))
+- Removed creating the bridging header from the defaults plugin and added it to the template instead. ([#33539](https://github.com/expo/expo/pull/33539) by [@tsapeta](https://github.com/tsapeta))
+- Exclude `@expo-google-fonts/*` packages from the New Architecture compatibility check. ([#34127](https://github.com/expo/expo/pull/34127) by [@Simek](https://github.com/Simek))
+- Pin to `internal-ip@6.1.0` ([#34325](https://github.com/expo/expo/pull/34325) by [@kitten](https://github.com/kitten))
+- Change suggested package name to not use app config owner field. ([#34209](https://github.com/expo/expo/pull/34209) by [@wschurman](https://github.com/wschurman))
+- Update wording of "missing expo-router" message. ([#34717](https://github.com/expo/expo/pull/34717) by [@marklawlor](https://github.com/marklawlor))
+- Bump `bplist-creator` to `0.1.0` (aligning with `simple-plist@1.3.1`). ([#35041](https://github.com/expo/expo/pull/35041) by [@kitten](https://github.com/kitten))
+- Drop `is-wsl`, `is-docker`, and `lodash.debounce`. ([#35040](https://github.com/expo/expo/pull/35040) by [@kitten](https://github.com/kitten))
+- Drop `form-data` dependency. ([#35048](https://github.com/expo/expo/pull/35048) by [@kitten](https://github.com/35048))
+- Drop `fs-extra` in favor of `fs`. ([#35036](https://github.com/expo/expo/pull/35036) by [@kitten](https://github.com/kitten))
+- Drop `fast-glob` in favor of `glob`. ([#35082](https://github.com/expo/expo/pull/35082) by [@kitten](https://github.com/kitten))
+- Move Expo Atlas out of experimental phase by renaming environment variable to `EXPO_ATLAS`. ([#35260](https://github.com/expo/expo/pull/35260) by [@byCedric](https://github.com/byCedric))
+- Phase out `@expo/rudder-sdk-node` usage in telemetry. ([#35271](https://github.com/expo/expo/pull/35271) by [@byCedric](https://github.com/byCedric))
+- Fully remove `@expo/rudder-sdk-node` usage in telemetry. ([#35299](https://github.com/expo/expo/pull/35299) by [@byCedric](https://github.com/byCedric))
+- Bump Metro typescript declarations to `0.81.3`. ([#35306](https://github.com/expo/expo/pull/35306) by [@byCedric](https://github.com/byCedric))
+- Upgrade to `minimatch@9` ([#35313](https://github.com/expo/expo/pull/35313) by [@kitten](https://github.com/kitten))
+- Upgrade to `tar@7` ([#35314](https://github.com/expo/expo/pull/35314) by [@kitten](https://github.com/kitten))
+- Add requestId to API error ([#35442](https://github.com/expo/expo/pull/35442) by [@wschurman](https://github.com/wschurman))
+- Bump Metro typescript declarations to `0.82.0`. ([#35522](https://github.com/expo/expo/pull/35522) by [@byCedric](https://github.com/byCedric))
+- Bump `swc` for `@expo/cli` build output. ([#35584](https://github.com/expo/expo/pull/35584) by [@kitten](https://github.com/kitten))
+
+## 0.22.23 - 2025-03-31
+
+_This version does not introduce any user-facing changes._
+
+## 0.22.22 - 2025-03-26
+
+### 💡 Others
+
+- Improve devtools plugins transport performance. ([#35581](https://github.com/expo/expo/pull/35581) by [@kudo](https://github.com/kudo))
+
+## 0.22.21 - 2025-03-20
+
+### 🐛 Bug fixes
+
+- Use explicit user-provided port for `expo run ios --port` when running in headless mode. ([#35582](https://github.com/expo/expo/pull/35582) by [@byCedric](https://github.com/byCedric))
+
+## 0.22.20 - 2025-03-14
+
+### 🐛 Bug fixes
+
+- export:embed should create tmp assets directory if needed. ([#35387](https://github.com/expo/expo/pull/35387) by [@douglowder](https://github.com/douglowder))
+
+## 0.22.19 - 2025-03-11
+
+### 🐛 Bug fixes
+
+- Ensure `UsbmuxClient` can load binary plist pair record data from Apple devices. ([#35262](https://github.com/expo/expo/pull/35262) by [@byCedric](https://github.com/byCedric))
+- Fixed DOM Components support for updates. ([#35280](https://github.com/expo/expo/pull/35280), [#35290](https://github.com/expo/expo/pull/35290) by [@kudo](https://github.com/kudo))
+
+## 0.22.18 - 2025-02-20
+
+### 🐛 Bug fixes
+
+- Fixed EAS Update support for DOM Components. ([#35042](https://github.com/expo/expo/pull/35042) by [@kudo](https://github.com/kudo))
+
+### 💡 Others
+
+- fix tests for bun 1.2 (bun lockfile change) ([#34383](https://github.com/expo/expo/pull/34383) by [@vonovak](https://github.com/vonovak))
+
+## 0.22.17 - 2025-02-19
+
+### 🐛 Bug fixes
+
+- Fixed mixed content error when serving DOM Component using tunnel. ([#34916](https://github.com/expo/expo/pull/34916) by [@kudo](https://github.com/kudo))
+
+## 0.22.16 - 2025-02-14
+
+_This version does not introduce any user-facing changes._
+
+## 0.22.14 - 2025-02-12
+
+_This version does not introduce any user-facing changes._
+
+## 0.22.13 - 2025-02-06
+
+_This version does not introduce any user-facing changes._
+
+## 0.22.12 - 2025-02-04
+
+_This version does not introduce any user-facing changes._
+
+## 0.22.11 - 2025-01-27
+
+### 🐛 Bug fixes
+
+- Disable networking in webcontainers to improve compatibility. ([#34474](https://github.com/expo/expo/pull/34474) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 0.22.10 - 2025-01-19
+
+### 🎉 New features
+
+- Add basic support for API routes with React Server Components enabled. ([#34211](https://github.com/expo/expo/pull/34211) by [@EvanBacon](https://github.com/EvanBacon))
+- Add placeholder HTML for web exports with React Server Components enabled. ([#34093](https://github.com/expo/expo/pull/34093) by [@EvanBacon](https://github.com/EvanBacon))
+- Add support for ESM package imports support and `import` condition in `react-server` resolution. ([#34091](https://github.com/expo/expo/pull/34091) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- fix: add SSR HMR for nested server actions ([#34216](https://github.com/expo/expo/pull/34216) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix copying public files to dist/client in RSC exports. ([#34129](https://github.com/expo/expo/pull/34129) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix compiler usage with RSC HMR. ([#34128](https://github.com/expo/expo/pull/34128) by [@EvanBacon](https://github.com/EvanBacon))
+- Add temporary fix for HMR in RSC. ([#34168](https://github.com/expo/expo/pull/34168) by [@EvanBacon](https://github.com/EvanBacon))
+- Ensure we hydrate env vars in the project when running `npx expo serve`. ([#34064](https://github.com/expo/expo/pull/34064) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 💡 Others
+
+- Improve error when location polyfill is disabled. ([#34180](https://github.com/expo/expo/pull/34180) by [@EvanBacon](https://github.com/EvanBacon))
+- Improve native publish linking with server from CI. ([#34070](https://github.com/expo/expo/pull/34070) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 0.22.9 - 2025-01-10
+
+### 🐛 Bug fixes
+
+- Catch system errors when determining local IP addresses. ([#34043](https://github.com/expo/expo/pull/34043) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Added `--bytecode` option to `export:embed`. ([#33906](https://github.com/expo/expo/pull/33906) by [@kudo](https://github.com/kudo))
+
+## 0.22.8 - 2025-01-08
+
+### 🎉 New features
+
+- Support EAS Update when RSC is configured. ([#33975](https://github.com/expo/expo/pull/33975) by [@EvanBacon](https://github.com/EvanBacon))
+- Add `--unstable-rebundle` flag to `npx expo run:ios`. ([#33980](https://github.com/expo/expo/pull/33980) by [@EvanBacon](https://github.com/EvanBacon))
+- Add `+html` and `+native-intent` to `expo customize`. ([#33368](https://github.com/expo/expo/pull/33368) by [@EvanBacon](https://github.com/EvanBacon))
+- Add support for Bun's text-based lock file format `bun.lock` ([#33825](https://github.com/expo/expo/pull/33825) by [@tharakadesilva](https://github.com/tharakadesilva))
+- Add `--dev` to `npx expo install` to avoid complexity around `npx expo install -- --(save-)dev`. ([#34029](https://github.com/expo/expo/pull/34029) by [@byCedric](https://github.com/byCedric))
+- Add `EXPO_NO_DEPENDENCY_VALIDATION` flag to disable dependency validation for `npx expo install` and `npx expo start`. ([#34122](https://github.com/expo/expo/pull/34122) by [@byCedric](https://github.com/byCedric))
+- Add support for webcontainer compatible proxy and enable by default once wecontainer is detected. ([#34588](https://github.com/expo/expo/pull/34588) by [@byCedric](https://github.com/byCedric))
+- Support static API route redirects. ([#34734](https://github.com/expo/expo/pull/34734) by [@marklawlor](https://github.com/marklawlor))
+
+### 🐛 Bug fixes
+
+- Add e2e testing to server function errors ([#33971](https://github.com/expo/expo/pull/33971) by [@EvanBacon](https://github.com/EvanBacon))
+- Recurse server action exports to collect all references. ([#33934](https://github.com/expo/expo/pull/33934) by [@EvanBacon](https://github.com/EvanBacon))
+- Add minor fixes to nested server actions. ([#32925](https://github.com/expo/expo/pull/32925) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix a build error when running `expo run:ios` consecutively without closing the app. ([#33236](https://github.com/expo/expo/pull/33236) by [@alanjhughes](https://github.com/alanjhughes))
+- Add `EAI_AGAIN` DNS service errors to offline detection. ([#34014](https://github.com/expo/expo/pull/34014) by [@byCedric](https://github.com/byCedric))
+- Use POSIX path when converting route file name in API routes. ([#34307](https://github.com/expo/expo/pull/34307) by [@byCedric](https://github.com/byCedric))
+- Bind debugging infrastructure to `localhost` instead of LAN ip. ([#34368](https://github.com/expo/expo/pull/34368) by [@byCedric](https://github.com/byCedric))
+
+## 0.22.7 - 2024-12-19
+
+### 🐛 Bug fixes
+
+- Bump `@react-native/dev-middleware` to resolve ignored `node_module/*` entry points. ([#33656](https://github.com/expo/expo/pull/33656) by [@byCedric](https://github.com/byCedric))
+
+## 0.22.6 - 2024-12-16
+
+### 🐛 Bug fixes
+
+- Load `.env` files in `expo start` before resolving options making these env vars available in dynamic app manifests. ([#33629](https://github.com/expo/expo/pull/33629) by [@byCedric](https://github.com/byCedric))
+
+## 0.22.5 - 2024-12-10
+
+_This version does not introduce any user-facing changes._
+
+## 0.22.4 - 2024-12-10
+
+### 🐛 Bug fixes
+
+- Fix manifest url and API route exports on Windows. ([#33408](https://github.com/expo/expo/pull/33408) by [@byCedric](https://github.com/byCedric))
+- Fix SSR manifest client boundaries module IDs format on Windows. ([#33541](https://github.com/expo/expo/pull/33541) by [@byCedric](https://github.com/byCedric))
+- Fix corrupted filepaths with RSC SSR on Windows. ([#33543](https://github.com/expo/expo/pull/33543) by [@byCedric](https://github.com/byCedric))
+- Fix Expo Router root path format in POSIX to avoid path modification issues in RSC. ([#33544](https://github.com/expo/expo/pull/33544) by [@byCedric](https://github.com/byCedric))
+
+## 0.22.3 - 2024-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 0.22.2 - 2024-12-05
+
+### 💡 Others
+
+- Add `User-Agent: expo-cli/<version>` to all CLI requests. ([#33471](https://github.com/expo/expo/pull/33471) by [@byCedric](https://github.com/byCedric))
+
+## 0.22.1 - 2024-12-05
+
+### 🎉 New features
+
+- Use `ios.appleTeamId` when prompting users to select the Apple identity in `expo run ios`. ([#33330](https://github.com/expo/expo/pull/33330) by [@byCedric](https://github.com/byCedric))
+
+## 0.22.0 - 2024-11-29
+
+### 🎉 New features
+
+- Support making templates for React Native macOS, and rename project name inside `contents.xcworkspacedata` files ([#30309](https://github.com/expo/expo/pull/30309) by [@shirakaba](https://github.com/shirakaba))
+
+### 🐛 Bug fixes
+
+- Fixed DOM Components support on Windows. ([#33114](https://github.com/expo/expo/pull/33114) by [@kudo](https://github.com/kudo))
+
+## 0.21.8 — 2024-11-22
+
+### 💡 Others
+
+- Improve simulators labels when printing usage verbosely ([#30403](https://github.com/expo/expo/pull/30403) by [@germanolira](https://github.com/germanolira))
+
+## 0.21.7 — 2024-11-20
+
+### 🐛 Bug fixes
+
+- Detect and enable offline mode after DNS is resolved, but network isn't accessible. ([#33084](https://github.com/expo/expo/pull/33084) by [@byCedric](https://github.com/byCedric))
+
+## 0.21.6 — 2024-11-19
+
+### 🐛 Bug fixes
+
+- Exclude virtual network devices when determining local IP address ([#33082](https://github.com/expo/expo/pull/33082) by [@kitten](https://github.com/kitten))
+- Install TypeScript as a dev dependency ([#33055](https://github.com/expo/expo/pull/33055) by [@kadikraman](https://github.com/kadikraman))
+
+## 0.21.5 — 2024-11-14
+
+### 💡 Others
+
+- Bump minimum @expo/prebuild-config version.
+
+## 0.21.4 — 2024-11-14
+
+### 🐛 Bug fixes
+
+- fix windows SSR. ([#32923](https://github.com/expo/expo/pull/32923) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 0.21.3 — 2024-11-14
+
+_This version does not introduce any user-facing changes._
+
+## 0.21.2 — 2024-11-13
+
+### 🐛 Bug fixes
+
+- Fix Expo Router root path on Windows. ([#32792](https://github.com/expo/expo/pull/32792) by [@marklawlor](https://github.com/marklawlor))
+- Fix handling of prerelease versions in dependency version checks. ([#32875](https://github.com/expo/expo/pull/32875) by [@betomoedano](https://github.com/betomoedano))
+
+### 💡 Others
+
+- Upgrade Expo Atlas prerequisite to `0.4.0` for newer `@expo/server` version. ([#32831](https://github.com/expo/expo/pull/32831) by [@byCedric](https://github.com/byCedric))
+- Upgrade send to `0.19.0`. ([#32852](https://github.com/expo/expo/pull/32852) by [@MWein](https://github.com/MWein))
+
+## 0.21.1 — 2024-11-13
+
+### 🎉 New features
+
+- Add scoped module IDs for Metro SSR. ([#32737](https://github.com/expo/expo/pull/32737) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Fix RSC export with hooks. ([#32793](https://github.com/expo/expo/pull/32793) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 💡 Others
+
+- Rename `experiments.reactServerActions` -> `experiments.reactServerFunctions` and other RSC flags. ([#32791](https://github.com/expo/expo/pull/32791) by [@EvanBacon](https://github.com/EvanBacon))
+- Revert [#32160](https://github.com/expo/expo/pull/32160).
+
+## 0.21.0 — 2024-11-12
+
+### 🎉 New features
+
+- Add `npx expo serve` command for hosting the release server locally. ([#32602](https://github.com/expo/expo/pull/32602) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Add iPad as usbmux platform to os type ([#32733](https://github.com/expo/expo/pull/32733) by [@moduval](https://github.com/moduval))
+- Throw error when importing native module on web. ([#32790](https://github.com/expo/expo/pull/32790) by [@EvanBacon](https://github.com/EvanBacon))
+- Move `react-native-web`-less to feature flag. ([#32785](https://github.com/expo/expo/pull/32785) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Improving linking to modules in E2E tests. ([#32769](https://github.com/expo/expo/pull/32769) by [@marklawlor](https://github.com/marklawlor))
+
+## 0.20.6 — 2024-11-11
+
+_This version does not introduce any user-facing changes._
+
+## 0.20.5 — 2024-11-11
+
+### 🐛 Bug fixes
+
+- Add missing semver dep, handle missing router import ((#32762)[https://github.com/expo/expo/pull/32762] by [@brentvatne](https://github.com/brentvatne))
+- Fix gitignore being modified on blank js project ((#32765)[https://github.com/expo/expo/pull/32765] by [@marklawlor](https://github.com/marklawlor))
+
+## 0.20.4 — 2024-11-10
+
+### 🎉 New features
+
+- Add `expo-router` integration with `@expo/cli install` command. ([#32679](https://github.com/expo/expo/pull/32679) by [@marklawlor](https://github.com/marklawlor))
+
+## 0.20.3 — 2024-11-07
+
+### 💡 Others
+
+- Catch `EMFILE` errors on macOS and clarify the next step. ([#32513](https://github.com/expo/expo/pull/32513) by [@byCedric](https://github.com/byCedric))
+
+## 0.20.2 — 2024-11-07
+
+### 🐛 Bug fixes
+
+- Get runtime version from expo-updates for local manifest serving ([#32520](https://github.com/expo/expo/pull/32520) by [@wschurman](https://github.com/wschurman))
+
+## 0.20.1 — 2024-11-06
+
+_This version does not introduce any user-facing changes._
+
+## 0.20.0 — 2024-11-05
+
+### 🎉 New features
+
+- Added DOM Components support to the `export` command. ([#32504](https://github.com/expo/expo/pull/32504) by [@kudo](https://github.com/kudo))
+
+### 🐛 Bug fixes
+
+- Improve export eager cache key. ([#32600](https://github.com/expo/expo/pull/32600) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix issue where renderer overwrote existing SSR modules. ([#32601](https://github.com/expo/expo/pull/32601) by [@EvanBacon](https://github.com/EvanBacon))
+- Avoid using path mutations in glob patterns for Windows. ([#32617](https://github.com/expo/expo/pull/32617) by [@byCedric](https://github.com/byCedric))
+- Remove message about running `npx expo install` again to install other package updates if no other packages or flags are specified. ([#32622](https://github.com/expo/expo/pull/32622) by [@keith-kurak](https://github.com/keith-kurak))
+
+### 💡 Others
+
+- Catch all exceptions from telemetry flush to prevent upgrade errors. ([#32544](https://github.com/expo/expo/pull/32544) by [@keith-kurak](https://github.com/keith-kurak))
+- Added `process.env.EXPO_BASE_URL` support for DOM components in development mode. ([#32629](https://github.com/expo/expo/pull/32629) by [@kudo](https://github.com/kudo))
+
+## 0.19.14 — 2024-11-04
+
+### 🐛 Bug fixes
+
+- Add fallback method for determining internal IP address. ([#32273](https://github.com/expo/expo/pull/32273) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Move server action env to `@expo/metro-runtime`. ([#32597](https://github.com/expo/expo/pull/32597) by [@EvanBacon](https://github.com/EvanBacon))
+- Update `@urql/core` and related dependencies and remove `graphql` dependency. ([#32065](https://github.com/expo/expo/pull/32065) by [@kitten](https://github.com/kitten))
+- Increase visibility in stuck `export:embed` processes. ([#32580](https://github.com/expo/expo/pull/32580) by [@byCedric](https://github.com/byCedric))
+
+## 0.19.13 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 0.19.12 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 0.19.11 — 2024-10-31
+
+### 🐛 Bug fixes
+
+- Prevent changes to telemetry from crashing `expo` package upgrade ([#32490](https://github.com/expo/expo/pull/32490) by [@keith-kurak](https://github.com/keith-kurak))
+
+## 0.19.10 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 0.19.9 — 2024-10-31
+
+### 🐛 Bug fixes
+
+- Don't assert `client-only` in SSR bundles. ([#32479](https://github.com/expo/expo/pull/32479) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix invalid project randomness when using Ngrok ([#32359](https://github.com/expo/expo/pull/32359) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 0.19.8 — 2024-10-30
+
+### 🎉 New features
+
+- Add server action-only mode. ([#32432](https://github.com/expo/expo/pull/32432) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 0.19.7 — 2024-10-29
+
+### 🐛 Bug fixes
+
+- Fix unresponsive terminal after opening React Native DevTools. ([#32451](https://github.com/expo/expo/pull/32451) by [@byCedric](https://github.com/byCedric))
+
+## 0.19.6 — 2024-10-29
+
+_This version does not introduce any user-facing changes._
+
+## 0.19.5 — 2024-10-29
+
+### 💡 Others
+
+- Simplify automatically adding config plugins to app manifest through `expo install`. ([#32426](https://github.com/expo/expo/pull/32426) by [@byCedric](https://github.com/byCedric))
+
+## 0.19.4 — 2024-10-28
+
+_This version does not introduce any user-facing changes._
+
+## 0.19.3 — 2024-10-25
+
+### 🐛 Bug fixes
+
+- fix async routes in web ssr ([#32331](https://github.com/expo/expo/pull/32331) by [@EvanBacon](https://github.com/EvanBacon))
+- Avoid broadcasting binary data over messages websocket. ([#32400](https://github.com/expo/expo/pull/32400) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Skipped internal bundles from debugging targets. ([#32322](https://github.com/expo/expo/pull/32322) by [@kudo](https://github.com/kudo))
+
+## 0.19.2 — 2024-10-24
+
+_This version does not introduce any user-facing changes._
+
+## 0.19.1 — 2024-10-24
+
+_This version does not introduce any user-facing changes._
+
+## 0.19.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Remove `debug.html` from `npx expo export --source-maps`. ([#31477](https://github.com/expo/expo/pull/31477) by [@EvanBacon](https://github.com/EvanBacon))
+- Ignore /dist folder in the default eslint config ([#31532](https://github.com/expo/expo/pull/31532) by [@kadikraman](https://github.com/kadikraman))
+
+### 🎉 New features
+
+- Add `expo-router/rsc/headers` for accessing request headers in server components. ([#32099](https://github.com/expo/expo/pull/32099) by [@EvanBacon](https://github.com/EvanBacon))
+- Add aliases for bridge modules in RSC. ([#32095](https://github.com/expo/expo/pull/32095) by [@EvanBacon](https://github.com/EvanBacon))
+- Add experimental support for React Server Actions in Expo Router. ([#31959](https://github.com/expo/expo/pull/31959) by [@EvanBacon](https://github.com/EvanBacon))
+- Throw clear error when importing `react-native/Libraries/Utilities/codegenNativeCommands` on web. ([#31791](https://github.com/expo/expo/pull/31791) by [@EvanBacon](https://github.com/EvanBacon))
+- automatically deploy server from eager exports. ([#31707](https://github.com/expo/expo/pull/31707) by [@EvanBacon](https://github.com/EvanBacon))
+- eagerly bundle JS during `npx expo run:ios` for faster production failures. ([#31670](https://github.com/expo/expo/pull/31670) by [@EvanBacon](https://github.com/EvanBacon))
+- Add `npx expo export --no-ssg` to export web API routes without static rendering the pages. ([#31475](https://github.com/expo/expo/pull/31475) by [@EvanBacon](https://github.com/EvanBacon))
+- disable export:embed cache reset when running in CI. ([#31663](https://github.com/expo/expo/pull/31663) by [@EvanBacon](https://github.com/EvanBacon))
+- add support for css imports from other css files ([#31574](https://github.com/expo/expo/pull/31574) by [@EvanBacon](https://github.com/EvanBacon))
+- server routing and static exports ([#31500](https://github.com/expo/expo/pull/31500) by [@EvanBacon](https://github.com/EvanBacon))
+- Return error UI when an API route throws an error ([#31485](https://github.com/expo/expo/pull/31485) by [@EvanBacon](https://github.com/EvanBacon))
+- Add log formatting for DOM components. ([#31265](https://github.com/expo/expo/pull/31265) by [@EvanBacon](https://github.com/EvanBacon))
+- Add support for CSS in server components. ([#31073](https://github.com/expo/expo/pull/31073) by [@EvanBacon](https://github.com/EvanBacon))
+- Added production exports for experimental server renderer. ([#30850](https://github.com/expo/expo/pull/30850) by [@EvanBacon](https://github.com/EvanBacon))
+- Add initial version of DOM Components and support for iOS production exports. ([#30938](https://github.com/expo/expo/pull/30938) by [@EvanBacon](https://github.com/EvanBacon))
+- Added experimental server renderer in development. ([#30334](https://github.com/expo/expo/pull/30334) by [@EvanBacon](https://github.com/EvanBacon))
+- Added experimental server renderer in development. ([#30334](https://github.com/expo/expo/pull/30334) by [@EvanBacon](https://github.com/EvanBacon))
+- Added experimental support for tree shaking. ([#30111](https://github.com/expo/expo/pull/30111) by [@EvanBacon](https://github.com/EvanBacon))
+- Add `--binary <path>` option to `expo run` commands for reusing builds. ([#30437](https://github.com/expo/expo/pull/30437) by [@EvanBacon](https://github.com/EvanBacon))
+- Added experimental support for production graph optimizations. ([#30417](https://github.com/expo/expo/pull/30417) by [@EvanBacon](https://github.com/EvanBacon))
+- Use `react` and `react-dom` 19 with `experiments.reactCanary`. ([#30335](https://github.com/expo/expo/pull/30335) by [@EvanBacon](https://github.com/EvanBacon))
+- Added `EXPO_USE_METRO_REQUIRE` to enable stable string module IDs. ([#30176](https://github.com/expo/expo/pull/30176) by [@EvanBacon](https://github.com/EvanBacon))
+- Print the selected app IDs in prebuild when they change. ([#30044](https://github.com/expo/expo/pull/30044) by [@EvanBacon](https://github.com/EvanBacon))
+- Automatically write an `app.json` when attempting to modify a config and no file exists. ([#30026](https://github.com/expo/expo/pull/30026) by [@EvanBacon](https://github.com/EvanBacon))
+- Automatically use valid default app identifiers in prebuild. ([#30023](https://github.com/expo/expo/pull/30023) by [@EvanBacon](https://github.com/EvanBacon))
+- Add microsecond format for bundling. ([#29701](https://github.com/expo/expo/pull/29701) by [@EvanBacon](https://github.com/EvanBacon))
+- Add `.eslintrc.js` to `expo customize`. ([#29570](https://github.com/expo/expo/pull/29570) by [@EvanBacon](https://github.com/EvanBacon))
+- Support web imports of `react-native/Libraries/Image/resolveAssetSource` in Metro. ([#29685](https://github.com/expo/expo/pull/29685) by [@EvanBacon](https://github.com/EvanBacon))
+- Unify Android device prompts with iOS prompts for `npx expo run:android -d`. ([#28622](https://github.com/expo/expo/pull/28622) by [@byCedric](https://github.com/byCedric))
+- Enable `EXPO_USE_METRO_WORKSPACE_ROOT` by default and replace with `EXPO_NO_METRO_WORKSPACE_ROOT`. ([#30621](https://github.com/expo/expo/pull/30621) by [@byCedric](https://github.com/byCedric))
+- Remove `node-fetch` in favor of `undici` for improved Node 22+ support. ([#29511](https://github.com/expo/expo/pull/29511) by [@byCedric](https://github.com/byCedric))
+- Added support to download template from npm when running prebuild. ([#31195](https://github.com/expo/expo/pull/31195) by [@kudo](https://github.com/kudo))
+- Add an optional New Architecture compatibility check for dependencies added via `install` command. ([#31222](https://github.com/expo/expo/pull/31222) by [@Simek](https://github.com/Simek))
+- Add support in `expo run android` for product flavors with custom app ids. ([#31756](https://github.com/expo/expo/pull/31756) by [@byCedric](https://github.com/byCedric))
+- Support Fusebox and React Native DevTools in Expo. ([#32029](https://github.com/expo/expo/pull/32029) by [@byCedric](https://github.com/byCedric))
+- Enable `hydration` on Expo Web in development when `EXPO_WEB_DEV_HYDRATE` is set. ([#32047](https://github.com/expo/expo/pull/32047) by [@marklawlor](https://github.com/marklawlor)) & ([#32109](https://github.com/expo/expo/pull/32109) by [@marklawlor](https://github.com/marklawlor))
+
+### 🐛 Bug fixes
+
+- Improve server error stacks. ([#32098](https://github.com/expo/expo/pull/32098) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix experimental web exports for RSC. ([#32042](https://github.com/expo/expo/pull/32042) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix RSC after RN upgrade. ([#32028](https://github.com/expo/expo/pull/32028) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix search params in RSC. ([#31641](https://github.com/expo/expo/pull/31641) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix cache sharing across Expo Go and dev client. ([#31566](https://github.com/expo/expo/pull/31566) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix exporting index files for server hosting in Expo Router. ([#31543](https://github.com/expo/expo/pull/31543) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix API route bundling in development. ([#31491](https://github.com/expo/expo/pull/31491) by [@EvanBacon](https://github.com/EvanBacon))
+- Add support for `config.resolver.requireCycleIgnorePatterns` in SSR bundles. ([#31462](https://github.com/expo/expo/pull/31462) by [@EvanBacon](https://github.com/EvanBacon))
+- Force DOM components to be minified in production exports. ([#31271](https://github.com/expo/expo/pull/31271) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix DOM component re-renders in dev. ([#31259](https://github.com/expo/expo/pull/31259) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix DOM component exports in CI. ([#31182](https://github.com/expo/expo/pull/31182) by [@EvanBacon](https://github.com/EvanBacon))
+- prevent RSC errors from crashing server. ([#31019](https://github.com/expo/expo/pull/31019) by [@EvanBacon](https://github.com/EvanBacon))
+- prevent exporting RSC endpoint by default. ([#31102](https://github.com/expo/expo/pull/31102) by [@EvanBacon](https://github.com/EvanBacon))
+- Update source map URL when config mutates modules. ([#30980](https://github.com/expo/expo/pull/30980) by [@EvanBacon](https://github.com/EvanBacon))
+- Use `react-server` resolution when experimental react canary support is enabled. ([#30747](https://github.com/expo/expo/pull/30747) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix resolver fields for SSR + native platforms. ([#29701](https://github.com/expo/expo/pull/29701) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix assetId for static web assets. ([#29686](https://github.com/expo/expo/pull/29686) by [@EvanBacon](https://github.com/EvanBacon))
+- Upgrade minimum required Atlas version to `0.3.11` fixing HMR reloads. ([#30424](https://github.com/expo/expo/pull/30424) by [@byCedric](https://github.com/byCedric))
+- Fixed the `CorsMiddleware` is a not registered since react-native 0.75. ([#30752](https://github.com/expo/expo/pull/30752) by [@kudo](https://github.com/kudo))
+- Detect workspace root for monorepos using pnpm. ([#31124](https://github.com/expo/expo/pull/31124) by [@byCedric](https://github.com/byCedric))
+- Detect network issues and enable offline mode with Undici errors. ([#31517](https://github.com/expo/expo/pull/31517) by [@byCedric](https://github.com/byCedric))
+- Resolve dom components entry relative to workspace root instead of project root. ([#31433](https://github.com/expo/expo/pull/31433) by [@byCedric](https://github.com/byCedric))
+- Use proper telemetry strategies for every command. ([#31281](https://github.com/expo/expo/pull/31281) by [@byCedric](https://github.com/byCedric))
+- Only test project web support through `react-dom`. ([#32148](https://github.com/expo/expo/pull/32148) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Assert that only SPA rendering is enabled with RSC. ([#32188](https://github.com/expo/expo/pull/32188) by [@EvanBacon](https://github.com/EvanBacon))
+- Use virtual module for consistent asset registry. ([#31980](https://github.com/expo/expo/pull/31980) by [@EvanBacon](https://github.com/EvanBacon))
+- Bump `react-native-web` patch ([#32105](https://github.com/expo/expo/pull/32105) by [@EvanBacon](https://github.com/EvanBacon))
+- Stop pinging dev session with updates. ([#31717](https://github.com/expo/expo/pull/31717) by [@EvanBacon](https://github.com/EvanBacon))
+- improve export log format ([#31476](https://github.com/expo/expo/pull/31476) by [@EvanBacon](https://github.com/EvanBacon))
+- Reduce scope of custom transform options in Metro cache. ([#31262](https://github.com/expo/expo/pull/31262) by [@EvanBacon](https://github.com/EvanBacon))
+- Refactor web hydration to use `globalThis.__EXPO_ROUTER_HYDRATE__` instead of `process.env.EXPO_PUBLIC_USE_STATIC`. ([#31267](https://github.com/expo/expo/pull/31267) by [@EvanBacon](https://github.com/EvanBacon))
+- Enable experimental features for RSC when `experiments.reactServerComponents` is enabled. ([#30967](https://github.com/expo/expo/pull/30967) by [@EvanBacon](https://github.com/EvanBacon))
+- Only enable RSC when `experiments.reactServerComponents` is true. ([#30875](https://github.com/expo/expo/pull/30875) by [@EvanBacon](https://github.com/EvanBacon))
+- Improve logging. ([#30354](https://github.com/expo/expo/pull/30354) by [@EvanBacon](https://github.com/EvanBacon))
+- Decouple CLI from `@expo/metro-runtime`. ([#30300](https://github.com/expo/expo/pull/30300) by [@EvanBacon](https://github.com/EvanBacon))
+- Add robot export e2e test. ([#30049](https://github.com/expo/expo/pull/30049) by [@EvanBacon](https://github.com/EvanBacon))
+- Add internal externals to prevent bundling `source-map-support` in development. ([#29701](https://github.com/expo/expo/pull/29701) by [@EvanBacon](https://github.com/EvanBacon))
+- Remove webpack dependency in repo. ([#29840](https://github.com/expo/expo/pull/29840) by [@EvanBacon](https://github.com/EvanBacon))
+- Add "more tools" to terminal UI all the time. ([#29837](https://github.com/expo/expo/pull/29837) by [@EvanBacon](https://github.com/EvanBacon))
+- Remove unused `serve.json` file from `expo customize`. ([#29571](https://github.com/expo/expo/pull/29571) by [@EvanBacon](https://github.com/EvanBacon))
+- Reduce unused server code in exports. ([#29619](https://github.com/expo/expo/pull/29619) by [@EvanBacon](https://github.com/EvanBacon))
+- Remove unused dependencies. ([#29177](https://github.com/expo/expo/pull/29177) by [@Simek](https://github.com/Simek))
+- Update `tar` dependency. ([#29663](https://github.com/expo/expo/pull/29663) by [@Simek](https://github.com/Simek))
+- Update `glob@7` to `glob@10`. ([#29898](https://github.com/expo/expo/pull/29898) by [@byCedric](https://github.com/byCedric))
+- Add Router mastro test. ([#30285](https://github.com/expo/expo/pull/30285) by [@marklawlor](https://github.com/marklawlor))
+- Improve Expo Router FastRefresh test. ([#29977](https://github.com/expo/expo/pull/29977) by [@marklawlor](https://github.com/marklawlor))
+- Drop `tempy` in favor of equivalent code to avoid transitive, deprecated `rimraf` dependency. ([#30832](https://github.com/expo/expo/pull/30832) by [@kitten](https://github.com/kitten))
+- Update `npm-package-arg@^7` to `npm-package-arg@^11`. ([#30842](https://github.com/expo/expo/pull/30842) by [@kitten](https://github.com/kitten))
+- Fixed DOM components bundling issues for Android emulators and release builds. ([#30974](https://github.com/expo/expo/pull/30974) by [@kudo](https://github.com/kudo))
+- Added public assets support for DOM components. ([#30975](https://github.com/expo/expo/pull/30975) by [@kudo](https://github.com/kudo))
+- Drop usage of `@react-native-community/cli-server-api` in favor of our own Metro dev middleware. ([#31570](https://github.com/expo/expo/pull/31570) by [@byCedric](https://github.com/byCedric))
+- Move location of assetPatternsToBeBundled config key ([#31584](https://github.com/expo/expo/pull/31584) by [@wschurman](https://github.com/wschurman))
+- Throwing an error for DOM components if no webview installed. ([#31974](https://github.com/expo/expo/pull/31974) by [@kudo](https://github.com/kudo))
+- Update Metro type definitions to `metro@0.80.12`. ([#32007](https://github.com/expo/expo/pull/32007) by [@byCedric](https://github.com/byCedric))
+- Remove `json-schema-deref-sync` dependency. ([#32048](https://github.com/expo/expo/pull/32048) by [@kitten](https://github.com/kitten))
+- Drop the legacy Chrome debugger in favor of React Native DevTools. ([#32266](https://github.com/expo/expo/pull/32266) by [@byCedric](https://github.com/byCedric))
+- Add temporary `/inspector/network` websocket endpoint, working around Fusebox limitations. ([#32292](https://github.com/expo/expo/pull/32292) by [@byCedric](https://github.com/byCedric))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.76.x. ([#31552](https://github.com/expo/expo/pull/31552) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 0.18.29 - 2024-08-14
+
+### 💡 Others
+
+- Added `/expo-dev-plugins/broadcast` WebSocket endpoint in dev server to support devtools plugins. ([#30934](https://github.com/expo/expo/pull/30934) by [@kudo](https://github.com/kudo))
+
+## 0.18.28 - 2024-08-08
+
+_This version does not introduce any user-facing changes._
+
+## 0.18.27 - 2024-08-07
+
+### 🎉 New features
+
+- Allow developers to indicate some range of a package that they do not care about validating against with `expo.install.exclude: ["package@version]` ([#30611](https://github.com/expo/expo/pull/30611) by [@brentvatne](https://github.com/brentvatne))
+
+### 🐛 Bug fixes
+
+- Fix server closing in headless run commands. ([#30432](https://github.com/expo/expo/pull/30432) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 0.18.26 - 2024-07-29
+
+### 💡 Others
+
+- Add `--config-cmd` option to `export:embed` command. ([#30563](https://github.com/expo/expo/pull/30563) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Add addition Expo Router e2e tests. ([#29990](https://github.com/expo/expo/pull/29990) by [@marklawlor](https://github.com/marklawlor))
+- Removed <SDK51 type tests. ([#29612](https://github.com/expo/expo/pull/29612) by [@marklawlor](https://github.com/marklawlor))
+
+## 0.18.25 - 2024-07-11
+
+_This version does not introduce any user-facing changes._
+
+## 0.18.24 - 2024-07-11
+
+### 🐛 Bug fixes
+
+- Resolve real locations of file paths when using `eas build --local`. ([#30340](https://github.com/expo/expo/pull/30340) by [@byCedric](https://github.com/byCedric))
+
+## 0.18.23 - 2024-07-11
+
+### 🐛 Bug fixes
+
+- Fix app crashing when hitting debugger breakpoint through VSCode. ([#30287](https://github.com/expo/expo/pull/30287) by [@byCedric](https://github.com/byCedric))
+
+## 0.18.22 - 2024-07-03
+
+### 📚 3rd party library updates
+
+- Update @react-native/dev-middleware to 0.74.85. ([#30139](https://github.com/expo/expo/pull/30139) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 0.18.21 - 2024-06-28
+
+_This version does not introduce any user-facing changes._
+
+## 0.18.20 - 2024-06-27
+
+### 🐛 Bug fixes
+
+- Resolve module specifiers to posix paths for Metro. ([#29696](https://github.com/expo/expo/pull/29696) by [@byCedric](https://github.com/byCedric))
+- Ensure Metro dev server closes fully when clients are connected. ([#30067](https://github.com/expo/expo/pull/30067) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Add more tests for export:embed. ([#29811](https://github.com/expo/expo/pull/29811) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 0.18.19 - 2024-06-13
+
+_This version does not introduce any user-facing changes._
+
+## 0.18.18 - 2024-06-12
+
+_This version does not introduce any user-facing changes._
+
+## 0.18.17 - 2024-06-10
+
+### 🎉 New features
+
+- Add experimental React Compiler support. ([#29168](https://github.com/expo/expo/pull/29168) by [@EvanBacon](https://github.com/EvanBacon))
+- Support passing `--port 0` to use any free port. ([#29466](https://github.com/expo/expo/pull/29466) by [@EvanBacon](https://github.com/EvanBacon))
+- Deep link to simulators without prompting for permissions first. ([#29468](https://github.com/expo/expo/pull/29468) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Fix source map generation in development. ([#29463](https://github.com/expo/expo/pull/29463) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 💡 Others
+
+- Reduce export code paths. ([#29218](https://github.com/expo/expo/pull/29218) by [@EvanBacon](https://github.com/EvanBacon))
+- Drop outdated React Native resolver patch. ([#29214](https://github.com/expo/expo/pull/29214) by [@EvanBacon](https://github.com/EvanBacon))
+- Use Metro instance directly for server rendering. ([#28552](https://github.com/expo/expo/pull/28552) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 0.18.16 - 2024-06-06
+
+_This version does not introduce any user-facing changes._
+
+- Remove unused dependencies. ([#29177](https://github.com/expo/expo/pull/29177) by [@Simek](https://github.com/Simek))
+- Do not replace modified scripts on prebuild. ([#29490](https://github.com/expo/expo/pull/29490) by [@Simek](https://github.com/Simek))
+
+## 0.18.15 — 2024-06-05
+
+### 🐛 Bug fixes
+
+- Fixed broken React DevTools since SDK 51. ([#29181](https://github.com/expo/expo/pull/29181) by [@kudo](https://github.com/kudo))
+
+### 💡 Others
+
+- Pin @react-native subpackage versions to 0.74.83. ([#29441](https://github.com/expo/expo/pull/29441) by [@kudo](https://github.com/kudo))
+
+## 0.18.14 — 2024-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 0.18.13 — 2024-05-16
+
+### 🐛 Bug fixes
+
+- Resolve real path of entry file for `expo export:embed`. ([#28926](https://github.com/expo/expo/pull/28926) by [@byCedric](https://github.com/byCedric))
+- Parse full tarball object instead of quoted string with `npm view` for `npm@10.8.0+`. ([#28919](https://github.com/expo/expo/pull/28919) by [@byCedric](https://github.com/byCedric))
+
+## 0.18.12 — 2024-05-14
+
+_This version does not introduce any user-facing changes._
+
+## 0.18.11 — 2024-05-10
+
+### 🐛 Bug fixes
+
+- Force exit the export command to prevent hanging processes. ([#28735](https://github.com/expo/expo/pull/28735) by [@EvanBacon](https://github.com/EvanBacon))
+- Fix HTTPS tunneling for accounts with dots in their username. ([#28692](https://github.com/expo/expo/pull/28692) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Avoid `<root>/node_modules` as extraneous `watchFolder`. ([#28778](https://github.com/expo/expo/pull/28778) by [@byCedric](https://github.com/byCedric))
+- Fix `findUp` utilities for Windows by aborting when `path.dirname(cwd)` returns `cwd`. ([#28801](https://github.com/expo/expo/pull/28801) by [@byCedric](https://github.com/byCedric))
+- Fix missing usbmux platform for platform to os conversion. ([#28802](https://github.com/expo/expo/pull/28802) by [@byCedric](https://github.com/byCedric))
+- Prevent exit the export command until Atlas is ready. ([#28759](https://github.com/expo/expo/pull/28759) by [@byCedric](https://github.com/byCedric))
 
 ## 0.18.10 — 2024-05-07
 
@@ -130,7 +2293,8 @@ _This version does not introduce any user-facing changes._
 
 ### 📚 3rd party library updates
 
-- update semver from 7.5.3 to 7.5.4. ([#26876](https://github.com/expo/expo/pull/26876) by [@GaelCO](https://github.com/GaelCO))
+- update `semver` from 7.5.3 to 7.5.4. ([#26876](https://github.com/expo/expo/pull/26876) by [@GaelCO](https://github.com/GaelCO))
+- update `cacache` from 15.3.0 to 18.0.2. ([#28322](https://github.com/expo/expo/pull/28322) by [@Simek](https://github.com/Simek))
 
 ## 0.17.8 - 2024-03-13
 
@@ -741,13 +2905,13 @@ _This version does not introduce any user-facing changes._
 - Skip verifying arbitrary platforms when prebuilding. ([#22228](https://github.com/expo/expo/pull/22228) by [@byCedric](https://github.com/byCedric))
 - Fix prebuild `--template` flag on Windows for local tarballs. ([#22232](https://github.com/expo/expo/pull/22232) by [@byCedric](https://github.com/byCedric))
 - Fixed Activity does not start on Android 13 devices. ([#22286](https://github.com/expo/expo/pull/22286) by [@kudo](https://github.com/kudo))
-- Fix duplicate enpo-env.d.ts entries being added to the gitignore. ([#22127](https://github.com/expo/expo/pull/22127) by [@marklawlor](https://github.com/marklawlor))
+- Fix duplicate expo-env.d.ts entries being added to the gitignore. ([#22127](https://github.com/expo/expo/pull/22127) by [@marklawlor](https://github.com/marklawlor))
 - Fix type error in downloadExpoGoAsync. ([#22398](https://github.com/expo/expo/pull/22398) by [@0618](https://github.com/0618))
 
 ### 💡 Others
 
 - Switch `EXPO_USE_PATH_ALIASES` to `expo.experiments.tsconfigPaths`. ([#21897](https://github.com/expo/expo/pull/21897) by [@EvanBacon](https://github.com/EvanBacon))
-- Fallback on latest `@expo/metro-config` when local version isn't available (effects testing locally). ([#21643](https://github.com/expo/expo/pull/21643) by [@EvanBacon](https://github.com/EvanBacon))
+- Fallback on latest `@expo/metro-config` when local version isn't available (affects testing locally). ([#21643](https://github.com/expo/expo/pull/21643) by [@EvanBacon](https://github.com/EvanBacon))
 - Update fixtures. ([#21397](https://github.com/expo/expo/pull/21397) by [@EvanBacon](https://github.com/EvanBacon))
 - Upgrade e2e tests to SDK 47. ([#21335](https://github.com/expo/expo/pull/21335) by [@EvanBacon](https://github.com/EvanBacon))
 - Update `metro.config.js` template file to match new template. ([#21898](https://github.com/expo/expo/pull/21898) by [@EvanBacon](https://github.com/EvanBacon))

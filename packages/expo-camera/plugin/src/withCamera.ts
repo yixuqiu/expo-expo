@@ -1,96 +1,78 @@
 import {
   AndroidConfig,
-  withProjectBuildGradle,
-  ConfigPlugin,
+  type ConfigPlugin,
   createRunOncePlugin,
   IOSConfig,
-} from '@expo/config-plugins';
-import {
-  createGeneratedHeaderComment,
-  MergeResults,
-  removeGeneratedContents,
-} from '@expo/config-plugins/build/utils/generateCode';
+  withGradleProperties,
+  withPodfileProperties,
+} from 'expo/config-plugins';
 
-const pkg = require('expo-camera/package.json');
+const pkg = require('../../package.json');
 
 const CAMERA_USAGE = 'Allow $(PRODUCT_NAME) to access your camera';
 const MICROPHONE_USAGE = 'Allow $(PRODUCT_NAME) to access your microphone';
+const BARCODE_SCANNER_KEY = 'expo.camera.barcode-scanner-enabled';
 
-// Because we need the package to be added AFTER the React and Google maven packages, we create a new allprojects.
-// It's ok to have multiple allprojects.repositories, so we create a new one since it's cheaper than tokenizing
-// the existing block to find the correct place to insert our camera maven.
-const gradleMaven = [
-  `def expoCameraMavenPath = new File(["node", "--print", "require.resolve('expo-camera/package.json')"].execute(null, rootDir).text.trim(), "../android/maven")`,
-  `allprojects { repositories { maven { url(expoCameraMavenPath) } } }`,
-].join('\n');
-
-const withAndroidCameraGradle: ConfigPlugin = (config) => {
-  return withProjectBuildGradle(config, (config) => {
-    if (config.modResults.language === 'groovy') {
-      config.modResults.contents = addCameraImport(config.modResults.contents).contents;
-    } else {
-      throw new Error('Cannot add camera maven gradle because the build.gradle is not groovy');
-    }
-    return config;
-  });
+export type Props = {
+  /**
+   * A string to set the `NSCameraUsageDescription` permission message.
+   * @default "Allow $(PRODUCT_NAME) to access your camera"
+   * @platform ios
+   */
+  cameraPermission?: string | false;
+  /**
+   * A string to set the `NSMicrophoneUsageDescription` permission message.
+   * @default "Allow $(PRODUCT_NAME) to access your microphone"
+   * @platform ios
+   */
+  microphonePermission?: string | false;
+  /**
+   * Whether to enable the `RECORD_AUDIO` permission on Android.
+   * @default true
+   * @platform android
+   */
+  recordAudioAndroid?: boolean;
+  /**
+   * Whether to enable barcode scanning support. Disabling this reduces app size.
+   * @default true
+   */
+  barcodeScannerEnabled?: boolean;
 };
 
-export function addCameraImport(src: string): MergeResults {
-  return appendContents({
-    tag: 'expo-camera-import',
-    src,
-    newSrc: gradleMaven,
-    comment: '//',
-  });
-}
-
-// Fork of config-plugins mergeContents, but appends the contents to the end of the file.
-function appendContents({
-  src,
-  newSrc,
-  tag,
-  comment,
-}: {
-  src: string;
-  newSrc: string;
-  tag: string;
-  comment: string;
-}): MergeResults {
-  const header = createGeneratedHeaderComment(newSrc, tag, comment);
-  if (!src.includes(header)) {
-    // Ensure the old generated contents are removed.
-    const sanitizedTarget = removeGeneratedContents(src, tag);
-    const contentsToAdd = [
-      // @something
-      header,
-      // contents
-      newSrc,
-      // @end
-      `${comment} @generated end ${tag}`,
-    ].join('\n');
-
-    return {
-      contents: sanitizedTarget ?? src + contentsToAdd,
-      didMerge: true,
-      didClear: !!sanitizedTarget,
-    };
-  }
-  return { contents: src, didClear: false, didMerge: false };
-}
-
-const withCamera: ConfigPlugin<
+const withCamera: ConfigPlugin<Props | void> = (
+  config,
   {
-    cameraPermission?: string | false;
-    microphonePermission?: string | false;
-    recordAudioAndroid?: boolean;
-  } | void
-> = (config, { cameraPermission, microphonePermission, recordAudioAndroid = true } = {}) => {
+    cameraPermission,
+    microphonePermission,
+    recordAudioAndroid = true,
+    barcodeScannerEnabled = true,
+  } = {}
+) => {
   IOSConfig.Permissions.createPermissionsPlugin({
     NSCameraUsageDescription: CAMERA_USAGE,
     NSMicrophoneUsageDescription: MICROPHONE_USAGE,
   })(config, {
     NSCameraUsageDescription: cameraPermission,
     NSMicrophoneUsageDescription: microphonePermission,
+  });
+
+  config = withPodfileProperties(config, (config) => {
+    if (barcodeScannerEnabled === false) {
+      config.modResults[BARCODE_SCANNER_KEY] = 'false';
+    } else {
+      delete config.modResults[BARCODE_SCANNER_KEY];
+    }
+    return config;
+  });
+
+  config = withGradleProperties(config, (config) => {
+    config.modResults = AndroidConfig.BuildProperties.updateAndroidBuildProperty(
+      config.modResults,
+      BARCODE_SCANNER_KEY,
+      barcodeScannerEnabled === false ? 'false' : null,
+      { removePropWhenValueIsNull: true }
+    );
+    return config;
   });
 
   config = AndroidConfig.Permissions.withPermissions(
@@ -102,7 +84,7 @@ const withCamera: ConfigPlugin<
     ].filter(Boolean) as string[]
   );
 
-  return withAndroidCameraGradle(config);
+  return config;
 };
 
 export default createRunOncePlugin(withCamera, pkg.name, pkg.version);

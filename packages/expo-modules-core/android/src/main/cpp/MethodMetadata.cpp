@@ -1,8 +1,6 @@
+#include "ExpoHeader.pch"
 #include "MethodMetadata.h"
 #include "JSIContext.h"
-#include "JavaScriptValue.h"
-#include "JavaScriptObject.h"
-#include "JavaScriptTypedArray.h"
 #include "JavaReferencesCache.h"
 #include "Exceptions.h"
 #include "JavaCallback.h"
@@ -10,11 +8,8 @@
 #include "JSReferencesCache.h"
 
 #include <utility>
-#include <functional>
-#include <unistd.h>
-#include <optional>
 
-#include <ReactCommon/LongLivedObject.h>
+#include <react/bridging/LongLivedObject.h>
 
 namespace jni = facebook::jni;
 namespace jsi = facebook::jsi;
@@ -25,7 +20,8 @@ namespace expo {
 jni::local_ref<JavaCallback::JavaPart> createJavaCallback(
   jsi::Function &&resolveFunction,
   jsi::Function &&rejectFunction,
-  jsi::Runtime &rt
+  jsi::Runtime &rt,
+  std::vector<jsi::Value> &&retainedValues
 ) {
   JSIContext *jsiContext = getJSIContext(rt);
   std::shared_ptr<react::CallInvoker> jsInvoker = jsiContext->runtimeHolder->jsInvoker;
@@ -34,14 +30,11 @@ jni::local_ref<JavaCallback::JavaPart> createJavaCallback(
     rt,
     std::move(jsInvoker),
     std::move(resolveFunction),
-    std::move(rejectFunction)
+    std::move(rejectFunction),
+    std::move(retainedValues)
   );
 
-#if REACT_NATIVE_TARGET_VERSION >= 75
   facebook::react::LongLivedObjectCollection::get(rt).add(callbackContext);
-#else
-  facebook::react::LongLivedObjectCollection::get().add(callbackContext);
-#endif
 
   return JavaCallback::newInstance(jsiContext, std::move(callbackContext));
 }
@@ -54,103 +47,82 @@ jobjectArray MethodMetadata::convertJSIArgsToJNI(
   size_t count
 ) {
   // This function takes the owner, so the args number is higher because we have access to the thisValue.
-  if (takesOwner) {
+  if (info.takesOwner) {
     count++;
   }
 
   // The `count < argTypes.size()` case is handled by the Kotlin part
-  if (count > argTypes.size()) {
+  if (count > info.argTypes.size()) {
     throwNewJavaException(
       InvalidArgsNumberException::create(
         count,
-        argTypes.size()
+        info.argTypes.size()
       ).get()
     );
   }
 
   auto argumentArray = env->NewObjectArray(
     count,
-    JavaReferencesCache::instance()->getJClass("java/lang/Object").clazz,
+    JCacheHolder::get().jObject,
     nullptr
   );
 
+#define CONVERT(arg, type, index) \
+try {                             \
+  auto converterValue = type->converter->convert(rt, env, arg); \
+  env->SetObjectArrayElement(argumentArray, index, converterValue); \
+  env->DeleteLocalRef(converterValue);                          \
+} catch (std::exception &exception) {                           \
+  auto stringRepresentation = arg.toString(rt).utf8(rt);        \
+  throwNewJavaException(                                       \
+    UnexpectedException::create(                               \
+      "[" + this->info.name + "] Cannot convert '" + stringRepresentation + \
+      "' to a Kotlin type. " + exception.what()).get()                             \
+  );                              \
+}
 
-  const auto getCurrentArg = [&thisValue, args, takesOwner = takesOwner](
-    size_t index
-  ) -> const jsi::Value & {
-    if (!takesOwner) {
-      return args[index];
+  if (!info.takesOwner) {
+    for (size_t argIndex = 0; argIndex < count; argIndex++) {
+      const jsi::Value &arg = args[argIndex];
+      auto &type = info.argTypes[argIndex];
+      CONVERT(arg, type, argIndex)
     }
+  } else {
+    auto &thisType = info.argTypes[0];
+    CONVERT(thisValue, thisType, 0)
 
-    if (index != 0) {
-      return args[index - 1];
-    }
-    return thisValue;
-  };
-
-  for (size_t argIndex = 0; argIndex < count; argIndex++) {
-    const jsi::Value &arg = getCurrentArg(argIndex);
-    auto &type = argTypes[argIndex];
-
-    if (type->converter->canConvert(rt, arg)) {
-      auto converterValue = type->converter->convert(rt, env, arg);
-      env->SetObjectArrayElement(argumentArray, argIndex, converterValue);
-      env->DeleteLocalRef(converterValue);
-    } else if (arg.isNull() || arg.isUndefined()) {
-      // If value is null or undefined, we just passes a null
-      // Kotlin code will check if expected type is nullable.
-      continue;
-    } else {
-      auto stringRepresentation = arg.toString(rt).utf8(rt);
-      throwNewJavaException(
-        UnexpectedException::create(
-          "[" + this->name + "] Cannot convert '" + stringRepresentation +
-          "' to a Kotlin type.").get()
-      );
+    for (size_t argIndex = 1; argIndex < count; argIndex++) {
+      const jsi::Value &arg = args[argIndex - 1];
+      auto &type = info.argTypes[argIndex];
+      CONVERT(arg, type, argIndex)
     }
   }
+#undef CONVERT
 
   return argumentArray;
 }
 
 MethodMetadata::MethodMetadata(
-  std::string name,
-  bool takesOwner,
-  bool isAsync,
-  jni::local_ref<jni::JArrayClass<ExpectedType>> expectedArgTypes,
+  Info info,
   jni::global_ref<jobject> &&jBodyReference
-) : name(std::move(name)),
-    takesOwner(takesOwner),
-    isAsync(isAsync),
+) : info(std::move(info)),
     jBodyReference(std::move(jBodyReference)) {
-  size_t argsSize = expectedArgTypes->size();
-  argTypes.reserve(argsSize);
-  for (size_t i = 0; i < argsSize; i++) {
-    auto expectedType = expectedArgTypes->getElement(i);
-    argTypes.push_back(
-      std::make_unique<AnyType>(std::move(expectedType))
-    );
+  for (size_t index = 0; index < this->info.argTypes.size(); index++) {
+    if (this->info.argTypes[index]->converter->retainsJSValue()) {
+      retainedArgIndices.push_back(index);
+    }
   }
-}
-
-MethodMetadata::MethodMetadata(
-  std::string name,
-  bool takesOwner,
-  bool isAsync,
-  std::vector<std::unique_ptr<AnyType>> &&expectedArgTypes,
-  jni::global_ref<jobject> &&jBodyReference
-) : name(std::move(name)),
-    takesOwner(takesOwner),
-    isAsync(isAsync),
-    argTypes(std::move(expectedArgTypes)),
-    jBodyReference(std::move(jBodyReference)) {
 }
 
 std::shared_ptr<jsi::Function> MethodMetadata::toJSFunction(
   jsi::Runtime &runtime
 ) {
   if (body == nullptr) {
-    if (isAsync) {
+    if (jBodyReference == nullptr) {
+      return nullptr;
+    }
+
+    if (info.isAsync) {
       body = std::make_shared<jsi::Function>(toAsyncFunction(runtime));
     } else {
       body = std::make_shared<jsi::Function>(toSyncFunction(runtime));
@@ -166,8 +138,8 @@ jsi::Function MethodMetadata::toSyncFunction(
   auto weakThis = weak_from_this();
   return jsi::Function::createFromHostFunction(
     runtime,
-    getJSIContext(runtime)->jsRegistry->getPropNameID(runtime, name),
-    argTypes.size(),
+    getJSIContext(runtime)->jsRegistry->getPropNameID(runtime, info.name),
+    info.argTypes.size(),
     [weakThis = std::move(weakThis)](
       jsi::Runtime &rt,
       const jsi::Value &thisValue,
@@ -204,13 +176,7 @@ jni::local_ref<jobject> MethodMetadata::callJNISync(
   }
 
   auto convertedArgs = convertJSIArgsToJNI(env, rt, thisValue, args, count);
-
-  // Cast in this place is safe, cause we know that this function is promise-less.
-  auto syncFunction = jni::static_ref_cast<JNIFunctionBody>(this->jBodyReference);
-  auto result = syncFunction->invoke(
-    convertedArgs
-  );
-
+  auto result = JNIFunctionBody::invoke(this->jBodyReference.get(), convertedArgs);
   env->DeleteLocalRef(convertedArgs);
   return result;
 }
@@ -230,7 +196,7 @@ jsi::Value MethodMetadata::callSync(
   jni::JniLocalScope scope(env, (int) count);
 
   auto result = this->callJNISync(env, rt, thisValue, args, count);
-  return convert(env, rt, std::move(result));
+  return convert(env, rt, this->info.returnType, result);
 }
 
 jsi::Function MethodMetadata::toAsyncFunction(
@@ -239,8 +205,8 @@ jsi::Function MethodMetadata::toAsyncFunction(
   auto weakThis = weak_from_this();
   return jsi::Function::createFromHostFunction(
     runtime,
-    getJSIContext(runtime)->jsRegistry->getPropNameID(runtime, name),
-    argTypes.size(),
+    getJSIContext(runtime)->jsRegistry->getPropNameID(runtime, info.name),
+    info.argTypes.size(),
     [weakThis = std::move(weakThis)](
       jsi::Runtime &rt,
       const jsi::Value &thisValue,
@@ -271,12 +237,18 @@ jsi::Function MethodMetadata::toAsyncFunction(
         auto globalConvertedArgs = (jobjectArray) env->NewGlobalRef(convertedArgs);
         env->DeleteLocalRef(convertedArgs);
 
+        std::shared_ptr<std::vector<jsi::Value>> retainedValues = nullptr;
+        if (!thisPtr->retainedArgIndices.empty()) {
+          retainedValues = std::make_shared<std::vector<jsi::Value>>(
+            thisPtr->retainArguments(rt, thisValue, args, count)
+          );
+        }
+
         // Creates a JSI promise
-        jsi::Value promise = Promise.callAsConstructor(
+        return Promise.callAsConstructor(
           rt,
-          thisPtr->createPromiseBody(rt, globalConvertedArgs)
+          thisPtr->createPromiseBody(rt, globalConvertedArgs, std::move(retainedValues))
         );
-        return promise;
       } catch (jni::JniException &jniException) {
         jni::local_ref<jni::JThrowable> unboxedThrowable = jniException.getThrowable();
         if (!unboxedThrowable->isInstanceOf(CodedException::javaClassLocal())) {
@@ -287,7 +259,7 @@ jsi::Function MethodMetadata::toAsyncFunction(
         auto code = codedException->getCode();
         auto message = codedException->getLocalizedMessage().value_or("");
 
-        jsi::Value promise = Promise.callAsConstructor(
+        return Promise.callAsConstructor(
           rt,
           jsi::Function::createFromHostFunction(
             rt,
@@ -316,22 +288,49 @@ jsi::Function MethodMetadata::toAsyncFunction(
             }
           )
         );
-
-        return promise;
       }
     }
   );
 }
 
+std::vector<jsi::Value> MethodMetadata::retainArguments(
+  jsi::Runtime &rt,
+  const jsi::Value &thisValue,
+  const jsi::Value *args,
+  size_t count
+) const {
+  std::vector<jsi::Value> retained;
+  retained.reserve(retainedArgIndices.size());
+
+  // With an owner, `info.argTypes[0]` describes the receiver and the JS arguments start at index 1.
+  const size_t argsOffset = info.takesOwner ? 1 : 0;
+  for (size_t index : retainedArgIndices) {
+    if (info.takesOwner && index == 0) {
+      if (thisValue.isObject()) {
+        retained.emplace_back(rt, thisValue);
+      }
+      continue;
+    }
+
+    const size_t argIndex = index - argsOffset;
+    if (argIndex < count && args[argIndex].isObject()) {
+      retained.emplace_back(rt, args[argIndex]);
+    }
+  }
+
+  return retained;
+}
+
 jsi::Function MethodMetadata::createPromiseBody(
   jsi::Runtime &runtime,
-  jobjectArray globalArgs
+  jobjectArray globalArgs,
+  std::shared_ptr<std::vector<jsi::Value>> retainedValues
 ) {
   return jsi::Function::createFromHostFunction(
     runtime,
     getJSIContext(runtime)->jsRegistry->getPropNameID(runtime, "promiseFn"),
     2,
-    [this, globalArgs](
+    [this, globalArgs, retainedValues = std::move(retainedValues)](
       jsi::Runtime &rt,
       const jsi::Value &thisVal,
       const jsi::Value *promiseConstructorArgs,
@@ -344,34 +343,26 @@ jsi::Function MethodMetadata::createPromiseBody(
       jsi::Function resolveJSIFn = promiseConstructorArgs[0].getObject(rt).getFunction(rt);
       jsi::Function rejectJSIFn = promiseConstructorArgs[1].getObject(rt).getFunction(rt);
 
+      // The promise constructor calls this body synchronously, so the retained values are moved out once.
       jobject javaCallback = createJavaCallback(
         std::move(resolveJSIFn),
         std::move(rejectJSIFn),
-        rt
+        rt,
+        retainedValues != nullptr ? std::move(*retainedValues) : std::vector<jsi::Value>()
       ).release();
 
       JNIEnv *env = jni::Environment::current();
 
-      auto &jPromise = JavaReferencesCache::instance()->getJClass(
-        "expo/modules/kotlin/jni/PromiseImpl");
-      jmethodID jPromiseConstructor = jPromise.getMethod(
-        "<init>",
-        "(Lexpo/modules/kotlin/jni/JavaCallback;)V"
-      );
+      auto &jPromise = JCacheHolder::get().jPromise;
 
       // Creates a promise object
       jobject promise = env->NewObject(
         jPromise.clazz,
-        jPromiseConstructor,
+        jPromise.constructor,
         javaCallback
       );
 
-      // Cast in this place is safe, cause we know that this function expects promise.
-      auto asyncFunction = jni::static_ref_cast<JNIAsyncFunctionBody>(this->jBodyReference);
-      asyncFunction->invoke(
-        globalArgs,
-        promise
-      );
+      JNIAsyncFunctionBody::invoke(this->jBodyReference.get(), globalArgs, promise);
 
       // We have to remove the local reference to the promise object.
       // It doesn't mean that the promise will be deallocated, but rather that we move

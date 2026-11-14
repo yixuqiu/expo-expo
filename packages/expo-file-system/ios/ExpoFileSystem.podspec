@@ -11,11 +11,11 @@ Pod::Spec.new do |s|
   s.author         = package['author']
   s.homepage       = package['homepage']
   s.platforms       = {
-    :ios => '13.4',
-    :osx => '10.15',
-    :tvos => '13.4'
+    :ios => '16.4',
+    :osx => '13.4',
+    :tvos => '16.4'
   }
-  s.swift_version  = '5.4'
+  s.swift_version  = '5.9'
   s.source         = { :git => 'https://github.com/expo/expo.git' }
   s.static_framework = true
 
@@ -29,10 +29,15 @@ Pod::Spec.new do |s|
   s.resource_bundles = {'ExpoFileSystem_privacy' => ['PrivacyInfo.xcprivacy']}
 
   s.source_files = "**/*.{h,m,swift}"
-
   s.exclude_files = 'Tests/'
+
   s.test_spec 'Tests' do |test_spec|
+    # ExpoModulesCore requires React-hermes or React-jsc in tests.
     test_spec.dependency 'ExpoModulesTestCore'
     test_spec.source_files = 'Tests/**/*.{m,swift}'
+    # Test bundles do not inherit ExpoModulesCore's user_target_xcconfig linker flags.
+    test_spec.pod_target_xcconfig = {
+      'OTHER_LDFLAGS' => '$(inherited) -lc++'
+    }
   end
 end

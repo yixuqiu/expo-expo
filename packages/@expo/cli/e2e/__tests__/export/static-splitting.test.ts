@@ -1,59 +1,43 @@
 /* eslint-env jest */
-import execa from 'execa';
-import fs from 'fs-extra';
-import klawSync from 'klaw-sync';
+import fs from 'fs';
 import path from 'path';
 
-import { runExportSideEffects } from './export-side-effects';
+import { executeExpoAsync } from '../../utils/expo';
+import { expectSourceMapSection } from '../../utils/sourceMap';
 import {
-  bin,
   expectChunkPathMatching,
+  findProjectFiles,
   getHtmlHelpers,
   getPageHtml,
   getRouterE2ERoot,
 } from '../utils';
+import { runExportSideEffects } from './export-side-effects';
 
 runExportSideEffects();
 
-describe('exports static with bundle splitting', () => {
+describe('exports static with granular bundle splitting', () => {
   const projectRoot = getRouterE2ERoot();
   const outputName = 'dist-static-splitting';
   const outputDir = path.join(projectRoot, outputName);
 
-  beforeAll(
-    async () => {
-      await execa(
-        'node',
-        [bin, 'export', '-p', 'web', '--source-maps', '--output-dir', outputName],
-        {
-          cwd: projectRoot,
-          env: {
-            NODE_ENV: 'production',
-            EXPO_USE_STATIC: 'static',
-            E2E_ROUTER_SRC: 'static-rendering',
-            E2E_ROUTER_ASYNC: 'production',
-            // TODO: Reenable this after investigating unstable_getRealPath
-            EXPO_USE_FAST_RESOLVER: 'false',
-          },
-        }
-      );
-    },
-    // Could take 45s depending on how fast the bundler resolves
-    560 * 1000
-  );
+  beforeAll(async () => {
+    await executeExpoAsync(
+      projectRoot,
+      ['export', '-p', 'web', '--source-maps', '--output-dir', outputName],
+      {
+        env: {
+          NODE_ENV: 'production',
+          EXPO_USE_STATIC: 'static',
+          E2E_ROUTER_SRC: 'static-rendering',
+          E2E_ROUTER_SPLIT_STRATEGY: 'granular',
+          E2E_ROUTER_ASYNC: 'true',
+        },
+      }
+    );
+  });
 
   it('has expected files', async () => {
-    // List output files with sizes for snapshotting.
-    // This is to make sure that any changes to the output are intentional.
-    // Posix path formatting is used to make paths the same across OSes.
-    const files = klawSync(outputDir)
-      .map((entry) => {
-        if (entry.path.includes('node_modules') || !entry.stats.isFile()) {
-          return null;
-        }
-        return path.posix.relative(outputDir, entry.path);
-      })
-      .filter(Boolean);
+    const files = findProjectFiles(outputDir);
 
     // The wrapper should not be included as a route.
     expect(files).not.toContain('+html.html');
@@ -76,57 +60,61 @@ describe('exports static with bundle splitting', () => {
 
   const { getScriptTagsAsync } = getHtmlHelpers(outputDir);
 
+  function expectPageScripts(scripts: string[], route?: string) {
+    expect(scripts[0]).toEqual(expectChunkPathMatching('__expo-metro-runtime'));
+    expect(scripts.at(-1)).toEqual(expectChunkPathMatching('entry'));
+    expect(scripts).toEqual(
+      expect.arrayContaining(['_layout', ...(route ? [route] : [])].map(expectChunkPathMatching))
+    );
+    expect(scripts.some((script) => script.includes('__shared-'))).toBe(true);
+    expect(scripts.some((script) => script.includes('__common'))).toBe(false);
+    expect(new Set(scripts).size).toBe(scripts.length);
+    for (const script of scripts) expect(fs.existsSync(path.join(outputDir, script))).toBe(true);
+  }
+
   // Ensure the correct script tags are injected.
   it('has eager script tags in html', async () => {
-    expect(await getScriptTagsAsync('index.html')).toEqual(
-      ['index', '_layout', 'index'].map(expectChunkPathMatching)
-    );
+    expectPageScripts(await getScriptTagsAsync('index.html'), 'index');
   });
   it('has eager script tags in dynamic html', async () => {
     const staticParamsPage = await getScriptTagsAsync('welcome-to-the-universe.html');
 
-    expect(staticParamsPage).toEqual(
-      ['index', '[post]', '_layout'].map(expectChunkPathMatching)
-    );
+    expectPageScripts(staticParamsPage, '[post]');
 
     expect(await getScriptTagsAsync('[post].html')).toEqual(staticParamsPage);
   });
   it('has (fewer) eager script tags in generated routes', async () => {
     // Less chunks because the not-found route is not an async import.
-    expect(await getScriptTagsAsync('+not-found.html')).toEqual(
-      ['index', '_layout'].map(expectChunkPathMatching)
-    );
+    expectPageScripts(await getScriptTagsAsync('+not-found.html'));
   });
 
   it('has source maps', async () => {
-    // List output files with sizes for snapshotting.
-    // This is to make sure that any changes to the output are intentional.
-    // Posix path formatting is used to make paths the same across OSes.
-    const files = klawSync(outputDir)
-      .map((entry) => {
-        if (entry.path.includes('node_modules') || !entry.stats.isFile()) {
-          return null;
-        }
-        return path.posix.relative(outputDir, entry.path);
-      })
-      .filter(Boolean);
+    const files = findProjectFiles(outputDir);
+    const mapFiles = files.filter((file) => file?.endsWith('.map')).sort();
 
-    const mapFiles = files.filter((file) => file?.endsWith('.map'));
-
-    // "_expo/static/js/web/[post]-854b84d726cca00d17047171ff4ef43d.js.map",
-    // "_expo/static/js/web/_layout-e67451b6ca1f415eec1baf46b17d16c6.js.map",
-    // "_expo/static/js/web/about-5a4fd4bb060bd4461401d4604b0ea1ac.js.map",
-    // "_expo/static/js/web/asset-fd2508eb5960aa4c5c12cfd8db6e0ba4.js.map",
-    // "_expo/static/js/web/head-51629e20be61b36513e213c8645375c9.js.map",
-    // "_expo/static/js/web/index-98a25924035cd8babecad8755a8564de.js.map",
-    // "_expo/static/js/web/index-ed899c31dab920e6b5c3cf04e0c156b6.js.map",
-    // "_expo/static/js/web/links-4545c832242c66b83e4bd38b67066808.js.map",
-    // "_expo/static/js/web/styled-93437b3b1dcaa498dabb3a1de3aae7ac.js.map",
-    expect(mapFiles).toEqual(
-      ['\\[post\\]', '_layout', 'about', 'asset', 'index', 'index', 'links', 'styled'].map(
-        (file) =>
+    // "_expo/static/js/web/[file]-[hash].js.map",
+    expect(mapFiles.filter((file) => !file!.includes('__shared-'))).toEqual(
+      [
+        '__expo-metro-runtime',
+        'entry',
+        '_layout',
+        'index',
+        '\\[post\\]',
+        '\\[...post\\]',
+        'about',
+        'asset',
+        'links',
+        'styled',
+        'suspense',
+        'safe-area',
+        'safe-area-stack',
+        'metadata',
+        '\\[id\\]',
+      ]
+        .sort()
+        .map((file) =>
           expect.stringMatching(new RegExp(`_expo\\/static\\/js\\/web\\/${file}-.*\\.js\\.map`))
-      )
+        )
     );
 
     for (const file of mapFiles) {
@@ -135,8 +123,13 @@ describe('exports static with bundle splitting', () => {
       expect(sourceMap.version).toBe(3);
 
       // Common chunk
-      if (file!.match(/head/)) {
-        expect(sourceMap.sources.length).toEqual(29);
+      if (file!.match(/__common|__shared-/)) {
+        expect(sourceMap.sections.length).toBeGreaterThan(0);
+        for (const section of sourceMap.sections) {
+          expect(section).toEqual(
+            expectSourceMapSection(expect.stringMatching(/^\/(packages|node_modules|apps)\//))
+          );
+        }
       } else {
         // expect(sourceMap.sources).toEqual(
         //   expect.arrayContaining([
@@ -152,7 +145,6 @@ describe('exports static with bundle splitting', () => {
       // Ensure the bundle does not contain a source map reference
       const jsBundle = fs.readFileSync(path.join(outputDir, file!), 'utf8');
       expect(jsBundle).toMatch(/^\/\/\# sourceMappingURL=\/_expo\/static\/js\/web\/.*\.js\.map$/gm);
-      // expect(jsBundle).toMatch(/^\/\/\# sourceURL=\/_expo\/static\/js\/web\/index-.*\.js$/gm);
       const mapFile = jsBundle.match(
         /^\/\/\# sourceMappingURL=(\/_expo\/static\/js\/web\/.*\.js\.map)$/m
       )?.[1];
@@ -172,13 +164,13 @@ describe('exports static with bundle splitting', () => {
     // non-public env vars are injected during SSG
     expect(queryMeta('expo-e2e-private-env-var')).toEqual('not-public-value');
 
-    // Injected in app/_layout.js
+    // Generated by app/index.tsx
     expect(queryMeta('expo-e2e-public-env-var-client')).toEqual('foobar');
     // non-public env vars are injected during SSG
     expect(queryMeta('expo-e2e-private-env-var-client')).toEqual('not-public-value');
 
-    const script = indexHtml.querySelectorAll('script')[0];
-    const jsBundle = fs.readFileSync(path.join(outputDir, script.attributes.src), 'utf8');
+    const script = indexHtml.querySelectorAll('script').find((script) => !!script.attributes.src);
+    const jsBundle = fs.readFileSync(path.join(outputDir, script?.attributes.src ?? ''), 'utf8');
 
     // Ensure the bundle is valid
     expect(jsBundle).toMatch('__BUNDLE_START_TIME__');
@@ -188,10 +180,6 @@ describe('exports static with bundle splitting', () => {
 
   it('static styles are injected', async () => {
     const indexHtml = await getPageHtml(outputDir, 'index.html');
-    expect(indexHtml.querySelectorAll('html > head > style')?.length).toBe(
-      // React Native and Expo resets
-      3
-    );
     // The Expo style reset
     expect(indexHtml.querySelector('html > head > style#expo-reset')?.innerHTML).toEqual(
       expect.stringContaining(
@@ -208,41 +196,32 @@ describe('exports static with bundle splitting', () => {
     // Unfortunately, the CSS is injected in every page for now since we don't have bundle splitting.
     const indexHtml = await getPageHtml(outputDir, 'index.html');
 
-    const links = indexHtml.querySelectorAll('html > head > link').filter((link) => {
-      // Fonts are tested elsewhere
-      return link.attributes.as !== 'font';
-    });
-    expect(links.length).toBe(
-      // Global CSS, CSS Module
-      4
-    );
-
-    links.forEach((link) => {
-      // Linked to the expected static location
-      expect(link.attributes.href).toMatch(/^\/_expo\/static\/css\/.*\.css$/);
-    });
-
-    expect(links[0].toString()).toMatch(
-      /<link rel="preload" href="\/_expo\/static\/css\/global-[\d\w]+\.css" as="style">/
-    );
-    expect(links[1].toString()).toMatch(
-      /<link rel="stylesheet" href="\/_expo\/static\/css\/global-[\d\w]+\.css">/
-    );
-    // CSS Module
-    expect(links[2].toString()).toMatch(
-      /<link rel="preload" href="\/_expo\/static\/css\/test\.module-[\d\w]+\.css" as="style">/
-    );
-    expect(links[3].toString()).toMatch(
-      /<link rel="stylesheet" href="\/_expo\/static\/css\/test\.module-[\d\w]+\.css">/
-    );
-
+    const stylesheets = indexHtml.querySelectorAll('head link[rel="stylesheet"]');
+    const stylesheetHrefs = stylesheets.map((link) => link.attributes.href);
+    expect(stylesheetHrefs).toEqual([
+      expect.stringMatching(/^\/_expo\/static\/css\/safe-area-[0-9a-f]{32}\.css$/),
+      expect.stringMatching(/^\/_expo\/static\/css\/global-[0-9a-f]{32}\.css$/),
+      expect.stringMatching(/^\/_expo\/static\/css\/test\.module-[0-9a-f]{32}\.css$/),
+    ]);
     expect(
-      fs.readFileSync(path.join(outputDir, links[0].attributes.href), 'utf-8')
-    ).toMatchInlineSnapshot(`"div{background:#0ff}"`);
+      indexHtml
+        .querySelectorAll('head link[rel="preload"][as="style"]')
+        .map((link) => link.attributes.href)
+    ).toEqual(stylesheetHrefs);
+
+    const globalPreload = stylesheets.find((l) => /global-.*\.css/.test(l.attributes.href!));
+    expect(globalPreload).toBeDefined();
+    if (globalPreload) {
+      expect(
+        fs.readFileSync(path.join(outputDir, globalPreload.attributes.href!), 'utf-8')
+      ).toMatchInlineSnapshot(`"div{background:#0ff}"`);
+    }
 
     // CSS Module
+    const cssModuleHref = stylesheetHrefs.find((href) => href?.includes('/test.module-'));
+    expect(cssModuleHref).toBeDefined();
     expect(
-      fs.readFileSync(path.join(outputDir, links[2].attributes.href), 'utf-8')
+      fs.readFileSync(path.join(outputDir, cssModuleHref ?? ''), 'utf-8')
     ).toMatchInlineSnapshot(`".HPV33q_text{color:#1e90ff}"`);
 
     const styledHtml = await getPageHtml(outputDir, 'styled.html');
@@ -254,22 +233,26 @@ describe('exports static with bundle splitting', () => {
   });
 
   it('statically extracts fonts', async () => {
-    // <style id="expo-generated-fonts" type="text/css">@font-face{font-family:sweet;src:url(/assets/__e2e__/static-rendering/sweet.ttf?platform=web&hash=7c9263d3cffcda46ff7a4d9c00472c07);font-display:auto}</style><link rel="preload" href="/assets/__e2e__/static-rendering/sweet.ttf?platform=web&hash=7c9263d3cffcda46ff7a4d9c00472c07" as="font" crossorigin="" />
+    // <style id="expo-generated-fonts" type="text/css">@font-face{font-family:sweet;src:url(/assets/__e2e__/static-rendering/sweet.ttf)}</style><link rel="preload" href="/assets/__e2e__/static-rendering/sweet.ttf?platform=web&hash=7c9263d3cffcda46ff7a4d9c00472c07" as="font" crossorigin="" />
     // Unfortunately, the CSS is injected in every page for now since we don't have bundle splitting.
     const indexHtml = await getPageHtml(outputDir, 'index.html');
 
     const links = indexHtml.querySelectorAll('html > head > link[as="font"]');
     expect(links.length).toBe(1);
-    expect(links[0].attributes.href).toBe(
-      '/assets/__e2e__/static-rendering/sweet.7c9263d3cffcda46ff7a4d9c00472c07.ttf?platform=web&hash=7c9263d3cffcda46ff7a4d9c00472c07'
+    expect(links[0]?.attributes.href).toBe(
+      '/assets/__e2e__/static-rendering/sweet.7c9263d3cffcda46ff7a4d9c00472c07.ttf'
     );
 
-    expect(links[0].toString()).toMatch(
-      /<link rel="preload" href="\/assets\/__e2e__\/static-rendering\/sweet\.[a-zA-Z0-9]{32}\.ttf\?platform=web&hash=[a-zA-Z0-9]{32}" as="font" crossorigin="" >/
+    expect(links[0]?.attributes).toMatchObject({ rel: 'preload', as: 'font', crossorigin: '' });
+    expect(indexHtml.querySelector('style#expo-generated-fonts')?.textContent).toContain(
+      '@font-face'
     );
 
     expect(
-      fs.readFileSync(path.join(outputDir, links[0].attributes.href.replace(/\?.*$/, '')), 'utf-8')
+      fs.readFileSync(
+        path.join(outputDir, links[0]?.attributes.href?.replace(/\?.*$/, '') ?? ''),
+        'utf-8'
+      )
     ).toBeDefined();
 
     // Ensure the font is used
@@ -289,19 +272,17 @@ describe('exports static with bundle splitting', () => {
     // );
   });
 
-  it('supports usePathname in +html files', async () => {
-    const page = await fs.readFile(path.join(outputDir, 'index.html'), 'utf8');
-
-    expect(page).toContain('<meta name="custom-value" content="value"/>');
-
-    // Root element
-    expect(page).toContain('<div id="root">');
-
-    const sanitized = page.replace(
-      /<script src="\/_expo\/static\/js\/web\/.*" defer>/g,
-      '<script src="/_expo/static/js/web/[mock].js" defer>'
-    );
-    expect(sanitized).toMatchSnapshot();
+  it('supports the pathname and params props in +html files', async () => {
+    const page = await getPageHtml(outputDir, 'index.html');
+    expect(page.querySelector('head meta[name="custom-value"]')?.attributes.content).toBe('value');
+    expect(page.querySelector('body #root')).not.toBeNull();
+    for (const script of page.querySelectorAll('script[src]')) {
+      script.setAttribute('src', '/_expo/static/js/web/[mock].js');
+    }
+    for (const preload of page.querySelectorAll('link[as="script"]')) {
+      preload.setAttribute('href', '/_expo/static/js/web/[mock].js');
+    }
+    expect(page.toString()).toMatchSnapshot();
 
     expect(
       (await getPageHtml(outputDir, 'about.html')).querySelector(
@@ -320,9 +301,15 @@ describe('exports static with bundle splitting', () => {
         'html > head > meta[name="expo-e2e-pathname"]'
       )?.attributes.content
     ).toBe('/welcome-to-the-universe');
+
+    expect(
+      (await getPageHtml(outputDir, 'welcome-to-the-universe.html')).querySelector(
+        'html > head > meta[name="expo-e2e-params"]'
+      )?.attributes.content
+    ).toBe('{"post":"welcome-to-the-universe"}');
   });
 
-  it('supports nested static head values', async () => {
+  it('renders generateMetadata in the initial head', async () => {
     // <title>About | Website</title>
     // <meta name="description" content="About page" />
     const about = await getPageHtml(outputDir, 'about.html');
@@ -332,16 +319,17 @@ describe('exports static with bundle splitting', () => {
     expect(about.querySelector('html > head > meta[name="description"]')?.attributes.content).toBe(
       'About page'
     );
-    expect(
-      // Nested from app/_layout.js
-      about.querySelector('html > head > meta[name="expo-nested-layout"]')?.attributes.content
-    ).toBe('TEST_VALUE');
 
-    expect(
-      // Other routes have the nested layout value
-      (await getPageHtml(outputDir, 'welcome-to-the-universe.html')).querySelector(
-        'html > head > meta[name="expo-nested-layout"]'
-      )?.attributes.content
-    ).toBe('TEST_VALUE');
+    // NOTE(@hassankhan): We'll re-enable these after landing generateMetadata in layouts
+    // expect(
+    //   // Nested from app/_layout.js
+    //   about.querySelector('html > head > meta[name="expo-nested-layout"]')?.attributes.content
+    // ).toBe('TEST_VALUE');
+    // expect(
+    //   // Other routes have the nested layout value
+    //   (await getPageHtml(outputDir, 'welcome-to-the-universe.html')).querySelector(
+    //     'html > head > meta[name="expo-nested-layout"]'
+    //   )?.attributes.content
+    // ).toBe('TEST_VALUE');
   });
 });

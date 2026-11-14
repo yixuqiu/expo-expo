@@ -1,16 +1,22 @@
-import { getPackageJson, PackageJSONConfig } from '@expo/config';
+import type { PackageJSONConfig } from '@expo/config';
+import { getConfig, getPackageJson } from '@expo/config';
 import JsonFile from '@expo/json-file';
 import * as PackageManager from '@expo/package-manager';
 import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
 
+import * as Log from '../log';
+import {
+  assertNoSwiftPMMarker,
+  getSwiftPMMarkerPath,
+  isSwiftPMEnabled,
+} from '../prebuild/setupSwiftPM';
+import { hashForDependencyMap } from '../prebuild/updatePackageJson';
 import { ensureDirectoryAsync } from './dir';
 import { env } from './env';
 import { AbortCommandError } from './errors';
 import { logNewSection } from './ora';
-import * as Log from '../log';
-import { hashForDependencyMap } from '../prebuild/updatePackageJson';
 
 type PackageChecksums = {
   /** checksum for the `package.json` dependency object. */
@@ -85,7 +91,7 @@ export async function installCocoaPodsAsync(projectRoot: string): Promise<boolea
       // prompt user -- do you want to install cocoapods right now?
       step.text = 'CocoaPods CLI not found in your PATH, installing it now.';
       step.stopAndPersist();
-      await PackageManager.CocoaPodsPackageManager.installCLIAsync({
+      await packageManager.installCLIAsync({
         nonInteractive: true,
         spawnOptions: {
           ...packageManager.options,
@@ -146,6 +152,17 @@ function isPodFolderCreated(projectRoot: string): boolean {
 // TODO: Same process but with app.config changes + default plugins.
 // This will ensure the user is prompted for extra setup.
 export async function maybePromptToSyncPodsAsync(projectRoot: string) {
+  const { exp } = getConfig(projectRoot, { skipSDKVersionRequirement: true });
+  if (isSwiftPMEnabled(exp)) {
+    const skipping = chalk`Skipping CocoaPods because {bold experiments.swiftPackageManager} is enabled in the app config.`;
+    Log.log(
+      getSwiftPMMarkerPath(projectRoot)
+        ? skipping
+        : chalk`${skipping} The iOS project still uses CocoaPods. Run {bold npx expo prebuild} to switch it to Swift Package Manager.`
+    );
+    return;
+  }
+  assertNoSwiftPMMarker(projectRoot);
   if (!doesProjectUseCocoaPods(projectRoot)) {
     // Project does not use CocoaPods
     return;

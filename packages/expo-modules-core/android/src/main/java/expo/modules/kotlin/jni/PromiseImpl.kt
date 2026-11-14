@@ -1,43 +1,27 @@
 package expo.modules.kotlin.jni
 
-import expo.modules.BuildConfig
 import expo.modules.core.interfaces.DoNotStrip
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.Promise
-import expo.modules.kotlin.exception.PromiseAlreadySettledException
-import expo.modules.kotlin.logger
-import expo.modules.kotlin.types.JSTypeConverter
 import java.lang.ref.WeakReference
-
-private const val ERROR_STACK_FRAME_LIMIT = 50
-
-private const val ERROR_DEFAULT_MESSAGE = "Error not specified."
-
-// Keys for reject WritableMap
-private const val ERROR_MAP_KEY_CODE = "code"
-private const val ERROR_MAP_KEY_MESSAGE = "message"
-private const val ERROR_MAP_KEY_USER_INFO = "userInfo"
-private const val ERROR_MAP_KEY_NATIVE_STACK = "nativeStackAndroid"
-
-// Keys for ERROR_MAP_KEY_NATIVE_STACK's StackFrame maps
-private const val STACK_FRAME_KEY_CLASS = "class"
-private const val STACK_FRAME_KEY_FILE = "file"
-private const val STACK_FRAME_KEY_LINE_NUMBER = "lineNumber"
-private const val STACK_FRAME_KEY_METHOD_NAME = "methodName"
+import java.util.concurrent.atomic.AtomicBoolean
 
 @DoNotStrip
 class PromiseImpl @DoNotStrip internal constructor(
   @DoNotStrip internal val callback: JavaCallback
 ) : Promise {
-  internal var wasSettled = false
-    private set
+  private val settled = AtomicBoolean(false)
+  internal val wasSettled: Boolean
+    get() = settled.get()
   private var appContextHolder: WeakReference<AppContext>? = null
   private var fullFunctionName: String? = null
 
   override fun resolve(value: Any?) = checkIfWasSettled {
-    callback.invoke(
-      JSTypeConverter.convertToJSValue(value)
-    )
+    callback.invoke(value)
+  }
+
+  override fun resolve() = checkIfWasSettled {
+    callback.invoke()
   }
 
   override fun resolve(result: Int) = checkIfWasSettled {
@@ -60,29 +44,34 @@ class PromiseImpl @DoNotStrip internal constructor(
     callback.invoke(result)
   }
 
+  override fun resolve(result: Collection<Any?>) = checkIfWasSettled {
+    callback.invoke(result)
+  }
+
+  override fun resolve(result: Map<String, Any?>) = checkIfWasSettled {
+    callback.invoke(result)
+  }
+
   // Copy of the reject method from [com.facebook.react.bridge.PromiseImpl]
-  override fun reject(code: String, message: String?, cause: Throwable?) = checkIfWasSettled {
+  override fun reject(code: String?, message: String?, cause: Throwable?) = checkIfWasSettled {
     // TODO(@lukmccall): Add information about the stack trace to the error message
     callback.invoke(code, message ?: cause?.message ?: "unknown")
   }
 
   private inline fun checkIfWasSettled(body: () -> Unit) {
-    if (wasSettled) {
-      val exception = PromiseAlreadySettledException(fullFunctionName ?: "unknown")
-      val errorManager = appContextHolder?.get()?.errorManager
-      // We want to report that a promise was settled twice in the development build.
-      // However, in production, the app should crash.
-      if (BuildConfig.DEBUG && errorManager != null) {
-        errorManager.reportExceptionToLogBox(exception)
-        logger.error("Trying to resolve promise that was already settled", exception)
-        return
-      }
-
-      throw exception
+    if (!settled.compareAndSet(false, true)) {
+      return
     }
 
-    body()
-    wasSettled = true
+    var didSettle = false
+    try {
+      body()
+      didSettle = true
+    } finally {
+      if (!didSettle) {
+        settled.set(false)
+      }
+    }
   }
 
   fun decorateWithDebugInformation(

@@ -1,13 +1,11 @@
 # babel-preset-expo
 
-This preset extends the default React Native preset (`@react-native/babel-preset`) and adds support for decorators, tree-shaking web packages, and loading font icons with optional native dependencies if they're installed.
+This preset extends the default React Native preset (`@react-native/babel-preset`) and adds support for tree shaking, bundle splitting, React Server Components, Hermes compilation, advanced dead-code elimination, reanimated, Expo DOM components, server-side rendering, and more...
 
-You can use this preset in any React Native project as a drop-in replacement for `@react-native/babel-preset`. If your project isn't using native font loading or web support then this preset will only add support for decorators with `@babel/plugin-proposal-decorators` - this is mostly used for supporting legacy community libraries.
-
-If you start your **web** project with `@expo/webpack-config` or `npx expo start` and your project doesn't contain a `babel.config.js` or a `.babelrc` then it will default to using `babel-preset-expo` for loading.
+You can use this preset in any React Native project as a drop-in replacement for `@react-native/babel-preset`.
 
 If you have problems with the code in this repository, please file issues & bug reports
-at https://github.com/expo/expo. Thanks!
+at https://github.com/expo/expo.
 
 ## Expo Bundler Spec Compliance
 
@@ -15,7 +13,7 @@ A bundler must follow these requirements if they are to be considered spec compl
 
 ### Babel Loader
 
-The babel loading mechanism must include the following properties on its `caller`.
+The Babel loading mechanism must include the following properties on its `caller`.
 
 #### platform
 
@@ -42,9 +40,27 @@ If the `bundler` is not defined, it will default to checking if a `babel-loader`
 
 ## Options
 
+### `react-compiler`
+
+Settings to pass to `babel-plugin-react-compiler`. Set as `false` to disable the plugin. As of SDK 51, you must also enable `experiments.reactCompiler: true` in the `app.json`.
+
+```js
+[
+  'babel-preset-expo',
+  {
+    'react-compiler': {
+      sources: (filename) => {
+        // Match file names to include in the React Compiler.
+        return filename.includes('src/path/to/dir');
+      },
+    },
+  },
+];
+```
+
 ### `minifyTypeofWindow`
 
-Set `minifyTypeofWindow: false` to preserve the `typeof window` check in your code, e.g. `if (typeof window === 'undefined')` -> `if (true)` in servers. This is useful when you're using libraries that mock the window object on native or in the server.
+Set `minifyTypeofWindow: true` to transform `typeof window` checks in your code, e.g. `if (typeof window === 'object')` -> `if (true)` in clients. This is useful when you're using libraries that mock the window object on native or in the server.
 
 ```js
 [
@@ -58,11 +74,15 @@ Set `minifyTypeofWindow: false` to preserve the `typeof window` check in your co
 ];
 ```
 
-Defaults to `false` for server environments and web, `true` for native platforms to support legacy browser polyfills.
+Defaults to `true` for server environments, and `false` for client environments to support legacy browser polyfills and web workers.
 
 ### `reanimated`
 
 `boolean`, defaults to `true`. Set `reanimated: false` to disable adding the `react-native-reanimated/plugin` when `react-native-reanimated` is installed.
+
+### `worklets`
+
+`boolean`, `boolean`, defaults to `true`. Set `worklets: false` to disable adding the `react-native-worklets/plugin` when `react-native-worklets` is installed. Applies only when using standalone `react-native-worklets` or `react-native-reanimated 4`.
 
 ### [`jsxRuntime`](https://babeljs.io/docs/en/babel-plugin-transform-react-jsx#runtime)
 
@@ -80,7 +100,7 @@ Defaults to `false` for server environments and web, `true` for native platforms
 ];
 ```
 
-This property is passed down to [`@babel/plugin-transform-react-jsx`](https://babeljs.io/docs/en/babel-plugin-transform-react-jsx). This flag does nothing when `useTransformReactJSXExperimental` is set to `true` because `@babel/plugin-transform-react-jsx` is omitted.
+This property is passed down to [`@babel/plugin-transform-react-jsx`](https://babeljs.io/docs/en/babel-plugin-transform-react-jsx).
 
 ### [`jsxImportSource`](https://babeljs.io/docs/en/babel-plugin-transform-react-jsx#importsource)
 
@@ -159,11 +179,13 @@ If `undefined` (default), this will be set automatically via `caller.supportsSta
 
 Changes the engine preset in `@react-native/babel-preset` based on the JavaScript engine that is being targeted. In Expo SDK 50 and greater, this is automatically set based on the [`jsEngine`](https://docs.expo.dev/versions/latest/config/app/#jsengine) option in your `app.json`.
 
+### `transformImportMeta`
+
+Enable transform that converts `import.meta` to `globalThis.__ExpoImportMetaRegistry`. Defaults to `true`.
+
+> **Note:** If the JavaScript engine supports `import.meta` natively, this transformation may interfere with the native implementation.
+
 ### `enableBabelRuntime`
-
-Passed to `@react-native/babel-preset`.
-
-### `disableFlowStripTypesTransform`
 
 Passed to `@react-native/babel-preset`.
 

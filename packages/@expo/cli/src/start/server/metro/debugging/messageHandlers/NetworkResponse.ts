@@ -1,5 +1,6 @@
 import type { Protocol } from 'devtools-protocol';
 
+import { env } from '../../../../../utils/env';
 import { MessageHandler } from '../MessageHandler';
 import type {
   CdpMessage,
@@ -9,18 +10,46 @@ import type {
   DeviceResponse,
 } from '../types';
 
+/**
+ * The global network response storage, as a workaround for the network inspector.
+ * @see createDebugMiddleware#createNetworkWebsocket
+ */
+export const NETWORK_RESPONSE_STORAGE = new Map<
+  string,
+  DebuggerResponse<NetworkGetResponseBody>['result']
+>();
+
+// Bounded so an unauthenticated client on `/inspector/network` cannot grow this
+// map without limit. `Map` preserves insertion order, so the first key is the
+// oldest entry — drop it on overflow (FIFO).
+const MAX_NETWORK_RESPONSES = 512;
+
+export function recordNetworkResponse(
+  requestId: string,
+  info: DebuggerResponse<NetworkGetResponseBody>['result']
+) {
+  NETWORK_RESPONSE_STORAGE.set(requestId, info);
+  if (NETWORK_RESPONSE_STORAGE.size > MAX_NETWORK_RESPONSES) {
+    const oldestKey = NETWORK_RESPONSE_STORAGE.keys().next().value;
+    if (oldestKey !== undefined) {
+      NETWORK_RESPONSE_STORAGE.delete(oldestKey);
+    }
+  }
+}
+
 export class NetworkResponseHandler extends MessageHandler {
   /** All known responses, mapped by request id */
-  storage = new Map<string, DebuggerResponse<NetworkGetResponseBody>['result']>();
+  storage = NETWORK_RESPONSE_STORAGE;
 
   isEnabled() {
-    return this.page.capabilities.nativeNetworkInspection !== true;
+    // Response bodies are served by React Native's core `Network.getResponseBody` instead
+    return !env.EXPO_UNSTABLE_CORE_NETWORK_INSPECTOR;
   }
 
   handleDeviceMessage(message: DeviceRequest<NetworkReceivedResponseBody>) {
     if (message.method === 'Expo(Network.receivedResponseBody)') {
       const { requestId, ...requestInfo } = message.params;
-      this.storage.set(requestId, requestInfo);
+      recordNetworkResponse(requestId, requestInfo);
       return true;
     }
 

@@ -4,7 +4,6 @@ import fs from 'fs-extra';
 import path from 'path';
 
 import AndroidMacrosGenerator from './AndroidMacrosGenerator';
-import IosMacrosGenerator from './IosMacrosGenerator';
 import macros from './macros';
 import { Directories } from '../expotools';
 
@@ -65,7 +64,10 @@ async function generateMacrosAsync(platform, configuration) {
 
 function getMacrosGeneratorForPlatform(platform) {
   if (platform === 'ios') {
-    return new IosMacrosGenerator();
+    throw new Error(
+      `iOS dynamic macros generation via expotools is deprecated. Use the shell script instead:\n` +
+        `  apps/expo-go/ios/Build-Phases/generate-dynamic-macros.sh`
+    );
   }
   if (platform === 'android') {
     return new AndroidMacrosGenerator();
@@ -73,30 +75,16 @@ function getMacrosGeneratorForPlatform(platform) {
   throw new Error(`Platform '${platform}' is not supported.`);
 }
 
-function getSkippedTemplates(isBare: boolean): string[] {
-  if (isBare) {
-    return ['AndroidManifest.xml', 'google-services.json'];
-  }
-
-  return [];
-}
-
 async function generateDynamicMacrosAsync(args) {
   try {
-    const { platform, bareExpo } = args;
+    const { platform } = args;
     const templateSubstitutions = await getTemplateSubstitutionsAsync();
 
-    if (!bareExpo) {
-      const macros = await generateMacrosAsync(platform, args.configuration);
-      const macrosGenerator = getMacrosGeneratorForPlatform(platform);
-      await macrosGenerator.generateAsync({ ...args, macros, templateSubstitutions });
-    }
+    const macros = await generateMacrosAsync(platform, args.configuration);
+    const macrosGenerator = getMacrosGeneratorForPlatform(platform);
+    await macrosGenerator.generateAsync({ ...args, macros, templateSubstitutions });
     // Copy template files - it is platform-agnostic.
-    await copyTemplateFilesAsync(
-      platform,
-      { ...args, skipTemplates: getSkippedTemplates(bareExpo) },
-      templateSubstitutions
-    );
+    await copyTemplateFilesAsync(platform, args, templateSubstitutions);
   } catch (error) {
     console.error(
       `There was an error while generating Expo template files, which could lead to unexpected behavior at runtime:\n${error.stack}`
@@ -117,8 +105,7 @@ async function copyTemplateFileAsync(
   source: string,
   dest: string,
   templateSubstitutions: TemplateSubstitutions,
-  configuration,
-  isOptional: boolean
+  configuration
 ): Promise<void> {
   let [currentSourceFile, currentDestFile] = await Promise.all([
     readExistingSourceAsync(source),
@@ -137,7 +124,7 @@ async function copyTemplateFileAsync(
     );
   }
 
-  if (configuration === 'debug') {
+  if (configuration === 'debug' || configuration === 'mobileDebug') {
     // We need these permissions when testing but don't want them
     // ending up in our release.
     currentSourceFile = currentSourceFile.replace(
@@ -147,18 +134,15 @@ async function copyTemplateFileAsync(
   }
 
   if (currentSourceFile !== currentDestFile) {
-    try {
-      await fs.writeFile(dest, currentSourceFile, 'utf8');
-    } catch (error) {
-      if (!isOptional) throw error;
-    }
+    const destDir = path.dirname(dest);
+    await fs.mkdir(destDir, { recursive: true });
+    await fs.writeFile(dest, currentSourceFile, 'utf8');
   }
 }
 
 type TemplatePaths = Record<string, string>;
 type TemplatePathsFile = {
   paths: TemplatePaths;
-  generateOnly: TemplatePaths;
 };
 
 async function copyTemplateFilesAsync(platform: string, args: any, templateSubstitutions: any) {
@@ -166,8 +150,7 @@ async function copyTemplateFilesAsync(platform: string, args: any, templateSubst
   const templatePathsFile = (await new JsonFile(
     path.join(templateFilesPath, `${platform}-paths.json`)
   ).readAsync()) as TemplatePathsFile;
-  const templatePaths = { ...templatePathsFile.paths, ...templatePathsFile.generateOnly };
-  const checkIgnoredTemplatePaths = Object.values(templatePathsFile.generateOnly);
+  const templatePaths = templatePathsFile.paths;
   const promises: Promise<any>[] = [];
   const skipTemplates: string[] = args.skipTemplates || [];
   for (const [source, dest] of Object.entries(templatePaths)) {
@@ -179,12 +162,10 @@ async function copyTemplateFilesAsync(platform: string, args: any, templateSubst
       continue;
     }
 
-    const isOptional = checkIgnoredTemplatePaths.includes(dest);
     console.log(
-      'Rendering %s from template %s %s...',
+      'Rendering %s from template %s...',
       chalk.cyan(path.join(EXPO_DIR, dest)),
-      chalk.cyan(path.join(templateFilesPath, platform, source)),
-      isOptional ? chalk.yellow('(Optional) ') : ''
+      chalk.cyan(path.join(templateFilesPath, platform, source))
     );
 
     promises.push(
@@ -192,8 +173,7 @@ async function copyTemplateFilesAsync(platform: string, args: any, templateSubst
         path.join(templateFilesPath, platform, source),
         path.join(EXPO_DIR, dest),
         templateSubstitutions,
-        args.configuration,
-        isOptional
+        args.configuration
       )
     );
   }

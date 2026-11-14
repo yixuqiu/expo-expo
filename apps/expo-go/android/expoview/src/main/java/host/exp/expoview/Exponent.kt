@@ -15,19 +15,18 @@ import com.facebook.common.internal.ByteStreams
 import com.facebook.drawee.backends.pipeline.Fresco
 import com.facebook.imagepipeline.backends.okhttp3.OkHttpImagePipelineConfigFactory
 import com.facebook.imagepipeline.producers.HttpUrlConnectionNetworkFetcher
-import com.raizlabs.android.dbflow.config.DatabaseConfig
-import com.raizlabs.android.dbflow.config.FlowConfig
-import com.raizlabs.android.dbflow.config.FlowManager
 import expo.modules.core.interfaces.Package
 import expo.modules.core.interfaces.SingletonModule
+import expo.modules.kotlin.devtools.ExpoNetworkInspectOkHttpAppInterceptor
+import expo.modules.kotlin.devtools.ExpoNetworkInspectOkHttpNetworkInterceptor
 import expo.modules.manifests.core.Manifest
 import host.exp.exponent.*
 import host.exp.exponent.analytics.EXL
 import host.exp.exponent.di.NativeModuleDepsProvider
+import host.exp.exponent.experience.ExpoNativeHost
 import host.exp.exponent.kernel.ExponentUrls
 import host.exp.exponent.kernel.ExponentUrls.addHeadersFromJSONObject
 import host.exp.exponent.kernel.KernelConstants
-import host.exp.exponent.kernel.KernelNetworkInterceptor
 import host.exp.exponent.network.ExpoResponse
 import host.exp.exponent.network.ExponentHttpClient.SafeCallback
 import host.exp.exponent.network.ExponentNetwork
@@ -226,7 +225,9 @@ class Exponent private constructor(val context: Context, val application: Applic
               printSourceFile(sourceFile.absolutePath)
             }
 
-            expoHandler.post { bundleListener.onBundleLoaded(sourceFile.absolutePath) }
+            expoHandler.post {
+              bundleListener.onBundleLoaded(sourceFile.absolutePath)
+            }
           } catch (e: Exception) {
             bundleListener.onError(e)
           }
@@ -278,9 +279,17 @@ class Exponent private constructor(val context: Context, val application: Applic
     fun onFailure(errorMessage: String)
   }
 
+  /**
+   * Check that the development server that serves [bundleUrl] is running.
+   *
+   * The status URL is built from the bundle URL, which is the address this device reached, rather
+   * than from the manifest's `debuggerHost`, which is the address the development server believes it
+   * has. The two differ when the server is reached through a proxy or a tunnel, and only the former
+   * keeps its scheme and port.
+   */
   fun testPackagerStatus(
     isDebug: Boolean,
-    mManifest: Manifest,
+    bundleUrl: String,
     callback: PackagerStatusCallback
   ) {
     if (!isDebug) {
@@ -288,13 +297,19 @@ class Exponent private constructor(val context: Context, val application: Applic
       return
     }
 
-    val debuggerHost = mManifest.getDebuggerHost()
+    val statusUrl = Uri.parse(bundleUrl)
+      .buildUpon()
+      .path("status")
+      .clearQuery()
+      .fragment(null)
+      .build()
+      .toString()
     exponentNetwork.noCacheClient.newCall(
-      Request.Builder().url("http://$debuggerHost/status").build()
+      Request.Builder().url(statusUrl).build()
     ).enqueue(object : Callback {
       override fun onFailure(call: Call, e: IOException) {
         EXL.d(TAG, e.toString())
-        callback.onFailure("Packager is not running at http://$debuggerHost")
+        callback.onFailure("Packager is not running at $statusUrl")
       }
 
       @Throws(IOException::class)
@@ -303,7 +318,7 @@ class Exponent private constructor(val context: Context, val application: Applic
         if (responseString.contains(PACKAGER_RUNNING)) {
           runOnUiThread { callback.onSuccess() }
         } else {
-          callback.onFailure("Packager is not running at http://$debuggerHost")
+          callback.onFailure("Packager is not running at $statusUrl")
         }
       }
     })
@@ -337,67 +352,18 @@ class Exponent private constructor(val context: Context, val application: Applic
       return URLEncoder.encode("experience-$manifestId", "UTF-8")
     }
 
-    fun getPort(urlArg: String): Int {
-      var url = urlArg
-      if (!url.contains("://")) {
-        url = "http://$url"
-      }
-      val uri = Uri.parse(url)
-      val port = uri.port
-      return if (port == -1) {
-        80
-      } else {
-        port
-      }
-    }
-
-    fun getHostname(urlArg: String): String? {
-      var url = urlArg
-      if (!url.contains("://")) {
-        url = "http://$url"
-      }
-      val uri = Uri.parse(url)
-      return uri.host
-    }
-
+    // The dev server itself is set on the DevSupportManager once the React host exists, see
+    // ExpoBridgelessDevSupportManager.setDevServer.
     @JvmStatic fun enableDeveloperSupport(
-      debuggerHost: String,
       mainModuleName: String,
-      builder: RNObject
+      host: ExpoNativeHost
     ) {
-      if (debuggerHost.isEmpty() || mainModuleName.isEmpty()) {
+      if (mainModuleName.isEmpty()) {
         return
       }
 
-      try {
-        val fieldObject = RNObject("com.facebook.react.modules.systeminfo.AndroidInfoHelpers")
-        fieldObject.loadVersion(builder.version())
-
-        val debuggerHostHostname = getHostname(debuggerHost)
-        val debuggerHostPort = getPort(debuggerHost)
-
-        val deviceField = fieldObject.rnClass()!!.getDeclaredField("DEVICE_LOCALHOST")
-        deviceField.isAccessible = true
-        deviceField[null] = debuggerHostHostname
-
-        val genymotionField = fieldObject.rnClass()!!.getDeclaredField("GENYMOTION_LOCALHOST")
-        genymotionField.isAccessible = true
-        genymotionField[null] = debuggerHostHostname
-
-        val emulatorField = fieldObject.rnClass()!!.getDeclaredField("EMULATOR_LOCALHOST")
-        emulatorField.isAccessible = true
-        emulatorField[null] = debuggerHostHostname
-
-        fieldObject.callStatic("setDevServerPort", debuggerHostPort)
-        fieldObject.callStatic("setInspectorProxyPort", debuggerHostPort)
-
-        builder.callRecursive("setUseDeveloperSupport", true)
-        builder.callRecursive("setJSMainModulePath", mainModuleName)
-      } catch (e: IllegalAccessException) {
-        e.printStackTrace()
-      } catch (e: NoSuchFieldException) {
-        e.printStackTrace()
-      }
+      host.devSupportEnabled = true
+      host.mainModuleName = mainModuleName
     }
   }
 
@@ -418,8 +384,8 @@ class Exponent private constructor(val context: Context, val application: Applic
         .connectTimeout(HttpUrlConnectionNetworkFetcher.HTTP_DEFAULT_TIMEOUT.toLong(), TimeUnit.MILLISECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .writeTimeout(0, TimeUnit.MILLISECONDS)
-        .addInterceptor(KernelNetworkInterceptor.okhttpAppInterceptorProxy)
-        .addNetworkInterceptor(KernelNetworkInterceptor.okhttpNetworkInterceptorProxy)
+        .addInterceptor(ExpoNetworkInspectOkHttpAppInterceptor())
+        .addNetworkInterceptor(ExpoNetworkInspectOkHttpNetworkInterceptor())
         .build()
       val imagePipelineConfig = OkHttpImagePipelineConfigFactory.newBuilder(context, okHttpClient).build()
       Fresco.initialize(context, imagePipelineConfig)
@@ -428,25 +394,9 @@ class Exponent private constructor(val context: Context, val application: Applic
     }
 
     // TODO: profile this
-    FlowManager.init(
-      FlowConfig.builder(context)
-        .addDatabaseConfig(
-          DatabaseConfig.builder(SchedulersDatabase::class.java)
-            .databaseName(SchedulersDatabase.NAME)
-            .build()
-        )
-        .addDatabaseConfig(
-          DatabaseConfig.builder(ActionDatabase::class.java)
-            .databaseName(ActionDatabase.NAME)
-            .build()
-        )
-        .addDatabaseConfig(
-          DatabaseConfig.builder(ExponentDB::class.java)
-            .databaseName(ExponentDB.NAME)
-            .build()
-        )
-        .build()
-    )
+    SchedulersDatabase.init(context)
+    ActionDatabase.init(context)
+    ExponentDB.init(context)
 
     if (!ExpoViewBuildConfig.DEBUG) {
       // There are a few places in RN code that throw NetworkOnMainThreadException.

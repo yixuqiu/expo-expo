@@ -3,7 +3,7 @@ import { getRuntimeVersionNullableAsync } from '@expo/config-plugins/build/utils
 import { vol } from 'memfs';
 
 import { InterstitialPageMiddleware } from '../InterstitialPageMiddleware';
-import { ServerRequest, ServerResponse } from '../server.types';
+import type { ServerRequest, ServerResponse } from '../server.types';
 
 jest.mock('@expo/config', () => ({
   getProjectConfigDescriptionWithPaths: jest.fn(),
@@ -69,8 +69,8 @@ describe('_getProjectOptionsAsync', () => {
         version: '123',
       },
     });
-    expect(getConfig).toBeCalled();
-    expect(getRuntimeVersionNullableAsync).toBeCalledWith(
+    expect(getConfig).toHaveBeenCalled();
+    expect(getRuntimeVersionNullableAsync).toHaveBeenCalledWith(
       '/',
       { name: 'my-app', sdkVersion: '45.0.0', slug: 'my-app' },
       'ios'
@@ -89,8 +89,8 @@ describe('_getProjectOptionsAsync', () => {
         version: '45.0.0',
       },
     });
-    expect(getConfig).toBeCalled();
-    expect(getRuntimeVersionNullableAsync).toBeCalledWith(
+    expect(getConfig).toHaveBeenCalled();
+    expect(getRuntimeVersionNullableAsync).toHaveBeenCalledWith(
       '/',
       { name: 'my-app', sdkVersion: '45.0.0', slug: 'my-app' },
       'ios'
@@ -142,6 +142,32 @@ describe('_getPageAsync', () => {
       })
     ).resolves.toEqual('AppName: "App", Runtime version "123", Path: /, Scheme: "testscheme"');
   });
+
+  it('escapes injected values so they cannot break out of the HTML template', async () => {
+    const projectRoot = '/';
+    vol.fromJSON(
+      {
+        'node_modules/expo/static/loading-page/index.html':
+          'AppName: "{{ AppName }}", {{ ProjectVersionType }} "{{ ProjectVersion }}", Path: {{ Path }}, Scheme: "{{ Scheme }}"',
+      },
+      projectRoot
+    );
+
+    const middleware = new InterstitialPageMiddleware(projectRoot, {
+      scheme: `"><script>alert('xss')</script>`,
+    });
+    await expect(
+      middleware._getPageAsync({
+        appName: `<img src=x onerror=alert(1)>`,
+        projectVersion: {
+          type: 'runtime',
+          version: `</p><script>1</script>`,
+        },
+      })
+    ).resolves.toEqual(
+      'AppName: "&lt;img src=x onerror=alert(1)&gt;", Runtime version "&lt;/p&gt;&lt;script&gt;1&lt;/script&gt;", Path: /, Scheme: "&quot;&gt;&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"'
+    );
+  });
 });
 
 describe('handleRequestAsync', () => {
@@ -171,7 +197,7 @@ describe('handleRequestAsync', () => {
       response
     );
     expect(response.statusCode).toBe(200);
-    expect(response.end).toBeCalledWith('mock-value');
+    expect(response.end).toHaveBeenCalledWith('mock-value');
     expect(response.setHeader).toHaveBeenNthCalledWith(
       1,
       'Cache-Control',
@@ -214,7 +240,7 @@ describe('handleRequestAsync', () => {
       response
     );
     expect(response.statusCode).toBe(200);
-    expect(response.end).toBeCalledWith('mock-value');
+    expect(response.end).toHaveBeenCalledWith('mock-value');
     expect(response.setHeader).toHaveBeenNthCalledWith(
       1,
       'Cache-Control',

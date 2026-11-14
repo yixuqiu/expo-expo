@@ -1,38 +1,32 @@
-import { ExpoConfig, getConfig } from '@expo/config';
+import type { ExpoConfig } from '@expo/config';
+import { getConfig } from '@expo/config';
 
 import {
   closeDevelopmentSessionAsync,
   updateDevelopmentSessionAsync,
 } from '../../api/updateDevelopmentSession';
-import { getUserAsync } from '../../api/user/user';
+import { hasCredentials } from '../../api/user/UserSettings';
 import { env } from '../../utils/env';
 import * as ProjectDevices from '../project/devices';
-
-const debug = require('debug')('expo:start:server:developmentSession') as typeof console.log;
-
-const UPDATE_FREQUENCY = 20 * 1000; // 20 seconds
-
-async function isAuthenticatedAsync(): Promise<boolean> {
-  return !!(await getUserAsync().catch(() => null));
-}
+import { debugEvent } from './events';
 
 export class DevelopmentSession {
-  protected timeout: NodeJS.Timeout | null = null;
+  /** If the `startAsync` was successfully called. Underscored + public so tests can observe when
+   * the fire-and-forget ping completes (it is set last) instead of polling. */
+  _hasActiveSession = false;
+
+  private abortController: AbortController | undefined;
 
   constructor(
     /** Project root directory. */
     private projectRoot: string,
     /** Development Server URL. */
-    public url: string | null,
-    /** Catch any errors that may occur during the `startAsync` method. */
-    private onError: (error: Error) => void
+    public url: string | null
   ) {}
 
   /**
    * Notify the Expo servers that a project is running, this enables the Expo Go app
    * and Dev Clients to offer a "recently in development" section for quick access.
-   *
-   * This method starts an interval that will continue to ping the servers until we stop it.
    *
    * @param projectRoot Project root folder, used for retrieving device installation IDs.
    * @param props.exp Partial Expo config with values that will be used in the Expo Go app.
@@ -45,44 +39,40 @@ export class DevelopmentSession {
     exp?: Pick<ExpoConfig, 'name' | 'description' | 'slug' | 'primaryColor'>;
     runtime: 'native' | 'web';
   }): Promise<void> {
-    try {
-      if (env.EXPO_OFFLINE) {
-        debug(
-          'This project will not be suggested in Expo Go or Dev Clients because Expo CLI is running in offline-mode.'
-        );
-        this.stopNotifying();
-        return;
-      }
-
-      const deviceIds = await this.getDeviceInstallationIdsAsync();
-
-      if (!(await isAuthenticatedAsync()) && !deviceIds?.length) {
-        debug(
-          'Development session will not ping because the user is not authenticated and there are no devices.'
-        );
-        this.stopNotifying();
-        return;
-      }
-
-      if (this.url) {
-        // debug(`Development session ping (runtime: ${runtime}, url: ${this.url})`);
-
-        await updateDevelopmentSessionAsync({
-          url: this.url,
-          runtime,
-          exp,
-          deviceIds,
-        });
-      }
-
-      this.stopNotifying();
-
-      this.timeout = setTimeout(() => this.startAsync({ exp, runtime }), UPDATE_FREQUENCY);
-    } catch (error: any) {
-      debug(`Error updating development session API: ${error}`);
-      this.stopNotifying();
-      this.onError(error);
+    if (env.CI || env.EXPO_OFFLINE) {
+      return;
     }
+
+    const fireAndForget = async () => {
+      try {
+        const deviceIds = await this.getDeviceInstallationIdsAsync();
+
+        if (!hasCredentials() && !deviceIds?.length) {
+          return;
+        }
+
+        if (this.url) {
+          debugEvent('session_ping', { runtime, url: this.url });
+          this.abortController = new AbortController();
+          await updateDevelopmentSessionAsync({
+            url: this.url,
+            runtime,
+            exp,
+            deviceIds,
+            signal: this.abortController.signal,
+          });
+          this._hasActiveSession = true;
+        }
+      } catch (error: any) {
+        debugEvent('session_ping_failed', { error: debugEvent.error(error as Error) });
+      } finally {
+        this.abortController = undefined;
+      }
+    };
+
+    // NOTE(@kitten): We never want to wait for this call, as it's not essential to the CLI startup
+    // But we do add a tick delay, for testing
+    await Promise.race([fireAndForget(), Promise.resolve()]);
   }
 
   /** Get all recent devices for the project. */
@@ -91,28 +81,39 @@ export class DevelopmentSession {
     return devices.map(({ installationId }) => installationId);
   }
 
-  /** Stop notifying the Expo servers that the development session is running. */
-  public stopNotifying() {
-    if (this.timeout) {
-      clearTimeout(this.timeout);
-    }
-    this.timeout = null;
-  }
-
-  public async closeAsync(): Promise<void> {
-    this.stopNotifying();
-
-    const deviceIds = await this.getDeviceInstallationIdsAsync();
-
-    if (!(await isAuthenticatedAsync()) && !deviceIds?.length) {
-      return;
+  /** Try to close any pending development sessions, but always resolve */
+  public async closeAsync(): Promise<boolean> {
+    if (env.CI || env.EXPO_OFFLINE) {
+      return false;
+    } else if (this.abortController) {
+      this.abortController.abort();
+      return false;
+    } else if (!this._hasActiveSession) {
+      return false;
     }
 
-    if (this.url) {
-      await closeDevelopmentSessionAsync({
-        url: this.url,
-        deviceIds,
-      });
+    // Clear out the development session, even if the call fails.
+    // This blocks subsequent calls to `stopAsync`
+    this._hasActiveSession = false;
+
+    try {
+      const deviceIds = await this.getDeviceInstallationIdsAsync();
+
+      if (!hasCredentials() && !deviceIds?.length) {
+        return false;
+      }
+
+      if (this.url) {
+        await closeDevelopmentSessionAsync({
+          url: this.url,
+          deviceIds,
+        });
+      }
+
+      return true;
+    } catch (error: any) {
+      debugEvent('session_close_failed', { error: debugEvent.error(error as Error) });
+      return false;
     }
   }
 }

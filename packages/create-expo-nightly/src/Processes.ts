@@ -1,4 +1,4 @@
-import { $, cd } from 'zx';
+import { $ } from 'zx';
 
 let defaultVerbose = false;
 
@@ -10,11 +10,10 @@ export async function runAsync(
   args: string[],
   options?: { cwd?: string; verbose?: boolean }
 ) {
-  $.verbose = options?.verbose ?? defaultVerbose;
-  if (options?.cwd) {
-    cd(options.cwd);
-  }
-  return await $`${command} ${args}`;
+  return await $({
+    verbose: options?.verbose ?? defaultVerbose,
+    cwd: options?.cwd ?? process.cwd(),
+  })`${command} ${args}`;
 }
 
 export async function setDefaultVerbose(verbose: boolean) {

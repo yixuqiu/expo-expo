@@ -7,12 +7,12 @@
   </a>
 </p>
 
-A React component that renders a preview for the device's either front or back camera. Camera's parameters like zoom, auto focus, white balance and flash mode are adjustable. With expo-camera, one can also take photos and record videos that are saved to the app's cache. Morever, the component is also capable of detecting faces and bar codes appearing on the preview.
+A React component that renders a preview for the device's either front or back camera. Camera's parameters like zoom, auto focus, white balance and flash mode are adjustable. With expo-camera, one can also take photos and record videos that are saved to the app's cache. Moreover, the component is also capable of detecting faces and bar codes appearing on the preview.
 
 # API documentation
 
-- [Documentation for the main branch](https://github.com/expo/expo/blob/main/docs/pages/versions/unversioned/sdk/camera.mdx)
 - [Documentation for the latest stable release](https://docs.expo.dev/versions/latest/sdk/camera/)
+- [Documentation for the main branch](https://docs.expo.dev/versions/unversioned/sdk/camera/)
 
 # Installation in managed Expo projects
 
@@ -27,19 +27,6 @@ For bare React Native projects, you must ensure that you have [installed and con
 ```
 npx expo install expo-camera
 ```
-
-### Configure for iOS
-
-Add `NSCameraUsageDescription` and `NSMicrophoneUsageDescription` keys to your `Info.plist`:
-
-```xml
-<key>NSCameraUsageDescription</key>
-<string>Allow $(PRODUCT_NAME) to use the camera</string>
-<key>NSMicrophoneUsageDescription</key>
-<string>Allow $(PRODUCT_NAME) to use the microphone</string>
-```
-
-Run `npx pod-install` after installing the npm package.
 
 ### Configure for Android
 
@@ -71,6 +58,19 @@ allprojects {
 ```
 
 The sourcecode for `cameraview` can be found at [`expo/cameraview`](https://github.com/expo/cameraview).
+
+### Configure for iOS
+
+Add `NSCameraUsageDescription` and `NSMicrophoneUsageDescription` keys to your `Info.plist`:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>Allow $(PRODUCT_NAME) to use the camera</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>Allow $(PRODUCT_NAME) to use the microphone</string>
+```
+
+Run `npx pod-install` after installing the npm package.
 
 # Contributing
 

@@ -1,13 +1,9 @@
 import path from 'path';
 
-import {
-  MemoryContext,
-  inMemoryContext,
-  requireContext,
-  requireContextWithOverrides,
-} from './context-stubs';
 import { getNavigationConfig } from '../getLinkingConfig';
 import { getExactRoutes } from '../getRoutes';
+import type { MemoryContext } from './context-stubs';
+import { inMemoryContext, requireContext, requireContextWithOverrides } from './context-stubs';
 
 export type MockContextConfig =
   | string // Pathname to a directory
@@ -21,7 +17,10 @@ export type MockContextConfig =
     };
 
 export function getMockConfig(context: MockContextConfig, metaOnly: boolean = true) {
-  return getNavigationConfig(getExactRoutes(getMockContext(context))!, metaOnly);
+  return getNavigationConfig(getExactRoutes(getMockContext(context))!, metaOnly, {
+    sitemap: true,
+    notFound: true,
+  });
 }
 
 export function getMockContext(context: MockContextConfig) {

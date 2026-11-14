@@ -1,6 +1,6 @@
-import React from 'react';
+import { render as renderDOM } from '@testing-library/react';
+import { render } from '@testing-library/react-native';
 import { Platform, View as NativeView } from 'react-native';
-import renderer from 'react-test-renderer';
 
 import { createDevView } from '../createDevView';
 
@@ -18,34 +18,44 @@ afterAll(() => {
   console.warn = originalConsoleWarn;
 });
 
-it(`renders`, () => {
+it('renders', async () => {
   // Ensure no errors
-  renderer
-    .create(
+  await expect(
+    render(
       <View>
         <View />
       </View>
     )
-    .toJSON();
+  ).resolves.toBeDefined();
 });
 
-it(`asserts react-dom elements`, () => {
+it('asserts react-dom elements', async () => {
   const instance = (
     <View>
       <div />
     </View>
   );
+
   if (Platform.OS === 'web') {
     // Ensure no errors
-    expect(() => renderer.create(instance)).not.toThrowError();
+    await expect(render(instance)).resolves.toBeDefined();
   } else {
-    expect(() => renderer.create(instance)).toThrowError(/Using unsupported React DOM element/);
+    await expect(async () => await render(instance)).rejects.toThrow(
+      /Using unsupported React DOM element/
+    );
   }
 });
 
-it(`warns about unwrapped strings`, () => {
-  // Ensure no errors
-  expect(renderer.create(<View>Hey</View>).toJSON()).toMatchSnapshot();
+it('warns about unwrapped strings', async () => {
+  if (Platform.OS === 'web') {
+    // RNTL only accepts text inside React Native's `Text` host, but react-native-web renders `Text` as a `div`.
+    const { container } = renderDOM(<View>Hey</View>);
+    expect(container).toMatchSnapshot();
+  } else {
+    // Ensure no errors
+    const { toJSON } = await render(<View>Hey</View>);
+    expect(toJSON()).toMatchSnapshot();
+  }
 
   expect(console.warn).toHaveBeenCalledTimes(1);
 });

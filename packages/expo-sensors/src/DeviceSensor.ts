@@ -1,10 +1,10 @@
 import {
-  PermissionResponse,
+  type PermissionResponse,
+  type PermissionExpiration,
   PermissionStatus,
-  Subscription,
+  type EventSubscription,
   Platform,
-  PermissionExpiration,
-} from 'expo-modules-core';
+} from 'expo';
 
 /**
  * @hidden
@@ -26,7 +26,7 @@ export default class DeviceSensor<Measurement> {
     this._nativeEventName = nativeEventName;
   }
 
-  addListener(listener: Listener<Measurement>): Subscription {
+  addListener(listener: Listener<Measurement>): EventSubscription {
     return this._nativeModule.addListener(this._nativeEventName, listener);
   }
 
@@ -52,10 +52,9 @@ export default class DeviceSensor<Measurement> {
   }
 
   /**
-   * Removes the given subscription.
-   * @param subscription A subscription to remove.
+   * @deprecated use subscription.remove() instead.
    */
-  removeSubscription(subscription: Subscription): void {
+  removeSubscription(subscription: EventSubscription): void {
     subscription.remove();
   }
 
@@ -63,11 +62,12 @@ export default class DeviceSensor<Measurement> {
    * Set the sensor update interval.
    *
    * @param intervalMs Desired interval in milliseconds between sensor updates.
-   * > Starting from Android 12 (API level 31), the system has a 200ms limit for each sensor updates.
+   * > Starting from Android 12 (API level 31), the system has a 200Hz limit for each sensor updates.
    * >
-   * > If you need an update interval less than 200ms, you should:
+   * > If you need an update interval of greater than 200Hz, you should
    * > * add `android.permission.HIGH_SAMPLING_RATE_SENSORS` to [**app.json** `permissions` field](/versions/latest/config/app/#permissions)
-   * > * or if you are using bare workflow, add `<uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS"/>` to **AndroidManifest.xml**.
+   * > * or if you are using an existing React Native project, add
+   * > `<uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS"/>` to **AndroidManifest.xml**.
    */
   setUpdateInterval(intervalMs: number): void {
     if (!this._nativeModule.setUpdateInterval) {
@@ -120,4 +120,4 @@ const defaultPermissionsResponse: PermissionResponse = {
 };
 
 export { PermissionStatus };
-export type { Subscription, PermissionResponse, PermissionExpiration };
+export type { EventSubscription as Subscription, PermissionResponse, PermissionExpiration };

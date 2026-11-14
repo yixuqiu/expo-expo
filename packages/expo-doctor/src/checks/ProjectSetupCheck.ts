@@ -1,104 +1,54 @@
-import spawnAsync from '@expo/spawn-async';
-import glob from 'fast-glob';
 import fs from 'fs';
 import path from 'path';
 
-import { DoctorCheck, DoctorCheckParams, DoctorCheckResult } from './checks.types';
+import { isFileIgnoredAsync } from '../utils/files';
+import { findModuleFilesAsync } from '../utils/findModuleFiles';
+import type { DoctorCheck, DoctorCheckParams, DoctorCheckResult } from './checks.types';
 
 export class ProjectSetupCheck implements DoctorCheck {
   description = 'Check for common project setup issues';
 
   sdkVersionRange = '*';
 
-  async runAsync({ exp, projectRoot }: DoctorCheckParams): Promise<DoctorCheckResult> {
+  async runAsync({ projectRoot }: DoctorCheckParams): Promise<DoctorCheckResult> {
     const issues: string[] = [];
+    const advice: string[] = [];
 
-    // ** check that expo modules native projects aren't getting gitignored **
+    /* Check that Expo modules native projects aren't getting gitignored.  Skip
+     * this check when running on an EAS Build worker, where we may or may not
+     * have git. */
 
     if (fs.existsSync(path.join(projectRoot, 'modules'))) {
-      // Glob returns matching files and `git check-ignore` checks files, as well, but we want to check if the path is gitignored,
-      // so we pick vital files to match off of (e.g., .podspec, build.gradle).
-      const keyFilePathsForModules = [
-        path.join(projectRoot, 'modules', '**', 'ios', '*.podspec'),
-        path.join(projectRoot, 'modules', '**', 'android', 'build.gradle'),
-      ];
-
+      // Glob returns matching files and `git check-ignore` checks files, as
+      // well, but we want to check if the path is gitignored, so we pick vital
+      // files to match off of (e.g., .podspec, build.gradle).
+      const moduleFiles = await findModuleFilesAsync(projectRoot);
       if (
-        (await Promise.all(keyFilePathsForModules.map(areAnyMatchingPathsIgnoredAsync))).find(
-          (result) => result
-        )
+        (await Promise.all(moduleFiles.map((file) => isFileIgnoredAsync(file, true)))).some(Boolean)
       ) {
         issues.push(
-          'This project contains local Expo modules, but the android/ios folders inside the modules are gitignored. These files are required to build your native module into your app. Use patterns like "/android" and "/ios" in your .gitignore file to exclude only the top-level android and ios folders.'
+          `The "android" and/or "ios" directories (./modules/your-module/[android|ios]) for local Expo modules are gitignored, and they should not be. This is often due to overly general gitignore rules.`
+        );
+        advice.push(
+          `Use patterns like "/android" and "/ios" in your .gitignore file to exclude only the top-level "android" and "ios" directories, and not those in the modules directory.`
         );
       }
     }
 
-    // ** possibly-unintentionally-bare check **
-
-    if (
-      exp.plugins?.length &&
-      // git check-ignore needs a specific file to check gitignore, we choose Podfile
-      ((await existsAndIsNotIgnoredAsync(path.join(projectRoot, 'ios', 'Podfile'))) ||
-        (await existsAndIsNotIgnoredAsync(path.join(projectRoot, 'android', 'Podfile'))))
-    ) {
-      issues.push(
-        'This project has native project folders but also has config plugins, indicating it is configured to use Prebuild. EAS Build will not sync your native configuration if the ios or android folders are present. Add these folders to your .gitignore file if you intend to use prebuild (aka "managed" workflow).'
-      );
+    // Check that the .expo directory IS gitignored
+    const expoDir = path.join(projectRoot, '.expo');
+    if (fs.existsSync(expoDir)) {
+      const isIgnored = await isFileIgnoredAsync(expoDir, false);
+      // NOTE: If `isIgnored` is `null`, its status is undetermined. For `.expo/` specifically, we skip the issue
+      // if the ignore-status is undetermined to avoid false-positives
+      if (isIgnored === false) {
+        issues.push(
+          `The .expo directory is not ignored by Git. It contains machine-specific device history and development server settings and should not be committed.`
+        );
+        advice.push(`Add ".expo/" to your .gitignore to avoid committing local Expo state.`);
+      }
     }
 
-    // ** multiple lock file check **
-
-    const lockfileCheckResults = await Promise.all(
-      ['pnpm-lock.yaml', 'yarn.lock', 'package-lock.json'].map((lockfile) => {
-        return { lockfile, exists: fs.existsSync(`${projectRoot}/${lockfile}`) };
-      })
-    );
-
-    const lockfiles = lockfileCheckResults
-      .filter((result) => result.exists)
-      .map((result) => result.lockfile);
-
-    if (lockfiles.length > 1) {
-      issues.push(
-        `This project has multiple package manager lock files (${lockfiles.join(
-          ', '
-        )}). This may cause EAS build to restore dependencies with a different package manager from what you use in other environments.`
-      );
-    }
-
-    return {
-      isSuccessful: issues.length === 0,
-      issues,
-    };
+    return { isSuccessful: issues.length === 0, issues, advice };
   }
-}
-
-async function existsAndIsNotIgnoredAsync(filePath: string): Promise<boolean> {
-  return fs.existsSync(filePath) && !(await isFileIgnoredAsync(filePath));
-}
-
-async function isFileIgnoredAsync(filePath: string): Promise<boolean> {
-  try {
-    await spawnAsync('git', ['check-ignore', '-q', filePath], {
-      cwd: path.normalize(await getRootPathAsync()),
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function getRootPathAsync(): Promise<string> {
-  return (await spawnAsync('git', ['rev-parse', '--show-toplevel'])).stdout.trim();
-}
-
-async function areAnyMatchingPathsIgnoredAsync(filePath: string): Promise<boolean> {
-  const matchingNativeFiles = await glob(filePath);
-  if (!matchingNativeFiles.length) return false;
-  // multiple matches may occur if there are multiple modules
-  return (
-    (await Promise.all(matchingNativeFiles.map(isFileIgnoredAsync))).find((result) => result) ||
-    false
-  );
 }

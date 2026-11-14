@@ -1,14 +1,1779 @@
 # Changelog
 
-## Unpublished
+## 58.0.19
+
+### Patch Changes
+
+- Updated dependencies. ([#52096](https://github.com/expo/expo/pull/52096))
+  - expo-modules-core@58.0.26
+
+## 58.0.18
+
+### Patch Changes
+
+- [iOS] A `buildFromSource` pattern such as `".*"` no longer fails the SwiftPM sync when it matches a module that Swift Package Manager cannot build from source, `ExpoModulesCore` included: the plugin links that module precompiled and prints one warning naming it. An entry that names such a module exactly still fails the sync. ([#52073](https://github.com/expo/expo/pull/52073) by [@chrfalch](https://github.com/chrfalch))
+- [iOS] The SwiftPM plugin links an Expo module's precompiled XCFramework whenever one exists, unless the app lists the module in its `buildFromSource` autolinking option, which the plugin now honours as CocoaPods does. A module built from source whose checked-in Package.swift depends on the `ExpoModulesCoreHeaders` product is built from that manifest as it stands. ([#51661](https://github.com/expo/expo/pull/51661) by [@chrfalch](https://github.com/chrfalch))
+- Updated dependencies. ([#52017](https://github.com/expo/expo/pull/52017), [#51966](https://github.com/expo/expo/pull/51966), [`4a6ae65`](https://github.com/expo/expo/commit/4a6ae6527e2e46e2b0cbc5af1151a82e30c844d4), [#52093](https://github.com/expo/expo/pull/52093), [#51934](https://github.com/expo/expo/pull/51934), [#51922](https://github.com/expo/expo/pull/51922), [#52124](https://github.com/expo/expo/pull/52124), [#52123](https://github.com/expo/expo/pull/52123), [#51782](https://github.com/expo/expo/pull/51782), [#51961](https://github.com/expo/expo/pull/51961))
+  - expo-modules-autolinking@58.0.15
+  - expo-modules-core@58.0.25
+  - @expo/config@58.0.8
+  - expo-font@58.0.10
+  - expo-file-system@58.0.11
+  - expo-modules-cli@0.3.2
+  - @expo/cli@58.1.15
+  - @expo/local-build-cache-provider@58.0.8
+  - @expo/metro-config@58.0.17
+  - babel-preset-expo@58.0.20
+
+## 58.0.17
+
+### Patch Changes
+
+- Resolve `expo/tsconfig.base` in tools that follow `package.json` `exports`. ([#51751](https://github.com/expo/expo/pull/51751) by [@daemosity](https://github.com/daemosity))
+- [iOS] Build `ExpoModulesJSI` during the Xcode build of a Swift Package Manager app, against the app's React Native. Expo source packages compile against the `ExpoModulesJSIHeaders` XCFramework that `expo-modules-jsi` ships, and the new "Build ExpoModulesJSI" build phase runs a script in `expo-modules-jsi` that builds, links and embeds the framework.
+
+  The build phase copies the framework's dSYM to the app's dSYM folder, so archives symbolicate `ExpoModulesJSI` crashes.
+
+  Sync fails with an error that names both versions when the `ExpoModulesJSIHeaders` XCFramework comes from another version of `expo-modules-jsi` than the installed sources.
+
+  ([#51588](https://github.com/expo/expo/pull/51588) by [@chrfalch](https://github.com/chrfalch))
+
+- Updated dependencies. ([#50388](https://github.com/expo/expo/pull/50388), [#51872](https://github.com/expo/expo/pull/51872), [#51946](https://github.com/expo/expo/pull/51946), [#51986](https://github.com/expo/expo/pull/51986), [#51730](https://github.com/expo/expo/pull/51730), [#51854](https://github.com/expo/expo/pull/51854), [#51905](https://github.com/expo/expo/pull/51905), [#51923](https://github.com/expo/expo/pull/51923), [#51906](https://github.com/expo/expo/pull/51906), [#51504](https://github.com/expo/expo/pull/51504), [#51937](https://github.com/expo/expo/pull/51937), [#52008](https://github.com/expo/expo/pull/52008), [#51868](https://github.com/expo/expo/pull/51868), [#51932](https://github.com/expo/expo/pull/51932), [#51714](https://github.com/expo/expo/pull/51714), [#51913](https://github.com/expo/expo/pull/51913))
+  - expo-modules-autolinking@58.0.14
+  - @expo/cli@58.1.14
+  - @expo/config-plugins@58.0.10
+  - expo-modules-core@58.0.24
+  - @expo/fingerprint@0.21.6
+  - @expo/metro-config@58.0.16
+  - @expo/log-box@58.0.13
+  - @expo/config@58.0.7
+  - expo-constants@58.0.13
+  - babel-preset-expo@58.0.19
+  - @expo/local-build-cache-provider@58.0.7
+  - expo-asset@58.0.18
+
+## 58.0.16
+
+### Patch Changes
+
+- Fix web `ViewStyle` and `TextStyle` types disagreeing on `cursor`, `transitionDuration`, and `userSelect`. ([#51805](https://github.com/expo/expo/pull/51805) by [@zoontek](https://github.com/zoontek))
+- Updated dependencies. ([#51823](https://github.com/expo/expo/pull/51823))
+  - expo-file-system@58.0.10
+  - expo-font@58.0.9
+  - @expo/cli@58.1.13
+
+## 58.0.15
+
+### Patch Changes
+
+- Add the `expo-modules` command, which runs `expo-modules-cli`. Modules that declare `expo` as a dependency can run it without depending on `expo-modules-cli`. ([#51755](https://github.com/expo/expo/pull/51755) by [@tsapeta](https://github.com/tsapeta))
+- Updated dependencies. ([#51797](https://github.com/expo/expo/pull/51797), [#51712](https://github.com/expo/expo/pull/51712), [#51728](https://github.com/expo/expo/pull/51728), [#51780](https://github.com/expo/expo/pull/51780), [#51716](https://github.com/expo/expo/pull/51716), [#51743](https://github.com/expo/expo/pull/51743), [#51663](https://github.com/expo/expo/pull/51663), [#51771](https://github.com/expo/expo/pull/51771), [#51687](https://github.com/expo/expo/pull/51687))
+  - expo-asset@58.0.17
+  - @expo/metro-config@58.0.15
+  - expo-modules-core@58.0.23
+  - expo-modules-cli@0.3.1
+  - babel-preset-expo@58.0.18
+  - @expo/cli@58.1.12
+
+## 58.0.14
+
+### Patch Changes
+
+- Updated dependencies. ([#51582](https://github.com/expo/expo/pull/51582), [#51656](https://github.com/expo/expo/pull/51656), [#51664](https://github.com/expo/expo/pull/51664))
+  - expo-modules-core@58.0.22
+  - @expo/cli@58.1.11
+
+## 58.0.13
+
+### Patch Changes
+
+- Updated dependencies. ([#51624](https://github.com/expo/expo/pull/51624))
+  - expo-modules-core@58.0.21
+  - babel-preset-expo@58.0.17
+
+## 58.0.12
+
+### Patch Changes
+
+- Updated dependencies. ([#51626](https://github.com/expo/expo/pull/51626), [#51493](https://github.com/expo/expo/pull/51493))
+  - @expo/cli@58.1.10
+  - expo-modules-core@58.0.20
+  - babel-preset-expo@58.0.16
+
+## 58.0.11
+
+### Patch Changes
+
+- Upgrade React Native to 0.88.0. ([#51613](https://github.com/expo/expo/pull/51613) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Upgrade `react-native-svg` to 15.16.0. ([#51615](https://github.com/expo/expo/pull/51615) by [@jakex7](https://github.com/jakex7))
+- [Internal] Drop unused `EXPO_PROJECT_ROOT` and `EXPO_ROUTER_ABS_APP_ROOT` variables and corresponding invalidation. ([#51540](https://github.com/expo/expo/pull/51540) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#51613](https://github.com/expo/expo/pull/51613), [#51601](https://github.com/expo/expo/pull/51601), [#51456](https://github.com/expo/expo/pull/51456), [#51560](https://github.com/expo/expo/pull/51560), [#51455](https://github.com/expo/expo/pull/51455), [#51302](https://github.com/expo/expo/pull/51302), [#51243](https://github.com/expo/expo/pull/51243), [#51558](https://github.com/expo/expo/pull/51558), [#51602](https://github.com/expo/expo/pull/51602), [#51540](https://github.com/expo/expo/pull/51540))
+  - @expo/cli@58.1.9
+  - @expo/metro-config@58.0.14
+  - babel-preset-expo@58.0.15
+  - expo-modules-core@58.0.19
+  - expo-asset@58.0.16
+
+## 58.0.10
+
+### Patch Changes
+
+- Upgrade `react-native-screens` to 4.30.0. ([#51489](https://github.com/expo/expo/pull/51489) by [@Ubax](https://github.com/Ubax))
+- Update to `@expo/metro@~58.0.0` (promoted to stable for SDK 58). ([#51549](https://github.com/expo/expo/pull/51549) by [@kitten](https://github.com/kitten))
+- Add missing `expo/build/winter` exports entry. ([#51536](https://github.com/expo/expo/pull/51536) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#51477](https://github.com/expo/expo/pull/51477), [#51481](https://github.com/expo/expo/pull/51481), [#51548](https://github.com/expo/expo/pull/51548), [#51546](https://github.com/expo/expo/pull/51546), [#50406](https://github.com/expo/expo/pull/50406), [#51553](https://github.com/expo/expo/pull/51553), [#51549](https://github.com/expo/expo/pull/51549), [#51536](https://github.com/expo/expo/pull/51536), [#51526](https://github.com/expo/expo/pull/51526), [#51023](https://github.com/expo/expo/pull/51023), [#51347](https://github.com/expo/expo/pull/51347), [#51338](https://github.com/expo/expo/pull/51338), [#51517](https://github.com/expo/expo/pull/51517), [#51344](https://github.com/expo/expo/pull/51344))
+  - expo-modules-autolinking@58.0.13
+  - expo-modules-core@58.0.18
+  - @expo/cli@58.1.8
+  - @expo/metro-config@58.0.13
+  - babel-preset-expo@58.0.14
+  - @expo/config@58.0.6
+  - @expo/config-plugins@58.0.9
+  - expo-constants@58.0.12
+  - @expo/local-build-cache-provider@58.0.6
+  - expo-asset@58.0.15
+
+## 58.0.9
+
+### Patch Changes
+
+- Updated dependencies. ([#51463](https://github.com/expo/expo/pull/51463), [#51420](https://github.com/expo/expo/pull/51420))
+  - expo-modules-core@58.0.17
+
+## 58.0.8
+
+### Patch Changes
+
+- [iOS] Detect native module classes annotated with the `@ExpoModule` macro and add them to the generated modules provider automatically, without listing them in `expo-module.config.json`. Generating the modules provider runs the scanner from `expo-modules-macros` once over all package sources and links only the classes that compile for the target platform. When the scan fails, packages that declare their modules still link them, and the build fails if a package relies on the scan for its module classes. ([#49784](https://github.com/expo/expo/pull/49784) by [@tsapeta](https://github.com/tsapeta))
+- [web] Add experimental granular bundle splitting for production exports with async routes. ([#50536](https://github.com/expo/expo/pull/50536) by [@hassankhan](https://github.com/hassankhan))
+- Updated dependencies. ([#49784](https://github.com/expo/expo/pull/49784), [#51417](https://github.com/expo/expo/pull/51417), [#51368](https://github.com/expo/expo/pull/51368), [#51037](https://github.com/expo/expo/pull/51037), [#50978](https://github.com/expo/expo/pull/50978), [#51219](https://github.com/expo/expo/pull/51219), [#51405](https://github.com/expo/expo/pull/51405), [#50536](https://github.com/expo/expo/pull/50536), [#51439](https://github.com/expo/expo/pull/51439), [#51436](https://github.com/expo/expo/pull/51436), [#46526](https://github.com/expo/expo/pull/46526))
+  - expo-modules-autolinking@58.0.12
+  - @expo/cli@58.1.7
+  - expo-file-system@58.0.9
+  - expo-font@58.0.8
+  - expo-modules-core@58.0.16
+  - @expo/metro-config@58.0.12
+  - @expo/config@58.0.5
+  - @expo/config-plugins@58.0.8
+  - @expo/fingerprint@0.21.5
+  - expo-constants@58.0.11
+  - babel-preset-expo@58.0.13
+  - @expo/local-build-cache-provider@58.0.5
+  - expo-asset@58.0.14
+
+## 58.0.7
+
+### Patch Changes
+
+- Stop overriding web style types that React Native already declares. ([#50610](https://github.com/expo/expo/pull/50610) by [@Maher-Reven](https://github.com/Maher-Reven))
+- Updated dependencies. ([#51206](https://github.com/expo/expo/pull/51206), [`0bf5424`](https://github.com/expo/expo/commit/0bf54244ba22f2953bd6e187e39b8d7206f10eb4), [#51204](https://github.com/expo/expo/pull/51204), [#51310](https://github.com/expo/expo/pull/51310), [#51260](https://github.com/expo/expo/pull/51260), [#50522](https://github.com/expo/expo/pull/50522), [#51227](https://github.com/expo/expo/pull/51227), [#51027](https://github.com/expo/expo/pull/51027), [#51210](https://github.com/expo/expo/pull/51210), [#51083](https://github.com/expo/expo/pull/51083), [#49418](https://github.com/expo/expo/pull/49418), [#51169](https://github.com/expo/expo/pull/51169), [#51168](https://github.com/expo/expo/pull/51168), [#51185](https://github.com/expo/expo/pull/51185), [#51110](https://github.com/expo/expo/pull/51110), [#50956](https://github.com/expo/expo/pull/50956), [#51171](https://github.com/expo/expo/pull/51171), [#51247](https://github.com/expo/expo/pull/51247), [#49801](https://github.com/expo/expo/pull/49801))
+  - expo-modules-core@58.0.15
+  - @expo/config-plugins@58.0.7
+  - babel-preset-expo@58.0.12
+  - @expo/log-box@58.0.12
+  - @expo/cli@58.1.6
+  - @expo/config@58.0.4
+  - @expo/metro-config@58.0.11
+  - expo-modules-autolinking@58.0.11
+  - expo-file-system@58.0.8
+  - @expo/fingerprint@0.21.4
+  - @expo/log-box-utils@58.0.2
+  - @expo/local-build-cache-provider@58.0.4
+
+## 58.0.6
+
+### Patch Changes
+
+- [Internal] Bootstrap React Native through `react-native/setup-env` instead of `InitializeCore`. ([#50863](https://github.com/expo/expo/pull/50863) by [@huntie](https://github.com/huntie))
+- [Internal] Import `LogBox`, `DevSettings`, and `NativeComponentRegistry` from the `react-native` public API. ([#50862](https://github.com/expo/expo/pull/50862) by [@huntie](https://github.com/huntie))
+- [Internal] Import React Native internals from `react-native/unstable-internals-do-not-use`. ([#50860](https://github.com/expo/expo/pull/50860) by [@huntie](https://github.com/huntie))
+- Updated dependencies. ([#51047](https://github.com/expo/expo/pull/51047), [#51179](https://github.com/expo/expo/pull/51179), [#51044](https://github.com/expo/expo/pull/51044), [#50863](https://github.com/expo/expo/pull/50863), [#51092](https://github.com/expo/expo/pull/51092), [#50862](https://github.com/expo/expo/pull/50862), [#50860](https://github.com/expo/expo/pull/50860), [#50543](https://github.com/expo/expo/pull/50543), [#50696](https://github.com/expo/expo/pull/50696), [#51177](https://github.com/expo/expo/pull/51177))
+  - expo-modules-autolinking@58.0.10
+  - @expo/cli@58.1.5
+  - expo-modules-core@58.0.14
+  - @expo/metro-config@58.0.10
+  - babel-preset-expo@58.0.11
+  - expo-asset@58.0.13
+  - @expo/log-box@58.0.11
+  - expo-file-system@58.0.7
+
+## 58.0.5
+
+### Patch Changes
+
+- Updated dependencies. ([#51138](https://github.com/expo/expo/pull/51138), [#50976](https://github.com/expo/expo/pull/50976))
+  - expo-file-system@58.0.6
+  - expo-font@58.0.7
+  - @expo/log-box@58.0.10
+  - @expo/cli@58.1.4
+
+## 58.0.4
+
+### Patch Changes
+
+- [iOS] Add an overridable `initialProperties` to `ExpoAppSceneDelegate`, restoring the root properties apps could pass through `RCTAppDelegate.initialProps` before React Native moved its startup into `scene(_:willConnectTo:)`. ([#50997](https://github.com/expo/expo/pull/50997) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Add `./template.tgz` to the `exports` map so `expo/template.tgz` resolves again. Before, the `./*` wildcard mapped it to the nonexistent `template.tgz.js`, so `expo prebuild` couldn't use the template bundled with `expo` and fell back to downloading one from npm. ([#50988](https://github.com/expo/expo/pull/50988) by [@huytdps13400](https://github.com/huytdps13400))
+- Updated dependencies. ([#51066](https://github.com/expo/expo/pull/51066), [#51080](https://github.com/expo/expo/pull/51080), [#50995](https://github.com/expo/expo/pull/50995), [#50894](https://github.com/expo/expo/pull/50894), [#51015](https://github.com/expo/expo/pull/51015), [#51052](https://github.com/expo/expo/pull/51052), [#50989](https://github.com/expo/expo/pull/50989), [#51036](https://github.com/expo/expo/pull/51036), [#51089](https://github.com/expo/expo/pull/51089), [#51125](https://github.com/expo/expo/pull/51125), [#51085](https://github.com/expo/expo/pull/51085))
+  - @expo/cli@58.1.3
+  - @expo/config-plugins@58.0.6
+  - expo-modules-core@58.0.13
+  - @expo/metro-config@58.0.9
+  - @expo/config@58.0.3
+  - expo-constants@58.0.10
+  - expo-modules-autolinking@58.0.9
+  - babel-preset-expo@58.0.10
+  - @expo/local-build-cache-provider@58.0.3
+  - expo-asset@58.0.12
+
+## 58.0.3
+
+### Patch Changes
+
+- [Internal] Bump `react-native-web` to `~0.21.3`. ([#50458](https://github.com/expo/expo/pull/50458) by [@hassankhan](https://github.com/hassankhan))
+- Use [the `TextDecoder` implementation](https://github.com/facebook/hermes/pull/1855) provided by Hermes in React Native 0.88. In addition to UTF-8, this new implementation supports more character encodings including UTF-16 LE and BE, Latin-1, and Windows-1252. Custom JavaScript runtimes must provide `TextDecoder` before initializing Expo. ([#50853](https://github.com/expo/expo/pull/50853) by [@savv](https://github.com/savv))
+- Updated dependencies. ([#50955](https://github.com/expo/expo/pull/50955), [#50975](https://github.com/expo/expo/pull/50975), [#50974](https://github.com/expo/expo/pull/50974), [#47438](https://github.com/expo/expo/pull/47438), [#50016](https://github.com/expo/expo/pull/50016), [#50458](https://github.com/expo/expo/pull/50458), [#49305](https://github.com/expo/expo/pull/49305), [#50905](https://github.com/expo/expo/pull/50905), [#50960](https://github.com/expo/expo/pull/50960), [#50973](https://github.com/expo/expo/pull/50973), [#50959](https://github.com/expo/expo/pull/50959), [#50946](https://github.com/expo/expo/pull/50946), [#50965](https://github.com/expo/expo/pull/50965), [#50970](https://github.com/expo/expo/pull/50970), [#50354](https://github.com/expo/expo/pull/50354), [#50391](https://github.com/expo/expo/pull/50391))
+  - @expo/cli@58.1.2
+  - @expo/config-plugins@58.0.5
+  - expo-modules-core@58.0.12
+  - @expo/metro-config@58.0.8
+  - babel-preset-expo@58.0.9
+  - @expo/log-box@58.0.9
+  - expo-modules-autolinking@58.0.8
+  - expo-font@58.0.6
+  - @expo/config@58.0.2
+  - @expo/fingerprint@0.21.3
+  - @expo/local-build-cache-provider@58.0.2
+  - expo-asset@58.0.11
+
+## 58.0.2
+
+### Patch Changes
+
+- [macOS] Fix the `AppController.sharedInstace was called before the module was initialized` assertion at launch with `react-native-macos` 0.83, where `EXReactRootViewFactory` did not override the `viewWithModuleName:initialProperties:launchOptions:devMenuConfiguration:` method that `RCTReactNativeFactory` calls. ([#50885](https://github.com/expo/expo/pull/50885) by [@zoontek](https://github.com/zoontek))
+- [iOS] Declare each module's SwiftPM package dependencies and honour `autolinkWhen` conditions in the SwiftPM autolinking plugin. ([#50549](https://github.com/expo/expo/pull/50549) by [@chrfalch](https://github.com/chrfalch))
+- [iOS] Fail the SwiftPM autolinking sync with a specific error for module setups the plugin cannot link correctly, instead of producing a broken build. ([#50549](https://github.com/expo/expo/pull/50549) by [@chrfalch](https://github.com/chrfalch))
+- Updated dependencies. ([#50861](https://github.com/expo/expo/pull/50861), [#50881](https://github.com/expo/expo/pull/50881), [#49508](https://github.com/expo/expo/pull/49508), [#50887](https://github.com/expo/expo/pull/50887), [#50660](https://github.com/expo/expo/pull/50660), [#49302](https://github.com/expo/expo/pull/49302), [#48679](https://github.com/expo/expo/pull/48679), [#50867](https://github.com/expo/expo/pull/50867), [#50549](https://github.com/expo/expo/pull/50549))
+  - expo-asset@58.0.10
+  - @expo/cli@58.1.1
+  - expo-file-system@58.0.5
+  - expo-font@58.0.5
+  - expo-keep-awake@58.0.3
+  - expo-modules-core@58.0.11
+  - @expo/metro-config@58.0.7
+  - expo-modules-autolinking@58.0.7
+  - babel-preset-expo@58.0.8
+
+## 58.0.1
+
+### Patch Changes
+
+- Bump recommended `@shopify/flash-list` to `2.3.2` and `@shopify/react-native-skia` to `2.13.1`. ([#50824](https://github.com/expo/expo/pull/50824) by [@zoontek](https://github.com/zoontek))
+- [Android] Fix animated GIF and WebP images showing only their first frame in release builds minified with R8. Fresco 3.7.0 creates these decoders through reflection, and R8 removed their constructors. ([#50815](https://github.com/expo/expo/pull/50815) by [@lukmccall](https://github.com/lukmccall))
+- Remove the `AbortSignal.timeout` and `AbortSignal.any` polyfills now that React Native supports them. ([#50770](https://github.com/expo/expo/pull/50770) by [@Kudo](https://github.com/Kudo))
+- [Internal] [iOS] Simplify the SwiftPM autolinking plugin's internals. The generated packages are unchanged. ([#50547](https://github.com/expo/expo/pull/50547) by [@chrfalch](https://github.com/chrfalch))
+- [iOS] Take module identity, deployment target and dependencies from `expo-modules-autolinking prebuilt-metadata` in the SwiftPM autolinking plugin. ([#50548](https://github.com/expo/expo/pull/50548) by [@chrfalch](https://github.com/chrfalch))
+- [iOS] Fix modules that use Expo Swift macros (`@Field`, `@Record`) failing to build from source with the SwiftPM autolinking plugin. ([#50548](https://github.com/expo/expo/pull/50548) by [@chrfalch](https://github.com/chrfalch))
+- Updated dependencies. ([#49555](https://github.com/expo/expo/pull/49555), [#50204](https://github.com/expo/expo/pull/50204), [#50843](https://github.com/expo/expo/pull/50843), [#50290](https://github.com/expo/expo/pull/50290), [#49529](https://github.com/expo/expo/pull/49529), [#50674](https://github.com/expo/expo/pull/50674), [#50829](https://github.com/expo/expo/pull/50829))
+  - @expo/cli@58.1.0
+  - @expo/log-box@58.0.8
+  - expo-modules-core@58.0.10
+  - babel-preset-expo@58.0.7
+
+## 58.0.0
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- [iOS] Add a SwiftPM autolinking plugin (preview) so Expo modules can be consumed by `react-native spm`, contributing precompiled xcframeworks, source packages and the generated `ExpoModulesProvider` into the SwiftPM autolinking graph. ([#47647](https://github.com/expo/expo/pull/47647) by [@chrfalch](https://github.com/chrfalch))
+- [iOS] Bring the `Package.swift` the SwiftPM autolinking plugin generates up to what CocoaPods already carries: a module's build settings, its declared iOS deployment floor and its `PrivacyInfo.xcprivacy`, plus `RCT_NEW_ARCH_ENABLED` for the `ExpoObjC` target. Modules the plugin cannot place are now reported with the reason and the fix, including one whose `Package.swift` depends on a target the generated package cannot declare. The podspec reader no longer mistakes a `test_spec`'s linkage for the module's own. ([#49823](https://github.com/expo/expo/pull/49823) by [@chrfalch](https://github.com/chrfalch))
+- Upgrade React Native to 0.88.0-rc.0. ([#49910](https://github.com/expo/expo/pull/49910) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Forward Handoff preparation, update, and failure events to app delegate subscribers under the UIKit scene life cycle. ([#50032](https://github.com/expo/expo/pull/50032) by [@chrfalch](https://github.com/chrfalch))
+- [Android] Request the `ACCESS_LOCAL_NETWORK` permission in debug builds on Android 17 before loading the app, so the dev server can be reached without `expo-dev-client`. ([#50057](https://github.com/expo/expo/pull/50057) by [@alanjhughes](https://github.com/alanjhughes))
+- [iOS] Fix the SwiftPM autolinking plugin generating an `ExpoModulesProvider` that reports no app groups and registers no inline modules. ([#50084](https://github.com/expo/expo/pull/50084) by [@chrfalch](https://github.com/chrfalch))
+- [iOS] The SwiftPM autolinking plugin now contributes build-time script phases, so an Expo module that needs a build step under SwiftPM gets one — SwiftPM has no equivalent of CocoaPods' `script_phase`. First consumer: expo-constants' embedded `app.config`. ([#50084](https://github.com/expo/expo/pull/50084) by [@chrfalch](https://github.com/chrfalch))
+- [Android] Enable R8 (`android.enableMinifyInReleaseBuilds=true`) by default in the bare template. ([#50108](https://github.com/expo/expo/pull/50108) by [@lukmccall](https://github.com/lukmccall))
+- Bump to `@expo/metro@58.0.0-rc.0` and `metro@0.87.1` ([#50135](https://github.com/expo/expo/pull/50135) by [@robhogan](https://github.com/robhogan))
+- [iOS] Accept prebuilt-framework tarballs that bundle SwiftPM dependency XCFrameworks alongside the product in the SwiftPM plugin, instead of rejecting them. ([#50141](https://github.com/expo/expo/pull/50141) by [@chrfalch](https://github.com/chrfalch))
+- [iOS] Emit JavaScript `url` events for deep links delivered to a running app under the UIKit scene life cycle. ([#50235](https://github.com/expo/expo/pull/50235) by [@chrfalch](https://github.com/chrfalch))
+- [iOS] Import `Foundation` in `ResponseSink`, which relied on another file in the module importing it. ([#50277](https://github.com/expo/expo/pull/50277) by [@chrfalch](https://github.com/chrfalch))
+- [Web] Stub `requestAnimationFrame` in server bundles, where `react-native-worklets` 0.12 calls it unguarded when Reanimated is imported, crashing server rendering and `expo export`. ([#50507](https://github.com/expo/expo/pull/50507) by [@robhogan](https://github.com/robhogan))
+- [iOS] Include the SwiftPM manifest in the published npm package. ([#50612](https://github.com/expo/expo/pull/50612) by [@vonovak](https://github.com/vonovak))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762), [#45964](https://github.com/expo/expo/pull/45964), [#49511](https://github.com/expo/expo/pull/49511), [#50661](https://github.com/expo/expo/pull/50661), [#50680](https://github.com/expo/expo/pull/50680), [#50721](https://github.com/expo/expo/pull/50721))
+  - @expo/cli@58.0.9
+  - @expo/config@58.0.1
+  - @expo/config-plugins@58.0.4
+  - @expo/devtools@58.0.2
+  - @expo/dom-webview@58.0.2
+  - @expo/fingerprint@0.21.2
+  - @expo/local-build-cache-provider@58.0.1
+  - @expo/log-box@58.0.7
+  - @expo/log-box-utils@58.0.1
+  - @expo/metro-config@58.0.6
+  - babel-preset-expo@58.0.6
+  - expo-asset@58.0.9
+  - expo-constants@58.0.9
+  - expo-file-system@58.0.4
+  - expo-font@58.0.4
+  - expo-keep-awake@58.0.2
+  - expo-modules-autolinking@58.0.6
+  - expo-modules-core@58.0.9
+
+## 58.0.0-preview.0 — 2026-09-10
 
 ### 🛠 Breaking changes
 
+- Raise minimum Node.js version to `^22.13.0` ([#47202](https://github.com/expo/expo/pull/47202) by [@kitten](https://github.com/kitten))
+
 ### 🎉 New features
+
+- [Android] Allow `getDefaultReactHost` to take a custom `jsRuntimeFactory`, so an app can run a JavaScript engine other than Hermes. ([#49686](https://github.com/expo/expo/pull/49686) by [@ammarahm-ed](https://github.com/ammarahm-ed))
 
 ### 🐛 Bug fixes
 
+- [iOS] Fix a Hermes JSI crash during reloads where two overlapping `RCTHost` runtime callbacks shared `EXReactNativeFactory`'s app context ivar, letting one callback decorate objects against the other callback's runtime. ([#48576](https://github.com/expo/expo/issues/48576) by [@LizunovSergey](https://github.com/LizunovSergey))
+- [iOS] Fix `expo/fetch` streaming race between URLSession delegate callbacks and `startStreaming()` that could deliver an empty body on a 200 response, drop chunks, or leave the body stream open. ([#47796](https://github.com/expo/expo/pull/47796) by [@idoyana](https://github.com/idoyana))
+- Fix `expo/fetch` body-stream teardown races: aborting via an `AbortSignal` now rejects the in-flight read with an `AbortError` instead of hanging forever, and late native events no longer throw `The stream is not in a state that permits enqueue`/`close` from outside any consumer `try`/`catch`. ([#47573](https://github.com/expo/expo/pull/47573) by [@idoyana](https://github.com/idoyana))
+- [iOS] Fix `expo/fetch` `Response.text()` and `.arrayBuffer()` never settling when the request fails (network drop, `abort()`) after the response was already delivered. ([#48230](https://github.com/expo/expo/pull/48230) by [@zoontek](https://github.com/zoontek))
+- Fix iOS build against React Native 0.87+ by dropping the legacy architecture (bridge) `RCTRootViewFactoryConfiguration` setup. ([#46641](https://github.com/expo/expo/pull/46641) by [@zoontek](https://github.com/zoontek))
+- Adopted the UIKit scene-based life cycle on iOS so apps built with the iOS 27 SDK launch correctly. ([#46733](https://github.com/expo/expo/pull/46733) by [@alanjhughes](https://github.com/alanjhughes))
+- [iOS] Mark `ExpoAppSceneDelegate` as unavailable in extensions. ([#46799](https://github.com/expo/expo/pull/46799) by [@jakex7](https://github.com/jakex7))
+- [iOS] Fix `Linking.getInitialURL()` returning `null` and deep links being dropped when a URL cold-starts an app on the UIKit scene life cycle. ([#47628](https://github.com/expo/expo/pull/47628) by [@tsapeta](https://github.com/tsapeta))
+- [iOS] Mark `ExpoAppSceneDelegate` as unavailable in `iOSApplicationExtension` for widgets. ([#47894](https://github.com/expo/expo/pull/47894) by [@jakex7](https://github.com/jakex7))
+- [iOS] Add ExpoBundleConfiguration to derive RCTBundleConfiguration from the normalized bundle URL instead of default shared settings singleton ([#48010](https://github.com/expo/expo/pull/48010) by [@kitten](https://github.com/kitten))
+- [iOS] Resolve the dev server port from the `RCTMetroPort` Info.plist key at runtime so bare projects without expo-dev-client connect to their own Metro instance instead of defaulting to 8081. ([#48098](https://github.com/expo/expo/pull/48098) by [@alanjhughes](https://github.com/alanjhughes))
+- Fix async imports (`import(...)`) via `asyncRequireModule` not a thenable instead of a full promise shape ([#48550](https://github.com/expo/expo/pull/48550) by [@kitten](https://github.com/kitten))
+- Fix `window.location` being called regardless of `@expo/metro-runtime` being present on native when an async chunk loads after Metro disconnects ([#48944](https://github.com/expo/expo/pull/48944) by [@expo-bot](https://github.com/expo-bot))
+- Fix DOM components dropping prop updates that are emitted while the WebView is still loading. ([#48813](https://github.com/expo/expo/pull/48813) by [@expo-bot](https://github.com/expo-bot))
+- Fix `import.meta.url` being `null` on web when `transform.inlineRequires` is enabled. ([#49045](https://github.com/expo/expo/pull/49045) by [@expo-bot](https://github.com/expo-bot))
+- Fix platform resolution of the `expo/dom` and `expo/dom/internal` subpath exports ([#49056](https://github.com/expo/expo/pull/49056) by [@hassankhan](https://github.com/hassankhan))
+- [iOS] Remove a duplicated `ExpoModulesCore-Swift.h` import block in `ExpoReactNativeFactory.mm` whose `#else` branch imported the header unconditionally, breaking builds where neither form is on the header search path. ([#47729](https://github.com/expo/expo/pull/47729) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Forward URL, user activity, life cycle and quick action events to `AppDelegate` overrides under the UIScene life cycle. ([#49925](https://github.com/expo/expo/pull/49925) by [@chrfalch](https://github.com/chrfalch))
+
 ### 💡 Others
+
+- [iOS] Split the mixed Swift/Objective-C sources into `Expo` and `ExpoObjC` so the module can be built with Swift Package Manager, and add a `Package.swift` describing them. ([#45906](https://github.com/expo/expo/pull/45906) by [@tsapeta](https://github.com/tsapeta))
+- [iOS] Make the `Expo`/`ExpoObjC` source split compile under Swift Package Manager: a new `ExpoLoader` target breaks the Swift↔ObjC cycle, and UIKit and React's app-delegate headers are imported explicitly. No-ops for CocoaPods. ([#49832](https://github.com/expo/expo/pull/49832) by [@chrfalch](https://github.com/chrfalch))
+- Re-export `useReleasingSharedObjectWithLifecycle` from `expo-modules-core`. ([#48819](https://github.com/expo/expo/pull/48819) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
+- [Android] `ExpoReactHostFactory` now passes host handlers' `DevSupportManagerFactory` to `ReactHostImpl`. ([#47637](https://github.com/expo/expo/pull/47637) by [@alanjhughes](https://github.com/alanjhughes))
+- [macOS] Fix build by guarding the `bundleConfiguration` override, which requires react-native 0.84+. ([#48494](https://github.com/expo/expo/pull/48494) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
+- Restore RCTHostRuntimeDelegate conformance for react-native-macos ([#46420](https://github.com/expo/expo/pull/46420) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Add explicit `react-native/Libraries/Core/InitializeCore` import to native runtime entrypoint ([#46344](https://github.com/expo/expo/pull/46344) by [@kitten](https://github.com/kitten))
+- [Internal] Update logbox imports ([#46640](https://github.com/expo/expo/pull/46640) by [@kitten](https://github.com/kitten))
+- Re-export more expo-modules-core APIs ([#45987](https://github.com/expo/expo/pull/45987) by [@Wenszel](https://github.com/Wenszel))
+- Update `URL` and `URLSearchParams` implementation to support IDNA/TR-46 and improve performance. Spec-adherence has increased and few gaps should now be noticeable compared to browsers ([#47813](https://github.com/expo/expo/pull/47813) by [@kitten](https://github.com/kitten))
+- [Internal] Add `getBundleOrigin`, exposed as `expo/internal/bundle-origin` ([#48275](https://github.com/expo/expo/pull/48275) by [@kitten](https://github.com/kitten))
+- [Internal] Derive `getDevServer` from the bundle URL internally and expose `getBundleUrl` helper ([#48278](https://github.com/expo/expo/pull/48278) by [@kitten](https://github.com/kitten))
+- Rewrite the `TextDecoder` implementation to increase decoding performance ([#48877](https://github.com/expo/expo/pull/48877) by [@kitten](https://github.com/kitten))
+- Bump to `@expo/metro@56.0.2` and `metro@0.84.5` ([#49161](https://github.com/expo/expo/pull/49161) by [@kitten](https://github.com/kitten))
+- Bump to `@expo/metro@56.1.0` and `metro@0.84.6` ([#49671](https://github.com/expo/expo/pull/49671) by [@robhogan](https://github.com/robhogan))
+
+## 57.0.9 - 2026-07-29
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.8 - 2026-07-22
+
+### 🐛 Bug fixes
+
+- [Android] Fixed expo-fetch race condition causing out-of-order delivery of initial chunks ([#42161](https://github.com/expo/expo/pull/42161) by [@matthieugicquel](https://github.com/matthieugicquel))
+
+## 57.0.7 - 2026-07-17
+
+### 🐛 Bug fixes
+
+- Fix `import.meta.url` being `null` on web when read after the bundle's synchronous execution (from effects, async code, or dynamic imports). ([#47802](https://github.com/expo/expo/pull/47802) by [@zoontek](https://github.com/zoontek))
+
+## 57.0.6 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-15
+
+### 🐛 Bug fixes
+
+- [iOS] Pass the React runtime scheduler to `ExpoModulesCore` through a weak handle, so dispatching onto the JS thread during a reload no longer risks calling into a scheduler the React instance already destroyed. ([#47492](https://github.com/expo/expo/pull/47492) by [@tsapeta](https://github.com/tsapeta))
+- Fix `Response.blob()` in `expo/fetch` throwing when the global `Blob` is react-native's implementation. ([#47538](https://github.com/expo/expo/pull/47538) by [@kudo](https://github.com/kudo))
+
+## 57.0.4 - 2026-07-07
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-07
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-30
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-30
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0-preview.1 - 2026-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0-preview.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.12 - 2026-06-15
+
+### 🐛 Bug fixes
+
+- Fix `asyncRoutes` failing on Android and iOS with `Requiring unknown module` ([#46870](https://github.com/expo/expo/pull/46870) by [@hassankhan](https://github.com/hassankhan))
+
+## 56.0.11 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.10 - 2026-06-10
+
+### 🐛 Bug fixes
+
+- Fix `expo/fetch` on Android sending a single `0x00` byte instead of an empty body for body-less `POST`/`PUT`/`PATCH` requests. ([#46678](https://github.com/expo/expo/pull/46678) by [@zoontek](https://github.com/zoontek))
+- Include JavaScript and React component stacks in web dev server error logs. ([#46584](https://github.com/expo/expo/pull/46584) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+
+### 💡 Others
+
+- [Internal] Return thenable with sync-bailout for async require calls ([#46539](https://github.com/expo/expo/pull/46539) by [@kitten](https://github.com/kitten))
+
+## 56.0.9 - 2026-06-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 - 2026-05-29
+
+### 🐛 Bug fixes
+
+- Decompress `gzip` / `br` / `zstd` `expo/fetch` responses on Android even when the caller sets their own `Accept-Encoding` header. ([#46398](https://github.com/expo/expo/pull/46398) by [@zoontek](https://github.com/zoontek))
+- Fix `bodyUsed` leaking across siblings when fetch Response is cloned twice ([#46397](https://github.com/expo/expo/pull/46397) by [@zoontek](https://github.com/zoontek))
+- Prevent fatal `The stream is not in a state that permits close` in `expo/fetch` when native delivers `didComplete`/`didFailWithError` after the consumer has already canceled the body stream. ([#44909](https://github.com/expo/expo/pull/44909) by [@safaiyeh](https://github.com/safaiyeh))
+
+## 56.0.7 - 2026-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 - 2026-05-28
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-26
+
+### 💡 Others
+
+- [fetch] Refine **CompressionInterceptor.kt** code. ([#46052](https://github.com/expo/expo/pull/46052) by [@kudo](https://github.com/kudo))
+
+## 56.0.4 — 2026-05-23
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-20
+
+### 🎉 New features
+
+- [fetch][Android] Added `brotli`, `gzip`, and `zstd` decompression support. ([#45458](https://github.com/expo/expo/pull/45458) by [@kudo](https://github.com/kudo))
+- Added `AbortSignal.timeout`, `AbortSignal.any`, and `DOMException` to the native runtime. ([#45441](https://github.com/expo/expo/pull/45441) by [@kudo](https://github.com/kudo))
+
+### 🐛 Bug fixes
+
+- Fix `expo/fetch` not threading through `Request#body` for `whatwg-fetch` request inputs ([#46027](https://github.com/expo/expo/pull/46027) by [@kitten](https://github.com/kitten))
+
+## 56.0.0-preview.13 — 2026-05-19
+
+### 🐛 Bug fixes
+
+- Fix `expo/fetch` not respecting its own `NativeRequest` as `RequestInit` inputs ([#45958](https://github.com/expo/expo/pull/45958) by [@kitten](https://github.com/kitten))
+- Accept `credentials: 'same-origin'` in `expo/fetch` mirroring `include` ([#45958](https://github.com/expo/expo/pull/45958) by [@kitten](https://github.com/kitten))
+
+## 56.0.0-preview.12 — 2026-05-15
+
+### 🎉 New features
+
+- Implement `Response.clone()` on `expo/fetch`, and throw the spec's `TypeError` when a body is read twice. ([#45740](https://github.com/expo/expo/pull/45740) by [@zoontek](https://github.com/zoontek))
+
+### 🐛 Bug fixes
+
+- Fix loader HMR when streaming SSR is enabled in dev mode ([#45702](https://github.com/expo/expo/pull/45702) by [@hassankhan](https://github.com/hassankhan))
+
+### 💡 Others
+
+- Migrated to the single-payload `SharedObject.emit` API. ([#45596](https://github.com/expo/expo/pull/45596) by [@tsapeta](https://github.com/tsapeta))
+- Drop `AppRegistry` development log when web app mounts ([#45788](https://github.com/expo/expo/pull/45788) by [@kitten](https://github.com/kitten))
+
+## 56.0.0-preview.11 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0-preview.10 — 2026-05-13
+
+### 🛠 Breaking changes
+
+- Removed `@expo/vector-icons` from the `expo` package's dependencies. Apps that list `@expo/vector-icons` in their own `package.json` are unaffected; this is flagged as breaking only for apps that relied on `expo` transitively pulling it in. ([#45563](https://github.com/expo/expo/pull/45563) by [@vonovak](https://github.com/vonovak))
+
+### 💡 Others
+
+- Reexport permission hooks and permission types from `expo-modules-core` ([#45564](https://github.com/expo/expo/pull/45564) by [@Wenszel](https://github.com/Wenszel))
+
+## 56.0.0-preview.9 — 2026-05-12
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0-preview.8 — 2026-05-11
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed launch-time crash in apps with source-built React Native by wiring the React `RuntimeScheduler` into `ExpoModulesJSI` from `ExpoReactNativeFactory`. ([#45636](https://github.com/expo/expo/pull/45636) by [@tsapeta](https://github.com/tsapeta))
+
+## 56.0.0-preview.7 — 2026-05-08
+
+### 🐛 Bug fixes
+
+- Bump to `whatwg-url-minimum@0.1.2` to fix missing `Symbol.toStringTag`s on `URL` and `URLSearchParams` ([#45521](https://github.com/expo/expo/pull/45521) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Remove pinned dependencies ([#45520](https://github.com/expo/expo/pull/45520) by [@kitten](https://githun.com/kitten))
+- Send platform as HMR log mode for terminal log prefixing. ([#45516](https://github.com/expo/expo/pull/45516) by [@EvanBacon](https://github.com/EvanBacon))
+- Remove redundant log messages from web HMR setup. ([#45516](https://github.com/expo/expo/pull/45516) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 56.0.0-preview.6 — 2026-05-07
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0-preview.5 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0-preview.4 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0-preview.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0-preview.2 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0-preview.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0-preview.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+- Use `expo/fetch` as default fetch. ([#44987](https://github.com/expo/expo/pull/44987) by [@kudo](https://github.com/kudo))
+- [dom] Use `@expo/dom-webview` as default webview for DOM components. ([#45224](https://github.com/expo/expo/pull/45224) by [@kudo](https://github.com/kudo))
+
+### 🐛 Bug fixes
+
+- Add `Symbol.toStringTag` to `expo/fetch` `Response` so it identifies as a standard `Response` object ([#44806](https://github.com/expo/expo/pull/44806) by [@zoontek](https://github.com/zoontek))
+- Fixed DOM Components rendering issues on Android 9 devices. ([#43156](https://github.com/expo/expo/pull/43156) by [@kudo](https://github.com/kudo))
+- [dom] Fixed unstable `initialProps` and reloading issue for `@expo/dom-webview`. ([#45222](https://github.com/expo/expo/pull/45222) by [@kudo](https://github.com/kudo))
+
+### 💡 Others
+
+- [iOS] Updated `ExpoReactNativeFactory` to use the new `AppContext.setRuntime` API. ([#44337](https://github.com/expo/expo/pull/44337) by [@tsapeta](https://github.com/tsapeta))
+- Decouple web entry files from `react-native-web` by adding web-specific forks for `registerRootComponent`, `AppRegistry`, `AppEntryNotFound`, and `DevLoadingView`. ([#44298](https://github.com/expo/expo/pull/44298) by [@EvanBacon](https://github.com/EvanBacon))
+- Bumped project templates to TypeScript v6 ([#45091](https://github.com/expo/expo/pull/45091) by [@hassankhan](https://github.com/hassankhan))
+- [dom] Added opt-out `unstable_useExpoModulesBridge` flag. ([#45223](https://github.com/expo/expo/pull/45223) by [@kudo](https://github.com/kudo))
+- Bump to `@expo/metro@56.0.0` and `metro@0.84.4` ([#45404](https://github.com/expo/expo/pull/45404) by [@kitten](https://github.com/kitten))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.84.x. ([#43018](https://github.com/expo/expo/pull/43018) by [@chrfalch](https://github.com/chrfalch))
+
+## 55.0.23 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.22 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.21 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.20 - 2026-05-04
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.18 - 2026-04-28
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.17 - 2026-04-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-04-13
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-04-10
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-09
+
+### 🐛 Bug fixes
+
+- Resolve paths relative to project root instead of server root in `expo/scripts/resolveAppEntry.js` ([#44414](https://github.com/expo/expo/pull/44414) by [@kitten](https://github.com/kitten))
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+### 🐛 Bug fixes
+
+- Prevent `original*` globals from being enumerable or from being created for globals with getters, since these may be side-effectful ([#44407](https://github.com/expo/expo/pull/44407) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- [iOS] Updated AppDelegate Swift header imports for xcframework compatibility. ([#44248](https://github.com/expo/expo/pull/44248) by [@chrfalch](https://github.com/chrfalch))
+- [iOS] Remove `RCTHostRuntimeDelegate` usage now that it's merged into `RCTHostDelegate`. ([#43838](https://github.com/expo/expo/pull/43838) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.9 - 2026-03-27
+
+### 🎉 New features
+
+- Pass optional name to metro require for async modules. ([#44224](https://github.com/expo/expo/pull/44224) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 55.0.8 - 2026-03-18
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 - 2026-03-11
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 - 2026-03-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 - 2026-02-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 - 2026-02-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-02-25
+
+### 💡 Others
+
+- [Android] Remove legacy autolinking integration. ([#43303](https://github.com/expo/expo/pull/43303) by [@lukmccall](https://github.com/lukmccall))
+
+## 55.0.0-preview.12 — 2026-02-20
+
+### 🐛 Bug fixes
+
+- Add missing `Request`-like input handling, `method` normalization, and URL argument support to `fetch` ([#43194](https://github.com/expo/expo/pull/43194) by [@kitten](https://github.com/kitten))
+
+## 55.0.0-preview.11 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0-preview.10 — 2026-02-08
+
+### 💡 Others
+
+- [iOS] Optimized `response.arrayBuffer` implementation. ([#42643](https://github.com/expo/expo/pull/42643) by [@barthap](https://github.com/barthap))
+
+## 55.0.0-preview.9 — 2026-02-03
+
+### 🐛 Bug fixes
+
+- Fix global type declaration chain to point to `expo -> expo-modules-core/types -> ./build/global` rather than `types="node"` ([#42751](https://github.com/expo/expo/pull/42751) by [@kitten](https://github.com/kitten))
+- Fix missing `module` type declaration when `@types/node` is missing ([#42751](https://github.com/expo/expo/pull/42751) by [@kitten](https://github.com/kitten))
+
+## 55.0.0-preview.8 — 2026-02-03
+
+### 🐛 Bug fixes
+
+- [iOS] Restore dev menu on tvOS. ([#42737](https://github.com/expo/expo/pull/42737) by [@douglowder](https://github.com/douglowder))
+
+### 💡 Others
+
+- Replace `URL` and `URLSearchParams` implementation ([#42706](https://github.com/expo/expo/pull/42706) by [@kitten](https://github.com/kitten))
+
+## 55.0.0-preview.7 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0-preview.6 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0-preview.5 — 2026-01-23
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0-preview.4 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0-preview.3 — 2026-01-22
+
+### 💡 Others
+
+- [macOS] Remove react-native-macos@0.79.0 workarounds ([#42409](https://github.com/expo/expo/pull/42409) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 55.0.0-preview.2 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0-preview.1 — 2026-01-21
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0-preview.0 — 2026-01-21
+
+### 🛠 Breaking changes
+
+- [iOS] Remove EXAppDelegateWrapper class ([#39778](https://github.com/expo/expo/pull/39778) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [android] Delete ReactNativeHostWrapper class ([#40222](https://github.com/expo/expo/pull/40222) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 🎉 New features
+
+- Add `process.env.EXPO_DOM_HOST_OS` for detecting the original platform of a DOM Component. ([#40382](https://github.com/expo/expo/pull/40382) by [@EvanBacon](https://github.com/EvanBacon))
+- Remove `ExpoAppDelegate` inheritance requirement in ExpoReactNativeFactory ([#39417](https://github.com/expo/expo/pull/39417) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Remove bindReactNativeFactory function ([#39418](https://github.com/expo/expo/pull/39418) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Adopted Swift 6 ([#40369](https://github.com/expo/expo/pull/40369) by [@tsapeta](https://github.com/tsapeta))
+- [iOS] Add `applicationDidReceiveMemoryWarning` subscribing to ExpoAppDelegate ([#40504](https://github.com/expo/expo/pull/40504) by [@szydlovsky](https://github.com/szydlovsky))
+- Fork default RN `HMRClient` to enable custom HMR Errors handling and UI ([#40449](https://github.com/expo/expo/pull/40449) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Add support for a new error overlay UI from `@expo/log-box` ([#39958](https://github.com/expo/expo/pull/39958) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- [iOS] `Class` definition for shared objects is now optional. ([#40708](https://github.com/expo/expo/pull/40708) by [@tsapeta](https://github.com/tsapeta))
+- Split out JSI layer from the modules core. ([#40755](https://github.com/expo/expo/pull/40755) by [@tsapeta](https://github.com/tsapeta))
+- Add `@expo/local-build-cache-provider` package ([#41270](https://github.com/expo/expo/pull/41270) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [iOS] Added `appDelegateWillBeginInitialization` function to AppDelegate subscribers. ([#41456](https://github.com/expo/expo/pull/41456) by [@tsapeta](https://github.com/tsapeta))
+- [iOS] JSI runtime is now accessed from public `RCTHostRuntimeDelegate` instead of unofficial `bridge.runtime`. ([#41311](https://github.com/expo/expo/pull/41311) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Empty HMR update should not reset the error overlay ([#40741](https://github.com/expo/expo/pull/40741) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Fixed broken `Updates.reloadAsync`. ([#41260](https://github.com/expo/expo/pull/41260) by [@kudo](https://github.com/kudo))
+- [iOS] Fix missing headers when using static frameworks ([#41970](https://github.com/expo/expo/pull/41970) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Prevent Firefox from showing Metro HMR disconnection warning on page refresh ([#41971](https://github.com/expo/expo/pull/41971) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- [Types] Fix `transitionDuration` type missing the `number` option for Reanimated V4 compatibility. ([#40793](https://github.com/expo/expo/pull/40793) by [@DelphineBugner](https://github.com/DelphineBugner))
+- [android] Add getDefaultReactHost to ExpoReactHostFactory ([#40086](https://github.com/expo/expo/pull/40086) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [expo/dom] Add `overrideUri` to `DOMProps` to enable pre-bundled DOM Components. ([#40397](https://github.com/expo/expo/pull/40397) by [@krystofwoldrich](https://github.com/krystofwoldrich))
+- Add recommended `react-server-dom-webpack` version to `bundledNativeModules.json` ([#41429](https://github.com/expo/expo/pull/41429) by [@kitten](https://github.com/kitten))
+- Bump `react-server-dom-webpack` ([#41574](https://github.com/expo/expo/pull/41574) by [@kitten](https://github.com/kitten)) ([#41589](https://github.com/expo/expo/pull/41589) by [@kitten](https://github.com/kitten))
+- Bump to `@expo/metro@54.2.0` and `metro@0.83.3` ([#41142](https://github.com/expo/expo/pull/41142) by [@kitten](https://github.com/kitten))
+- Update `metro-source-map` import source in `expo/scripts/compose-source-maps` ([#41458](https://github.com/expo/expo/pull/41458) by [@kitten](https://github.com/kitten))
+- [Android] Optimized `response.arrayBuffer` implementation. ([#42086](https://github.com/expo/expo/pull/42086) by [@barthap](https://github.com/barthap))
+- change `global` for `globalThis` to fix failing `auth-session` js tests ([#42083](https://github.com/expo/expo/pull/42083) by [@vonovak](https://github.com/vonovak))
+- Add `unstable_createWorker` helper method to `async-require` module ([#42340](https://github.com/expo/expo/pull/42340) by [@kitten](https://github.com/kitten))
+- Removed the `nil` react host assertion for iOS in ExpoReactNativeFactory [#42234](https://github.com/expo/expo/pull/42234) by [@pmleczek](https://github.com/pmleczek)
+
+### ⚠️ Notices
+
+- Added support for React Native 0.82.x. ([#39678](https://github.com/expo/expo/pull/39678) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Added support for React Native 0.83.x. ([#41564](https://github.com/expo/expo/pull/41564) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 54.0.26 - 2025-12-04
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.25 - 2025-11-18
+
+### 🐛 Bug fixes
+
+- Fix `ExpoAppDelegate` not extending `UIResponder`. ([#41066](https://github.com/expo/expo/pull/41066) by [@tsapeta](https://github.com/tsapeta))
+
+## 54.0.24 - 2025-11-17
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.23 - 2025-11-07
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.22 - 2025-11-03
+
+### 🎉 New features
+
+- [iOS] Added `subscriberDidRegister` function to AppDelegate subscribers. ([#40684](https://github.com/expo/expo/pull/40684) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Fix setting filename in `FormData`. ([#40586](https://github.com/expo/expo/pull/40586) by [@aleqsio](https://github.com/aleqsio))
+- Fixed DOM Components entry not found from updates on Android. ([#40574](https://github.com/expo/expo/pull/40574) by [@kudo](https://github.com/kudo))
+
+## 54.0.21 - 2025-10-28
+
+### 💡 Others
+
+- Add `internal/async-require-module` for `@expo/metro-config`'s `asyncRequireModulePath`([#40584](https://github.com/expo/expo/pull/40584) by [@kitten](https://github.com/kitten))
+- [Android] Remove edge-to-edge logic from `ReactActivityDelegateWrapper`. ([#40263](https://github.com/expo/expo/pull/40263) by [@behenate](https://github.com/behenate))
+
+## 54.0.20 - 2025-10-23
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.19 - 2025-10-22
+
+### 🐛 Bug fixes
+
+- [Android] Fix edge-to-edge when `enableMinifyInReleaseBuilds` is `true` by ([#40515](https://github.com/expo/expo/pull/40515) by [@nishan](https://github.com/intergalacticspacehighway)) ([#40515](https://github.com/expo/expo/pull/40515) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
+
+## 54.0.18 - 2025-10-21
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.17 - 2025-10-21
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.16 - 2025-10-21
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.15 - 2025-10-20
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.14 - 2025-10-20
+
+### 💡 Others
+
+- Bump to `@expo/metro@54.1.0` and `metro@0.83.2` ([#39826](https://github.com/expo/expo/pull/39826) by [@kitten](https://github.com/kitten))
+
+## 54.0.13 - 2025-10-09
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.12 - 2025-10-01
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.10 - 2025-09-22
+
+### 💡 Others
+
+- Updated `expo/tsconfig.base` to resolve `exclude` paths relative to the extending tsconfig ([#39816](https://github.com/expo/expo/pull/39816) by [@kraenhansen](https://github.com/kraenhansen))
+
+## 54.0.9 - 2025-09-18
+
+### 🐛 Bug fixes
+
+- Bump to `@expo/metro@~54.0.0` fixing `metro-runtime` resolution error when `unstable_enablePackageExports` is forcefully disabled ([#39800](https://github.com/expo/expo/pull/39800) by [@kitten](https://github.com/kitten))
+
+## 54.0.8 — 2025-09-16
+
+### 🐛 Bug fixes
+
+- Remove overlapping properties that were defined upstream from `react-native-web.d.ts` ([#39710](https://github.com/expo/expo/pull/39710) by [@kitten](https://github.com/kitten))
+
+## 54.0.7 — 2025-09-13
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.6 — 2025-09-13
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.5 — 2025-09-12
+
+### 🐛 Bug fixes
+
+- Use `$$EXPO_INITIAL_PROPS` to determine if running inside a dom component. ([#39590](https://github.com/expo/expo/pull/39590) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 54.0.4 — 2025-09-12
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.3 — 2025-09-12
+
+### 🛠 Breaking changes
+
+- [iOS] appended removal info (SDK-55) to the deprecation message of the `EXAppDelegateWrapper` interface. ([#39574](https://github.com/expo/expo/pull/39574) by [@chrfalch](https://github.com/chrfalch))
+
+## 54.0.2 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.1 — 2025-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0 — 2025-09-10
+
+### 💡 Others
+
+- Replace public constructor argument syntax in `async-require/errors` ([#39496](https://github.com/expo/expo/pull/39496) by [@kitten](https://github.com/kitten))
+
+## 54.0.0-preview.16 — 2025-09-08
+
+### 🐛 Bug fixes
+
+- [Android] allow `expo/fetch` sending a `POST`, `PATCH` or `PUT` request without a body. ([#39363](https://github.com/expo/expo/pull/39363) by [@julian-dueck](https://github.com/julian-dueck))
+
+## 54.0.0-preview.15 — 2025-09-04
+
+### 💡 Others
+
+- Move `isLiquidGlassAvailable` function to `ExpoGlassEffect` ([#39349](https://github.com/expo/expo/pull/39349) by [@Ubax](https://github.com/Ubax))
+
+## 54.0.0-preview.14 — 2025-09-03
+
+### 💡 Others
+
+- load isLiquidGlassAvailable lazily ([#39361](https://github.com/expo/expo/pull/39361) by [@Ubax](https://github.com/Ubax))
+
+## 54.0.0-preview.13 — 2025-09-02
+
+### 🎉 New features
+
+- Add support for React Native Factory when extending ExpoAppDelegate on macOS. ([#35061](https://github.com/expo/expo/pull/35061) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Add `isLiquidGlassAvailable` function ([#39319](https://github.com/expo/expo/pull/39319) by [@Ubax](https://github.com/Ubax))
+
+## 54.0.0-preview.12 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0-preview.11 — 2025-08-28
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0-preview.10 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0-preview.9 — 2025-08-26
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0-preview.8 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0-preview.7 — 2025-08-25
+
+### 🎉 New features
+
+- Add `structuredClone` built-in to native platforms. ([#37503](https://github.com/expo/expo/pull/37503) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Temporarily bring back dependency on `expo-file-system`. ([#38792](https://github.com/expo/expo/pull/38792) by [@aleqsio](https://github.com/aleqsio))
+
+## 54.0.0-preview.6 — 2025-08-21
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0-preview.5 — 2025-08-21
+
+### 🛠 Breaking changes
+
+- Enable [React Native Strict TypeScript API typings](https://reactnative.dev/docs/strict-typescript-api) by default. This is not a breaking change unless you've used internal APIs in your TypeScript code. ([#39018](https://github.com/expo/expo/pull/39018) by [@kitten](https://github.com/kitten))
+
+## 54.0.0-preview.4 — 2025-08-19
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0-preview.3 — 2025-08-18
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0-preview.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0-preview.1 — 2025-08-15
+
+### 💡 Others
+
+- Update typings for `typescript@5.9` ([#38833](https://github.com/expo/expo/pull/38833) by [@kitten](https://github.com/kitten))
+
+## 54.0.0-preview.0 — 2025-08-13
+
+### 🎉 New features
+
+- Add `TextDecoderStream` and `TextEncoderStream` APIs to the native runtime. ([#37507](https://github.com/expo/expo/pull/37507) by [@EvanBacon](https://github.com/EvanBacon))
+- Enable async requires by default. ([#36405](https://github.com/expo/expo/pull/36405) by [@EvanBacon](https://github.com/EvanBacon))
+- Added `redirect` option support to `expo/fetch` ([#38078](https://github.com/expo/expo/pull/38078) by [@andipro123](https://github.com/andipro123))
+- Add template tarball. ([#37333](https://github.com/expo/expo/pull/37333) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- [iOS] Fix missing CDP headers when using static frameworks. ([#37448](https://github.com/expo/expo/pull/37448) by [@alanjhughes](https://github.com/alanjhughes))
+- [Android] Fix React Native's `enableEdgeToEdge` Gradle property being ignored. ([#38734](https://github.com/expo/expo/pull/38734) by [@behenate](https://github.com/behenate))
+
+### 💡 Others
+
+- Drop unused dependency on `expo-file-system`. ([#38792](https://github.com/expo/expo/pull/38792) by [@aleqsio](https://github.com/aleqsio))
+- Use `Networking` module and streaming to suppress warning for async bundles on native. ([#38587](https://github.com/expo/expo/pull/38587) by [@EvanBacon](https://github.com/EvanBacon))
+- Fork `react-native/Libraries/Utilities/PolyfillFunctions` to suppress warning. ([#38495](https://github.com/expo/expo/pull/38495) by [@EvanBacon](https://github.com/EvanBacon))
+- Change how FormData is parsed in expo/fetch. ([#38160](https://github.com/expo/expo/pull/38160) by [@aleqsio](https://github.com/aleqsio))
+- Simplify expo-modules-core usage. ([#37588](https://github.com/expo/expo/pull/37588) by [@EvanBacon](https://github.com/EvanBacon))
+- Reexport `@expo/config/paths` paths as `expo/config/paths`. ([#37860](https://github.com/expo/expo/pull/37860) by [@aleqsio](https://github.com/aleqsio))
+- [fetch] refactor reference equality ([#38231](https://github.com/expo/expo/pull/38231) by [@vonovak](https://github.com/vonovak))
+- [Android] Remove react-native 0.74 support files ([#38216](https://github.com/expo/expo/pull/38216) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Switch Metro imports to `@expo/metro` wrapper package ([#38166](https://github.com/expo/expo/pull/38166) by [@kitten](https://github.com/kitten))
+- Moved **src/devtools** code to the `@expo/devtools` package. ([#38438](https://github.com/expo/expo/pull/38438) by [@kudo](https://github.com/kudo))
+- Remove (newly added) peer dependencies on `react-refresh` and `metro-runtime` ([#38562](https://github.com/expo/expo/pull/38562) by [@kitten](https://github.com/kitten))
+- Remove `react-native-edge-to-edge` dependency. ([#38767](https://github.com/expo/expo/pull/38767) by [@behenate](https://github.com/behenate))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.80.x. ([#37400](https://github.com/expo/expo/pull/37400) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 53.0.20 - 2025-07-17
+
+### 🐛 Bug fixes
+
+- URL.canParse(..) no longer always returns false. ([#38122](https://github.com/expo/expo/pull/38122) by [@char](https://github.com/char))
+
+## 53.0.19 - 2025-07-08
+
+### 🐛 Bug fixes
+
+- Fixed `ReactActivityDelegateWrapper` lifecycle atomic issue. ([#37895](https://github.com/expo/expo/pull/37895) by [@kudo](https://github.com/kudo))
+
+## 53.0.18 - 2025-07-07
+
+### 🐛 Bug fixes
+
+- Fixed NPE of `onWindowFocusChanged` on Android 10. ([#37847](https://github.com/expo/expo/pull/37847) by [@kudo](https://github.com/kudo))
+
+## 53.0.17 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.16 - 2025-07-02
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.15 - 2025-07-01
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.14 - 2025-07-01
+
+### 🐛 Bug fixes
+
+- Fixed `expo/fetch` requests cancellation error message on Android. ([#37509](https://github.com/expo/expo/pull/37509) by [@kudo](https://github.com/kudo))
+- [Android] Fixed delay load app handler on new architecture mode. ([#37706](https://github.com/expo/expo/pull/37706) by [@kudo](https://github.com/kudo))
+
+### 💡 Others
+
+- [Android] Aligned `expo/fetch` cancelation error message as iOS. ([#37517](https://github.com/expo/expo/pull/37517) by [@kudo](https://github.com/kudo))
+
+## 53.0.13 - 2025-06-26
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.12 - 2025-06-18
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.11 - 2025-06-08
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.10 - 2025-06-04
+
+### 🐛 Bug fixes
+
+- [iOS] Call `createRootViewController` from the `ExpoReactNativeFactoryDelegate`. ([#36787](https://github.com/expo/expo/pull/36787) by [@alanjhughes](https://github.com/alanjhughes))
+- [Android] Re-throw error in `handleInstanceException` if nothing is registered to handle it. ([#37021](https://github.com/expo/expo/pull/37021) by [@alanjhughes](https://github.com/alanjhughes))
+- [types] Fix conflict between React Native Web and Reanimated 4 types ([#37024](https://github.com/expo/expo/pull/37024) by [@marklawlor](https://github.com/marklawlor))
+
+### 💡 Others
+
+- Disable default timeout for `expo/fetch` requests on iOS. ([#36838](https://github.com/expo/expo/pull/36838) by [@kudo](https://github.com/kudo))
+
+## 53.0.9 — 2025-05-08
+
+### 🐛 Bug fixes
+
+- respect `react-native` type export conditions ([#36728](https://github.com/expo/expo/pull/36728) by [@vonovak](https://github.com/vonovak))
+
+## 53.0.8 — 2025-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.7 — 2025-05-03
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.6 — 2025-05-02
+
+### 💡 Others
+
+- Bump react-native-safe-area-context ([#36545](https://github.com/expo/expo/pull/36545) by [@brentvatne](https://github.com/brentvatne))
+
+## 53.0.5 — 2025-05-01
+
+### 🐛 Bug fixes
+
+- Update new arch check in Expo Go to account for new default behavior of `newArchEnabled` (now `true` when not specified in SDK 53). ([#36506](https://github.com/expo/expo/pull/36506) by [@brentvatne](https://github.com/brentvatne))
+
+## 53.0.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.3 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.2 — 2025-04-30
+
+### 💡 Others
+
+- Switch `expo/tsconfig.base` preset to `moduleResolution: "bundler"` ([#36299](https://github.com/expo/expo/pull/36299) by [@kitten](https://github.com/kitten))
+
+## 53.0.1 — 2025-04-28
+
+### 💡 Others
+
+- Move virtual RSC client boundary entry point to `expo` from `@expo/metro-runtime`. ([#36408](https://github.com/expo/expo/pull/36408) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 53.0.0 — 2025-04-28
+
+### 🎉 New features
+
+- Add web stream support globally. ([#36407](https://github.com/expo/expo/pull/36407) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 53.0.0-preview.12 — 2025-04-25
+
+### 💡 Others
+
+- [iOS] Remove `moduleName` and `initialProps` from the `AppDelegate`. ([#36338](https://github.com/expo/expo/pull/36338) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 53.0.0-preview.11 — 2025-04-23
+
+### 🎉 New features
+
+- Add hot reloading for environment variables. ([#36189](https://github.com/expo/expo/pull/36189) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 53.0.0-preview.10 — 2025-04-22
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.9 — 2025-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.8 — 2025-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.7 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.6 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.5 — 2025-04-11
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.4 — 2025-04-11
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.3 — 2025-04-10
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.2 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.1 — 2025-04-08
+
+### 💡 Others
+
+- Added `globalThis.__ExpoImportMetaRegistry`. ([#34755](https://github.com/expo/expo/pull/34755) by [@kudo](https://github.com/kudo))
+- Add `react-native-edge-to-edge` as a dependency. ([#35812](https://github.com/expo/expo/pull/35812) by [@behenate](https://github.com/behenate))
+
+## 53.0.0-preview.0 — 2025-04-04
+
+- Remove `transformOrigin` type override. ([#34183](https://github.com/expo/expo/pull/34183) by [@marklawlor](https://github.com/marklawlor))
+
+### 🛠 Breaking changes
+
+- Change expo/types export. ([#35484](https://github.com/expo/expo/pull/35484) by [@aleqsio](https://github.com/aleqsio))
+- upgrade RN to 0.78 ([#35050](https://github.com/expo/expo/pull/35050) by [@vonovak](https://github.com/vonovak))
+- Remove `DevToolsPluginClient`'s `protected eventEmitter` property and drop `fbemitter`. ([#35376](https://github.com/expo/expo/pull/35376) by [@kitten](https://github.com/kitten))
+
+### 🎉 New features
+
+- support react-native 0.77 ([#33946](https://github.com/expo/expo/pull/33946) by [@vonovak](https://github.com/vonovak))
+- Assert that DOM components cannot have `children`. ([#33369](https://github.com/expo/expo/pull/33369) by [@EvanBacon](https://github.com/EvanBacon))
+- Add ExpoAppDelegate support for macOS. ([#35061](https://github.com/expo/expo/pull/35061) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Add support for macOS AppDelegate subscribers ([#35062](https://github.com/expo/expo/pull/35062) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 💡 Others
+
+- Remove "shortcut" from `rel="icon"` from favicon injection. ([#33696](https://github.com/expo/expo/pull/33696) by [@EvanBacon](https://github.com/EvanBacon))
+- Fixed compatibility for React Native 0.78 nightlies. ([#33718](https://github.com/expo/expo/pull/33718) by [@kudo](https://github.com/kudo))
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+- [apple] Move `AppDelegate` integration from `expo-modules-core` to `expo` package. ([#34985](https://github.com/expo/expo/pull/34985) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Add EXAppDelegateWrapper import to Expo.h ([#35172](https://github.com/expo/expo/pull/35172) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Refactored `RCTReactNativeFactory` integration. ([#35679](https://github.com/expo/expo/pull/35679) by [@kudo](https://github.com/kudo))
+
+## 52.0.41 - 2025-03-26
+
+### 💡 Others
+
+- Improve devtools plugins transport performance. ([#35581](https://github.com/expo/expo/pull/35581) by [@kudo](https://github.com/kudo))
+- Improve warning for incompatible devtools plugins. ([#35587](https://github.com/expo/expo/pull/35587) by [@kudo](https://github.com/kudo))
+- Re-export bin for `expo-modules-autolinking` and `fingerprint`. ([#35660](https://github.com/expo/expo/pull/35660) by [@kudo](https://github.com/kudo))
+
+## 52.0.40 - 2025-03-20
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.39 - 2025-03-14
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.38 - 2025-03-11
+
+### 🐛 Bug fixes
+
+- Fixed `BlobManager` crash when passing `Blob` in our patched `FormData`. ([#35243](https://github.com/expo/expo/pull/35243) by [@kudo](https://github.com/kudo))
+
+## 52.0.37 - 2025-02-20
+
+### 🐛 Bug fixes
+
+- Fixed EAS Update support for DOM Components. ([#35042](https://github.com/expo/expo/pull/35042) by [@kudo](https://github.com/kudo))
+
+## 52.0.36 - 2025-02-19
+
+### 🐛 Bug fixes
+
+- Fixed `expo/fetch` `cancelStreaming` issue on Android. ([#34892](https://github.com/expo/expo/pull/34892) by [@kudo](https://github.com/kudo))
+- Fixed `Cannot read property 'matchContents' of undefined` error for DOM Components. ([#34894](https://github.com/expo/expo/pull/34894) by [@kudo](https://github.com/kudo))
+
+## 52.0.35 - 2025-02-14
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.34 - 2025-02-14
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.33 - 2025-02-12
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.32 - 2025-02-10
+
+### 🐛 Bug fixes
+
+- [Android] Avoid `PromiseAlreadySettledException` on canceling `expo/fetch` requests. ([#34778](https://github.com/expo/expo/pull/34778) by [@yukukotani](https://github.com/yukukotani))
+
+## 52.0.31 - 2025-02-06
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.30 - 2025-02-04
+
+### 💡 Others
+
+- Added a debug only warning and style for zero height DOM components. ([#34375](https://github.com/expo/expo/pull/34375) by [@kudo](https://github.com/kudo))
+
+## 52.0.29 - 2025-02-04
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.28 - 2025-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.27 - 2025-01-20
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.26 - 2025-01-19
+
+### 🐛 Bug fixes
+
+- Replace inferred rest spread arguments types (and other inferred types) for changes in newer TypeScript versions. ([#34132](https://github.com/expo/expo/pull/34132) by [@kitten](https://github.com/kitten))
+
+## 52.0.25 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.24 - 2025-01-08
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.23 - 2024-12-24
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.22 - 2024-12-24
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.21 - 2024-12-19
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.20 - 2024-12-19
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.19 - 2024-12-16
+
+### 🎉 New features
+
+- [next] Add blob support to `expo/fetch`. ([#33152](https://github.com/expo/expo/pull/33152) by [@aleqsio](https://github.com/aleqsio))
+- Added `Blob` support in `FormData` and also supported from `expo/fetch`. ([#33463](https://github.com/expo/expo/pull/33463), [#33557](https://github.com/expo/expo/pull/33557) by [@kudo](https://github.com/kudo))
+
+### 🐛 Bug fixes
+
+- Fix sending a blob as fetch body not setting correct content-type. ([#33405](https://github.com/expo/expo/pull/33405) by [@aleqsio](https://github.com/aleqsio))
+- Use nullish assignment operator to assign entries in FormData. ([#33445](https://github.com/expo/expo/pull/33445) by [@j-piasecki](https://github.com/j-piasecki))
+- Fixed streaming requests with `AbortController` doesn't work on `expo/fetch`. ([#33577](https://github.com/expo/expo/pull/33577) by [@kudo](https://github.com/kudo))
+- Fixed `expo/fetch` streaming request does not complete. ([#33756](https://github.com/expo/expo/pull/33756) by [@kudo](https://github.com/kudo))
+
+## 52.0.18 - 2024-12-10
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.17 - 2024-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.16 - 2024-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.15 - 2024-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.14 - 2024-12-02
+
+### 🐛 Bug fixes
+
+- [Android] Fixed `AssertionError` from `ReactActivityDelegateWrapper.onPause`. ([#33309](https://github.com/expo/expo/pull/33309) by [@kudo](https://github.com/kudo))
+
+## 52.0.13 - 2024-12-02
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.12 - 2024-11-29
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.11 — 2024-11-22
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.10 — 2024-11-22
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.9 — 2024-11-20
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.8 — 2024-11-19
+
+### 🐛 Bug fixes
+
+- Fixed type errors when using `ts-jest`. ([#32954](https://github.com/expo/expo/pull/32954) by [@kudo](https://github.com/kudo))
+
+### 💡 Others
+
+- Started `expo/fetch` streaming lazily. ([#33021](https://github.com/expo/expo/pull/33021) by [@kudo](https://github.com/kudo))
+- Introduced `ReactNativeFeatureFlags` compat to fix React Native 0.77 breaking changes. ([#33077](https://github.com/expo/expo/pull/33077) by [@kudo](https://github.com/kudo))
+
+## 52.0.7 — 2024-11-14
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.6 — 2024-11-14
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.5 — 2024-11-13
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.4 — 2024-11-13
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.3 — 2024-11-12
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.2 — 2024-11-11
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.1 — 2024-11-11
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0 — 2024-11-10
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.23 — 2024-11-07
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.22 — 2024-11-07
+
+### 💡 Others
+
+- Removed unused `process.env.EXPO_BASE_URL` injection code for DOM Components webview-wrapper. ([#32629](https://github.com/expo/expo/pull/32629) by [@kudo](https://github.com/kudo))
+
+## 52.0.0-preview.21 — 2024-11-06
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.20 — 2024-11-05
+
+### 🎉 New features
+
+- Change DOM components defaults for `contentInsetAdjustmentBehavior` and `automaticallyAdjustsScrollIndicatorInsets` to be automatic on iOS. ([#32609](https://github.com/expo/expo/pull/32609) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 💡 Others
+
+- Remove deprecated Font.processFontFamily() ([#32631](https://github.com/expo/expo/pull/32631) by [@brentvatne](https://github.com/brentvatne))
+
+## 52.0.0-preview.19 — 2024-11-04
+
+### 🎉 New features
+
+- Added EAS Updates support for DOM Components. ([#32502](https://github.com/expo/expo/pull/32502) by [@kudo](https://github.com/kudo))
+
+### 💡 Others
+
+- Re-exported `@expo/fingerprint` as `expo/fingerprint`. ([#32494](https://github.com/expo/expo/pull/32494) by [@quinlanj](https://github.com/quinlanj))
+- Deprecated `process.env.EXPO_DOM_BASE_URL` and replaced with `process.env.EXPO_BASE_URL`. ([#32596](https://github.com/expo/expo/pull/32596) by [@kudo](https://github.com/kudo))
+
+## 52.0.0-preview.18 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.17 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.16 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.15 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.14 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.13 — 2024-10-31
+
+### 🎉 New features
+
+- Reexport `requireNativeView` and `registerWebModule` from `expo-modules-core`. ([#32472](https://github.com/expo/expo/pull/32472) by [@aleqsio](https://github.com/aleqsio))
+
+## 52.0.0-preview.12 — 2024-10-30
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.11 — 2024-10-29
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.10 — 2024-10-29
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.9 — 2024-10-29
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.8 — 2024-10-29
+
+### 🐛 Bug fixes
+
+- Fix react-native-webview Android `decelerationRate` prop issue. ([#32420](https://github.com/expo/expo/pull/32420) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 💡 Others
+
+- Allowing DOM component `ref` to call WebView functions. ([#32419](https://github.com/expo/expo/pull/32419) by [@kudo](https://github.com/kudo))
+
+## 52.0.0-preview.7 — 2024-10-28
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.6 — 2024-10-28
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.5 — 2024-10-26
+
+### 🎉 New features
+
+- Add router support to DOM components. ([#32338](https://github.com/expo/expo/pull/32338) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 52.0.0-preview.4 — 2024-10-25
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.3 — 2024-10-24
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.2 — 2024-10-24
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.1 — 2024-10-22
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- [Android] Add support for `onUserLeaveHint`. ([#32033](https://github.com/expo/expo/pull/32033) by [@behenate](https://github.com/behenate))
+- Add `expo/dom/entry` for internal DOM component registration. ([#31259](https://github.com/expo/expo/pull/31259) by [@EvanBacon](https://github.com/EvanBacon))
+- Enable normal scrolling in DOM components by default on iOS. ([#31197](https://github.com/expo/expo/pull/31197) by [@EvanBacon](https://github.com/EvanBacon))
+- Add prototype members `set`, `delete`, `get`, `has`, `forEach`, `entries`, `keys`, `values`, `[Symbol.iterator]` to global `FormData` on native. ([#31117](https://github.com/expo/expo/pull/31117) by [@EvanBacon](https://github.com/EvanBacon))
+- Polyfill `Symbol.asyncIterator` on native. ([#31127](https://github.com/expo/expo/pull/31127) by [@EvanBacon](https://github.com/EvanBacon))
+- Add initial version of DOM Components and `expo/dom` module. ([#30938](https://github.com/expo/expo/pull/30938) by [@EvanBacon](https://github.com/EvanBacon))
+- Support `URL.canParse`. ([#30697](https://github.com/expo/expo/pull/30697) by [@EvanBacon](https://github.com/EvanBacon))
+- Add minimal `TextDecoder` support to native client platforms. ([#29620](https://github.com/expo/expo/pull/29620) by [@EvanBacon](https://github.com/EvanBacon))
+- Introduced `useEvent` and `useEventListener` hooks for EventEmitter objects (e.g. native modules and shared objects). ([#29056](https://github.com/expo/expo/pull/29056), [#32027](https://github.com/expo/expo/pull/32027) by [@tsapeta](https://github.com/tsapeta))
+- Added fetch API support. ([#30173](https://github.com/expo/expo/pull/30173), [#30219](https://github.com/expo/expo/pull/30219), [#30576](https://github.com/expo/expo/pull/30576) by [@kudo](https://github.com/kudo))
+- Added `matchContents` prop support to DOM components. ([#31103](https://github.com/expo/expo/pull/31103), [#31731](https://github.com/expo/expo/pull/31731) by [@kudo](https://github.com/kudo))
+- Added local `file://` support to the Fetch API. ([#31551](https://github.com/expo/expo/pull/31551) by [@kudo](https://github.com/kudo))
+- Added `useDOMImperativeHandle` hook for DOM components to support imperative ref. ([#31108](https://github.com/expo/expo/pull/31108) by [@kudo](https://github.com/kudo))
+- Added `useExpoDOMWebView` dom prop for `@expo/dom-webview` DOM components integration. ([#31295](https://github.com/expo/expo/pull/31295) by [@kudo](https://github.com/kudo))
+
+### 🐛 Bug fixes
+
+- Add ts-ignore statements to make ts-jest work with polyfill. ([#31244](https://github.com/expo/expo/pull/31244) by [@EvanBacon](https://github.com/EvanBacon))
+- Use `globalThis` instead of `global` in the URL implementation to fix issues in Jest. ([#29895](https://github.com/expo/expo/pull/29895) by [@tsapeta](https://github.com/tsapeta))
+- Fixed `WebSocket was closed before the connection was established` unhandled exceptions from WebSocketWithReconnect. ([#29904](https://github.com/expo/expo/pull/29904) by [@kudo](https://github.com/kudo))
+- Add missing `react` and `react-native` peer dependencies for isolated modules. ([#30449](https://github.com/expo/expo/pull/30449) by [@byCedric](https://github.com/byCedric))
+- Fixed fetch streaming error on iOS. ([#30604](https://github.com/expo/expo/pull/30604) by [@kudo](https://github.com/kudo))
+- Fixed fetch import on Web. ([#30605](https://github.com/expo/expo/pull/30605) by [@kudo](https://github.com/kudo))
+- Add support for server root in `expo/scripts/resolveAppEntry.js`. ([#30652](https://github.com/expo/expo/pull/30652) by [@byCedric](https://github.com/byCedric))
+- Fixed `devtools` module not found. ([#30933](https://github.com/expo/expo/pull/30933) by [@kudo](https://github.com/kudo))
+- Reloads DOM components WebView while app in background and browser renderer processes are gone. ([#31318](https://github.com/expo/expo/pull/31318) by [@kudo](https://github.com/kudo))
+- Add missing `types` folder from published package ([#31339](https://github.com/expo/expo/pull/31339) by [@marklawlor](https://github.com/marklawlor))
+- Fixed leaking `web-streams-polyfill` imported on web bundles for API routes. ([#31611](https://github.com/expo/expo/pull/31611) by [@byCedric](https://github.com/byCedric))
+- Fixed `@expo/dom-webview` resolving error for DOM components. ([#31983](https://github.com/expo/expo/pull/31983) by [@kudo](https://github.com/kudo))
+
+### 💡 Others
+
+- Remove back-compat asset helper from SDK 50. ([#31296](https://github.com/expo/expo/pull/31296) by [@EvanBacon](https://github.com/EvanBacon))
+- Refactor web hydration to use `globalThis.__EXPO_ROUTER_HYDRATE__` instead of `process.env.EXPO_PUBLIC_USE_STATIC`. ([#31267](https://github.com/expo/expo/pull/31267) by [@EvanBacon](https://github.com/EvanBacon))
+- Remove nested loading for DOM components. ([#31182](https://github.com/expo/expo/pull/31182) by [@EvanBacon](https://github.com/EvanBacon))
+- Redesign Fast Refresh overlay for web. ([#30507](https://github.com/expo/expo/pull/30507) by [@EvanBacon](https://github.com/EvanBacon))
+- Change `sideEffects` to use `src` folder. ([#29964](https://github.com/expo/expo/pull/29964) by [@EvanBacon](https://github.com/EvanBacon))
+- Keep using the legacy event emitter for the `DevLoadingView` in Expo Go. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
+- Re-exported `EventEmitter`, `SharedObject` and `NativeModule` classes from `expo-modules-core`. ([#28994](https://github.com/expo/expo/pull/28994) by [@tsapeta](https://github.com/tsapeta))
+- Use the `src` folder as the Metro target. ([#29702](https://github.com/expo/expo/pull/29702) by [@tsapeta](https://github.com/tsapeta))
+- Added public assets support for DOM components. ([#30975](https://github.com/expo/expo/pull/30975) by [@kudo](https://github.com/kudo))
+- Removed `expo_patch_react_imports!` and align more standard react-native project layout. ([#31699](https://github.com/expo/expo/pull/31699) by [@kudo](https://github.com/kudo))
+- Added a default `AppEntryNotFound` component and prevent the `Invariant Violation: "main" has not been registered.` error. ([#31813](https://github.com/expo/expo/pull/31813) by [@kudo](https://github.com/kudo))
+- Decoupled the usage from `@react-native-community/cli-tools`. ([#31966](https://github.com/expo/expo/pull/31966) by [@kudo](https://github.com/kudo))
+- Promoted `DevToolsPluginClient.useTransportationNext` as default and removed the option. ([#31852](https://github.com/expo/expo/pull/31852) by [@kudo](https://github.com/kudo))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.75.x. ([#30034](https://github.com/expo/expo/pull/30034), [#30828](https://github.com/expo/expo/pull/30828), [#31015](https://github.com/expo/expo/pull/31015) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Added support for React Native 0.76.x. ([#31552](https://github.com/expo/expo/pull/31552), [#32285](https://github.com/expo/expo/pull/32285) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 51.0.34 - 2024-09-24
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.33 - 2024-09-23
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.32 - 2024-09-03
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.31 - 2024-08-23
+
+### 🐛 Bug fixes
+
+- Fixed expo-updates crash when R8 is enabled on Android. ([#30765](https://github.com/expo/expo/pull/30765) by [@kudo](https://github.com/kudo))
+
+## 51.0.30 - 2024-08-21
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.29 - 2024-08-20
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.28 - 2024-08-14
+
+### 🎉 New features
+
+- Added `useTransportationNext` option for `DevToolsPluginClient` to support binary payload. ([#30935](https://github.com/expo/expo/pull/30935) by [@kudo](https://github.com/kudo))
+
+## 51.0.26 - 2024-08-08
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.24 - 2024-07-30
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.23 - 2024-07-29
+
+### 🎉 New features
+
+- Added `websocketBinaryType` option for `useDevToolsPluginClient` hook. ([#30655](https://github.com/expo/expo/pull/30655) by [@kudo](https://github.com/kudo))
+
+## 51.0.22 - 2024-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.21 - 2024-07-16
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.20 - 2024-07-11
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.19 - 2024-07-11
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.18 - 2024-07-03
+
+### 📚 3rd party library updates
+
+- Update react-native to 0.74.3. ([#30139](https://github.com/expo/expo/pull/30139) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 51.0.17 - 2024-06-28
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.16 - 2024-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.15 - 2024-06-20
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.14 - 2024-06-13
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.13 - 2024-06-12
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.12 - 2024-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.11 - 2024-06-06
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.10 — 2024-06-05
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.9 — 2024-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.8 — 2024-05-16
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.7 — 2024-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.6 — 2024-05-14
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.5 — 2024-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.4 — 2024-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.3 — 2024-05-10
+
+_This version does not introduce any user-facing changes._
+
+## 51.0.2 — 2024-05-09
+
+_This version does not introduce any user-facing changes._
 
 ## 51.0.1 — 2024-05-09
 
@@ -247,8 +2012,8 @@ _This version does not introduce any user-facing changes._
 
 ### 🐛 Bug fixes
 
-- [Android] Fixed `concurrentRoot` is missing from intialProps when running on New Architecture mode. ([#25415](https://github.com/expo/expo/pull/25415) by [@kudo](https://github.com/kudo))
-- Use explicit `@expo/metro-config` dependendecy to avoid unexpected versions in monorepos. ([#25804](https://github.com/expo/expo/pull/25804) by [@byCedric](https://github.com/byCedric))
+- [Android] Fixed `concurrentRoot` is missing from initialProps when running on New Architecture mode. ([#25415](https://github.com/expo/expo/pull/25415) by [@kudo](https://github.com/kudo))
+- Use explicit `@expo/metro-config` dependency to avoid unexpected versions in monorepos. ([#25804](https://github.com/expo/expo/pull/25804) by [@byCedric](https://github.com/byCedric))
 - Fixed `Unable to resolve "fbemitter"` issue when using DevTools Plugins. ([#25856](https://github.com/expo/expo/pull/25856) by [@kudo](https://github.com/kudo))
 
 ### 💡 Others

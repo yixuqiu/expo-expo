@@ -1,10 +1,10 @@
-import spawnAsync, { SpawnResult } from '@expo/spawn-async';
+import type { SpawnResult } from '@expo/spawn-async';
+import spawnAsync from '@expo/spawn-async';
 import path from 'path';
 
 import { env } from '../../../utils/env';
 import { AbortCommandError } from '../../../utils/errors';
-
-const debug = require('debug')('expo:start:platforms:android:gradle') as typeof console.log;
+import { event } from '../events';
 
 function upperFirst(name: string) {
   return name.charAt(0).toUpperCase() + name.slice(1);
@@ -53,12 +53,14 @@ export async function assembleAsync(
     appName,
     buildCache,
     architectures,
+    eagerBundleOptions,
   }: {
     variant: string;
     port?: number;
     appName: string;
     buildCache?: boolean;
     architectures?: string;
+    eagerBundleOptions?: string;
   }
 ): Promise<SpawnResult> {
   const task = formatGradleArguments('assemble', { variant, appName });
@@ -78,7 +80,16 @@ export async function assembleAsync(
   // Generate a profile under `/android/app/build/reports/profile`
   if (env.EXPO_PROFILE) args.push('--profile');
 
-  return await spawnGradleAsync(androidProjectPath, { port, architectures, args });
+  return await spawnGradleAsync(androidProjectPath, {
+    port,
+    architectures,
+    args,
+    env: eagerBundleOptions
+      ? {
+          __EXPO_EAGER_BUNDLE_OPTIONS: eagerBundleOptions,
+        }
+      : {},
+  });
 }
 
 /**
@@ -108,16 +119,25 @@ export async function installAsync(
 
 export async function spawnGradleAsync(
   projectRoot: string,
-  { port, architectures, args }: { port?: number; architectures?: string; args: string[] }
+  {
+    port,
+    architectures,
+    args,
+    env,
+  }: { port?: number; architectures?: string; args: string[]; env?: Record<string, string> }
 ): Promise<SpawnResult> {
   const gradlew = resolveGradleWPath(projectRoot);
   if (port != null) args.push(getPortArg(port));
   if (architectures) args.push(getActiveArchArg(architectures));
-  debug(`  ${gradlew} ${args.join(' ')}`);
+  event('gradle_spawn', { command: `${gradlew} ${args.join(' ')}` });
   try {
     return await spawnAsync(gradlew, args, {
       cwd: projectRoot,
       stdio: 'inherit',
+      env: {
+        ...process.env,
+        ...(env ?? {}),
+      },
     });
   } catch (error: any) {
     // User aborted the command with ctrl-c

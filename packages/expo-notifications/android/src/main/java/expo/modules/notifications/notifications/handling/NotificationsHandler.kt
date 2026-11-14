@@ -2,32 +2,15 @@ package expo.modules.notifications.notifications.handling
 
 import android.os.Handler
 import android.os.HandlerThread
-import expo.modules.core.ModuleRegistry
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import expo.modules.kotlin.records.Field
-import expo.modules.kotlin.records.Record
 import expo.modules.notifications.NotificationWasAlreadyHandledException
+import expo.modules.notifications.notifications.NotificationManager
 import expo.modules.notifications.notifications.interfaces.NotificationListener
-import expo.modules.notifications.notifications.interfaces.NotificationManager
 import expo.modules.notifications.notifications.model.Notification
-import expo.modules.notifications.notifications.model.NotificationBehavior
-import expo.modules.notifications.toLegacyPromise
-
-class NotificationBehaviourRecord : Record {
-  @Field
-  val shouldShowAlert: Boolean = false
-
-  @Field
-  val shouldPlaySound: Boolean = false
-
-  @Field
-  val shouldSetBadge: Boolean = false
-
-  @Field
-  val priority: String? = null
-}
+import expo.modules.notifications.notifications.model.NotificationBehaviorRecord
+import expo.modules.notifications.notifications.model.RemoteNotificationContent
 
 /**
  * [NotificationListener] responsible for managing app's reaction to incoming
@@ -39,9 +22,6 @@ class NotificationBehaviourRecord : Record {
  * for all of them and a proxy through which app responds with the behavior.
  */
 open class NotificationsHandler : Module(), NotificationListener {
-  private lateinit var notificationManager: NotificationManager
-  private lateinit var moduleRegistry: ModuleRegistry
-
   /**
    * [HandlerThread] which is the host to the notifications handler.
    */
@@ -62,20 +42,27 @@ open class NotificationsHandler : Module(), NotificationListener {
       "onHandleNotificationTimeout"
     )
 
-    OnCreate {
-      moduleRegistry = appContext.legacyModuleRegistry
+    // Listen in NotificationManager only while JS listens here. JS starts listening as soon as the
+    // app imports `expo-notifications`, which installs a default handler, so an app that never
+    // calls `setNotificationHandler` still has one. JS stops listening only when the app passes
+    // `null`, and a notification that arrives then is not presented while the app is in the
+    // foreground.
+    OnStartObserving("onHandleNotification") {
+      NotificationManager.addListener(this@NotificationsHandler)
+    }
 
-      // Register the module as a listener in NotificationManager singleton module.
-      // Deregistration happens in onDestroy callback.
-      notificationManager = requireNotNull(moduleRegistry.getSingletonModule("NotificationManager", NotificationManager::class.java))
-      notificationManager.addListener(this@NotificationsHandler)
+    OnStopObserving("onHandleNotification") {
+      NotificationManager.removeListener(this@NotificationsHandler)
+    }
+
+    OnCreate {
       notificationsHandlerThread = HandlerThread("NotificationsHandlerThread - " + this.javaClass.toString())
       notificationsHandlerThread.start()
       handler = Handler(notificationsHandlerThread.looper)
     }
 
     OnDestroy {
-      notificationManager.removeListener(this@NotificationsHandler)
+      NotificationManager.removeListener(this@NotificationsHandler)
 
       tasksMap.values.forEach(SingleNotificationHandlerTask::stop)
 
@@ -87,7 +74,7 @@ open class NotificationsHandler : Module(), NotificationListener {
   }
 
   /**
-   * Called by the app with [NotificationBehaviourRecord] representing requested behavior
+   * Called by the app with [NotificationBehaviorRecord] representing requested behavior
    * that should be applied to the notification.
    *
    * @param identifier Identifier of the task which asked for behavior.
@@ -95,14 +82,14 @@ open class NotificationsHandler : Module(), NotificationListener {
    * @param promise    Promise to resolve once the notification is successfully presented
    * or fails to be presented.
    */
-  private fun handleNotificationAsync(identifier: String, behavior: NotificationBehaviourRecord, promise: Promise) {
+  private fun handleNotificationAsync(identifier: String, behavior: NotificationBehaviorRecord, promise: Promise) {
     val task = tasksMap[identifier]
       ?: throw NotificationWasAlreadyHandledException(identifier)
 
     with(behavior) {
-      task.handleResponse(
-        NotificationBehavior(shouldShowAlert, shouldPlaySound, shouldSetBadge, priority),
-        promise.toLegacyPromise()
+      task.processNotificationWithBehavior(
+        behavior,
+        promise
       )
     }
   }
@@ -111,10 +98,19 @@ open class NotificationsHandler : Module(), NotificationListener {
    * Callback called by [NotificationManager] to inform its listeners of new messages.
    * Starts up a new [SingleNotificationHandlerTask] which will take it on from here.
    *
+   * SingleNotificationHandlerTask.processNotificationWithBehavior can then present it
+   *
    * @param notification Notification received
    */
   override fun onNotificationReceived(notification: Notification) {
     val context = appContext.reactContext ?: return
+    val content = notification.notificationRequest.content
+    if (content is RemoteNotificationContent && content.isDataOnly) {
+      // We do not notify JS about data-only notifications, for consistency with iOS.
+      // onDidReceiveNotification is triggered
+      // and JS task will run if set up
+      return
+    }
     val task = SingleNotificationHandlerTask(
       context,
       appContext.eventEmitter(this),

@@ -10,17 +10,26 @@ Pod::Spec.new do |s|
   s.license        = package['license']
   s.author         = package['author']
   s.homepage       = package['homepage']
-  s.platform       = :ios, '13.4'
-  s.swift_version  = '5.4'
+  s.platforms      = {
+    :ios => '16.4',
+    :tvos => '16.4'
+  }
+  s.swift_version  = '5.9'
   s.source         = { git: 'https://github.com/expo/expo.git' }
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
 
-  # Swift/Objective-C compatibility
+  s.source_files = "**/*.{h,m,swift}"
+  s.exclude_files = 'Tests'
   s.pod_target_xcconfig = {
-    'DEFINES_MODULE' => 'YES',
+    'DEFINES_MODULE' => 'YES'
   }
 
-  s.source_files = "**/*.{h,m,swift}"
+  s.test_spec 'Tests' do |test_spec|
+    test_spec.source_files = 'Tests'
+    # The test bundle links C++ code from ExpoModulesCore but does not inherit its
+    # user_target_xcconfig (-lc++), so link the C++ runtime explicitly.
+    test_spec.libraries = 'c++'
+  end
 end

@@ -1,67 +1,108 @@
 // Copyright 2022-present 650 Industries. All rights reserved.
 
 @objc(ExpoFabricView)
-public class ExpoFabricView: ExpoFabricViewObjC {
+open class ExpoFabricView: ExpoFabricViewObjC, AnyExpoView {
   /**
    A weak reference to the app context associated with this view.
-   The app context is injected into the class when making its copy in runtime,
-   see the `makeClass` static function.
+   It's passed to the initializer by the view definition, see `createComponentView`.
    */
-  weak var appContext: AppContext? { __injectedAppContext() }
+  public weak var appContext: AppContext?
 
   /**
-   Name of the module associated with this view. Injected by `makeClass` static function.
+   The view definition that setup from `ExpoFabricView.create()`.
    */
-  lazy var moduleName: String = __injectedModuleName()
-
-  /**
-   Returns a holder of the module associated with this view.
-   */
-  private var moduleHolder: ModuleHolder? {
-    return appContext?.moduleRegistry.get(moduleHolderForName: moduleName)
-  }
+  private var viewDefinition: AnyViewDefinition?
 
   /**
    A dictionary of prop objects that contain prop setters.
    */
-  lazy var viewManagerPropDict: [String: AnyViewProp]? = moduleHolder?.definition.view?.propsDict()
+  lazy var viewManagerPropDict: [String: AnyViewProp]? = viewDefinition?.propsDict()
+
+  /**
+   A dictionary to store previous prop values for change detection.
+   */
+  private var previousProps: [String: Any] = [:]
 
   // MARK: - Initializers
 
-  /**
-   The default initializer for all native views. It is called by Fabric.
-   */
+  // swiftlint:disable unavailable_function
   @objc
   public init() {
-    super.init(frame: .zero)
-    initializeContentView()
+    // Component views are created by `createComponentView` through `+new` instead.
+    fatalError("Unsupported direct init() call for ExpoFabricView.")
+  }
+  // swiftlint:enable unavailable_function
+
+  @objc
+  public override init(frame: CGRect) {
+    super.init(frame: frame)
   }
 
-  required init?(coder: NSCoder) {
+  public func setViewSize(_ size: CGSize) {
+    super.setShadowNodeSize(Float(size.width), height: Float(size.height))
+  }
+
+  required public init(appContext: AppContext? = nil) {
+    self.appContext = appContext
+    super.init(frame: .zero)
+  }
+
+  /**
+   The view creator expected to be called for derived ExpoFabricView, the `viewDefinition` and event dispatchers will be setup from here.
+
+   NOTE: `ViewManagerAdapter_ExpoImage.new()` creates `ImageView` through `createComponentView`,
+   and we also need viewDefinition (or moduleName) for the `installEventDispatchers()`.
+   The example call flow would be:
+   `ViewManagerAdapter_ExpoImage.new()` -> `ExpoFabricView.createComponentView()` -> `ViewDefinition.createView()` -> `ExpoFabricView.create()` ->
+   `ImageView.init(appContext:)` -> `ExpoFabricView.init(appContext:)` -> `view.viewDefinition = viewDefinition` here
+   */
+  internal static func create(viewType: ExpoFabricView.Type, viewDefinition: AnyViewDefinition, appContext: AppContext) -> ExpoFabricView {
+    let view = viewType.init(appContext: appContext)
+    view.viewDefinition = viewDefinition
+    assert(appContext == view.appContext)
+    view.installEventDispatchers()
+    return view
+  }
+
+  // Mark the required init as unavailable so that subclasses can avoid overriding it.
+  @available(*, unavailable)
+  public required init?(coder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
 
   // MARK: - ExpoFabricViewInterface
 
+  @MainActor
   public override func updateProps(_ props: [String: Any]) {
-    guard let view = contentView, let context = appContext, let propsDict = viewManagerPropDict else {
+    guard let context = appContext, let propsDict = viewManagerPropDict else {
       return
     }
     for (key, prop) in propsDict {
       let newValue = props[key] as Any
+      let convertedNewValue = Conversions.fromNSObject(newValue)
+      let previousValue = previousProps[key]
 
-      // TODO: @tsapeta: Figure out better way to rethrow errors from here.
-      // Adding `throws` keyword to the function results in different
-      // method signature in Objective-C. Maybe just call `RCTLogError`?
-      try? prop.set(value: Conversions.fromNSObject(newValue), onView: view, appContext: context)
+      // only set the prop if the value has changed
+      if !Conversions.areValuesEqual(previousValue, convertedNewValue) {
+        // TODO: @tsapeta: Figure out better way to rethrow errors from here.
+        // Adding `throws` keyword to the function results in different
+        // method signature in Objective-C. Maybe just call `RCTLogError`?
+        try? prop.set(value: convertedNewValue, onView: self, appContext: context)
+
+        previousProps[key] = convertedNewValue
+      }
     }
   }
 
   /**
    Calls lifecycle methods registered by `OnViewDidUpdateProps` definition component.
    */
+  @MainActor
   public override func viewDidUpdateProps() {
-    guard let view = contentView, let viewDefinition = moduleHolder?.definition.view else {
+    guard let viewDefinition else {
+      return
+    }
+    guard let view = AppleView.from(self) else {
       return
     }
     viewDefinition.callLifecycleMethods(withType: .didUpdateProps, forView: view)
@@ -74,58 +115,17 @@ public class ExpoFabricView: ExpoFabricViewObjC {
     return viewManagerPropDict?.index(forKey: name) != nil
   }
 
-  /**
-   The function that is called by Fabric when the view is unmounted and is being enqueued for recycling.
-   It can also be called on app reload, so be careful to wipe out any dependencies specific to the currently running AppContext.
-   */
-  public override func prepareForRecycle() {
-    super.prepareForRecycle()
-
-    // Unmount the proper view
-    contentView = nil
-  }
-
-  /**
-   An integer that is used to identify `UIView` objects.
-   Fabric sets this property to the corresponding React tag
-   when the view is mounted or `0` when it's enqueued for recycling.
-   */
-  public override var tag: Int {
-    didSet {
-      // The content view needs to be recreated when
-      // the recycled view is about to be mounted again.
-      if tag != 0 && contentView == nil {
-        initializeContentView()
-      }
-    }
-  }
-
   // MARK: - Privates
-
-  /**
-   Creates the content view using the associated view module.
-   */
-  private func initializeContentView() {
-    guard let appContext = appContext else {
-      fatalError(Exceptions.AppContextLost().reason)
-    }
-    guard let view = moduleHolder?.definition.view?.createView(appContext: appContext) else {
-      fatalError("Cannot create a view from module '\(moduleName)'")
-    }
-    // Setting the content view automatically adds the view as a subview.
-    contentView = view
-    installEventDispatchers()
-  }
 
   /**
    Installs convenient event dispatchers for declared events, so the view can just invoke the block to dispatch the proper event.
    */
   private func installEventDispatchers() {
-    guard let view = contentView, let moduleHolder = moduleHolder else {
+    guard let viewDefinition else {
       return
     }
-    moduleHolder.definition.view?.eventNames.forEach { eventName in
-      installEventDispatcher(forEvent: eventName, onView: view) { [weak self] (body: [String: Any]) in
+    viewDefinition.eventNames.forEach { eventName in
+      installEventDispatcher(forEvent: eventName, onView: self) { [weak self] (body: [String: Any]) in
         if let self = self {
           self.dispatchEvent(eventName, payload: body)
         } else {
@@ -137,48 +137,94 @@ public class ExpoFabricView: ExpoFabricViewObjC {
 
   // MARK: - Statics
 
-  internal static var viewClassesRegistry = [String: AnyClass]()
-
   /**
-   Dynamically creates a subclass of the `ExpoFabricView` class with injected app context and name of the associated module.
-   The new subclass is saved in the registry, so when asked for the next time, it's returned from cache with the updated app context.
-   - Note: Apple's documentation says that classes created with `objc_allocateClassPair` should then be registered using `objc_registerClassPair`,
-   but we can't do that as there might be more than one class with the same name (Expo Go) and allocating another one would return `nil`.
+   Called by React Native to check if the view supports recycling.
    */
   @objc
-  public static func makeViewClass(forAppContext appContext: AppContext, className: String) -> AnyClass? {
-    if let viewClass = viewClassesRegistry[className] {
-      // When requested for a new class, make sure to update the injected app context.
-      // We assume that the module name doesn't change, since it's based on the class name.
-      inject(appContext: appContext, toViewClass: viewClass)
+  public static func shouldBeRecycled() -> Bool {
+    // Turn off recycling for Expo views. We don't think there is any benefit of recycling – it may lead to more bugs than gains.
+    // TODO: Make it possible to override this behavior for particular views
+    return false
+  }
+
+  /// Prefix of the component names. It tells apart the components backed by Expo modules.
+  nonisolated internal static let componentNamePrefix = "ViewManagerAdapter_"
+
+  /// View classes registered in `RCTComponentViewFactory`, keyed by the component name.
+  @MainActor
+  private static var viewClasses = [String: AnyClass]()
+
+  /// Names of the module and the view that each class in `viewClasses` creates.
+  @MainActor
+  private static var componentsByViewClass = [ObjectIdentifier: (moduleName: String, viewName: String)]()
+
+  /// Returns the name under which the view of the given module is registered in React Native.
+  /// It must stay in sync with `requireNativeComponent` in `NativeViewManagerAdapter.native.tsx`.
+  nonisolated internal static func componentName(moduleName: String, viewName: String) -> String {
+    if viewName == DEFAULT_MODULE_VIEW {
+      return "\(componentNamePrefix)\(moduleName)"
+    }
+    return "\(componentNamePrefix)\(moduleName)_\(viewName)"
+  }
+
+  /// Registers the view of the given module in `RCTComponentViewFactory`. Each component is registered once per process,
+  /// and the app context of each view is resolved when React Native creates it (see `createComponentView`).
+  @MainActor
+  internal static func registerComponent(moduleName: String, viewName: String) {
+    if let viewClass = viewClasses[componentName(moduleName: moduleName, viewName: viewName)] {
+      if let component = componentsByViewClass[ObjectIdentifier(viewClass)], component != (moduleName, viewName) {
+        log.error("The view '\(viewName)' from module '\(moduleName)' has the same component name as the view '\(component.viewName)' from module '\(component.moduleName)', so it's created by the module that registered it first")
+      }
+      return
+    }
+    ExpoFabricViewObjC.registerComponentViewClass(viewClass(moduleName: moduleName, viewName: viewName))
+  }
+
+  /// Returns a subclass of `ExpoFabricView` named after the component, creating it the first time it's requested.
+  /// `RCTComponentViewFactory` maps each component to a class and creates views with `+[viewClass new]`, so every component
+  /// needs a class of its own. The class doesn't add or replace any methods, it only identifies the component.
+  @MainActor
+  internal static func viewClass(moduleName: String, viewName: String) -> AnyClass {
+    let className = componentName(moduleName: moduleName, viewName: viewName)
+
+    if let viewClass = viewClasses[className] {
       return viewClass
     }
     guard let viewClass = objc_allocateClassPair(ExpoFabricView.self, className, 0) else {
-      fatalError("Cannot allocate a Fabric view class for '\(className)'")
+      fatalError("Cannot allocate a Fabric view class for '\(className)' because a class with this name already exists")
     }
+    objc_registerClassPair(viewClass)
 
-    inject(appContext: appContext, toViewClass: viewClass)
-
-    let moduleName = String(className.dropFirst(ViewModuleWrapper.viewManagerAdapterPrefix.count))
-    inject(moduleName: moduleName, toViewClass: viewClass)
-
-    // Save the allocated view class in the registry for the later use (e.g. when the app is reloaded).
-    viewClassesRegistry[className] = viewClass
-
+    viewClasses[className] = viewClass
+    componentsByViewClass[ObjectIdentifier(viewClass)] = (moduleName, viewName)
     return viewClass
   }
 
-  internal static func inject(appContext: AppContext, toViewClass viewClass: AnyClass) {
-    // Keep it weak so we don't leak the app context.
-    weak var weakAppContext = appContext
-    let appContextBlock: @convention(block) () -> AppContext? = { weakAppContext }
-    let appContextBlockImp: IMP = imp_implementationWithBlock(appContextBlock)
-    class_replaceMethod(viewClass, #selector(__injectedAppContext), appContextBlockImp, "@@:")
-  }
-
-  internal static func inject(moduleName: String, toViewClass viewClass: AnyClass) {
-    let moduleNameBlock: @convention(block) () -> String = { moduleName }
-    let moduleNameBlockImp: IMP = imp_implementationWithBlock(moduleNameBlock)
-    class_replaceMethod(viewClass, #selector(__injectedModuleName), moduleNameBlockImp, "@@:")
+  /// Creates the view for the component that this class is registered for. It's called from `+new`, which is how
+  /// `RCTComponentViewFactory` creates component views. The view is created by the module of the app context
+  /// whose host is mounting. Returns `nil` for classes that aren't registered for any component.
+  public override class func createComponentView() -> Any? {
+    let view: AppleView? = MainActor.assumeIsolated {
+      guard let (moduleName, viewName) = componentsByViewClass[ObjectIdentifier(self)] else {
+        return nil
+      }
+      guard let appContext = AppContext.appContextForNewViews else {
+        fatalError(Exceptions.AppContextLost().reason)
+      }
+      guard let view = appContext.moduleRegistry.get(moduleHolderForName: moduleName)?.definition.views[viewName]?.createView(appContext: appContext) else {
+        // Component classes are shared by all app contexts, so another app context might have registered this one.
+        log.error("Cannot create a view '\(viewName)' from module '\(moduleName)' because the module or its view isn't registered in the app context, so an empty view is created instead")
+        return .uikit(self.init(appContext: appContext))
+      }
+      return view
+    }
+    switch view {
+    case .uikit(let view):
+      return view
+    case .swiftui(let view):
+      return view
+    case nil:
+      return nil
+    }
   }
 }

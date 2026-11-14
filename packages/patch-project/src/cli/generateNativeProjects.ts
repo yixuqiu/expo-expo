@@ -1,6 +1,6 @@
-import { type ExpoConfig } from '@expo/config';
-import { type ModPlatform } from '@expo/config-plugins';
 import spawnAsync from '@expo/spawn-async';
+import { type ExpoConfig } from 'expo/config';
+import { type ModPlatform } from 'expo/config-plugins';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -49,7 +49,7 @@ export async function generateNativeProjectsAsync(
     exp,
   });
 
-  // Install CocoaPods is a must on ios because some changes are happening in the `pod install` stage.
+  // Installing CocoaPods is a must on ios because some changes are happening in the `pod install` stage.
   // That would minimize the diff between the native projects.
   if (options.platforms.includes('ios')) {
     const { installCocoaPodsAsync } = require(
@@ -86,12 +86,12 @@ export async function platformSanityCheckAsync({
   // Check package and bundle identifier are defined.
   if (platform === 'android' && !exp.android?.package) {
     throw new Error(
-      `android.package is not defined in your app config. Please define it before running this command.`
+      `android.package is not defined in your app config. Define it before running this command.`
     );
   }
   if (platform === 'ios' && !exp.ios?.bundleIdentifier) {
     throw new Error(
-      `ios.bundleIdentifier is not defined in your app config. Please define it before running this command.`
+      `ios.bundleIdentifier is not defined in your app config. Define it before running this command.`
     );
   }
 

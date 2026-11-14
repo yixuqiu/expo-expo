@@ -4,7 +4,15 @@
   },
   "build": {
     "base": {
-      "node": "18.18.0"
+      "node": "22.23.5",
+      "pnpm": "12.2.1",
+      "android": {
+        "image": "ubuntu-22.04-jdk-17-ndk-r21e",
+        "resourceClass": "large"
+      },
+      "ios": {
+        "image": "latest"
+      }
     },
     "development": {
       "extends": "base",
@@ -18,52 +26,33 @@
     },
     "updates_testing_debug": {
       "extends": "base",
-      "env": {
-        "EX_UPDATES_NATIVE_DEBUG": "1",
-        "NO_FLIPPER": "1"
-      },
       "android": {
-        "image": "ubuntu-22.04-jdk-17-ndk-r21e",
+        "applicationArchivePath": "eas.json",
         "gradleCommand": ":app:assembleDebug :app:assembleAndroidTest -DtestBuildType=debug",
-        "withoutCredentials": true,
-        "resourceClass": "large"
+        "withoutCredentials": true
       },
       "ios": {
+        "applicationArchivePath": "eas.json",
         "simulator": true,
-        "resourceClass": "m-medium",
-        "image": "macos-ventura-13.3-xcode-14.3",
-        "buildConfiguration": "Debug",
-        "cache": {
-          "cacheDefaultPaths": false
-        }
+        "buildConfiguration": "Debug"
       },
       "distribution": "internal",
       "buildArtifactPaths": ["logs/*.log"]
     },
     "updates_testing_release": {
       "extends": "base",
-      "env": {
-        "EX_UPDATES_NATIVE_DEBUG": "1",
-        "NO_FLIPPER": "1"
-      },
       "android": {
-        "image": "ubuntu-22.04-jdk-17-ndk-r21e",
         "gradleCommand": ":app:assembleRelease :app:assembleAndroidTest -DtestBuildType=release",
-        "withoutCredentials": true,
-        "resourceClass": "large"
+        "withoutCredentials": true
       },
       "ios": {
         "simulator": true,
-        "resourceClass": "m-medium",
-        "image": "macos-ventura-13.3-xcode-14.3",
-        "buildConfiguration": "Release",
-        "cache": {
-          "cacheDefaultPaths": false
-        }
+        "buildConfiguration": "Release"
       },
       "distribution": "internal",
       "buildArtifactPaths": ["logs/*.log"]
     },
+
     "production": {
       "extends": "base"
     }

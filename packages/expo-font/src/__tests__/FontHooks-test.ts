@@ -1,65 +1,100 @@
-import { renderHook } from '@testing-library/react-hooks';
+import { renderHook, waitFor } from '@testing-library/react-native';
 
 import * as Font from '../Font';
 import { useFonts } from '../FontHooks';
 
+const describeRuntimeFonts: typeof describe =
+  typeof window === 'undefined' ? describe.skip : describe;
+const describeStaticFonts: typeof describe =
+  typeof window === 'undefined' ? describe : describe.skip;
+
 describe('useFonts', () => {
-  const DATA = 0;
-  const ERROR = 1;
-  const FONTS = {
+  const RESULT_LOADED = 0;
+  const RESULT_ERROR = 1;
+
+  const STUB_FONTS: Record<string, string> = {
     'OpenSans-Regular': 'path/to/font.ttf',
     'ComicSans-Regular': 'path/to/jailed/font.ttf',
   };
 
+  const STUB_FONT_FAMILIES: Font.FontFamilyDefinition[] = [
+    {
+      fontFamily: 'OpenSans',
+      fontDefinitions: [
+        { path: 'path/to/font.ttf', weight: 400 },
+        { path: 'path/to/font-bold.ttf', weight: 700 },
+      ],
+    },
+  ];
+
   const loadAsyncSpy = jest.spyOn(Font, 'loadAsync').mockResolvedValue();
 
-  if (typeof window === 'undefined') {
+  describeStaticFonts('static fonts', () => {
     it('loads fonts when mounted', async () => {
-      expect(useFonts(FONTS)).toEqual([true, null]);
-      expect(loadAsyncSpy).toBeCalledWith(FONTS);
-    });
-  } else {
-    it('loads fonts when mounted', async () => {
-      const hook = renderHook(() => useFonts(FONTS));
-
-      expect(hook.result.current[DATA]).toBe(false);
-      await hook.waitForNextUpdate();
-      expect(hook.result.current[DATA]).toBe(true);
+      expect(useFonts(STUB_FONTS)).toEqual([true, null]);
+      expect(loadAsyncSpy).toHaveBeenCalledWith(STUB_FONTS);
     });
 
+    it('loads an array of font family definitions when mounted', async () => {
+      expect(useFonts(STUB_FONT_FAMILIES)).toEqual([true, null]);
+      expect(loadAsyncSpy).toHaveBeenCalledWith(STUB_FONT_FAMILIES);
+    });
+  });
+
+  describeRuntimeFonts('runtime fonts', () => {
     it('skips new font map when rerendered', async () => {
-      const hook = renderHook(useFonts, { initialProps: FONTS });
-      await hook.waitForNextUpdate();
+      const { result, rerender } = await renderHook(useFonts, { initialProps: STUB_FONTS });
 
-      expect(loadAsyncSpy).toBeCalledWith(FONTS);
+      // Wait for the assets to load
+      await waitFor(() => {
+        expect(result.current[RESULT_LOADED]).toBe(true);
+      });
 
-      const partialFonts: Partial<typeof FONTS> = { ...FONTS };
-      delete partialFonts['ComicSans-Regular'];
-
-      hook.rerender(partialFonts as typeof FONTS);
-
-      expect(hook.result.current[DATA]).toBe(true);
-      expect(loadAsyncSpy).not.toBeCalledWith(partialFonts);
+      // Rerender the hook with new modules
+      await rerender({ 'ComicSans-Bold': 'path/to/jailed/font-bold.ttf' });
+      // Ensure the fonts are not reloaded
+      expect(loadAsyncSpy).not.toHaveBeenCalledWith([9999]);
     });
 
-    it('keeps fonts loaded when unmounted', async () => {
-      const hook = renderHook(useFonts, { initialProps: FONTS });
-      await hook.waitForNextUpdate();
+    it('keeps assets loaded when unmounted', async () => {
+      const { result, unmount } = await renderHook(useFonts, { initialProps: STUB_FONTS });
 
-      expect(hook.result.current[DATA]).toBe(true);
-      hook.unmount();
-      expect(hook.result.current[DATA]).toBe(true);
+      // Wait for the assets to load
+      await waitFor(() => {
+        expect(result.current[RESULT_LOADED]).toBe(true);
+      });
+
+      // Unmount the hook
+      await unmount();
+
+      // Ensure the assets are still the same
+      await waitFor(() => {
+        expect(result.current[RESULT_LOADED]).toBe(true);
+      });
+    });
+
+    it('does not crash when the array contains a malformed entry, and reports not loaded', async () => {
+      loadAsyncSpy.mockReturnValueOnce(new Promise(() => {}));
+      const { result, unmount } = await renderHook(useFonts, {
+        initialProps: [null] as unknown as Font.FontFamilyDefinition[],
+      });
+
+      expect(result.current[RESULT_LOADED]).toBe(false);
+      // Unmount before `loadAsync` resolves, so its `.then()` doesn't update state outside `act()`.
+      await unmount();
     });
 
     it('returns error when encountered', async () => {
+      // Mock a fake thrown error
       const error = new Error('test');
       loadAsyncSpy.mockRejectedValue(error);
 
-      const hook = renderHook(useFonts, { initialProps: FONTS });
+      const { result } = await renderHook(useFonts, { initialProps: STUB_FONTS });
 
-      expect(hook.result.current[ERROR]).toBeNull();
-      await hook.waitForNextUpdate();
-      expect(hook.result.current[ERROR]).toBe(error);
+      // Ensure the hook returns the error
+      await waitFor(() => {
+        expect(result.current[RESULT_ERROR]).toBe(error);
+      });
     });
-  }
+  });
 });

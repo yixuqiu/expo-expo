@@ -4,23 +4,31 @@ import AVKit
 import ExpoModulesCore
 
 public final class VideoView: ExpoView, AVPlayerViewControllerDelegate {
-  lazy var playerViewController = AVPlayerViewController()
+  private lazy var playerViewControllerWrapper = OrientationAVPlayerViewControllerWrapper(delegate: self)
+  var playerViewController: OrientationAVPlayerViewController {
+    playerViewControllerWrapper.controller
+  }
 
   weak var player: VideoPlayer? {
     didSet {
-      playerViewController.player = player?.pointer
-    }
-  }
-
-  var isFullscreen: Bool = false
-  var isInPictureInPicture = false
-  var startPictureInPictureAutomatically = false {
-    didSet {
-      if #available(iOS 14.2, *) {
-        playerViewController.canStartPictureInPictureAutomaticallyFromInline = startPictureInPictureAutomatically
+      if playerViewControllerWrapper.setPlayer(player) {
+        removeFirstFrameObserver()
+        addFirstFrameObserver()
       }
     }
   }
+
+  #if os(tvOS)
+  var wasPlaying: Bool = false
+  let startPictureInPictureAutomatically = false
+  var isFullscreen: Bool = false
+  #else
+  var startPictureInPictureAutomatically = false {
+    didSet {
+      playerViewController.canStartPictureInPictureAutomaticallyFromInline = startPictureInPictureAutomatically
+    }
+  }
+  #endif
 
   var allowPictureInPicture: Bool = false {
     didSet {
@@ -32,16 +40,18 @@ public final class VideoView: ExpoView, AVPlayerViewControllerDelegate {
 
   let onPictureInPictureStart = EventDispatcher()
   let onPictureInPictureStop = EventDispatcher()
+  let onFullscreenEnter = EventDispatcher()
+  let onFullscreenExit = EventDispatcher()
+  let onFirstFrameRender = EventDispatcher()
+
+  var firstFrameObserver: NSKeyValueObservation?
 
   public override var bounds: CGRect {
     didSet {
-      playerViewController.view.frame = self.bounds
+      playerViewControllerWrapper.view.frame = bounds
+      playerViewControllerWrapper.layoutControllerView()
     }
   }
-
-  lazy var supportsPictureInPicture: Bool = {
-    return AVPictureInPictureController.isPictureInPictureSupported()
-  }()
 
   public required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -49,72 +59,80 @@ public final class VideoView: ExpoView, AVPlayerViewControllerDelegate {
     VideoManager.shared.register(videoView: self)
 
     clipsToBounds = true
-    playerViewController.delegate = self
-    playerViewController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-    playerViewController.view.backgroundColor = .clear
-    // Now playing is managed by the `NowPlayingManager`
-    playerViewController.updatesNowPlayingInfoCenter = false
 
-    addSubview(playerViewController.view)
+    addFirstFrameObserver()
+    addSubview(playerViewControllerWrapper.view)
   }
 
   deinit {
     VideoManager.shared.unregister(videoView: self)
+    removeFirstFrameObserver()
   }
 
   func enterFullscreen() {
-    if isFullscreen {
-      return
+    let tvOSFallback = {
+      #if os(tvOS)
+      // For TV, save the currently playing state,
+      // remove the view controller from its superview,
+      // and present the view controller normally
+      self.wasPlaying = self.player?.isPlaying == true
+      self.playerViewController.view.removeFromSuperview()
+      self.reactViewController().present(self.playerViewController, animated: true)
+      self.onFullscreenEnter()
+      self.isFullscreen = true
+      #endif
     }
-    let selectorName = "enterFullScreenAnimated:completionHandler:"
-    let selectorToForceFullScreenMode = NSSelectorFromString(selectorName)
-
-    if playerViewController.responds(to: selectorToForceFullScreenMode) {
-      playerViewController.perform(selectorToForceFullScreenMode, with: true, with: nil)
-    }
+    playerViewController.enterFullscreen(selectorUnsupportedFallback: tvOSFallback)
   }
 
   func exitFullscreen() {
-    if !isFullscreen {
-      return
-    }
-    let selectorName = "exitFullScreenAnimated:completionHandler:"
-    let selectorToExitFullScreenMode = NSSelectorFromString(selectorName)
-
-    if playerViewController.responds(to: selectorToExitFullScreenMode) {
-      playerViewController.perform(selectorToExitFullScreenMode, with: true, with: nil)
-    }
+    playerViewController.exitFullscreen()
+    #if os(tvOS)
+    self.isFullscreen = false
+    #endif
   }
 
   func startPictureInPicture() throws {
-    if !supportsPictureInPicture {
-      throw PictureInPictureUnsupportedException()
-    }
-
-    let selectorName = "startPictureInPicture"
-    let selectorToStartPictureInPicture = NSSelectorFromString(selectorName)
-
-    if playerViewController.responds(to: selectorToStartPictureInPicture) {
-      playerViewController.perform(selectorToStartPictureInPicture)
-    }
+    try playerViewController.startPictureInPicture()
   }
 
   func stopPictureInPicture() {
-    let selectorName = "stopPictureInPicture"
-    let selectorToStopPictureInPicture = NSSelectorFromString(selectorName)
-
-    if playerViewController.responds(to: selectorToStopPictureInPicture) {
-      playerViewController.perform(selectorToStopPictureInPicture)
-    }
+    playerViewController.stopPictureInPicture()
   }
 
   // MARK: - AVPlayerViewControllerDelegate
 
+  #if os(tvOS)
+  // TV actually presents the playerViewController, so it implements the view controller
+  // dismissal delegate methods
+  public func playerViewControllerWillBeginDismissalTransition(_ playerViewController: AVPlayerViewController) {
+    // Start an appearance transition
+    self.playerViewController.beginAppearanceTransition(true, animated: true)
+  }
+
+  public func playerViewControllerDidEndDismissalTransition(_ playerViewController: AVPlayerViewController) {
+    self.onFullscreenExit()
+    self.isFullscreen = false
+    // Reset the bounds of the view controller and add it back to our view
+    self.playerViewControllerWrapper.layoutControllerView()
+    self.playerViewControllerWrapper.view.addSubview(self.playerViewController.view)
+    // End the appearance transition
+    self.playerViewController.endAppearanceTransition()
+    // Ensure playing state is preserved
+    if wasPlaying {
+      self.player?.ref.play()
+    } else {
+      self.player?.ref.pause()
+    }
+  }
+  #endif
+
+  #if !os(tvOS)
   public func playerViewController(
     _ playerViewController: AVPlayerViewController,
     willBeginFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
   ) {
-    isFullscreen = true
+    onFullscreenEnter()
   }
 
   public func playerViewController(
@@ -123,29 +141,59 @@ public final class VideoView: ExpoView, AVPlayerViewControllerDelegate {
   ) {
     // Platform's behavior is to pause the player when exiting the fullscreen mode.
     // It seems better to continue playing, so we resume the player once the dismissing animation finishes.
-    let wasPlaying = player?.pointer.timeControlStatus == .playing
+    let wasPlaying = player?.isPlaying ?? false
 
     coordinator.animate(alongsideTransition: nil) { context in
-      if !context.isCancelled {
-        if wasPlaying {
-          self.player?.pointer.play()
+      if !context.isCancelled && wasPlaying {
+        DispatchQueue.main.async {
+          self.player?.ref.play()
         }
-        self.isFullscreen = false
+      }
+
+      if !context.isCancelled {
+        self.onFullscreenExit()
       }
     }
   }
+  #endif
 
   public func playerViewControllerDidStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
-    isInPictureInPicture = true
     onPictureInPictureStart()
   }
 
   public func playerViewControllerDidStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
-    isInPictureInPicture = false
     onPictureInPictureStop()
   }
 
   public override func didMoveToWindow() {
+    // TV is doing a normal view controller present, so we should not execute
+    // this code
+    #if !os(tvOS)
     playerViewController.beginAppearanceTransition(self.window != nil, animated: true)
+    playerViewController.endAppearanceTransition()
+    #endif
+  }
+
+  public override func safeAreaInsetsDidChange() {
+    super.safeAreaInsetsDidChange()
+    playerViewControllerWrapper.refreshSafeAreaInsets()
+  }
+
+  #if !os(tvOS)
+  func setFullscreenOptions(_ options: FullscreenOptions?) {
+    playerViewControllerWrapper.setFullscreenOptions(options)
+  }
+  #endif
+
+  private func addFirstFrameObserver() {
+    firstFrameObserver = playerViewController.observe(\.isReadyForDisplay, changeHandler: { [weak self] playerViewController, _ in
+      if playerViewController.isReadyForDisplay {
+        self?.onFirstFrameRender()
+      }
+    })
+  }
+  private func removeFirstFrameObserver() {
+    firstFrameObserver?.invalidate()
+    firstFrameObserver = nil
   }
 }

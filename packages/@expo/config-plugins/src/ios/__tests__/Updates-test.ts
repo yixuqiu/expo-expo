@@ -1,4 +1,4 @@
-import fs from 'fs';
+import type fs from 'fs';
 import { vol } from 'memfs';
 import path from 'path';
 
@@ -6,17 +6,12 @@ import * as Updates from '../Updates';
 
 const fsReal = jest.requireActual('fs') as typeof fs;
 jest.mock('fs');
-jest.mock('resolve-from');
-
-const { silent } = require('resolve-from');
 
 const fixturesPath = path.resolve(__dirname, 'fixtures');
 const sampleCodeSigningCertificatePath = path.resolve(fixturesPath, 'codeSigningCertificate.pem');
 
 describe('iOS Updates config', () => {
   beforeEach(() => {
-    const resolveFrom = require('resolve-from');
-    resolveFrom.silent = silent;
     vol.reset();
   });
 
@@ -33,11 +28,11 @@ describe('iOS Updates config', () => {
           policy: 'sdkVersion',
         },
         slug: 'my-app',
-        owner: 'owner',
         updates: {
           enabled: false,
           fallbackToCacheTimeout: 2000,
           checkAutomatically: 'ON_ERROR_RECOVERY',
+          useEmbeddedUpdate: false,
           codeSigningCertificate: 'hello',
           codeSigningMetadata: {
             alg: 'rsa-v1_5-sha256',
@@ -47,6 +42,8 @@ describe('iOS Updates config', () => {
             'expo-channel-name': 'test',
             testheader: 'test',
           },
+          enableBsdiffPatchSupport: true,
+          maxUpdatesToKeep: 5,
         },
       },
       {} as any,
@@ -58,12 +55,50 @@ describe('iOS Updates config', () => {
       EXUpdatesCheckOnLaunch: 'ERROR_RECOVERY_ONLY',
       EXUpdatesLaunchWaitMs: 2000,
       EXUpdatesRuntimeVersion: 'exposdk:37.0.0',
+      EXUpdatesHasEmbeddedUpdate: false,
       EXUpdatesCodeSigningCertificate: fsReal.readFileSync(
         sampleCodeSigningCertificatePath,
         'utf-8'
       ),
       EXUpdatesCodeSigningMetadata: { alg: 'rsa-v1_5-sha256', keyid: 'test' },
       EXUpdatesRequestHeaders: { 'expo-channel-name': 'test', testheader: 'test' },
+      EXUpdatesEnableBsdiffPatchSupport: true,
+      EXUpdatesMaxUpdatesToKeep: 5,
     });
   });
+
+  it('writes EXUpdatesExcludeFromBackup only when updates.excludeFromBackup is true', async () => {
+    const enabled = await Updates.setUpdatesConfigAsync(
+      '/app',
+      {
+        runtimeVersion: '1.0.0',
+        slug: 'my-app',
+        updates: { url: 'https://u.expo.dev/x', excludeFromBackup: true },
+      },
+      {} as any,
+      '0.11.0'
+    );
+    expect(enabled).toMatchObject({ EXUpdatesExcludeFromBackup: true });
+
+    const omitted = await Updates.setUpdatesConfigAsync(
+      '/app',
+      {
+        runtimeVersion: '1.0.0',
+        slug: 'my-app',
+        updates: { url: 'https://u.expo.dev/x' },
+      },
+      {} as any,
+      '0.11.0'
+    );
+    expect(omitted).not.toHaveProperty('EXUpdatesExcludeFromBackup');
+  });
+});
+
+it('removes a stale retention setting when the option is omitted', async () => {
+  const config = await Updates.setUpdatesConfigAsync(
+    '/app',
+    { slug: 'my-app', runtimeVersion: '1.0.0', updates: { url: 'https://u.expo.dev/x' } },
+    { EXUpdatesMaxUpdatesToKeep: 5 }
+  );
+  expect(config).not.toHaveProperty('EXUpdatesMaxUpdatesToKeep');
 });

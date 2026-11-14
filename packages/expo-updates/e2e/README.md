@@ -1,6 +1,6 @@
 ## E2E test setup
 
-To run the updates e2e tests locally, do the following:
+These instructions are for the E2E (enabled) tests.
 
 - Create a script to set up the environment and remove any previous build, as in the example below.
 
@@ -13,99 +13,76 @@ export WORKING_DIR_ROOT=/Users/me/myCode/e2eworking
 export TEST_PROJECT_ROOT=$WORKING_DIR_ROOT/updates-e2e
 export UPDATES_HOST=localhost
 export UPDATES_PORT=4747
-export EX_UPDATES_NATIVE_DEBUG=1
+export EXPO_PUBLIC_UPDATES_SERVER_PORT=4747
 
 # Remove and recreate the working directory before executing the setup
 rm -rf $WORKING_DIR_ROOT
 mkdir $WORKING_DIR_ROOT
 ```
 
-- From the Expo repo root directory, execute
+- Run `source <scriptname>` to run it and set up the environment variables
+
+- From the Expo repo root directory, execute:
 
 ```bash
 ./packages/expo-updates/e2e/setup/create-eas-project.ts
 ```
 
-- Change to the `TEST_PROJECT_ROOT` location above.
+- Change directory to the `TEST_PROJECT_ROOT` location with `cd $TEST_PROJECT_ROOT`.
 
-- Execute
+- Execute this command to generate the bundles used by the test server:
 
-```
-yarn generate-test-update-bundles
+```bash
+# it will generate android and iOS bundles.
+pnpm generate-test-update-bundles
 ```
 
 - To run iOS tests:
 
-  - Start an iPhone 14 simulator
+  - Have an iOS simulator already running, and ensure no Android emulators are running
   - Execute these commands:
 
 ```bash
-npx pod install
-yarn detox:ios:debug:build
-yarn detox:ios:debug:test
+npx pod-install
+pnpm maestro:ios:debug:build
+./maestro/maestro-test-executor.sh ./maestro/tests/updates-e2e-enabled.yml ios debug
 ```
 
 - To run Android tests:
 
-  - Ensure you have an emulator running named `pixel_4` (or change `.detoxrc.json` to use the name of your own running emulator)
-  - Execute `adb reverse tcp:4747 tcp:4747` to ensure that the test server is accessible
-  - Then run
+  - Have an Android emulator already running, and ensure no iOS simulators are running
+  - Execute these commands:
 
 ```bash
-yarn detox:android:debug:build
-yarn detox:android:debug:test
+pnpm maestro:android:debug:build
+./maestro/maestro-test-executor.sh ./maestro/tests/updates-e2e-enabled.yml android debug
 ```
 
-- Running in your own EAS space:
+- For either the iOS or Android tests, you can optionally run the test updates server separately for debugging purposes.
 
-Edit `app.json` and remove the `extra` section with the EAS project ID, then execute
+  - Before running the Maestro tests above, run this command in a separate terminal window:
 
 ```bash
-eas init
-eas build --profile=updates_testing_debug --platform=<android|ios>
+./maestro/updates-server/start.ts
 ```
 
-- Testing the EAS build locally:
+### Update retention
 
-  - Ensure you have an emulator running named `pixel_4`
-  - Make the change below in `eas.json`:
+The enabled test app sets `updates.maxUpdatesToKeep` to `3`. The
+`basic_updateRetention.yml` flow launches four successive updates and checks the
+cached update IDs after each launch. It verifies that the three newest downloaded
+updates survive and the oldest downloaded update is removed. The current embedded ID
+is excluded from the comparison so only downloaded updates count toward the
+expected retained IDs. Database reads are exposed only by the E2E fixture modules.
+The reader waits up to one second for SQLite locks on iOS. Failed reads are displayed in the result row,
+and the bounded poll retries failed or missing results.
 
-```diff
---- a/packages/expo-updates/e2e/fixtures/project_files/eas.json
-+++ b/packages/expo-updates/e2e/fixtures/project_files/eas.json
-@@ -15,7 +15,8 @@
-     "updates_testing_debug": {
-       "env": {
-         "EX_UPDATES_NATIVE_DEBUG": "1",
--        "NO_FLIPPER": "1"
-+        "NO_FLIPPER": "1",
-+        "LOCAL_TESTING": "1"
-       },
-       "android": {
-         "gradleCommand": ":app:assembleRelease :app:assembleAndroidTest -DtestBuildType=release",
-```
-
-  - Clone the `eas-build` repo, and build it (`yarn`, `yarn build`)
-  - Set up the local EAS build environment as in this example:
-
-```
-#!/usr/bin/env bash
-
-export EAS_LOCAL_BUILD_HOME=<the eas-build directory that you just cloned above>
-
-export EAS_LOCAL_BUILD_PLUGIN_PATH=$EAS_LOCAL_BUILD_HOME/bin/eas-cli-local-build-plugin
-export EAS_LOCAL_BUILD_WORKINGDIR=$TMPDIR/eas-build-workingdir
-export EAS_LOCAL_BUILD_SKIP_CLEANUP=1
-export EAS_LOCAL_BUILD_ARTIFACTS_DIR=$TMPDIR/eas-build-workingdir/results
-
-rm -rf $EAS_LOCAL_BUILD_WORKINGDIR
-```
-
-  - Execute
+After building the app and generating the test bundles above, run this flow alone
+with:
 
 ```bash
-eas init
-eas build --profile=updates_testing_debug --platform=<android|ios> --local
+./maestro/maestro-test-executor.sh ./maestro/tests/basic_updateRetention.yml android debug
+# Or use ios instead of android.
 ```
 
 ## Updates API test project:

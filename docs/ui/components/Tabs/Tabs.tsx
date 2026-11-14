@@ -1,39 +1,57 @@
-import { css } from '@emotion/react';
-import { shadows, theme } from '@expo/styleguide';
-import { borderRadius, spacing } from '@expo/styleguide-base';
-import { TabList, TabPanels, Tabs as ReachTabs, TabsProps } from '@reach/tabs';
-import * as React from 'react';
+import { mergeClasses } from '@expo/styleguide';
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import {
+  Children,
+  Fragment,
+  PropsWithChildren,
+  ReactElement,
+  cloneElement,
+  isValidElement,
+  useState,
+  useContext,
+  ReactNode,
+  useId,
+  useMemo,
+} from 'react';
 
+import { InsideTabsContext } from './InsideTabsContext';
+import { Tab, TabPanelProps } from './Tab';
 import { TabButton } from './TabButton';
+import { SharedTabsContext } from './TabsGroup';
 
-type Props = React.PropsWithChildren<TabsProps> & {
-  tabs: string[];
+type Props = PropsWithChildren<{
+  tabs?: string[];
+}>;
+
+type TabChild = ReactElement<TabPanelProps>;
+
+const collectTabPanels = (nodes: ReactNode): TabChild[] => {
+  const panels: TabChild[] = [];
+
+  Children.forEach(nodes, child => {
+    if (!isValidElement<{ children?: ReactNode }>(child)) {
+      return;
+    }
+
+    if (child.type === Fragment) {
+      panels.push(...collectTabPanels(child.props.children));
+      return;
+    }
+
+    if (child.type === Tab) {
+      panels.push(child as TabChild);
+    }
+  });
+
+  return panels;
 };
 
-const generateTabLabels = (children: React.ReactNode) => {
-  return React.Children.map(children, child =>
-    React.isValidElement(child) ? child?.props?.label : child || '[untitled]'
-  );
-};
-
-const SharedTabsContext = React.createContext<{
-  index: number;
-  setIndex: (index: number) => void;
-} | null>(null);
-
-/**
- * Wraps a group of tabs to share the same state. Useful for guides where one aspect of the guide is broken up into multiple tabs, e.g. Yarn vs NPM.
- */
-export function TabsGroup({ children }: { children: React.ReactNode }) {
-  const [index, setIndex] = React.useState(0);
-  return (
-    <SharedTabsContext.Provider value={{ index, setIndex }}>{children}</SharedTabsContext.Provider>
-  );
-}
+const generateTabLabels = (tabPanels: TabChild[]) =>
+  tabPanels.map(child => child.props.label ?? '[untitled]');
 
 export const Tabs = (props: Props) => {
-  const context = React.useContext(SharedTabsContext);
-  const [tabIndex, setTabIndex] = React.useState(0);
+  const context = useContext(SharedTabsContext);
+  const [tabIndex, setTabIndex] = useState(0);
 
   if (context) {
     return <InnerTabs {...props} {...context} />;
@@ -48,43 +66,43 @@ const InnerTabs = ({
   index: tabIndex,
   setIndex,
 }: Props & { index: number; setIndex: (index: number) => void }) => {
-  const tabTitles = tabs || generateTabLabels(children);
+  const tabPanels = useMemo(() => collectTabPanels(children), [children]);
+  const tabTitles = tabs?.length === tabPanels.length ? tabs : generateTabLabels(tabPanels);
+
+  const layoutId = useId();
 
   return (
-    <ReachTabs index={tabIndex} onChange={setIndex} css={tabsWrapperStyle}>
-      <TabList css={tabsListStyle}>
+    <TabsPrimitive.Root
+      data-md="tabs"
+      value={String(tabIndex)}
+      onValueChange={value => {
+        setIndex(Number(value));
+      }}
+      className="my-4 rounded-3xl border border-default shadow-xs">
+      <TabsPrimitive.List className="flex flex-wrap gap-1 border-b border-secondary px-4 py-3">
         {tabTitles.map((title, index) => (
-          <TabButton key={index} selected={index === tabIndex}>
-            {title}
-          </TabButton>
+          <TabButton
+            key={index}
+            value={String(index)}
+            active={index === tabIndex}
+            label={title}
+            layoutId={layoutId}
+          />
         ))}
-      </TabList>
-      <TabPanels css={tabsPanelStyle} className="last:[&>div>*]:!mb-0">
-        {children}
-      </TabPanels>
-    </ReachTabs>
+      </TabsPrimitive.List>
+      <InsideTabsContext.Provider value>
+        <div
+          className={mergeClasses(
+            'px-5 py-4',
+            '[&_ul]:mb-3',
+            '[&_figure:first-child]:mt-1 [&_pre:first-child]:mt-1',
+            '[&>div>*:last-child]:mb-0!'
+          )}>
+          {tabPanels.map((panel, index) =>
+            cloneElement(panel, { key: index, value: String(index), hidden: index !== tabIndex })
+          )}
+        </div>
+      </InsideTabsContext.Provider>
+    </TabsPrimitive.Root>
   );
 };
-
-const tabsWrapperStyle = css({
-  border: `1px solid ${theme.border.default}`,
-  borderRadius: borderRadius.sm,
-  boxShadow: shadows.xs,
-  margin: `${spacing[4]}px 0`,
-});
-
-const tabsPanelStyle = css({
-  padding: `${spacing[4]}px ${spacing[5]}px`,
-
-  'pre:first-child': {
-    marginTop: spacing[1],
-  },
-
-  ul: {
-    marginBottom: spacing[3],
-  },
-});
-
-const tabsListStyle = css({
-  borderBottom: `1px solid ${theme.border.default}`,
-});

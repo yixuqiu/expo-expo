@@ -1,10 +1,11 @@
 {
-  "name": "expo-network",
-  "platforms": ["ios", "android", "web", "tvos"],
-  "ios": {
-    "modules": ["NetworkModule"]
-  },
+  "platforms": ["apple", "android", "web"],
   "android": {
-    "modules": ["expo.modules.network.NetworkModule"]
+    "modules": ["expo.modules.network.NetworkModule"],
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.network",
+      "repository": "local-maven-repo"
+    }
   }
 }

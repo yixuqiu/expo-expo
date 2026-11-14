@@ -1,16 +1,12 @@
 package expo.modules.kotlin.jni
 
 import com.facebook.jni.HybridData
-import com.facebook.react.bridge.RuntimeExecutor
-import com.facebook.react.common.annotations.FrameworkAPI
-import com.facebook.react.turbomodule.core.CallInvokerHolderImpl
-import com.facebook.soloader.SoLoader
 import expo.modules.core.interfaces.DoNotStrip
-import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.exception.JavaScriptEvaluateException
+import expo.modules.kotlin.jni.decorators.JSDecoratorsBridgingObject
+import expo.modules.kotlin.runtime.Runtime
 import expo.modules.kotlin.sharedobjects.SharedObject
 import expo.modules.kotlin.sharedobjects.SharedObjectId
-import expo.modules.kotlin.weak
 import java.lang.ref.WeakReference
 
 /**
@@ -20,83 +16,21 @@ import java.lang.ref.WeakReference
  */
 @Suppress("KotlinJniMissingFunction")
 @DoNotStrip
-class JSIContext : Destructible {
-  internal lateinit var appContextHolder: WeakReference<AppContext> // = WeakReference(appContext)
-
-  // Has to be called "mHybridData" - fbjni uses it via reflection
+class JSIContext @DoNotStrip internal constructor(
+  @DoNotStrip private val mHybridData: HybridData,
+  val runtimeHolder: WeakReference<Runtime>
+) : Destructible, AutoCloseable {
   @DoNotStrip
-  private val mHybridData = initHybrid()
+  private var jsHeapAccessExecutor: JSHeapAccessExecutor? = null
 
-  private external fun initHybrid(): HybridData
-
-  @OptIn(FrameworkAPI::class)
-  fun installJSI(
-    appContext: AppContext,
-    jsRuntimePointer: Long,
-    jniDeallocator: JNIDeallocator,
-    jsInvokerHolder: CallInvokerHolderImpl
-  ) {
-    appContextHolder = appContext.weak()
-    installJSI(
-      jsRuntimePointer,
-      jniDeallocator,
-      jsInvokerHolder
-    )
+  @DoNotStrip
+  internal fun setJSHeapAccessExecutor(executor: JSHeapAccessExecutor?) {
+    jsHeapAccessExecutor = executor
   }
 
-  fun installJSIForBridgeless(
-    appContext: AppContext,
-    jsRuntimePointer: Long,
-    jniDeallocator: JNIDeallocator,
-    runtimeExecutor: RuntimeExecutor
-  ) {
-    appContextHolder = appContext.weak()
-    installJSIForBridgeless(
-      jsRuntimePointer,
-      jniDeallocator,
-      runtimeExecutor
-    )
-  }
-
-  /**
-   * Initializes the `ExpoModulesHostObject` and adds it to the global object.
-   */
-  @OptIn(FrameworkAPI::class)
-  private external fun installJSI(
-    jsRuntimePointer: Long,
-    jniDeallocator: JNIDeallocator,
-    jsInvokerHolder: CallInvokerHolderImpl
-  )
-
-  private external fun installJSIForBridgeless(
-    jsRuntimePointer: Long,
-    jniDeallocator: JNIDeallocator,
-    runtimeExecutor: RuntimeExecutor
-  )
-
-  @OptIn(FrameworkAPI::class)
-  fun installJSIForTests(
-    appContext: AppContext,
-    jniDeallocator: JNIDeallocator
-  ) {
-    appContextHolder = appContext.weak()
-    installJSIForTests(jniDeallocator)
-  }
-
-  @OptIn(FrameworkAPI::class)
-  fun installJSIForTests(
-    appContext: AppContext
-  ) {
-    appContextHolder = appContext.weak()
-    installJSIForTests(appContext.jniDeallocator)
-  }
-
-  /**
-   * Initializes the test runtime. Shouldn't be used in the production.
-   */
-  private external fun installJSIForTests(
-    jniDeallocator: JNIDeallocator
-  )
+  @Suppress("unused")
+  @DoNotStrip
+  fun getJSHeapAccessExecutor(): JSHeapAccessExecutor? = jsHeapAccessExecutor
 
   /**
    * Evaluates given JavaScript source code.
@@ -104,6 +38,13 @@ class JSIContext : Destructible {
    */
   @Throws(JavaScriptEvaluateException::class)
   external fun evaluateScript(script: String): JavaScriptValue
+
+  /**
+   * Evaluates given JavaScript source code.
+   * @throws JavaScriptEvaluateException if the input format is unknown or evaluation causes an error
+   */
+  @Throws(JavaScriptEvaluateException::class)
+  external fun evaluateVoidScript(script: String)
 
   /**
    * Returns the runtime global object
@@ -116,11 +57,55 @@ class JSIContext : Destructible {
   external fun createObject(): JavaScriptObject
 
   /**
+   * Schedules a block to run on the JS thread via the RuntimeScheduler.
+   */
+  external fun scheduleOnJSThread(runnable: Runnable)
+
+  /**
    * Drains the JavaScript VM internal Microtask (a.k.a. event loop) queue.
    */
   external fun drainJSEventLoop()
 
   external fun setNativeStateForSharedObject(id: Int, js: JavaScriptObject)
+
+  /**
+   * Installs `SharedObject.__resolveInWorklet` in this runtime.
+   */
+  external fun installModuleClasses()
+
+  /**
+   * Called from C++ `__resolveInWorklet`, returns the Java class of a SharedObject by its ID.
+   */
+  @Suppress("unused")
+  @DoNotStrip
+  fun getNativeSharedObjectClass(objectId: Int): Class<*>? {
+    val appContext = runtimeHolder.get()?.appContext ?: return null
+    val mainRegistry = appContext.runtime.sharedObjectRegistry
+    val nativeObject = mainRegistry.toNativeObjectOrNull(SharedObjectId(objectId))
+    return nativeObject?.javaClass
+  }
+
+  /**
+   * Exports a single SharedObject class to this runtime.
+   */
+  @Suppress("unused")
+  @DoNotStrip
+  fun buildClassDecorator(nativeClass: Class<*>): JSDecoratorsBridgingObject? {
+    val runtime = runtimeHolder.get() ?: return null
+    val appContext = runtime.appContext ?: return null
+
+    val classDefinition = appContext.registry
+      .asSequence()
+      .flatMap { it.definition.classData }
+      .firstOrNull { it.constructor.ownerType?.jClass == nativeClass }
+      ?: return null
+
+    val decorator = JSDecoratorsBridgingObject(runtime.deallocator)
+    with(decorator) {
+      classDefinition.exportClass(appContext, runtime)
+    }
+    return decorator
+  }
 
   /**
    * Returns a `JavaScriptModuleObject` that is a bridge between [expo.modules.kotlin.modules.Module]
@@ -132,13 +117,13 @@ class JSIContext : Destructible {
   @Suppress("unused")
   @DoNotStrip
   fun getJavaScriptModuleObject(name: String): JavaScriptModuleObject? {
-    return appContextHolder.get()?.registry?.getModuleHolder(name)?.jsObject
+    return runtimeHolder.get()?.appContext?.registry?.getModuleHolder(name)?.jsObject
   }
 
   @Suppress("unused")
   @DoNotStrip
   fun hasModule(name: String): Boolean {
-    return appContextHolder.get()?.registry?.hasModule(name) ?: false
+    return runtimeHolder.get()?.appContext?.registry?.hasModule(name) ?: false
   }
 
   /**
@@ -147,13 +132,14 @@ class JSIContext : Destructible {
   @Suppress("unused")
   @DoNotStrip
   fun getJavaScriptModulesName(): Array<String> {
-    return appContextHolder.get()?.registry?.registry?.keys?.toTypedArray() ?: emptyArray()
+    return runtimeHolder.get()?.appContext?.registry?.registry?.keys?.toTypedArray()
+      ?: emptyArray()
   }
 
   @Suppress("unused")
   @DoNotStrip
   fun registerSharedObject(native: Any, js: JavaScriptObject) {
-    appContextHolder
+    runtimeHolder
       .get()
       ?.sharedObjectRegistry
       ?.add(native as SharedObject, js)
@@ -161,8 +147,15 @@ class JSIContext : Destructible {
 
   @Suppress("unused")
   @DoNotStrip
+  fun getSharedObject(id: Int): JavaScriptObject? {
+    val runtimeContext = runtimeHolder.get() ?: return null
+    return SharedObjectId(id).toJavaScriptObjectNull(runtimeContext)
+  }
+
+  @Suppress("unused")
+  @DoNotStrip
   fun deleteSharedObject(id: Int) {
-    appContextHolder
+    runtimeHolder
       .get()
       ?.sharedObjectRegistry
       ?.delete(SharedObjectId(id))
@@ -171,7 +164,7 @@ class JSIContext : Destructible {
   @Suppress("unused")
   @DoNotStrip
   fun registerClass(native: Class<*>, js: JavaScriptObject) {
-    appContextHolder
+    runtimeHolder
       .get()
       ?.classRegistry
       ?.add(native, js)
@@ -179,31 +172,25 @@ class JSIContext : Destructible {
 
   @Suppress("unused")
   @DoNotStrip
-  fun getJavascriptClass(native: java.lang.Class<*>): JavaScriptObject? {
-    return appContextHolder
+  fun getJavascriptClass(native: Class<*>): JavaScriptObject? {
+    return runtimeHolder
       .get()
       ?.classRegistry
       ?.toJavaScriptObject(native)
   }
 
-  @Suppress("unused")
-  @DoNotStrip
-  fun getCoreModuleObject(): JavaScriptModuleObject? {
-    return appContextHolder.get()?.coreModule?.jsObject
-  }
-
   @Throws(Throwable::class)
   protected fun finalize() {
-    deallocate()
+    close()
   }
 
-  override fun deallocate() {
+  override fun close() {
+    jsHeapAccessExecutor?.invalidate()
+    jsHeapAccessExecutor = null
     mHybridData.resetNative()
   }
 
-  companion object {
-    init {
-      SoLoader.loadLibrary("expo-modules-core")
-    }
+  override fun getHybridDataForJNIDeallocator(): HybridData {
+    return mHybridData
   }
 }

@@ -1,38 +1,85 @@
 import type { ExpoConfig } from '@expo/config';
 
+import { parseForwardedRequestInfo } from './resolveForwarded';
 import type { ServerRequest, ServerResponse } from './server.types';
 
-const DEFAULT_ALLOWED_CORS_HOSTNAMES = [
-  'localhost',
-  'chrome-devtools-frontend.appspot.com', // Support remote Chrome DevTools frontend
+/**
+ * Normalize a forwarded address to a `host` comparable with an `Origin` header, dropping the port
+ * when it's the default for the protocol, as the browser does.
+ */
+function getForwardedHost(req: ServerRequest): string | null {
+  const forwarded = parseForwardedRequestInfo(req);
+  if (!forwarded?.authority) {
+    return null;
+  }
+  try {
+    return new URL(`${forwarded.protocol ?? 'http'}://${forwarded.authority}`).host;
+  } catch {
+    return null;
+  }
+}
+
+const DEFAULT_ALLOWED_CORS_HOSTS = [
   'devtools', // Support local Chrome DevTools `devtools://devtools`
 ];
 
+/** Check if hostname matches "localhost" exactly, the local IPv6,
+ * a local IPV4 in the 127.0.0.0/8 range, or an IPv6-to-4 range
+ * (starting with ::ffff: and ending in an IPv4) */
+export const _isLocalHostname = (hostname: string) => {
+  if (hostname === 'localhost') {
+    return true;
+  }
+  let maybeIp = hostname;
+  const ipv6To4Prefix = '::ffff:';
+  if (maybeIp.startsWith(ipv6To4Prefix)) {
+    maybeIp = maybeIp.slice(ipv6To4Prefix.length);
+  }
+  if (maybeIp === '::1') {
+    return true;
+  } else if (/^127(?:\.\d+){3}$/.test(maybeIp)) {
+    return maybeIp.split('.').every((part) => {
+      const num = parseInt(part, 10);
+      return num >= 0 && num <= 255;
+    });
+  } else {
+    return false;
+  }
+};
+
 export function createCorsMiddleware(exp: ExpoConfig) {
-  const allowedHostnames = [...DEFAULT_ALLOWED_CORS_HOSTNAMES];
+  const allowedHosts = [...DEFAULT_ALLOWED_CORS_HOSTS];
   // Support for expo-router API routes
   if (exp.extra?.router?.headOrigin) {
-    allowedHostnames.push(new URL(exp.extra.router.headOrigin).hostname);
+    allowedHosts.push(new URL(exp.extra.router.headOrigin).host);
   }
   if (exp.extra?.router?.origin) {
-    allowedHostnames.push(new URL(exp.extra.router.origin).hostname);
+    allowedHosts.push(new URL(exp.extra.router.origin).host);
   }
 
   return (req: ServerRequest, res: ServerResponse, next: (err?: Error) => void) => {
     if (typeof req.headers.origin === 'string') {
-      const { hostname } = new URL(req.headers.origin);
-      if (!allowedHostnames.includes(hostname)) {
+      const { host, hostname } = new URL(req.headers.origin);
+      // A forwarded request reaches us with the proxy's address in `Origin` and, depending on the
+      // proxy, our own address in `Host`. Both name this dev server, so both count as same-origin.
+      const isSameOrigin = host === req.headers.host || host === getForwardedHost(req);
+      const isLocalhost = _isLocalHostname(hostname);
+      const isAllowedHost = allowedHosts.includes(host) || isLocalhost;
+      if (!isSameOrigin && !isAllowedHost) {
         next(
           new Error(
             `Unauthorized request from ${req.headers.origin}. ` +
               'This may happen because of a conflicting browser extension to intercept HTTP requests. ' +
-              'Please try again without browser extensions or using incognito mode.'
+              'Disable browser extensions or use incognito mode and try again.'
           )
         );
         return;
+      } else if (!isLocalhost && isAllowedHost) {
+        // Skipped for localhost to only allow requests from this dev-sever and not escalate
+        // the cross-origin resource sharing that's allowed beyond the browser's defaults
+        res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
       }
 
-      res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
       maybePreventMetroResetCorsHeader(req, res);
     }
 

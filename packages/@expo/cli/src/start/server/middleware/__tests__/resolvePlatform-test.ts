@@ -4,7 +4,7 @@ import {
   assertMissingRuntimePlatform,
   assertRuntimePlatform,
 } from '../resolvePlatform';
-import { ServerRequest } from '../server.types';
+import type { ServerRequest } from '../server.types';
 
 const asRequest = (req: Partial<ServerRequest>) => req as ServerRequest;
 
@@ -26,6 +26,25 @@ describe(parsePlatformHeader, () => {
     );
     // Handles arrays
     expect(parsePlatformHeader(asRequest({ url: '?platform=ios&platform=android' }))).toBe('ios');
+  });
+  it(`parses from 'platform' query parameter in a path-only URL`, () => {
+    expect(parsePlatformHeader(asRequest({ url: '/index.bundle?dev=true&platform=android' }))).toBe(
+      'android'
+    );
+    expect(parsePlatformHeader(asRequest({ url: '/?platform=ios#hash' }))).toBe('ios');
+    expect(parsePlatformHeader(asRequest({ url: '/?platform=%69os' }))).toBe('ios');
+  });
+  it(`falls back to the header when the 'platform' query parameter is empty`, () => {
+    expect(
+      parsePlatformHeader(
+        asRequest({ url: '/?platform=', headers: { 'expo-platform': 'android' } })
+      )
+    ).toBe('android');
+  });
+  it(`does not throw for an invalid absolute request url`, () => {
+    expect(() =>
+      parsePlatformHeader(asRequest({ url: 'http://localhost:99999/?platform=ios', headers: {} }))
+    ).not.toThrow();
   });
 
   for (const header of ['expo-platform', 'exponent-platform']) {
@@ -128,7 +147,7 @@ describe(assertMissingRuntimePlatform, () => {
   it('asserts missing', () => {
     expect(() => {
       assertMissingRuntimePlatform();
-    }).toThrowError('Must specify "expo-platform" header or "platform" query parameter');
+    }).toThrow('Must specify "expo-platform" header or "platform" query parameter');
   });
   it('does not assert on valid', () => {
     assertMissingRuntimePlatform('ios');
@@ -145,7 +164,15 @@ describe(assertRuntimePlatform, () => {
       assertRuntimePlatform('android');
     }).not.toThrow();
     expect(() => {
+      assertRuntimePlatform('tvos');
+    }).not.toThrow();
+    expect(() => {
+      assertRuntimePlatform('macos');
+    }).not.toThrow();
+    expect(() => {
       assertRuntimePlatform('not-supported');
-    }).toThrowError('platform must be "android", "ios", or "web". Received: "not-supported"');
+    }).toThrow(
+      'platform must be "android", "ios", "web", "tvos", or "macos". Received: "not-supported"'
+    );
   });
 });

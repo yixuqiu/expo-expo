@@ -1,14 +1,54 @@
 # Changelog
 
-## Unpublished
+## 58.0.1
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.0 — 2026-09-10
 
 ### 🐛 Bug fixes
 
+- [Android] Use `javaObjectType` in `JSONObject.require<T>` so primitive type arms (`Long`/`Int`/`Double`/`Boolean`) match instead of silently falling into the catch-all `else` and throwing `ClassCastException`. ([#46181](https://github.com/expo/expo/pull/46181) by [@jakequade-pc](https://github.com/jakequade-pc))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.2 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+_This version does not introduce any user-facing changes._
+
+## 0.15.0 — 2025-04-04
+
 ### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+
+## 0.14.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
 
 ## 0.13.1 — 2024-04-29
 

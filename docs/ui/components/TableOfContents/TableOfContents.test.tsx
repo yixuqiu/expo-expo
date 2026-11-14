@@ -1,84 +1,150 @@
-import { spacing } from '@expo/styleguide-base';
-import { render, screen } from '@testing-library/react';
+import { jest } from '@jest/globals';
+import { act, fireEvent, screen } from '@testing-library/react';
+import GithubSlugger from 'github-slugger';
+import { createRef, type RefObject } from 'react';
 
-import { getHeadingIndent, getHeadingInfo } from './TableOfContents';
+import { BASE_HEADING_LEVEL, HeadingType, createHeadingManager } from '~/common/headingManager';
+import { axe, renderWithHeadings } from '~/common/test-utilities';
+import { HeadingsContext } from '~/common/withHeadingManager';
+import { type ScrollContainerHandle } from '~/components/ScrollContainer';
 
-describe(getHeadingIndent, () => {
-  const paddingFactor = spacing[2];
+import { TableOfContents, TableOfContentsHandles } from './TableOfContents';
 
-  // This shouldn't be included in the table of contents, but it's nice to test anyways
-  it('returns no padding for h1 heading', () => {
-    expect(getHeadingIndent(makeHeading('h1'))).toHaveProperty('paddingLeft', 0);
-  });
-
-  it('returns no padding for h2 heading', () => {
-    expect(getHeadingIndent(makeHeading('h2'))).toHaveProperty('paddingLeft', 0);
-  });
-
-  it('returns 1x padding for h3 heading', () => {
-    expect(getHeadingIndent(makeHeading('h3'))).toHaveProperty('paddingLeft', paddingFactor);
-  });
-
-  it('returns 2x padding for h4 heading', () => {
-    expect(getHeadingIndent(makeHeading('h4'))).toHaveProperty('paddingLeft', paddingFactor * 2);
-  });
-
-  it('returns 3x padding for h5 heading', () => {
-    expect(getHeadingIndent(makeHeading('h5'))).toHaveProperty('paddingLeft', paddingFactor * 3);
-  });
-
-  it('returns 4x padding for h6 heading', () => {
-    expect(getHeadingIndent(makeHeading('h6'))).toHaveProperty('paddingLeft', paddingFactor * 4);
-  });
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: jest.fn().mockImplementation(() => ({})),
 });
 
-describe(getHeadingInfo, () => {
-  it('returns normal text from h1 heading', () => {
-    expect(getHeadingInfo(makeHeading('h1', 'Hello'))).toMatchObject({
-      type: 'text',
-      text: 'Hello',
+const prepareHeadingManager = () => {
+  const headingManager = createHeadingManager(new GithubSlugger(), { headings: [] });
+  headingManager.addHeading('Base level heading', undefined, {});
+  headingManager.addHeading('Level 3 subheading', 3, {});
+  headingManager.addHeading('Code heading depth 1', 0, {
+    sidebarDepth: 1,
+    sidebarType: HeadingType.INLINE_CODE,
+  });
+
+  return headingManager;
+};
+
+const createHeadingManagerWithOffsets = () => {
+  const headingManager = createHeadingManager(new GithubSlugger(), { headings: [] });
+  const headingEntries = [
+    { title: 'Intro', level: BASE_HEADING_LEVEL, slug: 'intro', offset: 0 },
+    { title: 'Middle', level: BASE_HEADING_LEVEL + 1, slug: 'middle', offset: 900 },
+    { title: 'End', level: BASE_HEADING_LEVEL, slug: 'end', offset: 1800 },
+  ];
+
+  headingEntries.forEach(({ title, level, slug, offset }) => {
+    const heading = headingManager.addHeading(title, level, {}, slug);
+    heading.ref.current = document.createElement('div');
+    Object.defineProperty(heading.ref.current, 'offsetTop', {
+      value: offset,
+      configurable: true,
     });
   });
 
-  it('returns normal text from h2 heading', () => {
-    expect(getHeadingInfo(makeHeading('h2', 'Hello World'))).toMatchObject({
-      type: 'text',
-      text: 'Hello World',
-    });
+  return headingManager;
+};
+
+const createContentRef = (
+  viewportHeight = 900,
+  scrollHeight = 2400
+): {
+  contentRef: RefObject<ScrollContainerHandle | null>;
+  scrollTo: jest.Mock;
+  scrollRef: { current: HTMLDivElement };
+} => {
+  const scrollTo = jest.fn();
+  const scrollElement = {
+    clientHeight: viewportHeight,
+    scrollHeight,
+    scrollTo,
+  } as unknown as HTMLDivElement;
+  const scrollRef = { current: scrollElement };
+
+  return {
+    contentRef: {
+      current: {
+        getScrollRef: () => scrollRef,
+        getScrollTop: () => 0,
+      },
+    } as unknown as RefObject<ScrollContainerHandle | null>,
+    scrollTo,
+    scrollRef,
+  };
+};
+
+describe('TableOfContents', () => {
+  test('correctly matches snapshot', () => {
+    const headingManager = prepareHeadingManager();
+
+    const { container } = renderWithHeadings(
+      <HeadingsContext.Provider value={headingManager}>
+        <TableOfContents headingManager={headingManager} />
+      </HeadingsContext.Provider>
+    );
+    expect(container).toMatchSnapshot();
   });
 
-  it('returns normal text from h3 heading with platform specification', () => {
-    expect(getHeadingInfo(makeHeading('h3', 'Cool stuff (Android only)'))).toMatchObject({
-      type: 'text',
-      text: 'Cool stuff (Android only)',
-    });
+  test('has no axe violations', async () => {
+    const headingManager = prepareHeadingManager();
+
+    const { container } = renderWithHeadings(
+      <HeadingsContext.Provider value={headingManager}>
+        <TableOfContents headingManager={headingManager} />
+      </HeadingsContext.Provider>
+    );
+    expect(await axe(container)).toHaveNoViolations();
   });
 
-  it('returns code text from h4 heading with function name', () => {
-    expect(getHeadingInfo(makeHeading('h4', 'getCoolStuffAsync()'))).toMatchObject({
-      type: 'code',
-      text: 'getCoolStuffAsync',
-    });
+  test('activates headings near top, middle, and bottom positions', () => {
+    const headingManager = createHeadingManagerWithOffsets();
+    const { contentRef } = createContentRef();
+    const tocRef = createRef<TableOfContentsHandles>();
+
+    renderWithHeadings(
+      <HeadingsContext.Provider value={headingManager}>
+        <TableOfContents ref={tocRef} headingManager={headingManager} contentRef={contentRef} />
+      </HeadingsContext.Provider>
+    );
+
+    act(() => tocRef.current?.handleContentScroll?.(0));
+    expect(tocRef.current).not.toBeNull();
+    expect(screen.getByText('Intro')).toHaveClass('text-link!');
+
+    act(() => tocRef.current?.handleContentScroll?.(950));
+    expect(screen.getByText('Middle')).toHaveClass('text-link!');
+
+    act(() => tocRef.current?.handleContentScroll?.(1500));
+    expect(screen.getByText('End')).toHaveClass('text-link!');
   });
 
-  it('returns code text from h5 heading with function name and args', () => {
-    expect(getHeadingInfo(makeHeading('h5', 'getTransformAsync(input: string)'))).toMatchObject({
-      type: 'code',
-      text: 'getTransformAsync',
-    });
-  });
+  test('scrolls to align heading with activation line on click', () => {
+    const headingManager = createHeadingManager(new GithubSlugger(), { headings: [] });
+    const intro = headingManager.addHeading('Intro', BASE_HEADING_LEVEL, {}, 'intro');
+    const middle = headingManager.addHeading('Middle', BASE_HEADING_LEVEL, {}, 'middle');
+    intro.ref.current = document.createElement('div');
+    middle.ref.current = document.createElement('div');
+    Object.defineProperty(intro.ref.current, 'offsetTop', { value: 0, configurable: true });
+    Object.defineProperty(middle.ref.current, 'offsetTop', { value: 800, configurable: true });
 
-  it('returns code text from h6 heading with function name, args, and return type', () => {
-    expect(
-      getHeadingInfo(makeHeading('h6', 'getTransformAsync(input: string): Promise<string>'))
-    ).toMatchObject({
-      type: 'code',
-      text: 'getTransformAsync',
-    });
+    const { contentRef, scrollTo, scrollRef } = createContentRef(800, 1600);
+    const tocRef = createRef<TableOfContentsHandles>();
+
+    renderWithHeadings(
+      <HeadingsContext.Provider value={headingManager}>
+        <TableOfContents ref={tocRef} headingManager={headingManager} contentRef={contentRef} />
+      </HeadingsContext.Provider>
+    );
+
+    fireEvent.click(screen.getByText('Middle'));
+
+    expect(scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // 0.05 = ACTIVE_ITEM_OFFSET_FACTOR (1/20), 21 = scrollOffset
+        top: 800 - scrollRef.current.clientHeight * 0.05 + 21,
+      })
+    );
   });
 });
-
-function makeHeading(Tag: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6', text = 'Hello World') {
-  render(<Tag data-testid="heading">{text}</Tag>);
-  return screen.getByTestId('heading') as HTMLHeadingElement;
-}

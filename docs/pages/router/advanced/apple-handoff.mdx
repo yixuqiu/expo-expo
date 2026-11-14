@@ -1,16 +1,14 @@
 ---
 title: Apple Handoff
 description: Learn how to seamlessly continue app navigation across Apple devices with Expo Router and Apple Handoff.
+platforms: ['ios*', 'web']
 ---
 
 import { Terminal } from '~/ui/components/Snippet';
-import PlatformsSection from '~/components/plugins/PlatformsSection';
 
-Apple Handoff is a feature that enables users to continue browsing your app or website on another device. Expo Router v2 automates all of the runtime routing for this feature. However, the one-time configuration must be set up manually.
+Apple Handoff is a feature that enables users to continue browsing your app or website on another device. Expo Router automates all of the runtime routing for this feature. However, the one-time configuration must be set up manually.
 
 In Expo Router, the underlying iOS API (`NSUserActivity`) requires a `webpageUrl` which the OS recommends as the current URL for switching to your app. The `expo-router/head` component has an optional native module that can automatically set the `webpageUrl` to the currently focused route in Expo Router.
-
-<PlatformsSection ios web />
 
 ## Setup
 
@@ -18,7 +16,7 @@ The following restrictions and considerations are important:
 
 - Handoff is Apple-only.
 - Handoff can not be used in the Expo Go app as it requires build-time configuration.
-- Handoff requires [universal links](/guides/deep-linking) to be configured, at least on iOS, and contain the `activitycontinuation` object.
+- Handoff requires [universal links](/linking/into-your-app/) to be configured, at least on iOS, and contain the `activitycontinuation` object.
 - Handoff requires the `expo-router/head` component to be used on each page that you want to support, or in the root layout if you want all pages to be continuous.
 
 To ensure that the **public/.well-known/apple-app-site-association** file is configured correctly, it must include the `activitycontinuation` key with an `apps` array that contains your app's bundle ID and Team ID formatted as `<APPLE_TEAM_ID>.<IOS_BUNDLE_ID>`. For example, `QQ57RJ5UTD.app.expo.acme` where `QQ57RJ5UTD` is the Team ID and `app.expo.acme` is the bundle identifier.
@@ -51,15 +49,22 @@ To ensure that the **public/.well-known/apple-app-site-association** file is con
 
 You can use the following command to generate the **apple-app-site-association** file based on your [app config](/versions/latest/config/app/):
 
-<Terminal cmd={['$ npx setup-safari']} />
+<Terminal
+  cmd={{
+    npm: ['$ npx setup-safari'],
+    yarn: ['$ yarn dlx setup-safari'],
+    pnpm: ['$ pnpm dlx setup-safari'],
+    bun: ['$ bunx setup-safari'],
+  }}
+/>
 
-See [Universal Link debugging](/guides/deep-linking#debugging) guide to test handoff in development.
+See [Test the deep link](/linking/into-your-app/#test-the-deep-link) guide to test handoff in development.
 
 ### Expo Head setup
 
-Ensure you set the Handoff origin in your `app.config.js` file using the `expo-router` config plugin. This is the URL that will be used for the `webpageUrl` when the user switches to your app.
+Ensure you set the Handoff origin in your `app.config.tsx` file using the `expo-router` config plugin. This is the URL that will be used for the `webpageUrl` when the user switches to your app.
 
-```js app.config.js
+```tsx app.config.tsx
 // Be sure to change this to be unique to your project.
 process.env.EXPO_TUNNEL_SUBDOMAIN = 'bacon-router-sandbox';
 
@@ -99,7 +104,14 @@ module.exports = {
 
 After configuring the app config, regenerate your native project with the following command:
 
-<Terminal cmd={['$ npx expo prebuild -p ios']} />
+<Terminal
+  cmd={{
+    npm: ['$ npx expo prebuild -p ios'],
+    yarn: ['$ yarn expo prebuild -p ios'],
+    pnpm: ['$ pnpm expo prebuild -p ios'],
+    bun: ['$ bun expo prebuild -p ios'],
+  }}
+/>
 
 In development, you must start the website **before installing the app on your device**. This is because when you install the app, the OS will trigger Apple's servers to ping your website for the **.well-known/apple-app-site-association** file. If the website is not running, the OS will not be able to find the file and handoff will not work. If this happens, rebuild the native app with `npx expo run:ios -d`.
 
@@ -107,7 +119,7 @@ In development, you must start the website **before installing the app on your d
 
 In any route that you want to support handoff, use the `Head` component from `expo-router/head`:
 
-```jsx app/index.js
+```tsx src/app/index.tsx
 import Head from 'expo-router/head';
 import { Text } from 'react-native';
 
@@ -136,7 +148,8 @@ The `expo-router/head` component supports the following meta tags:
 
 You may want to switch the values between platforms, for that you can use **Platform.select**:
 
-```jsx app/index.tsx
+{/* prettier-ignore */}
+```tsx src/app/index.tsx
 import Head from 'expo-router/head';
 
 export default function App() {
@@ -168,7 +181,7 @@ You can test the Apple App Site Association file (**public/.well-known/apple-app
 
 If you're having issues, the best thing you can do is enable the most aggressive handoff settings in your app. This ensures that any possible route is linkable. You can do this by making sure that **public/.well-known/apple-app-site-association** file matches all routes:
 
-```json title=public/.well-known/apple-app-site-association
+```json public/.well-known/apple-app-site-association
 {
   "applinks": {
     "details": [
@@ -186,11 +199,11 @@ If you're having issues, the best thing you can do is enable the most aggressive
 }
 ```
 
-In the application, ensure you are not rendering the `<Head />` element conditionally (for example, in an `if/else` block), it must be rendered on every page that you want to support handoff. We recommend adding it to the [Root Layout](/router/advanced/root-layout) component to ensure every route is linkable while debugging.
+In the application, ensure you are not rendering the `<Head />` element conditionally (for example, in an `if/else` block), it must be rendered on every page that you want to support handoff. We recommend adding it to the [Root Layout](/router/basics/navigation-layouts/#root-layout) component to ensure every route is linkable while debugging.
 
 Ensure you can access the Ngrok URL (for example, via the browser), before installing the app on your device. If you can't access the URL, the OS will not be able to find the file and handoff will not work.
 
-`npx expo run:ios` and Xcode will both codesign your app when associated domains is setup, this is required for handoff and universal links to work.
+`npx expo run:ios` and Xcode will both codesign your app when associated domains is set up, this is required for handoff and universal links to work.
 
 Handoff between your Mac and iPhone/iPad is not supported in the Expo Go app. You must build and install your app on your device.
 
@@ -205,7 +218,7 @@ Your **public/.well-known/apple-app-site-association** must be served from a sec
 
 Check your **ios&#x2f;project&#x2f;project.entitlements** file, under the `com.apple.developer.associated-domains` key. This should contain the same domains as your web server/website. The URL cannot contain a protocol (`https://`) or additional pathname, query parameters, or fragments.
 
-### Still Stuck?
+### Still stuck
 
 > This is an important but very difficult feature to set up. Expo Router automates many of the moving parts, Expo CLI automates much of the configuration and hosting. However, hardware settings can still be misconfigured.
 

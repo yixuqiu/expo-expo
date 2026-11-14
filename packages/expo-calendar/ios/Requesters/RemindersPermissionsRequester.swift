@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import EventKit
+internal import React
 
 public class RemindersPermissionRequester: NSObject, EXPermissionsRequester {
   private let eventStore: EKEventStore
@@ -13,7 +14,7 @@ public class RemindersPermissionRequester: NSObject, EXPermissionsRequester {
   }
 
   public func getPermissions() -> [AnyHashable: Any] {
-    var status: CalendarPermissionsStatus
+    var status: EXPermissionStatus
     var permissions: EKAuthorizationStatus
 
     let description = {
@@ -23,22 +24,21 @@ public class RemindersPermissionRequester: NSObject, EXPermissionsRequester {
       return "NSRemindersUsageDescription"
     }()
 
-    if let remindersUsageDescription = Bundle.main.object(forInfoDictionaryKey: description) {
+    if Bundle.main.object(forInfoDictionaryKey: description) != nil {
       permissions = EKEventStore.authorizationStatus(for: .reminder)
     } else {
-      EXFatal(MissingCalendarPListValueException(description))
       permissions = .denied
     }
 
     switch permissions {
-    case .restricted, .denied:
-      status = .denied
+    case .restricted, .denied, .writeOnly:
+      status = EXPermissionStatusDenied
     case .notDetermined:
-      status = .notDetermined
+      status = EXPermissionStatusUndetermined
     case .fullAccess:
-      status = .granted
+      status = EXPermissionStatusGranted
     @unknown default:
-      status = .unknown
+      status = EXPermissionStatusUndetermined
     }
 
     return ["status": status.rawValue]

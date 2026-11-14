@@ -28,7 +28,7 @@ describe(readResourcesXMLAsync, () => {
   it(`can write the escaped name and then read it back in unescaped format`, async () => {
     const stringsPath = '/app/android/app/src/main/res/values/strings.xml';
     let stringsJSON = await readResourcesXMLAsync({ path: stringsPath });
-    expect(stringsJSON.resources.string.filter((e) => e.$.name === 'app_name')[0]._).toBe(
+    expect(stringsJSON.resources.string!.filter((e) => e.$.name === 'app_name')[0]!._).toBe(
       `exp'o &bo<y>'`
     );
     stringsJSON = setStringItem(
@@ -41,7 +41,7 @@ describe(readResourcesXMLAsync, () => {
     expect(format(stringsJSON).includes(`\\'E&amp;x&lt;p&gt;o\\"\\@\\n`)).toBe(true);
 
     // And parsed in unescaped form
-    expect(stringsJSON.resources.string.filter((e) => e.$.name === 'app_name')[0]._).toBe(
+    expect(stringsJSON.resources.string!.filter((e) => e.$.name === 'app_name')[0]!._).toBe(
       `\\'E&x<p>o\\"\\@\\n`
     );
   });
@@ -72,11 +72,40 @@ describe('read and write', () => {
   });
 });
 
+describe('throws when invalid due to empty tags', () => {
+  // reading removes
+  // <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const example = `<resources>
+  <string name="app_name">exp\\'o</string>
+  <string name="empty1" />
+  <string name="empty2"></string>
+</resources>`;
+  beforeAll(async () => {
+    const directoryJSON = {
+      './android/app/src/main/res/values/strings.xml': example,
+    };
+    vol.fromJSON(directoryJSON, '/app');
+  });
+
+  afterAll(async () => {
+    vol.reset();
+  });
+
+  it(`throws correct error`, async () => {
+    const stringsPath = '/app/android/app/src/main/res/values/strings.xml';
+    await expect(readResourcesXMLAsync({ path: stringsPath })).rejects.toThrow(
+      'Empty string resource not supported'
+    );
+  });
+});
+
 describe(escapeAndroidString, () => {
   it(`can escape Android strings`, () => {
     expect(escapeAndroidString(`@`)).toBe(`\\@`);
     expect(escapeAndroidString(`'''`)).toBe(`\\'\\'\\'`);
     expect(escapeAndroidString('"E&x<p>o"@\n\r\t')).toBe(`\\"E&x<p>o\\"\\@\\n\\r\\t`);
+    expect(escapeAndroidString('?attr/foo')).toBe('\\?attr/foo');
+    expect(escapeAndroidString('C:\\Temp')).toBe('C:\\\\Temp');
   });
 });
 

@@ -3,6 +3,7 @@ import { getConfig } from '@expo/config';
 import { resolveOptionsAsync } from '../resolveOptions';
 
 jest.mock('@expo/config', () => ({
+  ...jest.requireActual('@expo/config'),
   getConfig: jest.fn(() => ({
     pkg: {},
     exp: {
@@ -39,6 +40,21 @@ describe(resolveOptionsAsync, () => {
     });
   });
 
+  it(`resolves the tvos platform`, async () => {
+    jest.mocked(getConfig).mockReturnValueOnce({
+      // `tvos` is an out-of-tree platform not present in the `ExpoConfig` platform union.
+      exp: {
+        platforms: ['ios', 'android', 'tvos'],
+        experiments: {
+          outOfTreePlatforms: true,
+        },
+      },
+    } as unknown as ReturnType<typeof getConfig>);
+    await expect(resolveOptionsAsync('/', { '--platform': ['tvos'] })).resolves.toMatchObject({
+      platforms: ['tvos'],
+    });
+  });
+
   it(`filters duplicated platform flags`, async () => {
     await expect(
       resolveOptionsAsync('/', { '--platform': ['android', 'android', 'ios', 'ios'] })
@@ -63,7 +79,7 @@ describe(resolveOptionsAsync, () => {
         '--clear': true,
         '--dev': true,
         '--dump-assetmap': true,
-        '--source-maps': true,
+        '--source-maps': 'true',
         '--max-workers': 2,
       })
     ).resolves.toEqual({
@@ -72,10 +88,35 @@ describe(resolveOptionsAsync, () => {
       bytecode: true,
       minify: true,
       dumpAssetmap: true,
+      hostedNative: false,
       sourceMaps: true,
+      inlineSourceMaps: false,
       maxWorkers: 2,
+      skipSSG: false,
       outputDir: 'foobar',
       platforms: ['android'],
+    });
+  });
+
+  it(`parses inline source maps option`, async () => {
+    await expect(
+      resolveOptionsAsync('/', {
+        '--source-maps': 'inline',
+      })
+    ).resolves.toMatchObject({
+      sourceMaps: true,
+      inlineSourceMaps: true,
+    });
+  });
+
+  it(`parses source maps option as boolean true`, async () => {
+    await expect(
+      resolveOptionsAsync('/', {
+        '--source-maps': true,
+      })
+    ).resolves.toMatchObject({
+      sourceMaps: true,
+      inlineSourceMaps: false,
     });
   });
 
@@ -86,8 +127,11 @@ describe(resolveOptionsAsync, () => {
       bytecode: true,
       minify: true,
       dumpAssetmap: false,
+      hostedNative: false,
       sourceMaps: false,
+      inlineSourceMaps: false,
       maxWorkers: undefined,
+      skipSSG: false,
       outputDir: 'dist',
       platforms: ['ios', 'android'],
     });

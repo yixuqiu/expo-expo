@@ -15,6 +15,8 @@ final class FetchUpdateProcedure: StateMachineProcedure {
   private let successBlock: (_ fetchUpdateResult: FetchUpdateResult) -> Void
   private let errorBlock: (_ error: Exception) -> Void
 
+  private let remoteAppLoader: RemoteAppLoader
+
   init(
     database: UpdatesDatabase,
     config: UpdatesConfig,
@@ -35,6 +37,15 @@ final class FetchUpdateProcedure: StateMachineProcedure {
     self.getLaunchedUpdate = getLaunchedUpdate
     self.successBlock = successBlock
     self.errorBlock = errorBlock
+
+    self.remoteAppLoader = RemoteAppLoader(
+      config: self.config,
+      logger: self.logger,
+      database: self.database,
+      directory: self.updatesDirectory,
+      launchedUpdate: self.getLaunchedUpdate(),
+      completionQueue: controllerQueue
+    )
   }
 
   func getLoggerTimerLabel() -> String {
@@ -42,15 +53,10 @@ final class FetchUpdateProcedure: StateMachineProcedure {
   }
 
   func run(procedureContext: ProcedureContext) {
-    procedureContext.processStateEvent(UpdatesStateEventDownload())
-
-    let remoteAppLoader = RemoteAppLoader(
-      config: self.config,
-      database: self.database,
-      directory: self.updatesDirectory,
-      launchedUpdate: self.getLaunchedUpdate(),
-      completionQueue: controllerQueue
-    )
+    procedureContext.processStateEvent(.download)
+    remoteAppLoader.assetLoadProgressBlock = { progress in
+      procedureContext.processStateEvent(.downloadProgress(progress: progress))
+    }
     remoteAppLoader.loadUpdate(
       fromURL: self.config.updateUrl
     ) { updateResponse in
@@ -93,6 +99,7 @@ final class FetchUpdateProcedure: StateMachineProcedure {
     } success: { updateResponse in
       RemoteAppLoader.processSuccessLoaderResult(
         config: self.config,
+        logger: self.logger,
         database: self.database,
         selectionPolicy: self.selectionPolicy,
         launchedUpdate: self.getLaunchedUpdate(),
@@ -102,7 +109,8 @@ final class FetchUpdateProcedure: StateMachineProcedure {
         priorError: nil
       ) { updateToLaunch, error, didRollBackToEmbedded in
         if let error = error {
-          procedureContext.processStateEvent(UpdatesStateEventDownloadError(message: error.localizedDescription))
+          self.logger.errorForLoadFailure(error, failed: .remoteFetchFailed, unreachable: .remoteFetchUnreachable)
+          procedureContext.processStateEvent(.downloadError(errorMessage: error.localizedDescription))
           self.successBlock(FetchUpdateResult.error(error: error))
           procedureContext.onComplete()
           return
@@ -110,25 +118,26 @@ final class FetchUpdateProcedure: StateMachineProcedure {
 
         if didRollBackToEmbedded {
           self.successBlock(FetchUpdateResult.rollBackToEmbedded)
-          procedureContext.processStateEvent(UpdatesStateEventDownloadCompleteWithRollback())
+          procedureContext.processStateEvent(.downloadCompleteWithRollback)
           procedureContext.onComplete()
           return
         }
 
         if let update = updateToLaunch {
           self.successBlock(FetchUpdateResult.success(manifest: update.manifest.rawManifestJSON()))
-          procedureContext.processStateEvent(UpdatesStateEventDownloadCompleteWithUpdate(manifest: update.manifest.rawManifestJSON()))
+          procedureContext.processStateEvent(.downloadCompleteWithUpdate(manifest: update.manifest.rawManifestJSON()))
           procedureContext.onComplete()
           return
         }
 
         self.successBlock(FetchUpdateResult.failure)
-        procedureContext.processStateEvent(UpdatesStateEventDownloadComplete())
+        procedureContext.processStateEvent(.downloadCompleteUnavailable)
         procedureContext.onComplete()
         return
       }
     } error: { error in
-      procedureContext.processStateEvent(UpdatesStateEventDownloadError(message: error.localizedDescription))
+      self.logger.errorForLoadFailure(error, failed: .remoteFetchFailed, unreachable: .remoteFetchUnreachable)
+      procedureContext.processStateEvent(.downloadError(errorMessage: error.localizedDescription))
       self.successBlock(FetchUpdateResult.error(error: error))
       procedureContext.onComplete()
       return

@@ -1,20 +1,46 @@
 require 'json'
 
+absolute_react_native_path = ''
+if !ENV['REACT_NATIVE_PATH'].nil?
+  absolute_react_native_path = File.expand_path(ENV['REACT_NATIVE_PATH'], Pod::Config.instance.project_root)
+else
+  absolute_react_native_path = File.dirname(`node --print "require.resolve('react-native/package.json')"`)
+end
+
+unless defined?(install_modules_dependencies)
+  # `install_modules_dependencies` and `add_dependency` are defined in react_native_pods.rb.
+  # When running with `pod ipc spec`, these methods are not defined and we have to require manually.
+  require File.join(absolute_react_native_path, "scripts/react_native_pods")
+end
+
 package = JSON.parse(File.read(File.join(__dir__, 'package.json')))
 
 reactNativeVersion = '0.0.0'
 begin
-  reactNativeVersion = `node --print "require('react-native/package.json').version"`
+  reactNativeVersion = `node --print "require('#{absolute_react_native_path}/package.json').version"`
 rescue
   reactNativeVersion = '0.0.0'
 end
 
 reactNativeTargetVersion = reactNativeVersion.split('.')[1].to_i
 
-fabric_enabled = ENV['RCT_NEW_ARCH_ENABLED'] == '1'
-fabric_compiler_flags = '-DRN_FABRIC_ENABLED -DRCT_NEW_ARCH_ENABLED'
-folly_version = '2022.05.16.00'
-folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -Wno-comma -Wno-shorten-64-to-32'
+use_hermes = ENV['USE_HERMES'] == nil || ENV['USE_HERMES'] == '1'
+new_arch_enabled = ENV['RCT_NEW_ARCH_ENABLED'] == '1'
+new_arch_compiler_flags = '-DRCT_NEW_ARCH_ENABLED'
+compiler_flags = get_folly_config()[:compiler_flags] + ' ' + "-DREACT_NATIVE_TARGET_VERSION=#{reactNativeTargetVersion}"
+
+if use_hermes
+  compiler_flags << ' -DUSE_HERMES'
+end
+if new_arch_enabled
+  compiler_flags << ' ' << new_arch_compiler_flags
+end
+
+# List of features that are required by linked modules
+coreFeatures = []
+if defined?(Expo::PackagesConfig)
+  coreFeatures = Expo::PackagesConfig.instance.coreFeatures
+end
 
 Pod::Spec.new do |s|
   s.name           = 'ExpoModulesCore'
@@ -25,17 +51,34 @@ Pod::Spec.new do |s|
   s.author         = package['author']
   s.homepage       = package['homepage']
   s.platforms       = {
-    :ios => '13.4',
-    :osx => '10.15',
-    :tvos => '13.4'
+    :ios => '16.4',
+    :osx => '13.4',
+    :tvos => '16.4'
   }
-  s.swift_version  = '5.4'
+  s.swift_version  = '6.0'
   s.source         = { git: 'https://github.com/expo/expo.git' }
-  s.static_framework = true
-  s.header_dir     = 'ExpoModulesCore'
 
-  header_search_paths = [
-  ]
+  header_search_paths = []
+  if ENV['USE_FRAMEWORKS']
+    header_search_paths.concat([
+      # Transitive dependency of React-Core
+      '"${PODS_CONFIGURATION_BUILD_DIR}/React-jsinspectortracing/jsinspector_moderntracing.framework/Headers"',
+      '"${PODS_CONFIGURATION_BUILD_DIR}/React-jsinspectorcdp/jsinspector_moderncdp.framework/Headers"',
+      # Transitive dependencies of React-runtimescheduler
+      '"${PODS_CONFIGURATION_BUILD_DIR}/React-runtimescheduler/React_runtimescheduler.framework/Headers"',
+      '"${PODS_CONFIGURATION_BUILD_DIR}/React-performancetimeline/React_performancetimeline.framework/Headers"',
+      '"${PODS_CONFIGURATION_BUILD_DIR}/React-rendererconsistency/React_rendererconsistency.framework/Headers"',
+      '"${PODS_CONFIGURATION_BUILD_DIR}/React-timing/React_timing.framework/Headers"',
+      '"${PODS_CONFIGURATION_BUILD_DIR}/React-debug/React_debug.framework/Headers"',
+      '"${PODS_CONFIGURATION_BUILD_DIR}/RCT-Folly/folly.framework/Headers"',
+      '"$(PODS_ROOT)/DoubleConversion"', # Folly includes double-conversion/double-conversion.h
+      # RCTHost.h is in React-RuntimeApple under ReactCommon subdirectory
+      '"${PODS_CONFIGURATION_BUILD_DIR}/React-RuntimeApple/React_RuntimeApple.framework/Headers"',
+      '"${PODS_CONFIGURATION_BUILD_DIR}/React-RuntimeCore/React_RuntimeCore.framework/Headers"',
+      '"${PODS_CONFIGURATION_BUILD_DIR}/React-jsitooling/JSITooling.framework/Headers"',
+      '"${PODS_CONFIGURATION_BUILD_DIR}/React-jserrorhandler/React_jserrorhandler.framework/Headers"',
+    ])
+  end
 
   # Swift/Objective-C compatibility
   s.pod_target_xcconfig = {
@@ -43,20 +86,19 @@ Pod::Spec.new do |s|
     'DEFINES_MODULE' => 'YES',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++20',
     'SWIFT_COMPILATION_MODE' => 'wholemodule',
+    'OTHER_SWIFT_FLAGS' => "$(inherited) #{new_arch_enabled ? new_arch_compiler_flags : ''}",
     'HEADER_SEARCH_PATHS' => header_search_paths.join(' '),
-    'OTHER_SWIFT_FLAGS' => "$(inherited) #{fabric_enabled ? fabric_compiler_flags : ''}"
+    'GCC_PREPROCESSOR_DEFINITIONS' => "$(inherited) EXPO_MODULES_CORE_VERSION=" + package['version'],
   }
-  user_header_search_paths = [
-    '"${PODS_CONFIGURATION_BUILD_DIR}/ExpoModulesCore/Swift Compatibility Header"',
-    '"$(PODS_ROOT)/Headers/Private/Yoga"', # Expo.h -> ExpoModulesCore-umbrella.h -> Fabric ViewProps.h -> Private Yoga headers
-  ]
   s.user_target_xcconfig = {
-    "HEADER_SEARCH_PATHS" => user_header_search_paths,
+    "HEADER_SEARCH_PATHS" => [
+      '"${PODS_CONFIGURATION_BUILD_DIR}/ExpoModulesCore/Swift Compatibility Header"',
+      '"$(PODS_ROOT)/Headers/Private/Yoga"', # Expo.h -> ExpoModulesCore-umbrella.h -> Fabric ViewProps.h -> Private Yoga headers
+    ],
+    'OTHER_LDFLAGS' => '$(inherited) -lc++', # C++ standard library - will propagate to dependent targets
   }
 
-  compiler_flags = folly_compiler_flags + ' ' + "-DREACT_NATIVE_TARGET_VERSION=#{reactNativeTargetVersion}"
-  if ENV['USE_HERMES'] == nil || ENV['USE_HERMES'] == '1'
-    compiler_flags += ' -DUSE_HERMES'
+  if use_hermes
     s.dependency 'hermes-engine'
     add_dependency(s, "React-jsinspector", :framework_name => 'jsinspector_modern')
   else
@@ -65,43 +107,51 @@ Pod::Spec.new do |s|
 
   s.dependency 'React-Core'
   s.dependency 'ReactCommon/turbomodule/core'
-  s.dependency 'React-RCTAppDelegate'
   s.dependency 'React-NativeModulesApple'
+  s.dependency 'React-RCTFabric'
 
-  if fabric_enabled
-    compiler_flags << ' ' << fabric_compiler_flags
+  # ExpoModulesJSI is re-exported by ExpoModulesCore's swiftinterface, so it must be a CocoaPods dep in both source and prebuilt modes.
+  s.dependency 'ExpoModulesJSI'
 
-    s.dependency 'React-RCTFabric'
-    s.dependency 'RCT-Folly', folly_version
-  end
-
-  unless defined?(install_modules_dependencies)
-    # `install_modules_dependencies` is defined from react_native_pods.rb.
-    # when running with `pod ipc spec`, this method is not defined and we have to require manually.
-    require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
-  end
   install_modules_dependencies(s)
 
-  if !$ExpoUseSources&.include?(package['name']) && ENV['EXPO_USE_SOURCE'].to_i == 0 && File.exist?("ios/#{s.name}.xcframework") && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.10.0')
-    s.source_files = 'ios/**/*.h', 'common/cpp/**/*.h'
-    s.vendored_frameworks = "ios/#{s.name}.xcframework"
-  else
-    s.source_files = 'ios/**/*.{h,m,mm,swift,cpp}', 'common/cpp/**/*.{h,cpp}'
-  end
-
-  exclude_files = ['ios/Tests/']
-  if !fabric_enabled
-    exclude_files.append('ios/Fabric/')
-    exclude_files.append('common/cpp/fabric/')
-  end
-
-  s.exclude_files = exclude_files
+  s.static_framework = true
+  s.header_dir     = 'ExpoModulesCore'
+  s.source_files = 'ios/**/*.{h,m,mm,swift,cpp}', 'common/cpp/**/*.{h,cpp}'
+  s.exclude_files = ['ios/Tests', 'ios/Benchmarks', 'ios/Worklets', 'ios/WorkletsTests', 'ios/WorkletsAdapter']
   s.compiler_flags = compiler_flags
   s.private_header_files = ['ios/**/*+Private.h', 'ios/**/Swift.h']
 
   s.test_spec 'Tests' do |test_spec|
     test_spec.dependency 'ExpoModulesTestCore'
 
-    test_spec.source_files = 'ios/Tests/**/*.{m,swift}'
+    test_spec.source_files = 'ios/Tests/**/*.{h,m,mm,swift}'
+
+    # The Obj-C++ tests include React renderer headers, which need the library's folly
+    # config. It reaches them through the library's `compiler_flags`, which test specs
+    # inherit and CocoaPods applies per-file to C-family sources.
+    #
+    # OTHER_LDFLAGS: the library's -lc++ lives in `user_target_xcconfig` (for consuming
+    # apps), which a test_spec target doesn't inherit. The test bundle links
+    # libExpoModulesCore.a (C++), so link libc++ explicitly.
+    #
+    # SWIFT_OBJC_BRIDGING_HEADER: a test target has no module for its own Obj-C sources,
+    # so the Swift tests see the Obj-C test doubles (`ios/Tests/Mocks`) through the
+    # bridging header.
+    test_spec.pod_target_xcconfig = {
+      'OTHER_LDFLAGS' => '$(inherited) -lc++',
+      'SWIFT_OBJC_BRIDGING_HEADER' => '$(PODS_TARGET_SRCROOT)/ios/Tests/Tests-Bridging-Header.h'
+    }
+  end
+
+  # Performance benchmarks. A separate spec, so unit test runs neither build nor run them.
+  s.test_spec 'Benchmarks' do |test_spec|
+    test_spec.dependency 'ExpoModulesTestCore'
+    # The descriptor benchmarks run `NewComponentDescriptor` through the test double that the tests use.
+    test_spec.source_files = 'ios/Benchmarks/**/*.{h,swift}', 'ios/Tests/Mocks/EXTestNewComponentDescriptor.{h,mm}'
+    test_spec.pod_target_xcconfig = {
+      'OTHER_LDFLAGS' => '$(inherited) -lc++',
+      'SWIFT_OBJC_BRIDGING_HEADER' => '$(PODS_TARGET_SRCROOT)/ios/Benchmarks/Benchmarks-Bridging-Header.h'
+    }
   end
 end

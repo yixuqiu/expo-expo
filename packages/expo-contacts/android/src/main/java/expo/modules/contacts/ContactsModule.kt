@@ -4,12 +4,16 @@ import android.Manifest
 import android.app.Activity
 import android.content.ContentResolver
 import android.content.Intent
+import android.database.ContentObserver
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
 import android.provider.ContactsContract
 import android.provider.ContactsContract.CommonDataKinds
 import expo.modules.contacts.models.BaseModel
+import expo.modules.contacts.models.BirthdayModel
 import expo.modules.contacts.models.DateModel
 import expo.modules.contacts.models.EmailModel
 import expo.modules.contacts.models.ExtraNameModel
@@ -18,6 +22,7 @@ import expo.modules.contacts.models.PhoneNumberModel
 import expo.modules.contacts.models.PostalAddressModel
 import expo.modules.contacts.models.RelationshipModel
 import expo.modules.contacts.models.UrlAddressModel
+import expo.modules.core.utilities.ifNull
 import expo.modules.interfaces.permissions.Permissions
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
@@ -27,6 +32,9 @@ import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
 import kotlinx.coroutines.launch
 import java.util.UUID
+import expo.modules.kotlin.types.OptimizedRecord
+
+const val onContactsChangeEventName = "onContactsChange"
 
 data class ContactPage(
   val data: List<Contact>,
@@ -62,11 +70,12 @@ private val defaultFields = setOf(
   "phoneNumbers", "emails", "addresses", "note", "birthday", "dates", "instantMessageAddresses",
   "urlAddresses", "extraNames", "relationships", "phoneticFirstName", "phoneticLastName", "phoneticMiddleName",
   "namePrefix", "nameSuffix", "name", "firstName", "middleName", "lastName", "nickname", "id", "jobTitle",
-  "company", "department", "image", "imageAvailable", "note"
+  "company", "department", "image", "imageAvailable", "note", "isFavorite"
 )
 
 const val RC_EDIT_CONTACT = 2137
 const val RC_PICK_CONTACT = 2138
+const val RC_ADD_CONTACT = 2139
 
 // TODO: Evan: default API is confusing. Duplicate data being requested.
 private val DEFAULT_PROJECTION = listOf(
@@ -88,9 +97,11 @@ private val DEFAULT_PROJECTION = listOf(
   CommonDataKinds.StructuredName.PHONETIC_FAMILY_NAME,
   CommonDataKinds.Organization.COMPANY,
   CommonDataKinds.Organization.TITLE,
-  CommonDataKinds.Organization.DEPARTMENT
+  CommonDataKinds.Organization.DEPARTMENT,
+  ContactsContract.Data.STARRED
 )
 
+@OptimizedRecord
 class ContactQuery : Record {
   @Field
   val pageSize = 0
@@ -108,7 +119,7 @@ class ContactQuery : Record {
   val name: String? = null
 
   @Field
-  val id: String? = null
+  val id: List<String>? = null
 }
 
 class QueryArguments(
@@ -120,15 +131,33 @@ class QueryArguments(
 class ContactsModule : Module() {
   private var contactPickingPromise: Promise? = null
   private var contactManipulationPromise: Promise? = null
+  private var contactChangeObserver: ContentObserver? = null
+  private var contactsHandlerThread: HandlerThread? = null
+  private var contactsHandler: Handler? = null
 
   private val permissionsManager: Permissions
     get() = appContext.permissions ?: throw Exceptions.PermissionsModuleNotFound()
 
-  private val activity: Activity
-    get() = appContext.activityProvider?.currentActivity ?: throw Exceptions.MissingActivity()
+  private val currentActivity: Activity
+    get() = appContext.throwingActivity
 
   override fun definition() = ModuleDefinition {
     Name("ExpoContacts")
+
+    Events(onContactsChangeEventName)
+
+    OnDestroy {
+      stopObservingContactChanges()
+    }
+
+    OnStartObserving(onContactsChangeEventName) {
+      ensureReadPermission()
+      startObservingContactChanges()
+    }
+
+    OnStopObserving(onContactsChangeEventName) {
+      stopObservingContactChanges()
+    }
 
     AsyncFunction("requestPermissionsAsync") { promise: Promise ->
       if (permissionsManager.isPermissionPresentInManifest(Manifest.permission.WRITE_CONTACTS)) {
@@ -152,9 +181,11 @@ class ContactsModule : Module() {
       appContext
         .backgroundCoroutineScope
         .launch {
-          if (options.id != null) {
-            val contact = getContactById(options.id, options.fields)
-            promise.resolve(contact.toBundle(options.fields))
+          if (!options.id.isNullOrEmpty()) {
+            val contacts = options.id.mapNotNull { id ->
+              getContactById(id, options.fields)
+            }
+            promise.resolve(ContactPage(data = contacts).toBundle(options.fields))
             return@launch
           }
 
@@ -167,6 +198,26 @@ class ContactsModule : Module() {
           }
 
           promise.resolve(contactData.toBundle(options.fields))
+        }
+    }
+
+    AsyncFunction("hasContactsAsync") { promise: Promise ->
+      ensureReadPermission()
+
+      appContext
+        .backgroundCoroutineScope
+        .launch {
+          resolver.query(
+            ContactsContract.Contacts.CONTENT_URI,
+            arrayOf(ContactsContract.Contacts._ID),
+            null,
+            null,
+            null
+          ).ifNull { throw ContactsCheckFailedException() }
+            .use { cursor ->
+              val hasAnyContacts = cursor.moveToFirst()
+              promise.resolve(hasAnyContacts)
+            }
         }
     }
 
@@ -198,7 +249,11 @@ class ContactsModule : Module() {
     AsyncFunction("updateContactAsync") { contact: Map<String, Any> ->
       ensurePermissions()
 
-      val id = if (contact.containsKey("id")) contact["id"] as String? else null
+      val id = if (contact.containsKey("id")) {
+        contact["id"] as String?
+      } else {
+        null
+      }
       var targetContact = getContactById(id, defaultFields)
 
       if (targetContact != null) {
@@ -232,12 +287,16 @@ class ContactsModule : Module() {
         putExtra(Intent.EXTRA_STREAM, uri)
         putExtra(Intent.EXTRA_SUBJECT, subject)
       }
-      activity.startActivity(intent)
+      currentActivity.startActivity(intent)
     }
 
     AsyncFunction("writeContactToFileAsync") { contact: Map<String, Any?> ->
       ensureReadPermission()
-      val id = if (contact.containsKey("id")) contact["id"] as String? else null
+      val id = if (contact.containsKey("id")) {
+        contact["id"] as String?
+      } else {
+        null
+      }
       val lookupKey = getLookupKeyForContactId(id) ?: throw LookupKeyNotFoundException()
       val uri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_VCARD_URI, lookupKey)
       uri.toString()
@@ -253,20 +312,17 @@ class ContactsModule : Module() {
       if (contactId != null) {
         val contact = getContactById(contactId, defaultFields) ?: throw ContactNotFoundException()
         presentEditForm(contact, promise)
-        return@AsyncFunction
       }
       // Create contact from supplied data.
       if (contactData != null) {
         val contact = mutateContact(null, contactData)
-        contactManipulationPromise = promise
-        presentForm(contact)
+        presentForm(contact, promise)
       }
-      promise.resolve()
     }
 
     OnActivityResult { _, payload ->
       val (requestCode, resultCode, intent) = payload
-      if (requestCode == RC_EDIT_CONTACT) {
+      if (requestCode == RC_EDIT_CONTACT || requestCode == RC_ADD_CONTACT) {
         val pendingPromise = contactManipulationPromise ?: return@OnActivityResult
 
         pendingPromise.resolve(0)
@@ -276,14 +332,12 @@ class ContactsModule : Module() {
       if (requestCode == RC_PICK_CONTACT) {
         val pendingPromise = contactPickingPromise ?: return@OnActivityResult
 
-        if (resultCode == Activity.RESULT_CANCELED) {
-          pendingPromise.resolve()
-        }
-
         if (resultCode == Activity.RESULT_OK) {
           val contactId = intent?.data?.lastPathSegment
           val contact = getContactById(contactId, defaultFields)
           pendingPromise.resolve(contact?.toMap(defaultFields))
+        } else {
+          pendingPromise.resolve()
         }
 
         contactPickingPromise = null
@@ -299,16 +353,16 @@ class ContactsModule : Module() {
       intent.setType(ContactsContract.Contacts.CONTENT_TYPE)
 
       contactPickingPromise = promise
-      activity.startActivityForResult(intent, RC_PICK_CONTACT)
+      currentActivity.startActivityForResult(intent, RC_PICK_CONTACT)
     }
   }
 
-  private fun presentForm(contact: Contact) {
+  private fun presentForm(contact: Contact, promise: Promise) {
     val intent = Intent(Intent.ACTION_INSERT, ContactsContract.Contacts.CONTENT_URI)
     intent.putExtra(ContactsContract.Intents.Insert.NAME, contact.getFinalDisplayName())
     intent.putParcelableArrayListExtra(ContactsContract.Intents.Insert.DATA, contact.contentValues)
-    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-    activity.startActivity(intent)
+    contactManipulationPromise = promise
+    currentActivity.startActivityForResult(intent, RC_ADD_CONTACT)
   }
 
   private fun presentEditForm(contact: Contact, promise: Promise) {
@@ -319,14 +373,14 @@ class ContactsModule : Module() {
     val intent = Intent(Intent.ACTION_EDIT)
     intent.setDataAndType(selectedContactUri, ContactsContract.Contacts.CONTENT_ITEM_TYPE)
     contactManipulationPromise = promise
-    activity.startActivityForResult(intent, RC_EDIT_CONTACT)
+    currentActivity.startActivityForResult(intent, RC_EDIT_CONTACT)
   }
 
   private val resolver: ContentResolver
     get() = (appContext.reactContext ?: throw Exceptions.ReactContextLost()).contentResolver
 
   private fun mutateContact(initContact: Contact?, data: Map<String, Any>): Contact {
-    val contact = initContact ?: Contact(UUID.randomUUID().toString())
+    val contact = initContact ?: Contact(UUID.randomUUID().toString(), appContext)
 
     data.safeGet<String>("firstName")?.let { contact.firstName = it }
     data.safeGet<String>("middleName")?.let { contact.middleName = it }
@@ -343,11 +397,18 @@ class ContactsModule : Module() {
 
     if (data.containsKey("image")) {
       val image = data["image"]
-      if (image is String) {
-        contact.photoUri = image
-        contact.hasPhoto = true
-      } else if (image is Map<*, *> && image.containsKey("uri")) {
-        contact.photoUri = image["uri"] as String?
+      if (image is Map<*, *> && image.containsKey("uri")) {
+        val uri = image["uri"] as String?
+        // The list of supported schemas for ContentResolver
+        // https://developer.android.com/privacy-and-security/risks/content-resolver
+        if (uri != null &&
+          !uri.startsWith("file://") &&
+          !uri.startsWith("content://") &&
+          !uri.startsWith("android.resource://")
+        ) {
+          throw RemoteImageUriException(uri)
+        }
+        contact.photoUri = uri
         contact.hasPhoto = true
       }
     }
@@ -401,12 +462,24 @@ class ContactsModule : Module() {
       contact.dates = it
     }
 
+    data["birthday"]?.takeIf { it is Map<*, *> }?.let {
+      contact.dates.add(
+        BirthdayModel().apply {
+          // Legacy API uses raw maps instead of Record; fixed in the new API.
+          @Suppress("UNCHECKED_CAST")
+          fromMap(it as Map<String, Any>)
+        }
+      )
+    }
+
     BaseModel.decodeList(
       data.safeGet("relationships"),
       RelationshipModel::class.java
     )?.let {
       contact.relationships = it
     }
+
+    data.safeGet<Boolean>("isFavorite")?.let { contact.isFavorite = it }
 
     return contact
   }
@@ -438,10 +511,7 @@ class ContactsModule : Module() {
       null
     )?.use { cursor ->
       val contacts = loadContactsFrom(cursor)
-      val contactList = ArrayList(contacts.values)
-      if (contactList.size > 0) {
-        return contactList[0]
-      }
+      return contacts.values.firstOrNull()
     }
     return null
   }
@@ -522,6 +592,8 @@ class ContactsModule : Module() {
       selection += " OR " + ContactsContract.Data.MIMETYPE + "=?"
       selectionArgs.add(CommonDataKinds.Event.CONTENT_ITEM_TYPE)
     }
+    // Legacy API supports IM addresses, deprecated since Android API 35. The new Contacts API removes these fields.
+    @Suppress("DEPRECATION")
     if (keysToFetch.contains("instantMessageAddresses")) {
       projection.add(CommonDataKinds.Im.DATA)
       projection.add(CommonDataKinds.Im.TYPE)
@@ -548,11 +620,25 @@ class ContactsModule : Module() {
       selection += " OR " + ContactsContract.Data.MIMETYPE + "=?"
       selectionArgs.add(CommonDataKinds.Relation.CONTENT_ITEM_TYPE)
     }
-    if (keysToFetch.contains("phoneticFirstName")) projection.add(CommonDataKinds.StructuredName.PHONETIC_GIVEN_NAME)
-    if (keysToFetch.contains("phoneticLastName")) projection.add(CommonDataKinds.StructuredName.PHONETIC_FAMILY_NAME)
-    if (keysToFetch.contains("phoneticMiddleName")) projection.add(CommonDataKinds.StructuredName.PHONETIC_MIDDLE_NAME)
-    if (keysToFetch.contains("namePrefix")) projection.add(CommonDataKinds.StructuredName.PREFIX)
-    if (keysToFetch.contains("nameSuffix")) projection.add(CommonDataKinds.StructuredName.SUFFIX)
+    if (keysToFetch.contains("phoneticFirstName")) {
+      projection.add(CommonDataKinds.StructuredName.PHONETIC_GIVEN_NAME)
+    }
+    if (keysToFetch.contains("phoneticLastName")) {
+      projection.add(CommonDataKinds.StructuredName.PHONETIC_FAMILY_NAME)
+    }
+    if (keysToFetch.contains("phoneticMiddleName")) {
+      projection.add(CommonDataKinds.StructuredName.PHONETIC_MIDDLE_NAME)
+    }
+    if (keysToFetch.contains("namePrefix")) {
+      projection.add(CommonDataKinds.StructuredName.PREFIX)
+    }
+    if (keysToFetch.contains("nameSuffix")) {
+      projection.add(CommonDataKinds.StructuredName.SUFFIX)
+    }
+
+    if (keysToFetch.contains("isFavorite")) {
+      projection.add(ContactsContract.Data.STARRED)
+    }
 
     return QueryArguments(
       projection.toTypedArray(),
@@ -651,11 +737,8 @@ class ContactsModule : Module() {
       val contactId = cursor.getString(columnIndex)
 
       // add or update existing contact for iterating data based on contact id
-      if (!map.containsKey(contactId)) {
-        map[contactId] = Contact(contactId)
-      }
-      val contact = map[contactId]
-      contact!!.fromCursor(cursor)
+      val contact = map.getOrPut(contactId) { Contact(contactId, appContext) }
+      contact.fromCursor(cursor)
     }
     return map
   }
@@ -677,6 +760,54 @@ class ContactsModule : Module() {
   private fun ensurePermissions() {
     ensureReadPermission()
     ensureWritePermission()
+  }
+
+  private fun startObservingContactChanges() {
+    if (contactChangeObserver != null) {
+      return
+    }
+
+    contactsHandlerThread = HandlerThread("ContactsObserverThread")
+    contactsHandlerThread?.start()
+    contactsHandler = Handler(contactsHandlerThread!!.looper)
+
+    val observer = object : ContentObserver(contactsHandler) {
+      override fun onChange(selfChange: Boolean, uri: Uri?) {
+        super.onChange(selfChange, uri)
+        handleContactChange()
+      }
+    }
+
+    val urisToObserve = listOf(
+      ContactsContract.Contacts.CONTENT_URI,
+      ContactsContract.RawContacts.CONTENT_URI
+    )
+
+    urisToObserve.forEach { uri ->
+      resolver.registerContentObserver(uri, true, observer)
+    }
+
+    contactChangeObserver = observer
+  }
+
+  private fun stopObservingContactChanges() {
+    contactChangeObserver?.let { observer ->
+      resolver.unregisterContentObserver(observer)
+      contactChangeObserver = null
+    }
+
+    contactsHandler = null
+    contactsHandlerThread?.quitSafely()
+    contactsHandlerThread = null
+  }
+
+  private fun handleContactChange() {
+    sendEvent(
+      onContactsChangeEventName,
+      mapOf(
+        "body" to null
+      )
+    )
   }
 }
 

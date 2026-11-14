@@ -1,7 +1,11 @@
 import { vol } from 'memfs';
 
+import {
+  clearNativeFolder,
+  getExistingNativePlatformsAsync,
+  getMalformedNativeProjectsAsync,
+} from '../clearNativeFolder';
 import rnFixture from './fixtures/react-native-project';
-import { clearNativeFolder, getMalformedNativeProjectsAsync } from '../clearNativeFolder';
 
 describe(clearNativeFolder, () => {
   it(`clears folders`, async () => {
@@ -17,6 +21,24 @@ describe(clearNativeFolder, () => {
     );
     await clearNativeFolder('/', platforms);
     expect(vol.toJSON()).toEqual({});
+  });
+});
+
+describe(getExistingNativePlatformsAsync, () => {
+  afterEach(() => {
+    vol.reset();
+  });
+
+  it(`returns only platforms with existing folders`, async () => {
+    vol.fromJSON({ 'android/foobar': 'x' }, '/');
+    expect(await getExistingNativePlatformsAsync('/', ['android', 'ios'])).toStrictEqual([
+      'android',
+    ]);
+  });
+
+  it(`returns an empty list when no native folders exist`, async () => {
+    vol.fromJSON({ 'package.json': '{}' }, '/');
+    expect(await getExistingNativePlatformsAsync('/', ['android', 'ios'])).toStrictEqual([]);
   });
 });
 
@@ -114,8 +136,8 @@ describe(getMalformedNativeProjectsAsync, () => {
     const projectRoot = '/';
     vol.fromJSON(
       {
-        'ios/foo': undefined,
-        'android/foo': undefined,
+        'ios/foo': null,
+        'android/foo': null,
       },
       projectRoot
     );

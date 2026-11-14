@@ -2,6 +2,7 @@
 package host.exp.exponent.storage
 
 import android.content.Context
+import androidx.core.content.edit
 import host.exp.exponent.analytics.EXL
 import host.exp.exponent.kernel.ExperienceKey
 import host.exp.expoview.ExpoViewBuildConfig
@@ -11,7 +12,7 @@ import org.json.JSONObject
 import javax.inject.Singleton
 
 @Singleton
-class ExponentSharedPreferences constructor(val context: Context) {
+class ExponentSharedPreferences(val context: Context) {
   private val sharedPreferences = context.getSharedPreferences(
     context.getString(R.string.preference_file_key),
     Context.MODE_PRIVATE
@@ -19,95 +20,55 @@ class ExponentSharedPreferences constructor(val context: Context) {
 
   private val exponentInstallationId = ExponentInstallationId(context, sharedPreferences)
 
-  fun getBoolean(key: ExponentSharedPreferencesKey): Boolean {
-    return sharedPreferences.getBoolean(key.preferenceKey, DEFAULT_VALUES[key] ?: false)
-  }
+  fun getBoolean(key: ExponentSharedPreferencesKey) =
+    sharedPreferences.getBoolean(key.preferenceKey, DEFAULT_VALUES[key] ?: false)
 
-  fun getBoolean(key: ExponentSharedPreferencesKey, defaultValue: Boolean): Boolean {
-    return sharedPreferences.getBoolean(key.preferenceKey, defaultValue)
-  }
+  fun getBoolean(key: ExponentSharedPreferencesKey, defaultValue: Boolean) =
+    sharedPreferences.getBoolean(key.preferenceKey, defaultValue)
 
-  fun setBoolean(key: ExponentSharedPreferencesKey, value: Boolean) {
-    sharedPreferences.edit().putBoolean(key.preferenceKey, value).apply()
-  }
+  fun setBoolean(key: ExponentSharedPreferencesKey, value: Boolean) =
+    sharedPreferences.edit(commit = true) { putBoolean(key.preferenceKey, value) }
 
-  fun getInteger(key: ExponentSharedPreferencesKey): Int {
-    return getInteger(key, 0)
-  }
+  fun getInteger(key: ExponentSharedPreferencesKey) = getInteger(key, 0)
 
-  fun getInteger(key: ExponentSharedPreferencesKey, defaultValue: Int): Int {
-    return sharedPreferences.getInt(key.preferenceKey, defaultValue)
-  }
+  private fun getInteger(key: ExponentSharedPreferencesKey, defaultValue: Int) =
+    sharedPreferences.getInt(key.preferenceKey, defaultValue)
 
-  fun setInteger(key: ExponentSharedPreferencesKey, value: Int) {
-    sharedPreferences.edit().putInt(key.preferenceKey, value).apply()
-  }
+  fun setInteger(key: ExponentSharedPreferencesKey, value: Int) =
+    sharedPreferences.edit(commit = true) { putInt(key.preferenceKey, value) }
 
-  fun getLong(key: ExponentSharedPreferencesKey): Long {
-    return sharedPreferences.getLong(key.preferenceKey, 0)
-  }
+  fun getLong(key: ExponentSharedPreferencesKey) =
+    sharedPreferences.getLong(key.preferenceKey, 0)
 
-  fun setLong(key: ExponentSharedPreferencesKey, value: Long) {
-    sharedPreferences.edit().putLong(key.preferenceKey, value).apply()
-  }
+  fun setLong(key: ExponentSharedPreferencesKey, value: Long) =
+    sharedPreferences.edit(commit = true) { putLong(key.preferenceKey, value) }
 
-  fun getString(key: ExponentSharedPreferencesKey): String? {
-    return getString(key, null)
-  }
+  fun getString(key: ExponentSharedPreferencesKey) =
+    getString(key, null)
 
-  fun getString(key: ExponentSharedPreferencesKey, defaultValue: String?): String? {
-    return sharedPreferences.getString(key.preferenceKey, defaultValue)
-  }
+  fun getString(key: ExponentSharedPreferencesKey, defaultValue: String?) =
+    sharedPreferences.getString(key.preferenceKey, defaultValue)
 
-  fun setString(key: ExponentSharedPreferencesKey, value: String?) {
-    sharedPreferences.edit().putString(key.preferenceKey, value).apply()
-  }
+  fun setString(key: ExponentSharedPreferencesKey, value: String?) =
+    sharedPreferences.edit(commit = true) { putString(key.preferenceKey, value) }
 
-  fun delete(key: ExponentSharedPreferencesKey) {
-    sharedPreferences.edit().remove(key.preferenceKey).apply()
-  }
+  fun delete(key: ExponentSharedPreferencesKey) =
+    sharedPreferences.edit(commit = true) { remove(key.preferenceKey) }
 
-  fun shouldUseEmbeddedKernel(): Boolean {
-    return getBoolean(ExponentSharedPreferencesKey.USE_EMBEDDED_KERNEL_KEY)
-  }
+  fun shouldUseEmbeddedKernel() =
+    getBoolean(ExponentSharedPreferencesKey.USE_EMBEDDED_KERNEL_KEY)
 
-  fun getUUID(): String? {
-    return exponentInstallationId.getUUID()
-  }
+  fun getUUID(): String? = exponentInstallationId.getUUID()
 
-  fun getOrCreateUUID(): String {
-    return exponentInstallationId.getOrCreateUUID()
-  }
+  fun getOrCreateUUID(): String = exponentInstallationId.getOrCreateUUID()
 
-  fun updateSession(session: JSONObject) {
-    setString(ExponentSharedPreferencesKey.EXPO_AUTH_SESSION, session.toString())
-  }
+  fun removeLegacyManifest(manifestUrl: String) =
+    sharedPreferences.edit(commit = true) { remove(manifestUrl) }
 
-  fun removeSession() {
-    setString(ExponentSharedPreferencesKey.EXPO_AUTH_SESSION, null)
-  }
-
-  val sessionSecret: String?
-    get() {
-      val sessionString = getString(ExponentSharedPreferencesKey.EXPO_AUTH_SESSION)
-        ?: return null
-      return try {
-        val session = JSONObject(sessionString)
-        session.getString(EXPO_AUTH_SESSION_SECRET_KEY)
-      } catch (e: Exception) {
-        EXL.e(TAG, e)
-        null
-      }
+  fun updateExperienceMetadata(experienceKey: ExperienceKey, metadata: JSONObject) =
+    sharedPreferences.edit(commit = true) {
+      putString(EXPERIENCE_METADATA_PREFIX + experienceKey.scopeKey, metadata.toString())
     }
-
-  fun removeLegacyManifest(manifestUrl: String) {
-    sharedPreferences.edit().remove(manifestUrl).apply()
-  }
-
-  fun updateExperienceMetadata(experienceKey: ExperienceKey, metadata: JSONObject) {
-    sharedPreferences.edit()
-      .putString(EXPERIENCE_METADATA_PREFIX + experienceKey.scopeKey, metadata.toString()).apply()
-  }
 
   fun getExperienceMetadata(experienceKey: ExperienceKey): JSONObject? {
     val jsonString =
@@ -123,8 +84,6 @@ class ExponentSharedPreferences constructor(val context: Context) {
 
   companion object {
     private val TAG = ExponentSharedPreferences::class.java.simpleName
-
-    const val EXPO_AUTH_SESSION_SECRET_KEY = "sessionSecret"
 
     // Metadata
     const val EXPERIENCE_METADATA_PREFIX = "experience_metadata_"
@@ -147,8 +106,12 @@ class ExponentSharedPreferences constructor(val context: Context) {
     // We renamed `nux` to `onboarding` in January 2020 - the old preference key can be removed from here after some time,
     // but since then we need to rewrite nux setting to the new key.
     if (!sharedPreferences.contains(ExponentSharedPreferencesKey.IS_ONBOARDING_FINISHED_KEY.preferenceKey)) {
-      setBoolean(ExponentSharedPreferencesKey.IS_ONBOARDING_FINISHED_KEY, getBoolean(ExponentSharedPreferencesKey.NUX_HAS_FINISHED_FIRST_RUN_KEY))
+      setBoolean(
+        ExponentSharedPreferencesKey.IS_ONBOARDING_FINISHED_KEY,
+        getBoolean(ExponentSharedPreferencesKey.NUX_HAS_FINISHED_FIRST_RUN_KEY)
+      )
     }
+    delete(ExponentSharedPreferencesKey.LEGACY_AUTH_SESSION)
   }
 
   enum class ExponentSharedPreferencesKey(val preferenceKey: String) {
@@ -163,7 +126,8 @@ class ExponentSharedPreferences constructor(val context: Context) {
     LAST_FATAL_ERROR_DATE_KEY("last_fatal_error_date_key"),
     SHOULD_NOT_USE_KERNEL_CACHE("should_not_use_kernel_cache"),
     KERNEL_REVISION_ID("kernel_revision_id"),
-    EXPO_AUTH_SESSION("expo_auth_session"),
-    OKHTTP_CACHE_VERSION_KEY("okhttp_cache_version")
+    LEGACY_AUTH_SESSION("expo_auth_session"),
+    OKHTTP_CACHE_VERSION_KEY("okhttp_cache_version"),
+    HISTORY("history")
   }
 }

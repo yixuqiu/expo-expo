@@ -1,34 +1,44 @@
 import UIKit
-import ExpoModulesCore
+@preconcurrency import ExpoModulesCore
 import CoreMotion
 
-public class CameraView: ExpoView, EXCameraInterface, EXAppLifecycleListener,
-  AVCaptureFileOutputRecordingDelegate, AVCapturePhotoCaptureDelegate {
-  public var session = AVCaptureSession()
+public class CameraView: ExpoView, EXAppLifecycleListener, EXCameraInterface, CameraEvent,
+  CameraSessionManagerDelegate, CameraPhotoCaptureDelegate, CameraVideoRecordingDelegate {
   public var sessionQueue = DispatchQueue(label: "captureSessionQueue")
-
-  // MARK: - Legacy Modules
+  // Needed to satisfy EXCameraInterface
+  // swiftlint:disable implicitly_unwrapped_optional
+  public var session: AVCaptureSession!
+  private var sessionManager: CameraSessionManager!
+  private var photoCapture: CameraPhotoCapture!
+  private var videoRecording: CameraVideoRecording!
+  // swiftlint:enable implicitly_unwrapped_optional
 
   private var lifecycleManager: EXAppLifecycleService?
-  private var permissionsManager: EXPermissionsInterface?
+  internal var permissionsManager: EXPermissionsInterface?
 
-  // MARK: - Properties
+  internal var barcodeScanner: BarcodeScanner?
 
-  private lazy var barcodeScanner = createBarcodeScanner()
-  private var previewLayer = PreviewView()
-  private var isValidVideoOptions = true
-  private var videoCodecType: AVVideoCodecType?
-  private var photoCaptureOptions: TakePictureOptions?
-  private var videoStabilizationMode: AVCaptureVideoStabilizationMode?
-  private var errorNotification: NSObjectProtocol?
-  private var physicalOrientation: UIDeviceOrientation = .unknown
+  public override class var layerClass: AnyClass {
+    AVCaptureVideoPreviewLayer.self
+  }
+
+  internal var previewLayer: AVCaptureVideoPreviewLayer {
+    // swiftlint:disable:next force_cast
+    layer as! AVCaptureVideoPreviewLayer
+  }
+
+  internal var physicalOrientation: UIDeviceOrientation = .unknown
+  // Typed as Any? because AVCaptureDevice.RotationCoordinator is iOS 17+.
+  private var rotationCoordinator: Any?
+  private var previewRotationObservation: NSKeyValueObservation?
+  private var didStartSession = false
   private var motionManager: CMMotionManager = {
     let mm = CMMotionManager()
     mm.accelerometerUpdateInterval = 0.2
     mm.gyroUpdateInterval = 0.2
     return mm
   }()
-  private var cameraShouldInit = true
+  private var isSessionPaused = false
 
   // MARK: Property Observers
 
@@ -40,9 +50,9 @@ public class CameraView: ExpoView, EXCameraInterface, EXAppLifecycleListener,
 
   var videoQuality: VideoQuality = .video1080p {
     didSet {
-      if self.session.sessionPreset != videoQuality.toPreset() {
-        self.sessionQueue.async {
-          self.updateSessionPreset(preset: self.videoQuality.toPreset())
+      sessionQueue.async {
+        if self.mode == .video {
+          self.sessionManager.updateSessionPreset(preset: self.videoQuality.toPreset())
         }
       }
     }
@@ -50,13 +60,23 @@ public class CameraView: ExpoView, EXCameraInterface, EXAppLifecycleListener,
 
   var isScanningBarcodes = false {
     didSet {
-      barcodeScanner.setIsEnabled(isScanningBarcodes)
+      sessionQueue.async { [weak self] in
+        guard let self else {
+          return
+        }
+        barcodeScanner?.setIsEnabled(isScanningBarcodes)
+      }
     }
   }
 
+  internal var videoBitrate: Int?
+  var videoStabilizationMode: VideoStabilizationMode = .auto
+
   var presetCamera = AVCaptureDevice.Position.back {
     didSet {
-      updateType()
+      sessionQueue.async {
+        self.sessionManager.updateDevice()
+      }
     }
   }
 
@@ -64,17 +84,21 @@ public class CameraView: ExpoView, EXCameraInterface, EXAppLifecycleListener,
 
   var torchEnabled = false {
     didSet {
-      enableTorch()
+      sessionQueue.async {
+        self.sessionManager.enableTorch()
+      }
     }
   }
 
   var autoFocus = AVCaptureDevice.FocusMode.continuousAutoFocus {
     didSet {
-      setFocusMode()
+      sessionQueue.async {
+        self.sessionManager.setFocusMode()
+      }
     }
   }
 
-  var pictureSize = PictureSize.high {
+  var pictureSize = PictureSize.photo {
     didSet {
       updatePictureSize()
     }
@@ -82,34 +106,46 @@ public class CameraView: ExpoView, EXCameraInterface, EXAppLifecycleListener,
 
   var mode = CameraMode.picture {
     didSet {
-      setCameraMode()
+      sessionQueue.async {
+        self.sessionManager.setCameraMode()
+      }
     }
   }
 
   var isMuted = false {
     didSet {
-      updateSessionAudioIsMuted()
+      sessionQueue.async {
+        self.sessionManager.updateSessionAudioIsMuted()
+      }
+    }
+  }
+
+  var active = true {
+    didSet {
+      sessionQueue.async {
+        self.sessionManager.updateCameraIsActive()
+      }
+    }
+  }
+
+  var selectedLens: String? {
+    didSet {
+      sessionQueue.async {
+        self.sessionManager.updateDevice()
+      }
     }
   }
 
   var animateShutter = true
+  var mirror = false
 
   var zoom: CGFloat = 0 {
     didSet {
-      updateZoom()
+      sessionQueue.async {
+        self.sessionManager.updateZoom()
+      }
     }
   }
-
-  // MARK: - Session Inputs and Outputs
-
-  private var videoFileOutput: AVCaptureMovieFileOutput?
-  private var photoOutput: AVCapturePhotoOutput?
-  private var captureDeviceInput: AVCaptureDeviceInput?
-
-  // MARK: - Promises
-
-  private var photoCapturedPromise: Promise?
-  private var videoRecordedPromise: Promise?
 
   // MARK: - Events
 
@@ -118,195 +154,112 @@ public class CameraView: ExpoView, EXCameraInterface, EXAppLifecycleListener,
   let onPictureSaved = EventDispatcher()
   let onBarcodeScanned = EventDispatcher()
   let onResponsiveOrientationChanged = EventDispatcher()
+  let onAvailableLensesChanged = EventDispatcher()
+  let onRecordingProgress = EventDispatcher()
 
-  private var deviceOrientation: UIInterfaceOrientation {
-    window?.windowScene?.interfaceOrientation ?? .unknown
+  internal var deviceOrientation: UIInterfaceOrientation {
+    SceneGeometry.interfaceOrientation(for: self)
   }
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
     lifecycleManager = appContext?.legacyModule(implementing: EXAppLifecycleService.self)
-    permissionsManager = appContext?.legacyModule(implementing: EXPermissionsInterface.self)
-    #if !targetEnvironment(simulator)
+    permissionsManager = appContext?.permissions
+
+    sessionManager = CameraSessionManager(delegate: self)
+    photoCapture = CameraPhotoCapture(delegate: self)
+    videoRecording = CameraVideoRecording(delegate: self)
+    session = sessionManager.session
+
     setupPreview()
-    #endif
+    barcodeScanner = createBarcodeScanner()
     UIDevice.current.beginGeneratingDeviceOrientationNotifications()
     NotificationCenter.default.addObserver(
       self,
-      selector: #selector(orientationChanged(notification:)),
+      selector: #selector(orientationChanged),
       name: UIDevice.orientationDidChangeNotification,
       object: nil)
     lifecycleManager?.register(self)
+    sessionManager.initializeCaptureSessionInput()
   }
 
   private func setupPreview() {
-    previewLayer.videoPreviewLayer.session = session
-    previewLayer.videoPreviewLayer.videoGravity = .resizeAspectFill
-    previewLayer.videoPreviewLayer.needsDisplayOnBoundsChange = true
+    previewLayer.session = sessionManager.session
+    previewLayer.videoGravity = .resizeAspectFill
+    previewLayer.needsDisplayOnBoundsChange = true
   }
 
-  func initCamera() {
-    guard cameraShouldInit else {
+  func startSessionIfNeeded() {
+    guard !didStartSession else {
       return
     }
-    cameraShouldInit = false
-    self.initializeCaptureSessionInput()
-  }
-
-  private func updateType() {
-    cameraShouldInit = true
+    didStartSession = true
+    sessionQueue.async { [weak self] in
+      guard let self else {
+        return
+      }
+      self.sessionManager.updateCameraIsActive()
+      DispatchQueue.main.async {
+        self.onCameraReady()
+      }
+    }
   }
 
   public func onAppForegrounded() {
-    if !session.isRunning {
-      sessionQueue.async {
-        self.session.startRunning()
+    sessionQueue.async { [weak self] in
+      guard let self else {
+        return
+      }
+      if !session.isRunning && isSessionPaused {
+        isSessionPaused = false
+        session.startRunning()
+        if torchEnabled {
+          sessionManager.enableTorch()
+        }
       }
     }
   }
 
   public func onAppBackgrounded() {
-    if session.isRunning {
-      sessionQueue.async {
-        self.session.stopRunning()
+    sessionQueue.async { [weak self] in
+      guard let self else {
+        return
+      }
+      if session.isRunning && !isSessionPaused {
+        isSessionPaused = true
+        session.stopRunning()
       }
     }
   }
 
   private func updatePictureSize() {
-#if !targetEnvironment(simulator)
     sessionQueue.async {
-      self.session.beginConfiguration()
-      let preset = self.pictureSize.toCapturePreset()
-      if self.session.canSetSessionPreset(preset) {
-        self.session.sessionPreset = preset
-      }
-      self.session.commitConfiguration()
-    }
-#endif
-  }
-
-  private func enableTorch() {
-    guard let device = captureDeviceInput?.device, device.hasTorch else {
-      return
-    }
-
-    do {
-      try device.lockForConfiguration()
-      if device.hasTorch && device.isTorchModeSupported(.on) {
-        device.torchMode = torchEnabled ? .on : .off
-      }
-    } catch {
-      log.info("\(#function): \(error.localizedDescription)")
-    }
-    device.unlockForConfiguration()
-  }
-
-  private func setFocusMode() {
-    guard let device = captureDeviceInput?.device else {
-      return
-    }
-
-    do {
-      try device.lockForConfiguration()
-      if device.isFocusModeSupported(autoFocus), device.focusMode != autoFocus {
-        device.focusMode = autoFocus
-      }
-    } catch {
-      log.info("\(#function): \(error.localizedDescription)")
-      return
-    }
-    device.unlockForConfiguration()
-  }
-
-  private func setCameraMode() {
-    sessionQueue.async {
-      if self.mode == .video {
-        if self.videoFileOutput == nil {
-          self.setupMovieFileCapture()
-        }
-      } else {
-        self.cleanupMovieFileCapture()
-      }
-    }
-  }
-
-  private func startSession() {
-    #if targetEnvironment(simulator)
-    return
-    #endif
-    guard let manager = permissionsManager else {
-      log.info("Permissions module not found.")
-      return
-    }
-    if !manager.hasGrantedPermission(usingRequesterClass: CameraOnlyPermissionRequester.self) {
-      onMountError(["message": "Camera permissions not granted - component could not be rendered."])
-      return
-    }
-
-    sessionQueue.async {
-      let photoOutput = AVCapturePhotoOutput()
-      photoOutput.isLivePhotoCaptureEnabled = false
-      if self.session.canAddOutput(photoOutput) {
-        self.session.addOutput(photoOutput)
-        self.photoOutput = photoOutput
-      }
-
-      self.addErrorNotification()
-      self.changePreviewOrientation()
-    }
-
-    // Delay starting the scanner
-    sessionQueue.asyncAfter(deadline: .now() + 0.5) {
-      self.barcodeScanner.maybeStartBarcodeScanning()
-      self.session.startRunning()
-      self.onCameraReady()
-    }
-  }
-
-  private func updateZoom() {
-    guard let device = captureDeviceInput?.device else {
-      return
-    }
-
-    do {
-      try device.lockForConfiguration()
-      device.videoZoomFactor = (device.activeFormat.videoMaxZoomFactor - 1.0) * zoom + 1.0
-    } catch {
-      log.info("\(#function): \(error.localizedDescription)")
-    }
-
-    device.unlockForConfiguration()
-  }
-
-  private func addErrorNotification() {
-    if self.errorNotification != nil {
-      NotificationCenter.default.removeObserver(self.errorNotification as Any)
-    }
-
-    self.errorNotification = NotificationCenter.default.addObserver(
-      forName: .AVCaptureSessionRuntimeError,
-      object: self.session,
-      queue: nil) { [weak self] notification in
-      guard let self else {
-        return
-      }
-      guard let error = notification.userInfo?[AVCaptureSessionErrorKey] as? AVError else {
-        return
-      }
-
-      if error.code == .mediaServicesWereReset {
-        if !self.session.isRunning {
-          self.session.startRunning()
-          self.updateSessionAudioIsMuted()
-          self.onCameraReady()
-        }
+      if self.mode == .picture {
+        let preset = self.pictureSize.toCapturePreset()
+        self.sessionManager.updateSessionPreset(preset: preset)
       }
     }
   }
 
   func setBarcodeScannerSettings(settings: BarcodeSettings) {
-    barcodeScanner.setSettings([BARCODE_TYPES_KEY: settings.toMetadataObjectType()])
+    sessionQueue.async {
+      self.barcodeScanner?.setSettings([BARCODE_TYPES_KEY: settings.toMetadataObjectType()])
+    }
+  }
+
+  func emitAvailableLenses() {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        return
+      }
+      self.onAvailableLensesChanged([
+        "lenses": self.getAvailableLenses().map { $0.toDictionary() }
+      ])
+    }
+  }
+
+  func getAvailableLenses() -> [LensInfo] {
+    return sessionManager.getAvailableLenses()
   }
 
   func updateResponsiveOrientation() {
@@ -332,467 +285,156 @@ public class CameraView: ExpoView, EXCameraInterface, EXAppLifecycleListener,
     }
   }
 
-  func takePicture(options: TakePictureOptions, promise: Promise) {
-    if photoCapturedPromise != nil {
-      promise.reject(CameraNotReadyException())
-      return
+  func takePictureRef(options: TakePictureOptions) async throws -> PictureRef {
+    guard let photoOutput = sessionManager.currentPhotoOutput else {
+      throw CameraOutputNotReadyException()
     }
+    return try await photoCapture.takePictureRef(options: options, photoOutput: photoOutput)
+  }
 
-    guard let photoOutput else {
+  func takePicturePromise(options: TakePictureOptions) async throws -> [String: Any] {
+    guard let photoOutput = sessionManager.currentPhotoOutput else {
+      throw CameraOutputNotReadyException()
+    }
+    return try await photoCapture.takePicturePromise(options: options, photoOutput: photoOutput)
+  }
+
+  func playShutterAnimation() {
+    Task { @MainActor in
+      self.previewLayer.opacity = 0
+      UIView.animate(withDuration: 0.25) {
+        self.previewLayer.opacity = 1
+      }
+    }
+  }
+
+  func record(options: CameraRecordingOptions, promise: Promise) async {
+    guard let videoFileOutput = sessionManager.currentVideoFileOutput else {
       promise.reject(CameraOutputNotReadyException())
       return
     }
-
-    photoCapturedPromise = promise
-    photoCaptureOptions = options
-
-    sessionQueue.async {
-      let connection = photoOutput.connection(with: .video)
-      let orientation = self.responsiveWhenOrientationLocked ? self.physicalOrientation : UIDevice.current.orientation
-      connection?.videoOrientation = ExpoCameraUtils.videoOrientation(for: orientation)
-      var photoSettings = AVCapturePhotoSettings()
-
-      if photoOutput.availablePhotoCodecTypes.contains(AVVideoCodecType.hevc) {
-        photoSettings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
-      }
-
-      var requestedFlashMode = self.flashMode.toDeviceFlashMode()
-      if photoOutput.supportedFlashModes.contains(requestedFlashMode) {
-        photoSettings.flashMode = requestedFlashMode
-      }
-
-      if #available(iOS 16.0, *) {
-        photoSettings.maxPhotoDimensions = photoOutput.maxPhotoDimensions
-      }
-
-      if !photoSettings.availablePreviewPhotoPixelFormatTypes.isEmpty,
-      let previewFormat = photoSettings.__availablePreviewPhotoPixelFormatTypes.first {
-        photoSettings.previewPhotoFormat = [kCVPixelBufferPixelFormatTypeKey as String: previewFormat]
-      }
-
-      if photoOutput.isHighResolutionCaptureEnabled {
-        photoSettings.isHighResolutionPhotoEnabled = true
-      }
-
-      photoSettings.photoQualityPrioritization = .balanced
-
-      photoOutput.capturePhoto(with: photoSettings, delegate: self)
-    }
+    await videoRecording.record(options: options, videoFileOutput: videoFileOutput, promise: promise)
   }
 
-  public func photoOutput(_ output: AVCapturePhotoOutput, willCapturePhotoFor resolvedSettings: AVCaptureResolvedPhotoSettings) {
-    guard animateShutter else {
+  @available(iOS 18.0, *)
+  func toggleRecording() {
+    guard let videoFileOutput = sessionManager.currentVideoFileOutput else {
       return
     }
-    DispatchQueue.main.async {
-      self.previewLayer.videoPreviewLayer.opacity = 0
-      UIView.animate(withDuration: 0.25) {
-        self.previewLayer.videoPreviewLayer.opacity = 1
-      }
-    }
+    videoRecording.toggleRecording(videoFileOutput: videoFileOutput)
   }
 
-  public func photoOutput(
-    _ output: AVCapturePhotoOutput,
-    didFinishProcessingPhoto photo: AVCapturePhoto,
-    error: Error?
-    ) {
-    guard let promise = photoCapturedPromise, let options = photoCaptureOptions else {
-      return
+  public override func didMoveToWindow() {
+    super.didMoveToWindow()
+    if window != nil {
+      configurePreviewRotation()
+      startSessionIfNeeded()
     }
-
-    photoCapturedPromise = nil
-    photoCaptureOptions = nil
-
-    if error != nil {
-      promise.reject(CameraImageCaptureException())
-      return
-    }
-
-    let imageData = photo.fileDataRepresentation()
-    handleCapturedImageData(
-      imageData: imageData,
-      metadata: photo.metadata,
-      options: options,
-      promise: promise
-    )
-  }
-
-  func handleCapturedImageData(
-    imageData: Data?,
-    metadata: [String: Any],
-    options: TakePictureOptions,
-    promise: Promise
-  ) {
-    guard let imageData, var takenImage = UIImage(data: imageData) else {
-      return
-    }
-
-    if options.fastMode {
-      promise.resolve()
-    }
-
-    let previewSize: CGSize = {
-      return deviceOrientation == .portrait ?
-      CGSize(width: previewLayer.frame.size.height, height: previewLayer.frame.size.width) :
-      CGSize(width: previewLayer.frame.size.width, height: previewLayer.frame.size.height)
-    }()
-
-    guard let takenCgImage = takenImage.cgImage else {
-      return
-    }
-
-    let cropRect = CGRect(x: 0, y: 0, width: takenCgImage.width, height: takenCgImage.height)
-    let croppedSize = AVMakeRect(aspectRatio: previewSize, insideRect: cropRect)
-
-    takenImage = ExpoCameraUtils.crop(image: takenImage, to: croppedSize)
-
-    let path = FileSystemUtilities.generatePathInCache(
-      appContext,
-      in: "Camera",
-      extension: ".jpg"
-    )
-
-    let width = takenImage.size.width
-    let height = takenImage.size.height
-    var processedImageData: Data?
-
-    var response = [String: Any]()
-
-    if options.exif {
-      guard let exifDict = metadata[kCGImagePropertyExifDictionary as String] as? NSDictionary else {
-        return
-      }
-      let updatedExif = ExpoCameraUtils.updateExif(
-        metadata: exifDict,
-        with: ["Orientation": ExpoCameraUtils.export(orientation: takenImage.imageOrientation)]
-      )
-
-      updatedExif[kCGImagePropertyExifPixelYDimension] = width
-      updatedExif[kCGImagePropertyExifPixelXDimension] = height
-      response["exif"] = updatedExif
-
-      var updatedMetadata = metadata
-
-      if let additionalExif = options.additionalExif {
-        updatedExif.addEntries(from: additionalExif)
-        var gpsDict = [String: Any]()
-
-        if let latitude = additionalExif["GPSLatitude"] as? Double {
-          gpsDict[kCGImagePropertyGPSLatitude as String] = abs(latitude)
-          gpsDict[kCGImagePropertyGPSLatitudeRef as String] = latitude >= 0 ? "N" : "S"
-        }
-
-        if let longitude = additionalExif["GPSLongitude"] as? Double {
-          gpsDict[kCGImagePropertyGPSLongitude as String] = abs(longitude)
-          gpsDict[kCGImagePropertyGPSLongitudeRef as String] = longitude >= 0 ? "E" : "W"
-        }
-
-        if let altitude = additionalExif["GPSAltitude"] as? Double {
-          gpsDict[kCGImagePropertyGPSAltitude as String] = abs(altitude)
-          gpsDict[kCGImagePropertyGPSAltitudeRef as String] = altitude >= 0 ? 0 : 1
-        }
-
-        if updatedMetadata[kCGImagePropertyGPSDictionary as String] == nil {
-          updatedMetadata[kCGImagePropertyGPSDictionary as String] = gpsDict
-        } else if var existingGpsDict = updatedMetadata[kCGImagePropertyGPSDictionary as String] as? [String: Any] {
-          existingGpsDict.merge(gpsDict) { _, new in
-            new
-          }
-          updatedMetadata[kCGImagePropertyGPSDictionary as String] = existingGpsDict
-        }
-      }
-
-      updatedMetadata[kCGImagePropertyExifDictionary as String] = updatedExif
-      processedImageData = ExpoCameraUtils.data(
-        from: takenImage,
-        with: updatedMetadata,
-        quality: Float(options.quality))
-    } else {
-      processedImageData = takenImage.jpegData(compressionQuality: options.quality)
-    }
-
-    guard let processedImageData else {
-      promise.reject(CameraSavingImageException())
-      return
-    }
-
-    response["uri"] = ExpoCameraUtils.write(data: processedImageData, to: path)
-    response["width"] = width
-    response["height"] = height
-
-    if options.base64 {
-      response["base64"] = processedImageData.base64EncodedString()
-    }
-
-    if options.fastMode {
-      onPictureSaved(["data": response, "id": options.id])
-    } else {
-      promise.resolve(response)
-    }
-  }
-
-  func record(options: CameraRecordingOptions, promise: Promise) {
-    sessionQueue.async {
-      let preset = options.quality?.toPreset()
-      if let preset {
-        self.updateSessionPreset(preset: preset)
-      }
-    }
-
-    sessionQueue.async {
-      if let videoFileOutput = self.videoFileOutput, !videoFileOutput.isRecording && self.videoRecordedPromise == nil {
-        if let connection = videoFileOutput.connection(with: .video) {
-          if !connection.isVideoStabilizationSupported {
-            log.warn("\(#function): Video Stabilization is not supported on this device.")
-          } else {
-            if let videoStabilizationMode = self.videoStabilizationMode {
-              connection.preferredVideoStabilizationMode = videoStabilizationMode
-            }
-          }
-
-          let orientation = self.responsiveWhenOrientationLocked ? self.physicalOrientation : UIDevice.current.orientation
-          connection.videoOrientation = ExpoCameraUtils.videoOrientation(for: orientation)
-          self.setVideoOptions(options: options, for: connection, promise: promise)
-
-          if connection.isVideoOrientationSupported && options.mirror {
-            connection.isVideoMirrored = options.mirror
-          }
-        }
-
-        if !self.isValidVideoOptions {
-          return
-        }
-
-        let path = FileSystemUtilities.generatePathInCache(self.appContext, in: "Camera", extension: ".mov")
-        let fileUrl = URL(fileURLWithPath: path)
-        self.videoRecordedPromise = promise
-
-        videoFileOutput.startRecording(to: fileUrl, recordingDelegate: self)
-      }
-    }
-  }
-
-  func setVideoOptions(options: CameraRecordingOptions, for connection: AVCaptureConnection, promise: Promise) {
-    self.isValidVideoOptions = true
-
-    guard let videoFileOutput = self.videoFileOutput else {
-      return
-    }
-
-    if let maxDuration = options.maxDuration {
-      videoFileOutput.maxRecordedDuration = CMTime(seconds: maxDuration, preferredTimescale: 1000)
-    }
-
-    if let maxFileSize = options.maxFileSize {
-      videoFileOutput.maxRecordedFileSize = Int64(maxFileSize)
-    }
-
-    if let codec = options.codec {
-      let codecType = codec.codecType()
-      if videoFileOutput.availableVideoCodecTypes.contains(codecType) {
-        videoFileOutput.setOutputSettings([AVVideoCodecKey: codecType], for: connection)
-        self.videoCodecType = codecType
-      } else {
-        promise.reject(CameraRecordingException(self.videoCodecType?.rawValue))
-
-        self.cleanupMovieFileCapture()
-        self.videoRecordedPromise = nil
-        self.isValidVideoOptions = false
-      }
-    }
-  }
-
-  // Must be called on the sessionQueue
-  func updateSessionAudioIsMuted() {
-    sessionQueue.async {
-      self.session.beginConfiguration()
-      if self.isMuted {
-        for input in self.session.inputs {
-          if let deviceInput = input as? AVCaptureDeviceInput {
-            if deviceInput.device.hasMediaType(.audio) {
-              self.session.removeInput(input)
-              return
-            }
-          }
-        }
-      }
-
-      if !self.isMuted && self.mode == .video {
-        if let audioCapturedevice = AVCaptureDevice.default(for: .audio) {
-          do {
-            let audioDeviceInput = try AVCaptureDeviceInput(device: audioCapturedevice)
-            if self.session.canAddInput(audioDeviceInput) {
-              self.session.addInput(audioDeviceInput)
-            }
-          } catch {
-            log.info("\(#function): \(error.localizedDescription)")
-            return
-          }
-        }
-      }
-      self.session.commitConfiguration()
-    }
-  }
-
-  // Must be called on the sessionQueue
-  func setupMovieFileCapture() {
-    let output = AVCaptureMovieFileOutput()
-    if self.session.canAddOutput(output) {
-      self.session.beginConfiguration()
-      self.session.addOutput(output)
-      self.videoFileOutput = output
-      self.session.commitConfiguration()
-    }
-  }
-
-  // Must be called on the sessionQueue
-  func cleanupMovieFileCapture() {
-    if let videoFileOutput {
-      if session.outputs.contains(videoFileOutput) {
-        self.session.beginConfiguration()
-        session.removeOutput(videoFileOutput)
-        self.videoFileOutput = nil
-        self.session.commitConfiguration()
-      }
-    }
-  }
-
-  public override func layoutSubviews() {
-    previewLayer.videoPreviewLayer.frame = self.bounds
-    self.backgroundColor = .black
-    self.layer.insertSublayer(previewLayer.videoPreviewLayer, at: 0)
   }
 
   public override func removeFromSuperview() {
+    super.removeFromSuperview()
+    // Capture both strongly: React Native can drop its reference to the view before this
+    // block runs, and the session has to be stopped before the preview layer detaches
+    // from it. Detaching from a still-running session is the same graph rebuild, only it
+    // happens in the layer's `dealloc` on the main thread.
+    let sessionManager: CameraSessionManager = self.sessionManager
+    let previewLayer = self.previewLayer
+    sessionQueue.async {
+      sessionManager.stopSession()
+      DispatchQueue.main.async {
+        previewLayer.session = nil
+      }
+    }
+    motionManager.stopAccelerometerUpdates()
     lifecycleManager?.unregisterAppLifecycleListener(self)
     UIDevice.current.endGeneratingDeviceOrientationNotifications()
     NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
-    super.removeFromSuperview()
-  }
-
-  public func fileOutput(
-    _ output: AVCaptureFileOutput,
-    didFinishRecordingTo outputFileURL: URL,
-    from connections: [AVCaptureConnection],
-    error: Error?
-  ) {
-    var success = true
-
-    if error != nil {
-      let value = (error as? NSError)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool
-      success = value == true ? true : false
-    }
-
-    if success && videoRecordedPromise != nil {
-      videoRecordedPromise?.resolve(["uri": outputFileURL.absoluteString])
-    } else if videoRecordedPromise != nil {
-      videoRecordedPromise?.reject(CameraRecordingFailedException())
-    }
-
-    videoRecordedPromise = nil
-    videoCodecType = nil
-
-    if session.sessionPreset != pictureSize.toCapturePreset() {
-      updateSessionPreset(preset: pictureSize.toCapturePreset())
-    }
-  }
-
-  func setPresetCamera(presetCamera: AVCaptureDevice.Position) {
-    self.presetCamera = presetCamera
+    previewRotationObservation?.invalidate()
+    previewRotationObservation = nil
+    rotationCoordinator = nil
   }
 
   func stopRecording() {
-    sessionQueue.async {
-      self.videoFileOutput?.stopRecording()
-    }
+    videoRecording.stopRecording(videoFileOutput: sessionManager.currentVideoFileOutput)
   }
 
-  // Must be called on the sessionQueue
-  func updateSessionPreset(preset: AVCaptureSession.Preset) {
-#if !targetEnvironment(simulator)
-    if self.session.canSetSessionPreset(preset) {
-      if self.session.sessionPreset != preset {
-        self.session.beginConfiguration()
-        self.session.sessionPreset = preset
-        self.session.commitConfiguration()
+  func resumePreview() {
+    previewLayer.connection?.isEnabled = true
+  }
+
+  func pausePreview() {
+    previewLayer.connection?.isEnabled = false
+  }
+
+  @objc func orientationChanged() {
+    // On iOS 17+ the RotationCoordinator's KVO drives preview rotation; the legacy
+    // notification path is only needed on iOS 16.
+    if #available(iOS 17.0, *) {
+      return
+    }
+    applyLegacyPreviewOrientation()
+  }
+
+  func configurePreviewRotation() {
+    if #available(iOS 17.0, *) {
+      Task { @MainActor in
+        self.setUpRotationCoordinator()
       }
+    } else {
+      applyLegacyPreviewOrientation()
     }
-#endif
   }
 
-  func initializeCaptureSessionInput() {
-    if captureDeviceInput?.device.position == presetCamera {
+  @available(iOS 17.0, *)
+  private func setUpRotationCoordinator() {
+    previewRotationObservation?.invalidate()
+    previewRotationObservation = nil
+
+    guard let device = sessionManager.currentDevice else {
+      rotationCoordinator = nil
       return
     }
 
-    sessionQueue.async {
-      self.session.beginConfiguration()
+    let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+    rotationCoordinator = coordinator
+    applyPreviewRotationAngle(from: coordinator)
 
-      guard let device = ExpoCameraUtils.device(with: .video, preferring: self.presetCamera) else {
-        return
-      }
-
-      if let videoCaptureDeviceInput = self.captureDeviceInput {
-        self.session.removeInput(videoCaptureDeviceInput)
-      }
-
-      do {
-        let captureDeviceInput = try AVCaptureDeviceInput(device: device)
-
-        if self.session.canAddInput(captureDeviceInput) {
-          self.session.addInput(captureDeviceInput)
-          self.captureDeviceInput = captureDeviceInput
-          self.updateZoom()
-        }
-      } catch {
-        self.onMountError(["message": "Camera could not be started - \(error.localizedDescription)"])
-      }
-      self.session.commitConfiguration()
-      self.startSession()
+    previewRotationObservation = coordinator.observe(
+      \.videoRotationAngleForHorizonLevelPreview,
+      options: [.new]
+    ) { [weak self] coordinator, _ in
+      self?.applyPreviewRotationAngle(from: coordinator)
     }
   }
 
-  private func stopSession() {
-    #if targetEnvironment(simulator)
-    return
-    #endif
-    self.previewLayer.videoPreviewLayer.removeFromSuperlayer()
-
-    sessionQueue.async {
-      self.session.beginConfiguration()
-      for input in self.session.inputs {
-        self.session.removeInput(input)
-      }
-
-      for output in self.session.outputs {
-        self.session.removeOutput(output)
-      }
-      self.barcodeScanner.stopBarcodeScanning()
-      self.session.commitConfiguration()
-
-      self.motionManager.stopAccelerometerUpdates()
-      self.session.stopRunning()
+  @available(iOS 17.0, *)
+  private func applyPreviewRotationAngle(from coordinator: AVCaptureDevice.RotationCoordinator) {
+    guard let connection = previewLayer.connection else {
+      return
+    }
+    let angle = coordinator.videoRotationAngleForHorizonLevelPreview
+    if connection.isVideoRotationAngleSupported(angle) {
+      connection.videoRotationAngle = angle
     }
   }
 
-  @objc func orientationChanged(notification: Notification) {
-    changePreviewOrientation()
-  }
-
-  func changePreviewOrientation() {
-    EXUtilities.performSynchronously {
-      // We shouldn't access the device orientation anywhere but on the main thread
-      let videoOrientation = ExpoCameraUtils.videoOrientation(for: self.deviceOrientation)
-      if (self.previewLayer.videoPreviewLayer.connection?.isVideoOrientationSupported) == true {
-        self.previewLayer.videoPreviewLayer.connection?.videoOrientation = videoOrientation
+  private func applyLegacyPreviewOrientation() {
+    // We shouldn't access the device orientation anywhere but on the main thread
+    Task { @MainActor in
+      let videoOrientation = ExpoCameraUtils.videoOrientation(for: deviceOrientation)
+      if (previewLayer.connection?.isVideoOrientationSupported) == true {
+        physicalOrientation = ExpoCameraUtils.physicalOrientation(for: deviceOrientation)
+        previewLayer.connection?.videoOrientation = videoOrientation
       }
     }
   }
 
   private func createBarcodeScanner() -> BarcodeScanner {
     let scanner = BarcodeScanner(session: session, sessionQueue: sessionQueue)
-    scanner.onBarcodeScanned = { [weak self] body in
+
+    scanner.setPreviewLayer(layer: previewLayer)
+    scanner.setOnBarcodeScanned { [weak self] body in
       guard let self else {
         return
       }
@@ -805,12 +447,9 @@ public class CameraView: ExpoView, EXCameraInterface, EXAppLifecycleListener,
   }
 
   deinit {
-    if let photoCapturedPromise {
-      photoCapturedPromise.reject(CameraUnmountedException())
-    }
-
-    if let errorNotification {
-      NotificationCenter.default.removeObserver(errorNotification)
-    }
+    previewRotationObservation?.invalidate()
+    motionManager.stopAccelerometerUpdates()
+    photoCapture.cleanup()
+    videoRecording.cleanup()
   }
 }

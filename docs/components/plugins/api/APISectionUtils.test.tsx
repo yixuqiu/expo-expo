@@ -1,7 +1,6 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 
-import type { CommentData } from './APIDataTypes';
-import { CommentTextBlock, resolveTypeName } from './APISectionUtils';
+import { APISectionPackageContext, resolveTypeName } from './APISectionUtils';
 
 describe('APISectionUtils.resolveTypeName', () => {
   test('void', () => {
@@ -132,16 +131,18 @@ describe('APISectionUtils.resolveTypeName', () => {
               type: 'reflection',
               declaration: {
                 name: '__type',
-                indexSignature: {
-                  name: '__index',
-                  parameters: [
-                    {
-                      name: 'column',
-                      type: { type: 'intrinsic', name: 'string' },
-                    },
-                  ],
-                  type: { type: 'intrinsic', name: 'any' },
-                },
+                indexSignatures: [
+                  {
+                    name: '__index',
+                    parameters: [
+                      {
+                        name: 'column',
+                        type: { type: 'intrinsic', name: 'string' },
+                      },
+                    ],
+                    type: { type: 'intrinsic', name: 'any' },
+                  },
+                ],
               },
             },
           },
@@ -477,87 +478,35 @@ describe('APISectionUtils.resolveTypeName', () => {
     );
     expect(container).toMatchSnapshot();
   });
-});
 
-describe('APISectionUtils.CommentTextBlock component', () => {
-  test('no comment', () => {
-    const { container } = render(<CommentTextBlock comment={undefined} />);
-    expect(container).toMatchSnapshot();
-  });
+  describe('on a page that declares a Date type', () => {
+    const renderOnPage = (typeDefinition: Parameters<typeof resolveTypeName>[0]) =>
+      render(
+        <APISectionPackageContext.Provider
+          value={{ packageNames: ['expo-contacts'], typeNames: new Set(['Date']) }}>
+          {resolveTypeName(typeDefinition, 'v58.0.0')}
+        </APISectionPackageContext.Provider>
+      );
 
-  test('basic comment', () => {
-    const comment: CommentData = {
-      summary: [{ kind: 'text', text: 'This is the basic comment.' }],
-    };
+    test('library type with the name of a global type', () => {
+      renderOnPage({ type: 'reference', name: 'Date', package: 'expo-contacts' });
+      expect(screen.getByRole('link', { name: 'Date' })).toHaveAttribute('href', '#date');
+    });
 
-    const { container } = render(<CommentTextBlock comment={comment} />);
-    expect(container).toMatchSnapshot();
-  });
+    test('array of a library type with the name of a global type', () => {
+      renderOnPage({
+        type: 'array',
+        elementType: { type: 'reference', name: 'Date', package: 'expo-contacts' },
+      });
+      expect(screen.getByRole('link', { name: 'Date[]' })).toHaveAttribute('href', '#date');
+    });
 
-  test('comment with example', () => {
-    const comment: CommentData = {
-      summary: [
-        {
-          kind: 'text',
-          text: 'Gets the referrer URL of the installed app with the [',
-        },
-        {
-          kind: 'code',
-          text: '`Install Referrer API`',
-        },
-        {
-          kind: 'text',
-          text: '](https://developer.android.com/google/play/installreferrer)\nfrom the Google Play Store. In practice, the referrer URL may not be a complete, absolute URL.',
-        },
-      ],
-      blockTags: [
-        {
-          tag: '@returns',
-          content: [
-            {
-              kind: 'text',
-              text: 'A ',
-            },
-            {
-              kind: 'code',
-              text: '`Promise`',
-            },
-            {
-              kind: 'text',
-              text: ' that fulfills with a ',
-            },
-            {
-              kind: 'code',
-              text: '`string`',
-            },
-            {
-              kind: 'text',
-              text: ' of the referrer URL of the installed app.',
-            },
-          ],
-        },
-        {
-          tag: '@example',
-          content: [
-            {
-              kind: 'code',
-              text: '```ts\nawait Application.getInstallReferrerAsync();\n// "utm_source=google-play&utm_medium=organic"\n```',
-            },
-          ],
-        },
-        {
-          tag: '@platform',
-          content: [
-            {
-              kind: 'text',
-              text: 'android',
-            },
-          ],
-        },
-      ],
-    };
-
-    const { container } = render(<CommentTextBlock comment={comment} />);
-    expect(container).toMatchSnapshot();
+    test('type of another package with the name of a global type', () => {
+      renderOnPage({ type: 'reference', name: 'MouseEvent', package: '@types/react' });
+      expect(screen.getByRole('link', { name: 'MouseEvent' })).toHaveAttribute(
+        'href',
+        'https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent'
+      );
+    });
   });
 });

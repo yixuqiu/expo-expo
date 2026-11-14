@@ -1,8 +1,8 @@
 import crypto from 'crypto';
-import { ensureDir, readdirSync, readFile, readFileSync, remove, writeFile } from 'fs-extra';
+import fs from 'fs';
 import { join, resolve } from 'path';
 
-import { ImageOptions } from './Image.types';
+import type { ImageOptions } from './Image.types';
 
 const CACHE_LOCATION = '.expo/web/cache/production/images';
 
@@ -10,7 +10,7 @@ const cacheKeys: { [key: string]: string } = {};
 
 // Calculate SHA256 Checksum value of a file based on its contents
 function calculateHash(filePath: string): string {
-  const contents = filePath.startsWith('http') ? filePath : readFileSync(filePath);
+  const contents = filePath.startsWith('http') ? filePath : fs.readFileSync(filePath);
   return crypto.createHash('sha256').update(contents).digest('hex');
 }
 
@@ -25,7 +25,13 @@ export async function createCacheKeyWithDirectoryAsync(
   type: string,
   icon: ImageOptions
 ): Promise<string> {
-  const cacheKey = `${type}-${createCacheKey(icon.src, [icon.resizeMode, icon.backgroundColor])}`;
+  const iconProperties: string[] = [icon.resizeMode];
+
+  if (icon.backgroundColor) {
+    iconProperties.push(icon.backgroundColor);
+  }
+
+  const cacheKey = `${type}-${createCacheKey(icon.src, iconProperties)}`;
   if (!(cacheKey in cacheKeys)) {
     cacheKeys[cacheKey] = await ensureCacheDirectory(projectRoot, type, cacheKey);
   }
@@ -39,7 +45,7 @@ export async function ensureCacheDirectory(
   cacheKey: string
 ): Promise<string> {
   const cacheFolder = join(projectRoot, CACHE_LOCATION, type, cacheKey);
-  await ensureDir(cacheFolder);
+  await fs.promises.mkdir(cacheFolder, { recursive: true });
   return cacheFolder;
 }
 
@@ -48,7 +54,10 @@ export async function getImageFromCacheAsync(
   cacheKey: string
 ): Promise<null | Buffer> {
   try {
-    return await readFile(resolve(cacheKeys[cacheKey], fileName));
+    const cachedKey = cacheKeys[cacheKey];
+    return await fs.promises.readFile(
+      cachedKey != null ? resolve(cachedKey, fileName) : resolve(fileName)
+    );
   } catch {
     return null;
   }
@@ -60,7 +69,11 @@ export async function cacheImageAsync(
   cacheKey: string
 ): Promise<void> {
   try {
-    await writeFile(resolve(cacheKeys[cacheKey], fileName), buffer);
+    const cachedKey = cacheKeys[cacheKey];
+    await fs.promises.writeFile(
+      cachedKey != null ? resolve(cachedKey, fileName) : resolve(fileName),
+      buffer
+    );
   } catch (error: any) {
     console.warn(`Error caching image: "${fileName}". ${error.message}`);
   }
@@ -69,8 +82,8 @@ export async function cacheImageAsync(
 export async function clearUnusedCachesAsync(projectRoot: string, type: string): Promise<void> {
   // Clean up any old caches
   const cacheFolder = join(projectRoot, CACHE_LOCATION, type);
-  await ensureDir(cacheFolder);
-  const currentCaches = readdirSync(cacheFolder);
+  await fs.promises.mkdir(cacheFolder, { recursive: true });
+  const currentCaches = await fs.promises.readdir(cacheFolder);
 
   if (!Array.isArray(currentCaches)) {
     console.warn('Failed to read the icon cache');
@@ -85,7 +98,9 @@ export async function clearUnusedCachesAsync(projectRoot: string, type: string):
 
     // delete
     if (!(cache in cacheKeys)) {
-      deleteCachePromises.push(remove(join(cacheFolder, cache)));
+      deleteCachePromises.push(
+        fs.promises.rm(join(cacheFolder, cache), { force: true, recursive: true })
+      );
     }
   }
 

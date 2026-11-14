@@ -3,7 +3,7 @@ import { CodeChallengeMethod, Prompt } from '../AuthRequest.types';
 import { getQueryParams } from '../QueryParams';
 
 jest.mock('expo-crypto', () => ({
-  getRandomBytes: jest.fn(() => ''),
+  getRandomValues: jest.fn((x) => x),
   digestStringAsync: jest.fn(async () => ''),
   CryptoDigestAlgorithm: { SHA256: 'SHA256' },
   CryptoEncoding: { BASE64: 'BASE64' },
@@ -115,6 +115,30 @@ it(`parses the server error into an AuthError`, () => {
   expect(results.error.code).toBe('invalid_request');
   // Ensure the extra message is added
   expect(results.error.message).toMatch(/The request is missing a required parameter/);
+});
+
+it('allows single prompt', async () => {
+  const request = new AuthRequest({
+    clientId: '',
+    scopes: [],
+    redirectUri: 'foo://bar',
+    prompt: Prompt.Login,
+  });
+
+  const url = await request.makeAuthUrlAsync(mockDiscovery);
+  expect(getQueryParams(url).params.prompt).toBe('login');
+});
+
+it('allows prompt array', async () => {
+  const request = new AuthRequest({
+    clientId: '',
+    scopes: [],
+    redirectUri: 'foo://bar',
+    prompt: [Prompt.Login, Prompt.Consent],
+  });
+
+  const url = await request.makeAuthUrlAsync(mockDiscovery);
+  expect(getQueryParams(url).params.prompt).toBe('login consent');
 });
 
 it(`can override the code_challenge with extraParams`, async () => {

@@ -4,7 +4,15 @@ import Foundation
  Swift protocol defining the requirements for modules providers.
  */
 public protocol ModulesProviderProtocol {
-  func getModuleClasses() -> [AnyModule.Type]
+  typealias ExpoModuleTupleType = (module: AnyModule.Type, name: String?)
+
+  /**
+   The packages that provide modules declared with the Expo Modules API 2.0 macros, keyed by the npm package name.
+   Their modules are also in `getModuleClasses()`, which is the list that the module registry registers.
+   */
+  var packages: [String: ExpoPackage] { get }
+
+  func getModuleClasses() -> [ExpoModuleTupleType]
 
   /**
    Returns an array of classes that hooks into `ExpoAppDelegate` to receive app delegate events.
@@ -16,6 +24,17 @@ public protocol ModulesProviderProtocol {
    Returns an array of `ExpoReactDelegateHandlerTupleType` for `ReactDelegate` to hook React instance creation.
    */
   func getReactDelegateHandlers() -> [ExpoReactDelegateHandlerTupleType]
+
+  func getAppCodeSignEntitlements() -> AppCodeSignEntitlements
+}
+
+public extension ModulesProviderProtocol {
+  /**
+   Providers that conform to the protocol directly, without inheriting from `ModulesProvider`, have no packages by default.
+   */
+  var packages: [String: ExpoPackage] {
+    return [:]
+  }
 }
 
 /**
@@ -26,7 +45,11 @@ public protocol ModulesProviderProtocol {
 open class ModulesProvider: NSObject, ModulesProviderProtocol {
   public override required init() {}
 
-  open func getModuleClasses() -> [AnyModule.Type] {
+  open var packages: [String: ExpoPackage] {
+    return [:]
+  }
+
+  open func getModuleClasses() -> [ExpoModuleTupleType] {
     return []
   }
 
@@ -36,5 +59,9 @@ open class ModulesProvider: NSObject, ModulesProviderProtocol {
 
   open func getReactDelegateHandlers() -> [ExpoReactDelegateHandlerTupleType] {
     return []
+  }
+
+  open func getAppCodeSignEntitlements() -> AppCodeSignEntitlements {
+    return AppCodeSignEntitlements()
   }
 }

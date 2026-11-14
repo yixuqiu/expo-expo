@@ -1,0 +1,6 @@
+{
+  "extends": "@expo/internal-scripts/tsconfig.base",
+  "compilerOptions": {
+    "noEmit": true
+  }
+}

@@ -17,9 +17,11 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.lang.ref.WeakReference
+import expo.modules.kotlin.types.OptimizedRecord
 
 private class TestException : CodedException("Something went wrong")
 
+@OptimizedRecord
 private class TestRecord : Record {
   @Field
   lateinit var string: String
@@ -59,10 +61,10 @@ private class TestModule2 : Module() {
 }
 
 private val provider = object : ModulesProvider {
-  override fun getModulesList(): List<Class<out Module>> {
-    return listOf(
-      TestModule1::class.java,
-      TestModule2::class.java
+  override fun getModulesMap(): Map<Class<out Module>, String?> {
+    return mapOf(
+      TestModule1::class.java to null,
+      TestModule2::class.java to null
     )
   }
 }
@@ -72,7 +74,7 @@ private val provider = object : ModulesProvider {
 class KotlinInteropModuleRegistryTest {
   private val interopModuleRegistry = KotlinInteropModuleRegistry(
     provider,
-    mockk(),
+    mockk(relaxed = true),
     WeakReference(mockk(relaxed = true))
   )
 
@@ -129,15 +131,6 @@ class KotlinInteropModuleRegistryTest {
       Triple(
         "test-2",
         "f2",
-        JavaOnlyArray().apply { pushString("string") }
-      ) to """
-        Call to function 'test-2.f2' has been rejected.
-        → Caused by: The 1st argument cannot be cast to type kotlin.Int (received String)
-        → Caused by: java.lang.ClassCastException: class java.lang.String cannot be cast to class java.lang.Number (java.lang.String and java.lang.Number are in module java.base of loader 'bootstrap')
-      """.trimIndent(),
-      Triple(
-        "test-2",
-        "f2",
         JavaOnlyArray()
       ) to """
         Call to function 'test-2.f2' has been rejected.
@@ -149,9 +142,8 @@ class KotlinInteropModuleRegistryTest {
         JavaOnlyArray().apply { pushMap(JavaOnlyMap().apply { putInt("string", 10) }) }
       ) to """
         Call to function 'test-1.f2' has been rejected.
-        → Caused by: The 1st argument cannot be cast to type expo.modules.kotlin.TestRecord (received Map)
-        → Caused by: Cannot create a record of the type: 'expo.modules.kotlin.TestRecord'.
-        → Caused by: Cannot cast 'Number' for field 'string' ('kotlin.String').
+        → Caused by: The 1st argument cannot be cast to type class expo.modules.kotlin.TestRecord (received class com.facebook.react.bridge.JavaOnlyMap)
+        → Caused by: Cannot cast value for field 'string' ('class java.lang.String') in record 'class expo.modules.kotlin.TestRecord'.
         → Caused by: java.lang.ClassCastException: class java.lang.Double cannot be cast to class java.lang.String (java.lang.Double and java.lang.String are in module java.base of loader 'bootstrap')
       """.trimIndent()
     )

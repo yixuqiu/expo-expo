@@ -1,5 +1,7 @@
 //  Copyright © 2019 650 Industries. All rights reserved.
 
+import ExpoModulesCore
+
 internal protocol StartupProcedureDelegate: AnyObject {
   func startupProcedureDidLaunch(_ startupProcedure: StartupProcedure)
   func startupProcedure(_ startupProcedure: StartupProcedure, errorRecoveryDidRequestRelaunchWithCompletion completion: @escaping (Error?, Bool) -> Void)
@@ -27,7 +29,7 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
     self.controllerQueue = controllerQueue
     self.updatesDirectory = updatesDirectory
     self.logger = logger
-
+    self.errorRecovery = ErrorRecovery(logger: logger)
     self.errorRecovery.delegate = self
   }
 
@@ -43,12 +45,19 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
   // swiftlint:enable implicitly_unwrapped_optional
 
   private var candidateLauncher: AppLauncher?
-  internal private(set) var launcher: AppLauncher?
+  // Written from the controller queue during launch and read by `EnabledAppController`'s
+  // `UpdatesInterface` accessors on other threads, so the reference is synchronized.
+  private let launcherStorage = Mutex<AppLauncher?>(nil)
+  internal private(set) var launcher: AppLauncher? {
+    get { launcherStorage.withLock { $0 } }
+    set { launcherStorage.withLock { $0 = newValue } }
+  }
   internal func setLauncher(_ launcher: AppLauncher) {
     self.launcher = launcher
   }
 
-  private let errorRecovery = ErrorRecovery()
+  private let errorRecovery: ErrorRecovery
+  private var errorRecoveryRemoteAppLoader: RemoteAppLoader?
   internal func requestStartErrorMonitoring() {
     errorRecovery.startMonitoring()
   }
@@ -76,6 +85,7 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
 
   func run(procedureContext: ProcedureContext) {
     self.procedureContext = procedureContext
+    procedureContext.processStateEvent(.startStartup)
 
     errorRecovery.startMonitoring()
 
@@ -85,7 +95,8 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
       database: database,
       directory: updatesDirectory,
       selectionPolicy: selectionPolicy,
-      delegateQueue: controllerQueue
+      delegateQueue: controllerQueue,
+      logger: self.logger
     )
     loaderTask!.delegate = self
     loaderTask!.swiftDelegate = self
@@ -93,7 +104,7 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
     // swiftlint:enable force_unwrapping
   }
 
-  private func emergencyLaunch(fatalError error: NSError) {
+  private func emergencyLaunch(fatalError error: Error) {
     emergencyLaunchException = error
 
     let launcherNoDatabase = AppLauncherNoDatabase()
@@ -102,7 +113,7 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
 
     delegate?.startupProcedureDidLaunch(self)
 
-    ErrorRecovery.writeErrorOrExceptionToLog(error)
+    ErrorRecovery.writeErrorOrExceptionToLog(error, logger, message: .errorRecoveryStartupFailed)
   }
 
   // MARK: - AppLoaderTaskDelegate
@@ -112,25 +123,25 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
   }
 
   func appLoaderTaskDidStartCheckingForRemoteUpdate(_: AppLoaderTask) {
-    self.procedureContext.processStateEvent(UpdatesStateEventCheck())
+    self.procedureContext.processStateEvent(.check)
   }
 
   func appLoaderTask(_: AppLoaderTask, didFinishCheckingForRemoteUpdateWithRemoteCheckResult remoteCheckResult: RemoteCheckResult) {
     let event: UpdatesStateEvent
     switch remoteCheckResult {
     case .noUpdateAvailable: // Not using reason to update state yet
-      event = UpdatesStateEventCheckComplete()
+      event = .checkCompleteUnavailable
     case .updateAvailable(let manifest):
-      event = UpdatesStateEventCheckCompleteWithUpdate(manifest: manifest)
+      event = .checkCompleteWithUpdate(manifest: manifest)
     case .rollBackToEmbedded(let commitTime):
-      event = UpdatesStateEventCheckCompleteWithRollback(rollbackCommitTime: commitTime)
+      event = .checkCompleteWithRollback(rollbackCommitTime: commitTime)
     }
     self.procedureContext.processStateEvent(event)
   }
 
   func appLoaderTask(_: AppLoaderTask, didStartLoadingUpdate update: Update?) {
     logger.info(message: "AppController appLoaderTask didStartLoadingUpdate", code: .none, updateId: update?.loggingId(), assetId: nil)
-    self.procedureContext.processStateEvent(UpdatesStateEventDownload())
+    self.procedureContext.processStateEvent(.download)
   }
 
   func appLoaderTask(_: AppLoaderTask, didFinishWithLauncher launcher: AppLauncher, isUpToDate: Bool) {
@@ -170,11 +181,13 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
     )
   }
 
+  func appLoaderTask(_: AppLoaderTask, didUpdateProgress progress: Double) {
+    self.procedureContext.processStateEvent(.downloadProgress(progress: progress))
+  }
+
   func appLoaderTask(_: AppLoaderTask, didFinishWithError error: Error) {
-    let logMessage = String(format: "AppController appLoaderTask didFinishWithError: %@", error.localizedDescription)
-    logger.error(message: logMessage, code: .updateFailedToLoad)
-    self.procedureContext.processStateEvent(UpdatesStateEventDownloadError(message: error.localizedDescription))
-    emergencyLaunch(fatalError: error as NSError)
+    self.procedureContext.processStateEvent(.downloadError(errorMessage: error.localizedDescription))
+    emergencyLaunch(fatalError: error)
   }
 
   func appLoaderTask(
@@ -189,19 +202,29 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
       guard let error = error else {
         preconditionFailure("Background update with error status must have a nonnull error object")
       }
-      logger.error(
-        message: "AppController appLoaderTask didFinishBackgroundUpdateWithStatus=Error",
-        code: .updateFailedToLoad,
-        updateId: update?.loggingId(),
-        assetId: nil
+      logger.errorForLoadFailure(
+        error,
+        failed: .startupRemoteLoadFailed,
+        unreachable: .startupRemoteLoadUnreachable,
+        updateId: update?.loggingId()
       )
       // Since errors can happen through a number of paths, we do these checks
       // to make sure the state machine is valid
-      if self.procedureContext.getCurrentState() == .checking {
-        self.procedureContext.processStateEvent(UpdatesStateEventCheckError(message: error.localizedDescription))
-      } else if self.procedureContext.getCurrentState() == .downloading {
-        // .downloading
-        self.procedureContext.processStateEvent(UpdatesStateEventDownloadError(message: error.localizedDescription))
+      switch self.procedureContext.getCurrentState() {
+      case .checking:
+        self.procedureContext.processStateEvent(.checkError(errorMessage: error.localizedDescription))
+      case .downloading:
+        self.procedureContext.processStateEvent(.downloadError(errorMessage: error.localizedDescription))
+      case .idle:
+        // `downloadError` on its own is an illegal transition out of idle and would be dropped,
+        // leaving `useUpdates()` with no record of the failure. Move into the downloading state
+        // first, as the Android implementation does.
+        self.procedureContext.processStateEvent(.download)
+        self.procedureContext.processStateEvent(.downloadError(errorMessage: error.localizedDescription))
+      case .restarting:
+        // The machine accepts no events while restarting. errorForLoadFailure above logged the
+        // failure.
+        break
       }
     case .updateAvailable:
       remoteLoadStatus = .NewUpdateLoaded
@@ -214,7 +237,7 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
         updateId: update.loggingId(),
         assetId: nil
       )
-      self.procedureContext.processStateEvent(UpdatesStateEventDownloadCompleteWithUpdate(manifest: update.manifest.rawManifestJSON()))
+      self.procedureContext.processStateEvent(.downloadCompleteWithUpdate(manifest: update.manifest.rawManifestJSON()))
     case .noUpdateAvailable:
       remoteLoadStatus = .Idle
       logger.info(
@@ -225,7 +248,7 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
       )
       // TODO: handle rollbacks properly, but this works for now
       if self.procedureContext.getCurrentState() == .downloading {
-        self.procedureContext.processStateEvent(UpdatesStateEventDownloadComplete())
+        self.procedureContext.processStateEvent(.downloadCompleteUnavailable)
       }
       // Otherwise, we don't need to call the state machine here, it already transitioned to .checkCompleteUnavailable
     }
@@ -234,6 +257,7 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
   }
 
   func appLoaderTaskDidFinishAllLoading(_: AppLoaderTask) {
+    procedureContext.processStateEvent(.endStartup)
     self.procedureContext.onComplete()
   }
 
@@ -250,14 +274,16 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
 
     remoteLoadStatus = .Loading
 
-    let remoteAppLoader = RemoteAppLoader(
+    // swiftlint:disable force_unwrapping
+    errorRecoveryRemoteAppLoader = RemoteAppLoader(
       config: config,
+      logger: logger,
       database: database,
       directory: self.updatesDirectory,
       launchedUpdate: launchedUpdate(),
       completionQueue: controllerQueue
     )
-    remoteAppLoader.loadUpdate(
+    errorRecoveryRemoteAppLoader!.loadUpdate(
       fromURL: config.updateUrl
     ) { updateResponse in
       if let updateDirective = updateResponse.directiveUpdateResponsePart?.updateDirective {
@@ -287,10 +313,15 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
       self.remoteLoadStatus = updateResponse != nil ? .NewUpdateLoaded : .Idle
       self.errorRecovery.notify(newRemoteLoadStatus: self.remoteLoadStatus)
     } error: { error in
-      self.logger.error(message: "AppController loadRemoteUpdate error: \(error.localizedDescription)", code: .updateFailedToLoad)
+      self.logger.errorForLoadFailure(
+        error,
+        failed: .startupErrorRecoveryLoadFailed,
+        unreachable: .startupErrorRecoveryLoadUnreachable
+      )
       self.remoteLoadStatus = .Idle
       self.errorRecovery.notify(newRemoteLoadStatus: self.remoteLoadStatus)
     }
+    // swiftlint:enable force_unwrapping
   }
 
   func markFailedLaunchForLaunchedUpdate() {
@@ -303,16 +334,15 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
         return
       }
 
-      self.logger.error(
-        message: "AppController markFailedLaunchForUpdate",
-        code: .unknown,
-        updateId: launchedUpdate.loggingId(),
-        assetId: nil
+      self.logger.warn(
+        .startupMarkFailedLaunch,
+        values: ["updateId": launchedUpdate.loggingId()],
+        updateId: launchedUpdate.loggingId()
       )
       do {
         try self.database.incrementFailedLaunchCountForUpdate(launchedUpdate)
       } catch {
-        NSLog("Unable to mark update as failed in the local DB: %@", error.localizedDescription)
+        self.logger.warn(.startupLaunchCountUpdateFailed, cause: error, values: ["count": "failed"])
       }
     }
   }
@@ -330,7 +360,7 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
       do {
         try self.database.incrementSuccessfulLaunchCountForUpdate(launchedUpdate)
       } catch {
-        NSLog("Failed to increment successful launch count for update: %@", error.localizedDescription)
+        self.logger.warn(.startupLaunchCountUpdateFailed, cause: error, values: ["count": "successful"])
       }
     }
   }

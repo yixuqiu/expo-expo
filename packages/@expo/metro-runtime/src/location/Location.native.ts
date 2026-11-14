@@ -20,8 +20,13 @@ class Location {
       href
     );
 
-    url.username = '';
-
+    try {
+      url.username = '';
+    } catch {
+      throw new Error(
+        'Attempting to use the window.location polyfill before the URL built-in has been polyfilled.'
+      );
+    }
     url.password = '';
     Object.defineProperties(this, {
       hash: {
@@ -127,7 +132,14 @@ class Location {
             // this, that message is unused (ref: `RCTTriggerReloadCommandNotification`).
             const DevSettings = (require('react-native') as typeof import('react-native'))
               .DevSettings;
+
             return DevSettings.reload();
+          } else if (
+            typeof globalThis.expo !== 'undefined' &&
+            'reloadAppAsync' in globalThis.expo
+          ) {
+            // Expo SDK 51 and above.
+            globalThis.expo.reloadAppAsync('');
           } else {
             throw new DOMException(`Cannot call "location.reload()".`, 'NotSupportedError');
           }
@@ -178,6 +190,9 @@ let location: Location | undefined = undefined;
 export function setLocationHref(href: string) {
   location = new Location(href);
 }
+
+declare const global: typeof globalThis;
+declare const window: typeof globalThis;
 
 export function install() {
   Object.defineProperty(global, 'Location', {

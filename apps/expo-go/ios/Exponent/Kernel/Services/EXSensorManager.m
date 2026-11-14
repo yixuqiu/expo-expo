@@ -1,8 +1,9 @@
 // Copyright 2015-present 650 Industries. All rights reserved.
 
-#import "EXKernel.h"
 #import "EXSensorManager.h"
+
 #import <CoreMotion/CoreMotion.h>
+#import <UIKit/UIKit.h>
 
 @interface EXSensorManager ()
 
@@ -288,7 +289,7 @@
     if (strongSelf && data) {
       for (void (^handler)(NSDictionary *) in strongSelf.barometerHandlers.allValues) {
         handler(@{
-                  @"pressure": @([data.pressure intValue] * 10), // conversion from kPa to hPa
+                  @"pressure": @([data.pressure doubleValue] * 10.0), // conversion from kPa to hPa
                   @"relativeAltitude": data.relativeAltitude,
                   });
       }

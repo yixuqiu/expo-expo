@@ -1,8 +1,9 @@
 {
   "include": ["./src"],
-  "extends": "../../tsconfig.node",
+  "extends": "@expo/internal-scripts/tsconfig.node",
   "compilerOptions": {
-    "outDir": "./build",
+    "rootDir": "./src",
+    "noEmit": true,
     "paths": {},
     "sourceMap": true,
     "inlineSources": true

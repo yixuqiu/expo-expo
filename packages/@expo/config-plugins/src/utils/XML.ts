@@ -40,6 +40,11 @@ export function _processAndroidXML(manifest: any): XMLObject {
       if (string.$.translatable === 'false' || string.$.translatable === false) {
         continue;
       }
+
+      if (!('_' in string)) {
+        throw new Error(`Empty string resource not supported: ${JSON.stringify(string)}`);
+      }
+
       string._ = unescapeAndroidString(string._);
     }
   }
@@ -111,16 +116,18 @@ export function format(manifest: any, { indentLevel = 2, newline = EOL } = {}): 
 }
 
 /**
- * Escapes Android string literals, specifically characters `"`, `'`, `\`, `\n`, `\r`, `\t`
+ * Escapes Android string literals, specifically characters `"`, `'`, `\`, `\n`, `\r`, `\t`, `@`, `?`
  *
  * @param value unescaped Android XML string literal.
  */
 export function escapeAndroidString(value: string): string {
-  value = value.replace(/[\n\r\t'"@]/g, (m) => {
+  value = value.replace(/[\n\r\t'"@?\\]/g, (m) => {
     switch (m) {
       case '"':
       case "'":
       case '@':
+      case '?':
+      case '\\':
         return '\\' + m;
       case '\n':
         return '\\n';

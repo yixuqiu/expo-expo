@@ -7,7 +7,9 @@
 #import "EXUpdatesDatabaseManager.h"
 #import "EXUpdatesManager.h"
 
-#import <React/RCTBridge.h>
+#import <React/RCTEventDispatcher.h>
+
+@class RCTBridge;
 
 @import EXManifests;
 @import EXUpdates;
@@ -42,9 +44,9 @@ ofDownloadWithManifest:(EXManifestsManifest * _Nullable)manifest
              @"type": EXUpdatesNotAvailableEventType
              };
   }
-  RCTBridge *bridge = appRecord.appManager.reactBridge;
   if (appRecord.status == kEXKernelAppRecordStatusRunning) {
-    [bridge enqueueJSCall:@"RCTDeviceEventEmitter.emit" args:@[EXUpdatesEventName, body]];
+    RCTEventDispatcher *dispatcher = [appRecord.appManager.reactModuleRegistry moduleForName:"EventDispatcher"];
+    [dispatcher sendAppEventWithName:EXUpdatesEventName body:@[EXUpdatesEventName, body]];
   }
 }
 
@@ -71,6 +73,11 @@ ofDownloadWithManifest:(EXManifestsManifest * _Nullable)manifest
 - (nullable nullable EXUpdatesUpdate *)launchedUpdateForScopeKey:(NSString *)scopeKey
 {
   return [self _appLoaderWithScopeKey:scopeKey].appLauncher.launchedUpdate;
+}
+
+- (nullable NSNumber *)launchDurationForScopeKey:(NSString *)scopeKey
+{
+  return [self _appLoaderWithScopeKey:scopeKey].launchDuration;
 }
 
 - (nullable NSDictionary *)assetFilesMapForScopeKey:(NSString *)scopeKey

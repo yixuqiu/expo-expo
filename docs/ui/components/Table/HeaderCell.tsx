@@ -1,28 +1,30 @@
-import { css } from '@emotion/react';
-import { theme } from '@expo/styleguide';
-import { spacing } from '@expo/styleguide-base';
+import { mergeClasses } from '@expo/styleguide';
 import type { PropsWithChildren } from 'react';
 
 import { TextAlign } from './types';
-import { convertAlign } from './utils';
+import { convertAlignToClass } from './utils';
 
 type HeaderCellProps = PropsWithChildren<{
   align?: TextAlign | 'char';
+  size?: 'md' | 'sm';
+  className?: string;
 }>;
 
-export const HeaderCell = ({ children, align = 'left' }: HeaderCellProps) => (
-  <th css={[tableHeadersCellStyle, { textAlign: convertAlign(align) }]}>{children}</th>
+export const HeaderCell = ({
+  children,
+  className,
+  align = 'left',
+  size = 'md',
+}: HeaderCellProps) => (
+  <th
+    className={mergeClasses(
+      'border-r border-secondary px-4 py-3.5 text-xs font-medium text-secondary',
+      convertAlignToClass(align),
+      size === 'sm' && 'py-2 text-xs',
+      '[&_code]:text-xs [&_code]:text-secondary',
+      'last:border-r-0',
+      className
+    )}>
+    {children}
+  </th>
 );
-
-const tableHeadersCellStyle = css({
-  padding: spacing[4],
-  fontSize: '0.875rem',
-  fontWeight: 500,
-  color: theme.text.secondary,
-  verticalAlign: 'middle',
-  borderRight: `1px solid ${theme.border.default}`,
-
-  '&:last-child': {
-    borderRight: 0,
-  },
-});

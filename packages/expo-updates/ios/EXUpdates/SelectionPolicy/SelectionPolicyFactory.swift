@@ -9,11 +9,15 @@ import Foundation
 @objc(EXUpdatesSelectionPolicyFactory)
 @objcMembers
 public final class SelectionPolicyFactory: NSObject {
-  public static func filterAwarePolicy(withRuntimeVersion runtimeVersion: String) -> SelectionPolicy {
+  public static func filterAwarePolicy(withRuntimeVersion runtimeVersion: String, config: UpdatesConfig) -> SelectionPolicy {
+    return filterAwarePolicy(withRuntimeVersion: runtimeVersion, config: config, embeddedUpdateId: nil)
+  }
+
+  public static func filterAwarePolicy(withRuntimeVersion runtimeVersion: String, config: UpdatesConfig, embeddedUpdateId: UUID?) -> SelectionPolicy {
     return SelectionPolicy.init(
-      launcherSelectionPolicy: LauncherSelectionPolicyFilterAware.init(runtimeVersion: runtimeVersion),
-      loaderSelectionPolicy: LoaderSelectionPolicyFilterAware(),
-      reaperSelectionPolicy: ReaperSelectionPolicyFilterAware()
+      launcherSelectionPolicy: LauncherSelectionPolicyFilterAware.init(runtimeVersion: runtimeVersion, config: config),
+      loaderSelectionPolicy: LoaderSelectionPolicyFilterAware(config: config),
+      reaperSelectionPolicy: ReaperSelectionPolicyFilterAware(maxUpdatesToKeep: config.maxUpdatesToKeep, embeddedUpdateId: embeddedUpdateId)
     )
   }
 }

@@ -7,12 +7,12 @@
   </a>
 </p>
 
-Provides access to a hardware device's accelerometer, gyroscope, magnetometer, and pedometer.
+Provides access to a hardware device's accelerometer, barometer, device motion, gyroscope, light sensor, magnetometer, and pedometer.
 
 # API documentation
 
-- [Documentation for the main branch](https://github.com/expo/expo/blob/main/docs/pages/versions/unversioned/sdk/sensors.mdx)
 - [Documentation for the latest stable release](https://docs.expo.dev/versions/latest/sdk/sensors/)
+- [Documentation for the main branch](https://docs.expo.dev/versions/unversioned/sdk/sensors/)
 
 # Installation in managed Expo projects
 
@@ -28,18 +28,33 @@ For bare React Native projects, you must ensure that you have [installed and con
 npx expo install expo-sensors
 ```
 
-### Configure for iOS
-
-Run `npx pod-install` after installing the npm package.
-
-**Note:** to access DeviceMotion stats on iOS, the NSMotionUsageDescription key must be present in your Info.plist.
-
 ### Configure for Android
 
 No additional set up necessary for basic usage.
 
-**Note:** Starting in Android 12 (API level 31), the system has a 200ms limit for each sensor updates. If you need a update interval less than 200ms, you should add `<uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS"/>` to **AndroidManifest.xml**.
+**Note:** Starting in Android 12 (API level 31), the system has a 200Hz limit for each sensor updates. If you need an update interval of greater than 200Hz, you should add `<uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS"/>` to **AndroidManifest.xml**.
+
+### Configure for iOS
+
+Run `npx pod-install` after installing the npm package.
+
+**Note:** to access DeviceMotion stats on iOS, the `NSMotionUsageDescription` key must be present in your `Info.plist`. The included config plugin adds this key with a default message. To customize the message — or disable the permission entirely — configure the plugin in your `app.json`/`app.config.js`:
+
+```json
+{
+  "expo": {
+    "plugins": [
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow $(PRODUCT_NAME) to access your device motion."
+        }
+      ]
+    ]
+  }
+}
+```
 
 # Contributing
 
-Contributions are very welcome! Please refer to guidelines described in the [contributing guide](https://github.com/expo/expo#contributing).
+Contributions are very welcome! Please refer to guidelines described in the [contributing guide](https://github.com/expo/expo/blob/main/CONTRIBUTING.md).

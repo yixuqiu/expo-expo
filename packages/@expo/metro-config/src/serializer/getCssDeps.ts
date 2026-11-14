@@ -1,12 +1,14 @@
-import type { Module } from 'metro';
-import { getJsOutput, isJsModule } from 'metro/src/DeltaBundler/Serializers/helpers/js';
+// NOTE(@kitten): jest-resolver -> resolve.exports bug (https://github.com/lukeed/resolve.exports/issues/40)
+import { isJsModule } from '@expo/metro/metro/DeltaBundler/Serializers/helpers/js.js';
+import type { Module, ReadOnlyDependencies } from '@expo/metro/metro/DeltaBundler/types';
+import { isResolvedDependency } from '@expo/metro/metro/lib/isResolvedDependency';
 import path from 'path';
 
-import { SerialAsset } from './serializerAssets';
 import { pathToHtmlSafeName } from '../transform-worker/css';
+import { toPosixPath } from '../utils/filePath';
 import { hashString } from '../utils/hash';
-
-export type ReadOnlyDependencies<T = any> = ReadonlyMap<string, Module<T>>;
+import type { CSSMetadata } from './jsOutput';
+import type { SerialAsset } from './serializerAssets';
 
 type Options = {
   processModuleFilter: (modules: Module) => boolean;
@@ -14,12 +16,6 @@ type Options = {
   platform?: string | null;
   projectRoot: string;
   publicPath: string;
-};
-
-type MetroModuleCSSMetadata = {
-  code: string;
-  lineCount: number;
-  map: any[];
 };
 
 // s = static
@@ -42,51 +38,56 @@ export type JSModule = Module<{
   unstable_transformResultKey?: string;
 };
 
-export function filterJsModules(
-  dependencies: ReadOnlyDependencies,
-  type: 'js/script' | 'js/module' | 'js/module/asset',
-  { processModuleFilter, projectRoot }: Pick<Options, 'projectRoot' | 'processModuleFilter'>
-) {
-  const assets: JSModule[] = [];
-
-  for (const module of dependencies.values()) {
-    if (
-      isJsModule(module) &&
-      processModuleFilter(module) &&
-      getJsOutput(module).type === type &&
-      path.relative(projectRoot, module.path) !== 'package.json'
-    ) {
-      assets.push(module as JSModule);
-    }
-  }
-  return assets;
+function isTypeJSModule(module: Module<any>): module is JSModule {
+  return isJsModule(module);
 }
 
 export function getCssSerialAssets<T extends any>(
   dependencies: ReadOnlyDependencies<T>,
-  { processModuleFilter, projectRoot }: Pick<Options, 'projectRoot' | 'processModuleFilter'>
+  { projectRoot, entryFile }: Pick<Options, 'projectRoot'> & { entryFile: string }
 ): SerialAsset[] {
   const assets: SerialAsset[] = [];
 
-  for (const module of filterJsModules(dependencies, 'js/module', {
-    processModuleFilter,
-    projectRoot,
-  })) {
+  const visited = new Set<string>();
+
+  function pushCssModule(module: JSModule) {
     const cssMetadata = getCssMetadata(module);
     if (cssMetadata) {
       const contents = cssMetadata.code;
-      const originFilename = path.relative(projectRoot, module.path);
 
-      const filename = path.join(
-        // Consistent location
-        STATIC_EXPORT_DIRECTORY,
-        // Hashed file contents + name for caching
-        fileNameFromContents({
-          // Stable filename for hashing in CI.
-          filepath: originFilename,
-          src: contents,
-        }) + '.css'
+      // NOTE(cedric): these relative paths are used as URL pathnames when serializing HTML
+      // Use POSIX-format to avoid urls like `_expo/static/css/some\\file\\name.css`
+      const originFilename = toPosixPath(path.relative(projectRoot, module.path));
+      const filename = toPosixPath(
+        path.join(
+          // Consistent location
+          STATIC_EXPORT_DIRECTORY,
+          // Hashed file contents + name for caching
+          fileNameFromContents({
+            // Stable filename for hashing in CI.
+            filepath: originFilename,
+            src: contents,
+          }) + '.css'
+        )
       );
+
+      if (cssMetadata.externalImports) {
+        for (const external of cssMetadata.externalImports) {
+          assets.push({
+            type: 'css-external',
+            originFilename,
+            filename: external.url,
+            // External stylesheets have no file contents. Keep the required SerialAsset field;
+            // static and streaming consumers build links from the URL and metadata below.
+            source: '',
+            metadata: {
+              hmrId: pathToHtmlSafeName(originFilename),
+              media: external.media ?? undefined,
+            },
+          });
+        }
+      }
+
       assets.push({
         type: 'css',
         originFilename,
@@ -99,10 +100,35 @@ export function getCssSerialAssets<T extends any>(
     }
   }
 
+  function checkDep(absolutePath: string) {
+    if (visited.has(absolutePath)) {
+      return;
+    }
+    visited.add(absolutePath);
+    const next = dependencies.get(absolutePath);
+    if (!next) {
+      return;
+    }
+
+    next.dependencies.forEach((dep) => {
+      // Traverse the deps next to ensure the CSS is pushed in the correct order.
+      if (isResolvedDependency(dep)) {
+        checkDep(dep.absolutePath);
+      }
+    });
+
+    // Then push the JS after the siblings.
+    if (getCssMetadata(next) && isTypeJSModule(next)) {
+      pushCssModule(next);
+    }
+  }
+
+  checkDep(entryFile);
+
   return assets;
 }
 
-function getCssMetadata(module: JSModule): MetroModuleCSSMetadata | null {
+function getCssMetadata(module: Module<any>): CSSMetadata | null {
   const data = module.output[0]?.data;
   if (data && typeof data === 'object' && 'css' in data) {
     if (typeof data.css !== 'object' || !('code' in (data as any).css)) {
@@ -110,17 +136,21 @@ function getCssMetadata(module: JSModule): MetroModuleCSSMetadata | null {
         `Unexpected CSS metadata in Metro module (${module.path}): ${JSON.stringify(data.css)}`
       );
     }
-    return data.css as MetroModuleCSSMetadata;
+    return data.css as CSSMetadata;
   }
   return null;
 }
 
+// TODO(@hassankhan): Move this function into its own file
 export function fileNameFromContents({ filepath, src }: { filepath: string; src: string }): string {
+  // TODO(@kitten): As of metro@0.83.2 but maybe before, this does not look correct. Encoding has changed, see: https://github.com/facebook/metro/commit/cb02cdb
   // Decode if the path is encoded from the Metro dev server, then normalize paths for Windows support.
   const decoded = decodeURIComponent(filepath).replace(/\\/g, '/');
   return getFileName(decoded) + '-' + hashString(src);
 }
 
+// TODO(@hassankhan): Move this function into its own file
+// TODO(@hassankhan): Investigate why we don't always pass the filename with extension here
 export function getFileName(module: string) {
-  return path.basename(module).replace(/\.[^.]+$/, '');
+  return path.basename(module).replace(/\.\w+$/, '');
 }

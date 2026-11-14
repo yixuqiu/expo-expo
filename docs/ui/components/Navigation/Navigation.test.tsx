@@ -6,17 +6,16 @@ import { MemoryRouterProvider } from 'next-router-mock/MemoryRouterProvider';
 import { u as node } from 'unist-builder';
 import { visit } from 'unist-util-visit';
 
+import { createHeadingManager } from '~/common/headingManager';
+import { axe } from '~/common/test-utilities';
+import { HeadingsContext } from '~/common/withHeadingManager';
+
 import { findActiveRoute, Navigation } from './Navigation';
 import { NavigationNode } from './types';
 
-import { HeadingManager } from '~/common/headingManager';
-import { HeadingsContext } from '~/components/page-higher-order/withHeadingManager';
-
-const prepareHeadingManager = () => {
-  const headingManager = new HeadingManager(new GithubSlugger(), { headings: [] });
-
-  return headingManager;
-};
+function prepareHeadingManager() {
+  return createHeadingManager(new GithubSlugger(), { headings: [] });
+}
 
 jest.mock('next/router', () => mockRouter);
 
@@ -90,6 +89,20 @@ describe(Navigation, () => {
     // Tutorial -> Building apps ->
     expect(screen.getByText('Submitting to store')).toBeInTheDocument();
   });
+
+  it('has no axe violations', async () => {
+    const headingManager = prepareHeadingManager();
+    const { container } = render(
+      <HeadingsContext.Provider value={headingManager}>
+        <MemoryRouterProvider>
+          <Navigation routes={nodes} />
+        </MemoryRouterProvider>
+      </HeadingsContext.Provider>
+    );
+    expect(
+      await axe(container, { rules: { 'nested-interactive': { enabled: false } } })
+    ).toHaveNoViolations();
+  });
 });
 
 describe(findActiveRoute, () => {
@@ -134,7 +147,7 @@ function getNode(
   predicate: Partial<NavigationNode> | ((node: NavigationNode) => boolean)
 ): NavigationNode | null {
   let result = null;
-  const tree = Array.isArray(list) ? node('root', list) : list || node('root');
+  const tree = Array.isArray(list) ? node('root', list) : (list ?? node('root'));
   visit(tree, predicate as any, node => {
     result = node;
   });

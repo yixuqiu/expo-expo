@@ -1,12 +1,14 @@
+import type { Terminal } from '@expo/metro/metro-core';
+
 import { TerminalReporter } from '../TerminalReporter';
-import { TerminalReportableEvent } from '../TerminalReporter.types';
+import type { TerminalReportableEvent } from '../TerminalReporter.types';
 
 function createReporter() {
   const reporter = new TerminalReporter({
     log: jest.fn(),
     persistStatus: jest.fn(),
     status: jest.fn(),
-  });
+  } as unknown as Terminal);
   return reporter;
 }
 
@@ -38,7 +40,7 @@ it(`invokes utility filter function`, () => {
   };
   reporter._log(event);
   expect(reporter.shouldFilterClientLog).toHaveBeenCalledWith(event);
-  expect(reporter.terminal.log).toBeCalled();
+  expect(reporter.terminal.log).toHaveBeenCalled();
 });
 it(`skips logging if the filter function returns true`, () => {
   const reporter = createReporter();
@@ -51,5 +53,5 @@ it(`skips logging if the filter function returns true`, () => {
   };
   reporter._log(event);
   expect(reporter.shouldFilterClientLog).toHaveBeenCalledWith(event);
-  expect(reporter.terminal.log).not.toBeCalled();
+  expect(reporter.terminal.log).not.toHaveBeenCalled();
 });

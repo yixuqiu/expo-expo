@@ -1,12 +1,16 @@
 {
-  "name": "expo-screen-orientation",
-  "platforms": ["ios", "android"],
-  "android": {
-    "modules": ["expo.modules.screenorientation.ScreenOrientationModule"]
-  },
-  "ios": {
+  "platforms": ["apple", "android"],
+  "apple": {
     "appDelegateSubscribers": ["ScreenOrientationAppDelegate"],
     "reactDelegateHandlers": ["ScreenOrientationReactDelegateHandler"],
     "modules": ["ScreenOrientationModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.screenorientation.ScreenOrientationModule"],
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.screenorientation",
+      "repository": "local-maven-repo"
+    }
   }
 }

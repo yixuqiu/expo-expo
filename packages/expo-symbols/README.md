@@ -7,12 +7,12 @@
   </a>
 </p>
 
-Provides access to the `SF Symbols` library on iOS.
+Provides access to native symbol libraries across platforms for React Native and Expo apps. Uses [SF Symbols](https://developer.apple.com/sf-symbols/) on iOS/tvOS and [Material Symbols](https://fonts.google.com/icons) on Android and web.
 
 # API documentation
 
-- [Documentation for the main branch](https://github.com/expo/expo/blob/main/docs/pages/versions/unversioned/sdk/symbols.mdx)
 - [Documentation for the latest stable release](https://docs.expo.dev/versions/latest/sdk/symbols/)
+- [Documentation for the main branch](https://docs.expo.dev/versions/unversioned/sdk/symbols/)
 
 # Installation in managed Expo projects
 

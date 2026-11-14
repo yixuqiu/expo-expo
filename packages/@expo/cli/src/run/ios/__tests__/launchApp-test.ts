@@ -2,7 +2,7 @@ import { vol } from 'memfs';
 
 import rnFixture from '../../../prebuild/__tests__/fixtures/react-native-project';
 import { SimulatorLogStreamer } from '../../../start/platforms/ios/simctlLogging';
-import { DevServerManager } from '../../../start/server/DevServerManager';
+import type { DevServerManager } from '../../../start/server/DevServerManager';
 import { getAppDeltaDirectory, installOnDeviceAsync } from '../appleDevice/installOnDeviceAsync';
 import { launchAppAsync } from '../launchApp';
 
@@ -62,15 +62,16 @@ describe(launchAppAsync, () => {
       device: {
         name: 'simulator',
         udid: '123',
+        osType: 'iOS',
       },
       isSimulator: true,
       shouldStartBundler: true,
     });
 
-    expect(SimulatorLogStreamer.getStreamer).toBeCalled();
+    expect(SimulatorLogStreamer.getStreamer).toHaveBeenCalled();
 
-    expect(installOnDeviceAsync).not.toBeCalled();
-    expect(getAppDeltaDirectory).not.toBeCalled();
+    expect(installOnDeviceAsync).not.toHaveBeenCalled();
+    expect(getAppDeltaDirectory).not.toHaveBeenCalled();
   });
   it(`does not streams logs on simulator if the dev server is skipped`, async () => {
     vol.fromJSON({ ...rnFixture, '/path/to/app.ipa/Info.plist': mockPlist }, '/');
@@ -78,14 +79,15 @@ describe(launchAppAsync, () => {
       device: {
         name: 'simulator',
         udid: '123',
+        osType: 'iOS',
       },
       isSimulator: true,
       shouldStartBundler: false,
     });
 
-    expect(SimulatorLogStreamer.getStreamer).not.toBeCalled();
-    expect(installOnDeviceAsync).not.toBeCalled();
-    expect(getAppDeltaDirectory).not.toBeCalled();
+    expect(SimulatorLogStreamer.getStreamer).not.toHaveBeenCalled();
+    expect(installOnDeviceAsync).not.toHaveBeenCalled();
+    expect(getAppDeltaDirectory).not.toHaveBeenCalled();
   });
 
   it(`runs ios on device`, async () => {
@@ -95,14 +97,15 @@ describe(launchAppAsync, () => {
       device: {
         name: "Evan's phone",
         udid: '00008101-001964A22629003A',
+        osType: 'iOS',
       },
       isSimulator: false,
       shouldStartBundler: true,
     });
 
-    expect(SimulatorLogStreamer.getStreamer).not.toBeCalled();
+    expect(SimulatorLogStreamer.getStreamer).not.toHaveBeenCalled();
 
-    expect(installOnDeviceAsync).toBeCalled();
-    expect(getAppDeltaDirectory).toBeCalled();
+    expect(installOnDeviceAsync).toHaveBeenCalled();
+    expect(getAppDeltaDirectory).toHaveBeenCalled();
   });
 });

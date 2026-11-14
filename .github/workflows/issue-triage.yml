@@ -2,15 +2,18 @@ name: Issue Triage
 on:
   issues:
     types: [labeled]
+  # pull_request_target is required so fork PRs get a write token when a
+  # maintainer applies a label (e.g. "Version bump PR") that triggers a canned
+  # reply. Jobs here only post API comments and never check out PR code.
   pull_request_target:
     types: [labeled]
 
 jobs:
   needs-repro:
-    runs-on: ubuntu-22.04
-    if: "${{ contains(github.event.label.name, 'incomplete issue: missing or invalid repro') }}"
+    runs-on: ubuntu-24.04
+    if: "${{ github.repository == 'expo/expo' && contains(github.event.label.name, 'incomplete issue: missing or invalid repro') }}"
     steps:
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.EXPO_BOT_GITHUB_TOKEN }}
           script: |
@@ -51,10 +54,10 @@ jobs:
             })
 
   needs-info:
-    runs-on: ubuntu-22.04
-    if: "${{ contains(github.event.label.name, 'incomplete issue: missing info') }}"
+    runs-on: ubuntu-24.04
+    if: "${{ github.repository == 'expo/expo' && contains(github.event.label.name, 'incomplete issue: missing info') }}"
     steps:
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.EXPO_BOT_GITHUB_TOKEN }}
           script: |
@@ -80,13 +83,14 @@ jobs:
             })
 
   issue-accepted:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       issues: write
-    if: github.event.label.name == 'issue accepted'
+    # Only for issues, so an "issue accepted" label on a PR does not post this comment.
+    if: github.repository == 'expo/expo' && github.event_name == 'issues' && github.event.label.name == 'issue accepted'
     steps:
       - name: Comment on issue
-        uses: actions/github-script@v6
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.EXPO_BOT_GITHUB_TOKEN }}
           script: |
@@ -99,7 +103,7 @@ jobs:
               However, we can’t promise any sort of timeline for resolution. We prioritize issues based on severity, breadth of impact, and alignment with our roadmap. If you’d like to help move it more quickly, you can continue to investigate it more deeply and/or you can open a pull request that fixes the cause.
             `})
       - name: Remove "Needs Review" label
-        uses: actions/github-script@v6
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             try {
@@ -114,27 +118,12 @@ jobs:
                 throw e;
               }
             }
-      - name: 👀 Checkout
-        uses: actions/checkout@v4
-      - name: ➕ Add `bin` to GITHUB_PATH
-        run: echo "$(pwd)/bin" >> $GITHUB_PATH
-      - name: ♻️ Restore caches
-        uses: ./.github/actions/expo-caches
-        id: expo-caches
-        with:
-          yarn-tools: 'true'
-      - name: 🔎 Import issue to Linear
-        run: expotools import-github-issue-to-linear --issue "${{ github.event.issue.number }}" --importer "${{ github.triggering_actor }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.EXPO_BOT_GITHUB_TOKEN }}
-          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
   question:
-    runs-on: ubuntu-22.04
-    if: "${{ contains(github.event.label.name, 'invalid issue: question') }}"
+    runs-on: ubuntu-24.04
+    if: "${{ github.repository == 'expo/expo' && contains(github.event.label.name, 'invalid issue: question') }}"
     steps:
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.EXPO_BOT_GITHUB_TOKEN }}
           script: |
@@ -144,7 +133,7 @@ jobs:
               repo: context.repo.repo,
               body: `Hello! Our GitHub issues are reserved for bug reports.
 
-              If you have a question about Expo or related tools, please post on our forums at https://forums.expo.dev/ or join our Discord at https://chat.expo.dev/.
+              If you have a question about Expo or related tools, please join our Discord at https://chat.expo.dev/
 
               ### Resources
 
@@ -159,10 +148,10 @@ jobs:
             })
 
   feature-request:
-    runs-on: ubuntu-22.04
-    if: "${{ contains(github.event.label.name, 'invalid issue: feature request') }}"
+    runs-on: ubuntu-24.04
+    if: "${{ github.repository == 'expo/expo' && contains(github.event.label.name, 'invalid issue: feature request') }}"
     steps:
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.EXPO_BOT_GITHUB_TOKEN }}
           script: |
@@ -182,10 +171,10 @@ jobs:
             })
 
   third-party:
-    runs-on: ubuntu-22.04
-    if: "${{ contains(github.event.label.name, 'invalid issue: third-party library') }}"
+    runs-on: ubuntu-24.04
+    if: "${{ github.repository == 'expo/expo' && contains(github.event.label.name, 'invalid issue: third-party library') }}"
     steps:
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.EXPO_BOT_GITHUB_TOKEN }}
           script: |
@@ -209,10 +198,10 @@ jobs:
               state: 'closed'
             })
   react-native-core:
-    runs-on: ubuntu-22.04
-    if: "${{ contains(github.event.label.name, 'invalid issue: react-native-core') }}"
+    runs-on: ubuntu-24.04
+    if: "${{ github.repository == 'expo/expo' && contains(github.event.label.name, 'invalid issue: react-native-core') }}"
     steps:
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.EXPO_BOT_GITHUB_TOKEN }}
           script: |
@@ -231,10 +220,10 @@ jobs:
               state: 'closed'
             })
   comments-on-closed:
-    runs-on: ubuntu-22.04
-    if: "${{ github.event.label.name == 'Comments on closed issue' }}"
+    runs-on: ubuntu-24.04
+    if: "${{ github.repository == 'expo/expo' && github.event.label.name == 'Comments on closed issue' }}"
     steps:
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.EXPO_BOT_GITHUB_TOKEN }}
           script: |
@@ -252,11 +241,33 @@ jobs:
               repo: context.repo.repo,
               lock_reason: 'resolved'
             })
-  version-bump:
-    runs-on: ubuntu-22.04
-    if: "${{ github.event.label.name == 'Version bump PR' }}"
+  eas-build-troubleshooting:
+    runs-on: ubuntu-24.04
+    if: "${{ github.repository == 'expo/expo' && github.event.label.name == 'invalid issue: EAS Build troubleshooting' }}"
     steps:
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ secrets.EXPO_BOT_GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `Hi there! The issues in this repository are reserved for demonstrable bug reports with Expo tools.
+
+              For assistance with your problem, refer to the [Troubleshoot build errors and crashes](https://docs.expo.dev/build-reference/troubleshooting/). If you follow that guide and you're still stuck, follow [the guide for asking a good question](https://docs.expo.dev/build-reference/troubleshooting/#how-to-ask-a-good-question) at the bottom of the page.
+            `})
+            github.rest.issues.update({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed'
+            })
+  version-bump:
+    runs-on: ubuntu-24.04
+    if: "${{ github.repository == 'expo/expo' && github.event.label.name == 'Version bump PR' }}"
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.EXPO_BOT_GITHUB_TOKEN }}
           script: |

@@ -1,6 +1,11 @@
-import { MailComposerOptions, MailComposerResult, MailComposerStatus } from './MailComposer.types';
+import type { MailClient, MailComposerOptions, MailComposerResult } from './MailComposer.types';
+import { MailComposerStatus } from './MailComposer.types';
 
-function removeNullishValues(obj) {
+function removeNullishValues<T extends Record<string, any>>(
+  obj: T
+): {
+  [K in keyof T]: Exclude<T[K], null | undefined>;
+} {
   for (const propName in obj) {
     if (obj[propName] == null) {
       delete obj[propName];
@@ -19,6 +24,9 @@ function checkValue(value?: string[] | string): string | null {
 }
 
 export default {
+  getClients(): MailClient[] {
+    return [];
+  },
   async composeAsync(options: MailComposerOptions): Promise<MailComposerResult> {
     if (typeof window === 'undefined') {
       return { status: MailComposerStatus.CANCELLED };
@@ -30,11 +38,16 @@ export default {
       bcc: options.bccRecipients,
       subject: options.subject,
       body: options.body,
-    }) as Record<string, string>;
+    });
 
     Object.entries(email).forEach(([key, value]) => {
-      mailtoUrl.searchParams.append(key, value);
+      // TODO(@kitten): This was implicitly cast before. Is this what we want?
+      mailtoUrl.searchParams.append(key, '' + value);
     });
+
+    // URLSearchParams encodes spaces as '+', but mailto URIs require '%20' (RFC 6068).
+    // A literal '+' is already encoded as '%2B', so every remaining '+' is a space.
+    mailtoUrl.search = mailtoUrl.searchParams.toString().replace(/\+/g, '%20');
 
     window.open(mailtoUrl.toString());
 

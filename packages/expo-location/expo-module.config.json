@@ -1,6 +1,17 @@
 {
-  "platforms": ["ios", "android"],
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["LocationModule", "LocationModuleNext"]
+  },
   "android": {
-    "modules": ["expo.modules.location.LocationModule"]
+    "modules": [
+      "expo.modules.location.LocationModule",
+      "expo.modules.location.next.LocationModuleNext"
+    ],
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.location",
+      "repository": "local-maven-repo"
+    }
   }
 }

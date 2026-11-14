@@ -1,0 +1,79 @@
+package expo.modules.devlauncher.logs
+
+import android.net.Uri
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+
+class DevLauncherRemoteLogManager(private val httpClient: OkHttpClient, private val url: Uri) : WebSocketListener() {
+  private val batch: MutableList<String> = mutableListOf()
+
+  fun deferError(throwable: Throwable) {
+    batch.add(throwable.toRemoteLogString())
+  }
+
+  fun deferError(message: String) {
+    batch.add(message)
+  }
+
+  fun sendViaWebSocket() {
+    val request = Request.Builder().url(url.toString()).build()
+    httpClient.newWebSocket(request, this)
+  }
+
+  override fun onOpen(webSocket: WebSocket, response: Response) {
+    webSocket.send(DevLauncherRemoteLog(batch).toJson())
+    webSocket.close(1000, null)
+    batch.clear()
+  }
+
+  companion object {
+    fun reportError(httpClient: OkHttpClient, serverUrl: Uri, message: String, throwable: Throwable? = null) {
+      val url = webSocketUrl(serverUrl) ?: return
+      DevLauncherRemoteLogManager(httpClient, url)
+        .apply {
+          deferError(message)
+          throwable?.let { deferError(it) }
+        }
+        .sendViaWebSocket()
+    }
+
+    fun webSocketUrl(serverUrl: Uri): Uri? {
+      // URL structure replicates
+      // https://github.com/facebook/react-native/blob/0.69-stable/Libraries/Utilities/HMRClient.js#L164
+      val host = serverUrl.host
+      if (host.isNullOrEmpty() || host == "u.expo.dev") {
+        return null
+      }
+      return serverUrl
+        .buildUpon()
+        .scheme(
+          if (serverUrl.scheme == "https") {
+            "wss"
+          } else {
+            "ws"
+          }
+        )
+        .path("hot")
+        .clearQuery()
+        .fragment(null)
+        .build()
+    }
+  }
+}
+
+internal fun Throwable.toRemoteLogString(): String {
+  val separator = "\n  "
+  val baseTrace = stackTrace.joinToString(separator) {
+    it.toString()
+  }
+  val remoteLogString = "$this$separator$baseTrace"
+
+  cause?.let {
+    return "$remoteLogString\nCaused by ${it.toRemoteLogString()}"
+  }
+
+  return remoteLogString
+}

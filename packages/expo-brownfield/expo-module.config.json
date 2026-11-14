@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "android": {
+    "modules": [
+      "expo.modules.brownfield.ExpoBrownfieldModule",
+      "expo.modules.brownfield.ExpoBrownfieldStateModule"
+    ]
+  }
+}

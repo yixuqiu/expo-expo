@@ -1,24 +1,218 @@
-import betterOpenBrowserAsync from 'better-opn';
+import * as osascript from '@expo/osascript';
+import spawnAsync from '@expo/spawn-async';
+import os from 'os';
+import path from 'path';
+
+/** Splits an inline script into trimmed, non-empty lines for `osascript -e <line>`. */
+function applescript(strings: TemplateStringsArray, ...values: unknown[]): string[] {
+  let raw = strings[0]!;
+  for (let i = 0; i < values.length; i++) {
+    raw += String(values[i]) + strings[i + 1];
+  }
+  return raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function buildOpenChromiumTabScript(target: string, matchUrl: string): string[] {
+  const theURL = osascript.escapeString(target);
+  const matchURL = osascript.escapeString(matchUrl);
+  return applescript`
+    property targetTab: null
+    property targetTabIndex: -1
+    property targetWindow: null
+    property theProgram: ""
+
+    on run
+      set theProgram to my findRunningChromium()
+      if theProgram is "" then error "No Chromium browser is running."
+      set theURL to "${theURL}"
+      set matchURL to "${matchURL}"
+      using terms from application "Google Chrome"
+        tell application theProgram
+          if (count every window) = 0 then
+            make new window
+          end if
+          set found to my lookupTabWithUrl(matchURL)
+          if found then
+            set targetWindow's active tab index to targetTabIndex
+            tell targetTab to reload
+            tell targetWindow to activate
+            set index of targetWindow to 1
+            return
+          end if
+          set found to my lookupTabWithUrl("chrome://newtab/")
+          if found then
+            set targetWindow's active tab index to targetTabIndex
+            set URL of targetTab to theURL
+            tell targetWindow to activate
+            return
+          end if
+          tell window 1
+            activate
+            make new tab with properties {URL:theURL}
+          end tell
+        end tell
+      end using terms from
+    end run
+
+    on findRunningChromium()
+      set candidates to {"Google Chrome Canary", "Google Chrome", "Microsoft Edge", "Brave Browser", "Vivaldi", "Chromium"}
+      tell application "System Events"
+        set runningNames to name of every process
+      end tell
+      repeat with candidate in candidates
+        set candidateName to candidate as string
+        if candidateName is in runningNames then return candidateName
+      end repeat
+      return ""
+    end findRunningChromium
+
+    on lookupTabWithUrl(lookupUrl)
+      using terms from application "Google Chrome"
+        tell application theProgram
+          set found to false
+          set theTabIndex to -1
+          repeat with theWindow in every window
+            set theTabIndex to 0
+            repeat with theTab in every tab of theWindow
+              set theTabIndex to theTabIndex + 1
+              if (theTab's URL as string) contains lookupUrl then
+                set targetTab to theTab
+                set targetTabIndex to theTabIndex
+                set targetWindow to theWindow
+                set found to true
+                exit repeat
+              end if
+            end repeat
+            if found then exit repeat
+          end repeat
+        end tell
+      end using terms from
+      return found
+    end lookupTabWithUrl
+  `;
+}
+
+function safeOrigin(target: string): string {
+  try {
+    return new URL(target).origin;
+  } catch {
+    return target;
+  }
+}
+
+async function tryOpenInChromiumTabAsync(target: string): Promise<boolean> {
+  const matchUrl = process.env.OPEN_MATCH_HOST_ONLY === 'true' ? safeOrigin(target) : target;
+  try {
+    await osascript.spawnAsync(buildOpenChromiumTabScript(target, matchUrl), {
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
- * Due to a bug in `open`, which is used as fallback on Windows, we need to ensure `process.env.SYSTEMROOT` is set.
- * This environment variable is set by Windows on `SystemRoot`, causing `open` to execute a command with an "unknown" drive letter.
+ * Opens a URL in the user's browser. Honors `BROWSER` (set to `none` to disable) and
+ * `BROWSER_ARGS` environment variables. On macOS, reuses an existing tab in a running
+ * Chromium-based browser when possible.
  *
- * @see https://github.com/sindresorhus/open/issues/205
+ * @returns Whether a browser was launched.
  */
-export async function openBrowserAsync(
-  target: string,
-  options?: any
-): Promise<import('child_process').ChildProcess | false> {
-  if (process.platform !== 'win32') {
-    return await betterOpenBrowserAsync(target, options);
+export async function openBrowserAsync(target: string): Promise<boolean> {
+  const browserEnv = process.env.BROWSER?.trim();
+  if (browserEnv?.toLowerCase() === 'none') {
+    return false;
   }
 
-  const oldSystemRoot = process.env.SYSTEMROOT;
-  try {
-    process.env.SYSTEMROOT = process.env.SYSTEMROOT ?? process.env.SystemRoot;
-    return await betterOpenBrowserAsync(target, options);
-  } finally {
-    process.env.SYSTEMROOT = oldSystemRoot;
+  // On macOS, `BROWSER=open` historically meant "use the default handler" rather than
+  // "launch an app called open" — treat it as if BROWSER were unset.
+  const browserApp =
+    browserEnv && !(process.platform === 'darwin' && browserEnv.toLowerCase() === 'open')
+      ? browserEnv
+      : undefined;
+  const browserArgs = process.env.BROWSER_ARGS ? process.env.BROWSER_ARGS.split(' ') : [];
+
+  if (process.platform === 'darwin') {
+    const isDefaultOrChrome = !browserApp || browserApp.toLowerCase() === 'google chrome';
+    if (isDefaultOrChrome && (await tryOpenInChromiumTabAsync(target))) {
+      return true;
+    }
+    const openArgs: string[] = [];
+    if (browserApp) openArgs.push('-a', browserApp);
+    // Per `open(1)`, everything following `--args` is forwarded to the launched app,
+    // so the target URL must come after the args block to reach the app alongside them.
+    if (browserArgs.length > 0) openArgs.push('--args', ...browserArgs);
+    openArgs.push(target);
+    await spawnAsync('open', openArgs, { stdio: 'ignore' });
+    return true;
   }
+
+  if (process.platform === 'win32' || (!browserApp && isWsl())) {
+    return spawnWindowsBrowserAsync(target, browserArgs, browserApp);
+  }
+
+  const command = browserApp ?? 'xdg-open';
+  await spawnAsync(command, [...browserArgs, target], { stdio: 'ignore' });
+  return true;
+}
+
+function quotePowerShellString(value: string): string {
+  // PowerShell treats typographic apostrophes as quotes too.
+  return `'${value.replace(/['‘’‚‛]/g, (quote) => quote + quote)}'`;
+}
+
+function quoteWindowsArgument(value: string): string {
+  let quoted = '"';
+  let backslashes = 0;
+  for (let i = 0; i < value.length; i++) {
+    const character = value[i]!;
+    if (character === '\\') {
+      backslashes++;
+    } else {
+      quoted += '\\'.repeat(character === '"' ? backslashes * 2 + 1 : backslashes) + character;
+      backslashes = 0;
+    }
+  }
+  return quoted + '\\'.repeat(backslashes * 2) + '"';
+}
+
+async function spawnWindowsBrowserAsync(
+  target: string,
+  browserArgs: string[],
+  browserApp?: string
+): Promise<boolean> {
+  const systemRoot = process.env.SYSTEMROOT ?? process.env.SystemRoot ?? 'C:\\Windows';
+  const windowsRoot = process.platform === 'win32' ? systemRoot : '/mnt/c/Windows';
+  const command = path.join(windowsRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const args = browserApp ? [...browserArgs, target] : browserArgs;
+  let script = `$ErrorActionPreference = 'Stop'; Start-Process -FilePath ${quotePowerShellString(browserApp ?? target)}`;
+  if (args.length > 0) {
+    // Start-Process joins ArgumentList into a command line.
+    const argumentList = args.map(quoteWindowsArgument).join(' ');
+    script += ` -ArgumentList ${quotePowerShellString(argumentList)}`;
+  }
+  const encodedCommand = Buffer.from(script, 'utf16le').toString('base64');
+  try {
+    await spawnAsync(
+      command,
+      ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedCommand],
+      {
+        stdio: 'ignore',
+      }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isWsl(): boolean {
+  if (process.platform !== 'linux') return false;
+  if (process.env.WSL_DISTRO_NAME) return true;
+  const release = os.release().toLowerCase();
+  return release.includes('microsoft') || release.includes('wsl');
 }

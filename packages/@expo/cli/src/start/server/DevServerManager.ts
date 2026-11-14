@@ -1,28 +1,25 @@
-import { ExpoConfig, getConfig } from '@expo/config';
+import { updateEventLoggerMetadata } from '2g';
+import type { ExpoConfig } from '@expo/config';
+import { getConfig } from '@expo/config';
 import assert from 'assert';
 import chalk from 'chalk';
 
-import { BundlerDevServer, BundlerStartOptions } from './BundlerDevServer';
-import DevToolsPluginManager from './DevToolsPluginManager';
-import { getPlatformBundlers } from './platformBundlers';
 import { Log } from '../../log';
 import { FileNotifier } from '../../utils/FileNotifier';
 import { env } from '../../utils/env';
-import { logEventAsync } from '../../utils/telemetry';
-import { ProjectPrerequisite } from '../doctor/Prerequisite';
+import type { ProjectPrerequisite } from '../doctor/Prerequisite';
 import { TypeScriptProjectPrerequisite } from '../doctor/typescript/TypeScriptProjectPrerequisite';
 import { printItem } from '../interface/commandsTable';
-import * as AndroidDebugBridge from '../platforms/android/adb';
 import { resolveSchemeAsync } from '../resolveOptions';
-
-const debug = require('debug')('expo:start:server:devServerManager') as typeof console.log;
+import type { BundlerDevServer, BundlerStartOptions } from './BundlerDevServer';
+import DevToolsPluginManager from './devtools/DevToolsPluginManager';
+import { debugEvent } from './events';
+import { getPlatformBundlers } from './platformBundlers';
 
 export type MultiBundlerStartOptions = {
   type: keyof typeof BUNDLERS;
   options?: BundlerStartOptions;
 }[];
-
-const devServers: BundlerDevServer[] = [];
 
 const BUNDLERS = {
   webpack: () =>
@@ -35,6 +32,30 @@ const BUNDLERS = {
 
 /** Manages interacting with multiple dev servers. */
 export class DevServerManager {
+  private devServers: BundlerDevServer[] = [];
+  private updateServerMetadata(ready: boolean) {
+    if (this.options.isExporting || this.options.headless) return;
+    const server = ready ? this.getDefaultDevServer() : null;
+    updateEventLoggerMetadata({
+      ready,
+      devServerUrl: server?.getDevServerUrl() ?? null,
+      port: server?.getInstance()?.location.port ?? null,
+      runtimeUrl: server?.isTargetingNative() ? server.getNativeRuntimeUrl() : null,
+    });
+  }
+
+  static async startMetroAsync(projectRoot: string, startOptions: BundlerStartOptions) {
+    const devServerManager = new DevServerManager(projectRoot, startOptions);
+
+    await devServerManager.startAsync([
+      {
+        type: 'metro',
+        options: startOptions,
+      },
+    ]);
+    return devServerManager;
+  }
+
   private projectPrerequisites: ProjectPrerequisite<any, void>[] = [];
   public readonly devtoolsPluginManager: DevToolsPluginManager;
 
@@ -43,9 +64,13 @@ export class DevServerManager {
   constructor(
     public projectRoot: string,
     /** Keep track of the original CLI options for bundlers that are started interactively. */
-    public options: BundlerStartOptions
+    public options: BundlerStartOptions,
+    /** Port for the web dev server, resolved up front even when web starts interactively. */
+    private webPort?: number
   ) {
-    this.notifier = this.watchBabelConfig();
+    if (!options.isExporting) {
+      this.notifier = this.watchBabelConfig();
+    }
     this.devtoolsPluginManager = new DevToolsPluginManager(projectRoot);
   }
 
@@ -89,33 +114,33 @@ export class DevServerManager {
    * @param params extra event info to send over the socket.
    */
   broadcastMessage(method: 'reload' | 'devMenu' | 'sendDevCommand', params?: Record<string, any>) {
-    devServers.forEach((server) => {
+    this.devServers.forEach((server) => {
       server.broadcastMessage(method, params);
     });
   }
 
   /** Get the port for the dev server (either Webpack or Metro) that is hosting code for React Native runtimes. */
   getNativeDevServerPort() {
-    const server = devServers.find((server) => server.isTargetingNative());
+    const server = this.devServers.find((server) => server.isTargetingNative());
     return server?.getInstance()?.location.port ?? null;
   }
 
   /** Get the first server that targets web. */
   getWebDevServer() {
-    const server = devServers.find((server) => server.isTargetingWeb());
+    const server = this.devServers.find((server) => server.isTargetingWeb());
     return server ?? null;
   }
 
   getDefaultDevServer(): BundlerDevServer {
     // Return the first native dev server otherwise return the first dev server.
-    const server = devServers.find((server) => server.isTargetingNative());
-    const defaultServer = server ?? devServers[0];
+    const server = this.devServers.find((server) => server.isTargetingNative());
+    const defaultServer = server ?? this.devServers[0];
     assert(defaultServer, 'No dev servers are running');
     return defaultServer;
   }
 
   async ensureWebDevServerRunningAsync() {
-    const [server] = devServers.filter((server) => server.isTargetingWeb());
+    const [server] = this.devServers.filter((server) => server.isTargetingWeb());
     if (server) {
       return;
     }
@@ -124,11 +149,10 @@ export class DevServerManager {
       skipSDKVersionRequirement: true,
     });
     const bundler = getPlatformBundlers(this.projectRoot, exp).web;
-    debug(`Starting ${bundler} dev server for web`);
     return this.startAsync([
       {
         type: bundler,
-        options: this.options,
+        options: { ...this.options, port: this.webPort ?? this.options.port },
       },
     ]);
   }
@@ -136,7 +160,8 @@ export class DevServerManager {
   /** Switch between Expo Go and Expo Dev Clients. */
   async toggleRuntimeMode(isUsingDevClient: boolean = !this.options.devClient): Promise<boolean> {
     const nextMode = isUsingDevClient ? '--dev-client' : '--go';
-    Log.log(printItem(chalk`Switching to {bold ${nextMode}}`));
+    Log.log(printItem(`Switching to ${chalk`{bold ${nextMode}}`}`, { dim: true }));
+    Log.log();
 
     const nextScheme = await resolveSchemeAsync(this.projectRoot, {
       devClient: isUsingDevClient,
@@ -145,25 +170,23 @@ export class DevServerManager {
 
     this.options.location.scheme = nextScheme;
     this.options.devClient = isUsingDevClient;
-    for (const devServer of devServers) {
+    for (const devServer of this.devServers) {
       devServer.isDevClient = isUsingDevClient;
+      // TODO(@kitten): Clean up mode switching better
       const urlCreator = devServer.getUrlCreator();
       urlCreator.defaults ??= {};
       urlCreator.defaults.scheme = nextScheme;
     }
 
-    debug(`New runtime options (runtime: ${nextMode}):`, this.options);
+    this.updateServerMetadata(true);
+    debugEvent('runtime_mode_switched', { mode: nextMode });
     return true;
   }
 
   /** Start all dev servers. */
   async startAsync(startOptions: MultiBundlerStartOptions): Promise<ExpoConfig> {
+    if (!this.devServers.length) this.updateServerMetadata(false);
     const { exp } = getConfig(this.projectRoot, { skipSDKVersionRequirement: true });
-
-    await logEventAsync('Start Project', {
-      sdkVersion: exp.sdkVersion ?? null,
-    });
-
     const platformBundlers = getPlatformBundlers(this.projectRoot, exp);
 
     // Start all dev servers...
@@ -174,7 +197,8 @@ export class DevServerManager {
         isDevClient: !!options?.devClient,
       });
       await server.startAsync(options ?? this.options);
-      devServers.push(server);
+      this.devServers.push(server);
+      this.updateServerMetadata(true);
     }
 
     return exp;
@@ -191,7 +215,7 @@ export class DevServerManager {
 
     // Optionally, wait for the user to add TypeScript during the
     // development cycle.
-    const server = devServers.find((server) => server.name === 'metro');
+    const server = this.devServers.find((server) => server.name === 'metro');
     if (!server) {
       return;
     }
@@ -209,17 +233,21 @@ export class DevServerManager {
   }
 
   async watchEnvironmentVariables() {
-    await devServers.find((server) => server.name === 'metro')?.watchEnvironmentVariables();
+    await this.devServers.find((server) => server.name === 'metro')?.watchEnvironmentVariables();
   }
 
-  /** Stop all servers including ADB. */
+  /** Stop all development servers. */
   async stopAsync(): Promise<void> {
+    this.updateServerMetadata(false);
     await Promise.allSettled([
       this.notifier?.stopObserving(),
       // Stop all dev servers
-      ...devServers.map((server) => server.stopAsync()),
-      // Stop ADB
-      AndroidDebugBridge.getServer().stopAsync(),
+      ...this.devServers.map((server) =>
+        server.stopAsync().catch((error) => {
+          Log.error(`Failed to stop dev server (bundler: ${server.name})`);
+          Log.exception(error);
+        })
+      ),
     ]);
   }
 }

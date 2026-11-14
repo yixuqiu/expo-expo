@@ -1,6 +1,5 @@
 package expo.modules.kotlin
 
-import com.facebook.react.bridge.ReadableArray
 import expo.modules.kotlin.events.BasicEventListener
 import expo.modules.kotlin.events.EventListenerWithPayload
 import expo.modules.kotlin.events.EventListenerWithSenderAndPayload
@@ -8,89 +7,103 @@ import expo.modules.kotlin.events.EventName
 import expo.modules.kotlin.exception.FunctionCallException
 import expo.modules.kotlin.exception.MethodNotFoundException
 import expo.modules.kotlin.exception.exceptionDecorator
+import expo.modules.kotlin.functions.AsyncFunctionComponent
 import expo.modules.kotlin.jni.JavaScriptModuleObject
+import expo.modules.kotlin.jni.decorators.JSDecoratorsBridgingObject
 import expo.modules.kotlin.modules.Module
+import expo.modules.kotlin.runtime.Runtime
 import expo.modules.kotlin.tracing.trace
 import kotlinx.coroutines.launch
-import kotlin.reflect.KClass
 
-class ModuleHolder<T : Module>(val module: T) {
+class ModuleHolder<T : Module>(
+  val module: T,
+  private val _name: String?
+) {
   val definition = module.definition()
 
-  val name get() = definition.name
+  val name get() = _name ?: definition.name
+
+  private var wasInitialized = false
+
+  val safeJSObject: JavaScriptModuleObject?
+    get() = if (wasInitialized) {
+      jsObject
+    } else {
+      null
+    }
 
   /**
    * Cached instance of HybridObject used by CPP to interact with underlying [expo.modules.kotlin.modules.Module] object.
    */
   val jsObject by lazy {
+    wasInitialized = true
+
     trace("$name.jsObject") {
       val appContext = module.appContext
-      val jniDeallocator = appContext.jniDeallocator
+      val runtimeContext = module.runtime
+      val deallocator = runtimeContext.deallocator
 
-      JavaScriptModuleObject(jniDeallocator, name).apply {
-        initUsingObjectDefinition(appContext, definition.objectDefinition)
-
-        // Give the module object a name. It's used for compatibility reasons, see `EventEmitter.ts`.
-        registerProperty("__expo_module_name__", false, emptyArray(), { name }, false, emptyArray(), null)
-
-        val viewFunctions = definition.viewManagerDefinition?.asyncFunctions
-        if (viewFunctions?.isNotEmpty() == true) {
-          trace("Attaching view prototype") {
-            val viewPrototype = JavaScriptModuleObject(jniDeallocator, "${name}_${definition.viewManagerDefinition?.viewType?.name}")
-            appContext.jniDeallocator.addReference(viewPrototype)
-
-            viewFunctions.forEach { function ->
-              function.attachToJSObject(appContext, viewPrototype)
-            }
-
-            registerViewPrototype(viewPrototype)
-          }
-        }
-
-        trace("Attaching classes") {
-          definition.classData.forEach { clazz ->
-            val clazzModuleObject = JavaScriptModuleObject(jniDeallocator, clazz.name)
-              .initUsingObjectDefinition(module.appContext, clazz.objectDefinition)
-            appContext.jniDeallocator.addReference(clazzModuleObject)
-            val constructor = clazz.constructor
-
-            val ownerClass = (constructor.ownerType?.classifier as? KClass<*>)?.java
-
-            registerClass(
-              clazz.name,
-              clazzModuleObject,
-              constructor.takesOwner,
-              ownerClass,
-              constructor.getCppRequiredTypes().toTypedArray(),
-              constructor.getJNIFunctionBody(clazz.name, appContext)
-            )
-          }
-        }
+      val moduleDecorator = JSDecoratorsBridgingObject(deallocator).apply {
+        export(
+          appContext,
+          runtimeContext
+        )
       }
+
+      JavaScriptModuleObject(deallocator, name).apply {
+        decorate(moduleDecorator)
+      }
+    }
+  }
+
+  private fun JSDecoratorsBridgingObject.export(
+    appContext: AppContext,
+    runtime: Runtime
+  ) {
+    // Give the module object a name. It's used for compatibility reasons, see `EventEmitter.ts`.
+    registerModuleName(name)
+
+    with(definition) {
+      objectDefinition.apply {
+        exportConstants()
+        exportFunctions(name, appContext)
+        exportProperties(appContext)
+      }
+
+      viewManagerDefinitions
+        .exportViewPrototypes(name, appContext, runtime)
+
+      classData
+        .exportClasses(appContext, runtime)
     }
   }
 
   /**
    * Invokes a function with promise. Is used in the bridge implementation of the Sweet API.
    */
-  fun call(methodName: String, args: ReadableArray, promise: Promise) = exceptionDecorator({
-    FunctionCallException(methodName, definition.name, it)
+  fun call(methodName: String, args: Array<Any?>, promise: Promise) = exceptionDecorator({
+    FunctionCallException(methodName, name, it)
   }) {
     val method = definition.asyncFunctions[methodName]
       ?: throw MethodNotFoundException()
 
-    method.call(this, args, promise)
+    if (method is AsyncFunctionComponent) {
+      method.callUserImplementation(args, promise, module.appContext)
+      return@exceptionDecorator
+    }
+
+    throw IllegalStateException("Cannot call a $method method in test context")
   }
 
   /**
    * Invokes a function without promise.
    * `callSync` was added only for test purpose and shouldn't be used anywhere else.
    */
-  fun callSync(methodName: String, args: ReadableArray): Any? {
+  fun callSync(methodName: String, args: Array<Any?>): Any? {
     val method = definition.syncFunctions[methodName]
       ?: throw MethodNotFoundException()
 
-    return method.call(args)
+    return method.callUserImplementation(args, module.appContext)
   }
 
   fun post(eventName: EventName) {

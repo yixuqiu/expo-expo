@@ -1,57 +1,37 @@
-import {
+import { Protected } from '../views/Protected';
+import { Screen } from '../views/Screen';
+import Tabs from './TabsClient';
+
+export {
+  createStandardBottomTabNavigator,
+  createJSTabsProps,
+  BottomTabBar,
+  BottomTabView,
+  BottomTabBarHeightCallbackContext,
+  BottomTabBarHeightContext,
+  useBottomTabBarHeight,
+} from './TabsClient';
+export * as SceneStyleInterpolators from '../react-navigation/bottom-tabs/TransitionConfigs/SceneStyleInterpolators';
+export * as TransitionPresets from '../react-navigation/bottom-tabs/TransitionConfigs/TransitionPresets';
+export * as TransitionSpecs from '../react-navigation/bottom-tabs/TransitionConfigs/TransitionSpecs';
+export type {
+  BottomTabBarButtonProps,
+  BottomTabBarProps,
+  BottomTabEmitter,
+  BottomTabHeaderProps,
   BottomTabNavigationEventMap,
   BottomTabNavigationOptions,
-  createBottomTabNavigator,
-} from '@react-navigation/bottom-tabs';
-import { ParamListBase, TabNavigationState } from '@react-navigation/native';
-import React from 'react';
-import { Pressable, Platform } from 'react-native';
+  BottomTabNavigationProp,
+  BottomTabOptionsArgs,
+  BottomTabScreenProps,
+  BottomTabViewRoute,
+  BottomTabViewState,
+} from '../react-navigation/bottom-tabs';
+export type { JSTabsProps, TabsScreenOptions } from './TabsClient';
 
-import { withLayoutContext } from './withLayoutContext';
-import { ExpoRouter } from '../../types/expo-router';
-import { Link } from '../link/Link';
+Tabs.Screen = Screen;
+Tabs.Protected = Protected;
 
-// This is the only way to access the navigator.
-const BottomTabNavigator = createBottomTabNavigator().Navigator;
-
-export const Tabs = withLayoutContext<
-  BottomTabNavigationOptions & { href?: ExpoRouter.Href | null },
-  typeof BottomTabNavigator,
-  TabNavigationState<ParamListBase>,
-  BottomTabNavigationEventMap
->(BottomTabNavigator, (screens) => {
-  // Support the `href` shortcut prop.
-  return screens.map((screen) => {
-    if (typeof screen.options !== 'function' && screen.options?.href !== undefined) {
-      const { href, ...options } = screen.options;
-      if (options.tabBarButton) {
-        throw new Error('Cannot use `href` and `tabBarButton` together.');
-      }
-      return {
-        ...screen,
-        options: {
-          ...options,
-          tabBarButton: (props) => {
-            if (href == null) {
-              return null;
-            }
-            const children =
-              Platform.OS === 'web' ? props.children : <Pressable>{props.children}</Pressable>;
-            return (
-              <Link
-                {...props}
-                style={[{ display: 'flex' }, props.style]}
-                href={href}
-                asChild={Platform.OS !== 'web'}
-                children={children}
-              />
-            );
-          },
-        },
-      };
-    }
-    return screen;
-  });
-});
+export { Tabs };
 
 export default Tabs;

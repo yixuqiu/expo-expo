@@ -34,7 +34,7 @@ export function PlatformAndDeviceForm() {
     setPlatform(platform);
     setDevice(device);
 
-    router.push(
+    void router.push(
       {
         query: {
           ...query,
@@ -51,38 +51,46 @@ export function PlatformAndDeviceForm() {
     <div className="flex flex-wrap gap-4">
       <div className="flex flex-wrap gap-4">
         <SelectCard
-          imgSrc="/static/images/get-started/android-device.png"
-          darkImgSrc="/static/images/get-started/android-device-dark.png"
+          imgSrc="/static/images/get-started/android-device.webp"
+          darkImgSrc="/static/images/get-started/android-device-dark.webp"
           title="Android device"
           alt="Android device"
           isSelected={platform === 'android' && device === 'physical'}
-          onClick={() => onRadioChange('android', 'physical')}
+          onClick={() => {
+            onRadioChange('android', 'physical');
+          }}
         />
         <SelectCard
-          imgSrc="/static/images/get-started/ios-device.png"
-          darkImgSrc="/static/images/get-started/ios-device-dark.png"
+          imgSrc="/static/images/get-started/ios-device.webp"
+          darkImgSrc="/static/images/get-started/ios-device-dark.webp"
           title="iOS device"
           alt="iOS device"
           isSelected={platform === 'ios' && device === 'physical'}
-          onClick={() => onRadioChange('ios', 'physical')}
+          onClick={() => {
+            onRadioChange('ios', 'physical');
+          }}
         />
       </div>
       <div className="flex flex-wrap gap-4">
         <SelectCard
-          imgSrc="/static/images/get-started/android-emulator.png"
-          darkImgSrc="/static/images/get-started/android-emulator-dark.png"
+          imgSrc="/static/images/get-started/android-emulator.webp"
+          darkImgSrc="/static/images/get-started/android-emulator-dark.webp"
           title="Android Emulator"
           alt="Android Emulator"
           isSelected={platform === 'android' && device === 'simulated'}
-          onClick={() => onRadioChange('android', 'simulated')}
+          onClick={() => {
+            onRadioChange('android', 'simulated');
+          }}
         />
         <SelectCard
-          imgSrc="/static/images/get-started/ios-simulator.png"
-          darkImgSrc="/static/images/get-started/ios-simulator-dark.png"
+          imgSrc="/static/images/get-started/ios-simulator.webp"
+          darkImgSrc="/static/images/get-started/ios-simulator-dark.webp"
           title="iOS Simulator"
           alt="iOS Simulator"
           isSelected={platform === 'ios' && device === 'simulated'}
-          onClick={() => onRadioChange('ios', 'simulated')}
+          onClick={() => {
+            onRadioChange('ios', 'simulated');
+          }}
         />
       </div>
     </div>

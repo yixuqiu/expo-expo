@@ -1,8 +1,47 @@
 import { vol } from 'memfs';
 
-import { getConfig, getProjectConfigDescriptionWithPaths } from '../Config';
+import { getConfig, getProjectConfigDescriptionWithPaths, modifyConfigAsync } from '../Config';
 
-jest.mock('fs');
+jest.mock('fs', () => require('memfs').fs);
+jest.mock('node:fs', () => require('memfs').fs);
+jest.mock('@expo/config-plugins', () => ({
+  withPlugins: jest.fn((config, plugins) => config),
+}));
+
+// NOTE: For testing, we need to bypass the jest-require here and only eval
+jest.mock('@expo/require-utils', () => {
+  const requireUtils = jest.requireActual('@expo/require-utils');
+  return {
+    ...requireUtils,
+    loadModuleSync(filename: string) {
+      const contents = require('fs').readFileSync(filename, 'utf8');
+      return requireUtils.evalModule(contents, filename);
+    },
+    resolveFrom(
+      fromDirectory: string,
+      moduleId: string,
+      params?: { extensions?: readonly string[] }
+    ) {
+      const fs = require('memfs').fs;
+      const path = require('path');
+      const candidates: string[] = [];
+      if (moduleId.startsWith('.') || moduleId.startsWith('/')) {
+        candidates.push(path.resolve(fromDirectory, moduleId));
+      } else {
+        candidates.push(path.join(fromDirectory, 'node_modules', moduleId));
+        candidates.push(path.resolve(fromDirectory, moduleId));
+      }
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) return candidate;
+        for (const ext of params?.extensions ?? []) {
+          const e = ext[0] !== '.' ? `.${ext}` : ext;
+          if (fs.existsSync(candidate + e)) return candidate + e;
+        }
+      }
+      return null;
+    },
+  };
+});
 
 describe(getProjectConfigDescriptionWithPaths, () => {
   it(`describes a project using both a static and dynamic config`, () => {
@@ -201,7 +240,7 @@ describe('readConfigJson', () => {
 
     it(`will not throw if the expo package is missing when skipSDKVersionRequirement is enabled`, () => {
       expect(() => getConfig('/no-package', { skipSDKVersionRequirement: false })).toThrow(
-        /Cannot determine which native SDK version your project uses/
+        /Cannot determine the project's Expo SDK version/
       );
     });
   });
@@ -304,5 +343,540 @@ describe('hasUnusedStaticConfig', () => {
 
     const { hasUnusedStaticConfig } = getConfig('/dynamic');
     expect(hasUnusedStaticConfig).toBe(false);
+  });
+});
+
+describe(modifyConfigAsync, () => {
+  function createProject(
+    projectRoot: Parameters<typeof vol.fromJSON>[1],
+    files: Parameters<typeof vol.fromJSON>[0] = {}
+  ) {
+    const packageFile = {
+      name: 'testing123',
+      version: '0.1.0',
+      description: 'fake description',
+      main: 'index.js',
+    };
+
+    const expoPackageFile = {
+      name: 'expo',
+      version: '650.x.x',
+    };
+
+    vol.fromJSON(
+      {
+        'package.json': JSON.stringify(packageFile),
+        'node_modules/expo/package.json': JSON.stringify(expoPackageFile),
+        ...files,
+      },
+      projectRoot
+    );
+  }
+
+  const appFile = {
+    name: 'testing 123',
+    version: '0.1.0',
+    slug: 'testing-123',
+    sdkVersion: '100.0.0',
+  };
+
+  afterEach(() => vol.reset());
+
+  it('succeeds without existing config', async () => {
+    createProject('/no-config');
+
+    await expect(modifyConfigAsync('/no-config', { name: 'new name' })).resolves.toMatchObject({
+      type: 'success',
+      config: { name: 'new name' },
+    });
+  });
+
+  it('succeeds when modifying static config only', async () => {
+    createProject('/static-only', {
+      'app.json': JSON.stringify(appFile, null, 2),
+    });
+
+    await expect(modifyConfigAsync('/static-only', { name: 'new name' })).resolves.toMatchObject({
+      type: 'success',
+      config: { ...appFile, name: 'new name' },
+    });
+  });
+
+  it('does not duplicate existing array entries when modifying static config', async () => {
+    const updates = {
+      assetPatternsToBeBundled: ['app/**/*.png', 'assets/**/*'],
+      requestHeaders: { 'expo-channel-name': 'main' },
+    };
+    createProject('/static-arrays', {
+      'app.json': JSON.stringify({ expo: { ...appFile, updates } }),
+    });
+
+    await expect(
+      modifyConfigAsync('/static-arrays', {
+        updates: { ...updates, url: 'https://u.expo.dev/test-project' },
+      })
+    ).resolves.toMatchObject({
+      type: 'success',
+      config: {
+        updates: {
+          assetPatternsToBeBundled: ['app/**/*.png', 'assets/**/*'],
+          url: 'https://u.expo.dev/test-project',
+        },
+      },
+    });
+
+    const written = JSON.parse(
+      vol.readFileSync('/static-arrays/app.json', { encoding: 'utf-8' }) as string
+    );
+    expect(written.expo.updates.assetPatternsToBeBundled).toEqual(['app/**/*.png', 'assets/**/*']);
+  });
+
+  it('appends only new updates array entries when modifying static config', async () => {
+    createProject('/static-updates-append', {
+      'app.json': JSON.stringify({
+        ...appFile,
+        updates: { assetPatternsToBeBundled: ['app/**/*.png'] },
+      }),
+    });
+
+    const { config } = await modifyConfigAsync('/static-updates-append', {
+      updates: { assetPatternsToBeBundled: ['app/**/*.png', 'assets/**/*'] },
+    });
+
+    expect(config?.updates?.assetPatternsToBeBundled).toEqual(['app/**/*.png', 'assets/**/*']);
+  });
+
+  it('removes duplicate updates array entries within the modification', async () => {
+    createProject('/static-updates-modification-duplicates', {
+      'app.json': JSON.stringify(appFile),
+    });
+
+    const { config } = await modifyConfigAsync('/static-updates-modification-duplicates', {
+      updates: { assetPatternsToBeBundled: ['assets/**/*', 'assets/**/*'] },
+    });
+
+    expect(config?.updates?.assetPatternsToBeBundled).toEqual(['assets/**/*']);
+  });
+
+  it('removes duplicate entries already in a modified updates array', async () => {
+    createProject('/static-updates-existing-duplicates', {
+      'app.json': JSON.stringify({
+        ...appFile,
+        updates: { assetPatternsToBeBundled: ['assets/**/*', 'assets/**/*'] },
+      }),
+    });
+
+    const { config } = await modifyConfigAsync('/static-updates-existing-duplicates', {
+      updates: { assetPatternsToBeBundled: ['app/**/*.png'] },
+    });
+
+    expect(config?.updates?.assetPatternsToBeBundled).toEqual(['assets/**/*', 'app/**/*.png']);
+  });
+
+  it('appends arrays outside updates without removing duplicates', async () => {
+    createProject('/static-arrays-outside-updates', {
+      'app.json': JSON.stringify({ ...appFile, android: { permissions: ['CAMERA'] } }),
+    });
+
+    const { config } = await modifyConfigAsync('/static-arrays-outside-updates', {
+      android: { permissions: ['CAMERA', 'RECORD_AUDIO'] },
+    });
+
+    expect(config?.android?.permissions).toEqual(['CAMERA', 'CAMERA', 'RECORD_AUDIO']);
+  });
+
+  it('succeeds when modifying static with function-like dynamic config, when the updates modification has duplicate array entries', async () => {
+    createProject('/static-dynamic-function-updates-duplicates', {
+      'app.json': JSON.stringify(appFile),
+      'app.config.js': `module.exports = ({ config }) => ({ ...config, version: '9.9.9' });`,
+    });
+
+    await expect(
+      modifyConfigAsync('/static-dynamic-function-updates-duplicates', {
+        updates: { assetPatternsToBeBundled: ['assets/**/*', 'assets/**/*'] },
+      })
+    ).resolves.toMatchObject({
+      type: 'success',
+      config: { updates: { assetPatternsToBeBundled: ['assets/**/*'] } },
+    });
+  });
+
+  it('succeeds when modifying static with function-like dynamic config, when appending to an existing updates array', async () => {
+    createProject('/static-dynamic-function-updates-append', {
+      'app.json': JSON.stringify({
+        ...appFile,
+        updates: { assetPatternsToBeBundled: ['app/**/*.png'] },
+      }),
+      'app.config.js': `module.exports = ({ config }) => ({ ...config, version: '9.9.9' });`,
+    });
+
+    await expect(
+      modifyConfigAsync('/static-dynamic-function-updates-append', {
+        updates: { assetPatternsToBeBundled: ['assets/**/*'] },
+      })
+    ).resolves.toMatchObject({
+      type: 'success',
+      config: { updates: { assetPatternsToBeBundled: ['app/**/*.png', 'assets/**/*'] } },
+    });
+  });
+
+  it('warns and rolls back when the dynamic config drops a modified updates array entry', async () => {
+    createProject('/static-dynamic-function-updates-dropped', {
+      'app.json': JSON.stringify(appFile),
+      'app.config.js': `module.exports = ({ config }) => ({
+        ...config,
+        updates: { ...config.updates, assetPatternsToBeBundled: [] },
+      });`,
+    });
+
+    await expect(
+      modifyConfigAsync('/static-dynamic-function-updates-dropped', {
+        updates: { assetPatternsToBeBundled: ['assets/**/*'] },
+      })
+    ).resolves.toMatchObject({ type: 'warn', config: null });
+
+    expect(
+      JSON.parse(
+        vol.readFileSync('/static-dynamic-function-updates-dropped/app.json', {
+          encoding: 'utf-8',
+        }) as string
+      )
+    ).toEqual(appFile);
+  });
+
+  it('matches arrays outside updates by index when modifying static with function-like dynamic config', async () => {
+    createProject('/static-dynamic-function-arrays-outside-updates', {
+      'app.json': JSON.stringify({ ...appFile, android: { permissions: ['CAMERA'] } }),
+      'app.config.js': `module.exports = ({ config }) => ({ ...config, version: '9.9.9' });`,
+    });
+
+    await expect(
+      modifyConfigAsync('/static-dynamic-function-arrays-outside-updates', {
+        android: { permissions: ['RECORD_AUDIO'] },
+      })
+    ).resolves.toMatchObject({ type: 'warn', config: null });
+  });
+
+  it('warns when modifying dynamic config only', async () => {
+    createProject('/dynamic-only', {
+      'app.config.js': `module.exports = () => JSON.parse(\`${JSON.stringify({ ...appFile, version: '9.9.9' })}\`);`,
+    });
+
+    await expect(modifyConfigAsync('/dynamic-only', { name: 'new name' })).resolves.toMatchObject({
+      type: 'warn',
+      config: null,
+      message: expect.stringMatching(/dynamic config/),
+    });
+  });
+
+  it('warns when modifying static with object-like dynamic config', async () => {
+    createProject('/static-dynamic-object', {
+      'app.json': JSON.stringify(appFile),
+      'app.config.js': `module.exports = JSON.parse(\`${JSON.stringify({ ...appFile, version: '9.9.9' })}\`);`,
+    });
+
+    await expect(
+      modifyConfigAsync('/static-dynamic-object', { name: 'new name' })
+    ).resolves.toMatchObject({
+      type: 'warn',
+      config: null,
+      message: expect.stringMatching(/dynamic config/),
+    });
+
+    // Ensure the config was rolled back
+    expect(appFile).toMatchObject(
+      JSON.parse(
+        vol.readFileSync('/static-dynamic-object/app.json', { encoding: 'utf-8' }) as string
+      )
+    );
+  });
+
+  it('warns when modifying static with function-like dynamic config, without extending config', async () => {
+    createProject('/static-dynamic-function', {
+      'app.json': JSON.stringify(appFile),
+      'app.config.js': `module.exports = () => JSON.parse(\`${JSON.stringify({ ...appFile, version: '9.9.9' })}\`);`,
+    });
+
+    await expect(
+      modifyConfigAsync('/static-dynamic-function', { name: 'new name' })
+    ).resolves.toMatchObject({
+      type: 'warn',
+      config: null,
+      message: expect.stringMatching(/dynamic config/),
+    });
+
+    // Ensure the config was rolled back
+    expect(appFile).toMatchObject(
+      JSON.parse(
+        vol.readFileSync('/static-dynamic-function/app.json', { encoding: 'utf-8' }) as string
+      )
+    );
+  });
+
+  it('succeeds when modifying static with function-like dynamic config, with extending config', async () => {
+    createProject('/static-dynamic-function', {
+      'app.json': JSON.stringify(appFile),
+      'app.config.js': `module.exports = ({ config }) => ({ ...config, version: '9.9.9' });`,
+    });
+
+    await expect(
+      modifyConfigAsync('/static-dynamic-function', { name: 'new name' })
+    ).resolves.toMatchObject({
+      type: 'success',
+      config: {
+        ...appFile,
+        version: '9.9.9', // Modified by dynamic config
+        name: 'new name',
+      },
+    });
+  });
+
+  it('succeeds when modifying static with function-like dynamic config, when mutating updates.url', async () => {
+    createProject('/static-dynamic-function-updates.url', {
+      'app.json': JSON.stringify({
+        ...appFile,
+        updates: { requestHeaders: { 'expo-channel-name': 'existing-property' } },
+      }),
+      'app.config.js': `module.exports = ({ config }) => ({ ...config, version: '9.9.9' });`,
+    });
+
+    await expect(
+      modifyConfigAsync('/static-dynamic-function-updates.url', {
+        updates: { url: 'https://u.expo.dev/test-project' },
+      })
+    ).resolves.toMatchObject({
+      type: 'success',
+      config: {
+        ...appFile,
+        version: '9.9.9', // Modified by dynamic config
+        // The combined nested object
+        updates: {
+          requestHeaders: { 'expo-channel-name': 'existing-property' },
+          url: 'https://u.expo.dev/test-project',
+        },
+      },
+    });
+  });
+
+  it('succeeds when modifying static with function-like dynamic config, when mutating and deleting updates.url properties', async () => {
+    createProject('/static-dynamic-function-updates.url', {
+      'app.json': JSON.stringify({
+        ...appFile,
+        updates: { requestHeaders: { 'expo-channel-name': 'existing-property' } },
+      }),
+      'app.config.js': `module.exports = ({ config }) => ({ ...config, version: '9.9.9' });`,
+    });
+
+    await expect(
+      modifyConfigAsync('/static-dynamic-function-updates.url', {
+        updates: { url: 'https://u.expo.dev/test-project', requestHeaders: undefined },
+      })
+    ).resolves.toMatchObject({
+      type: 'success',
+      config: {
+        ...appFile,
+        version: '9.9.9', // Modified by dynamic config
+        // The combined nested object
+        updates: {
+          url: 'https://u.expo.dev/test-project',
+        },
+      },
+    });
+  });
+
+  it('succeeds when modifying static with function-like dynamic config, when mutating and extending extra.eas', async () => {
+    createProject('/static-dynamic-function-extra.eas', {
+      'app.json': JSON.stringify(appFile),
+      'app.config.js': `module.exports = ({ config }) => ({
+        ...config, 
+        extra: { 
+          ...config.extra, 
+          eas: { 
+            ...config.extra?.eas, 
+            someProperty: 'dynamic-property'
+          }
+        }
+      });`,
+    });
+
+    await expect(
+      modifyConfigAsync('/static-dynamic-function-extra.eas', {
+        extra: { eas: { projectId: 'test-project', hasOwnProperty: 'keep' } },
+      })
+    ).resolves.toMatchObject({
+      type: 'success',
+      config: {
+        ...appFile,
+        // The combined nested object
+        extra: {
+          eas: {
+            someProperty: 'dynamic-property',
+            projectId: 'test-project',
+            hasOwnProperty: 'keep',
+          },
+        },
+      },
+    });
+  });
+
+  it('warns when modifying static with function-like dynamic config, when mutating but not extending extra.eas', async () => {
+    createProject('/static-dynamic-function-extra.eas-override', {
+      'app.json': JSON.stringify(appFile),
+      'app.config.js': `module.exports = ({ config }) => ({
+        ...config, 
+        extra: { 
+          ...config.extra, 
+          eas: { 
+            someProperty: 'dynamic-property'
+          }
+        }
+      });`,
+    });
+
+    await expect(
+      modifyConfigAsync('/static-dynamic-function-extra.eas-override', {
+        extra: { eas: { projectId: 'test-project' } },
+      })
+    ).resolves.toMatchObject({
+      type: 'warn',
+      config: null,
+      message: expect.stringMatching(/dynamic config/),
+    });
+
+    // Ensure the config was rolled back
+    expect(appFile).toMatchObject(
+      JSON.parse(
+        vol.readFileSync('/static-dynamic-function-extra.eas-override/app.json', {
+          encoding: 'utf-8',
+        }) as string
+      )
+    );
+  });
+
+  describe('plugins modifications', () => {
+    it('warns when modifying static config to add a plugin when dynamic config is present', async () => {
+      createProject('/static-config-modify-plugin.dynamic-config', {
+        'app.json': JSON.stringify(appFile),
+        'app.config.js': `module.exports = ({ config }) => ({
+          ...config,
+        });`,
+      });
+
+      await expect(
+        modifyConfigAsync('/static-config-modify-plugin.dynamic-config', {
+          plugins: ['expo-router'],
+        })
+      ).resolves.toMatchObject({
+        type: 'warn',
+        config: null,
+        message: expect.stringMatching(/dynamic config/),
+      });
+
+      // Ensure the config was not changed
+      expect(appFile).toMatchObject(
+        JSON.parse(
+          vol.readFileSync('/static-config-modify-plugin.dynamic-config/app.json', {
+            encoding: 'utf-8',
+          }) as string
+        )
+      );
+    });
+
+    it.each(['expo-router', 'constructor'])('adds plugin %s without props', async (plugin) => {
+      createProject('/plugins-modification-add-simple', {
+        'app.json': JSON.stringify(appFile),
+      });
+
+      await expect(
+        modifyConfigAsync('/plugins-modification-add-simple', {
+          plugins: [plugin],
+        })
+      ).resolves.toMatchObject({
+        type: 'success',
+        config: {
+          ...appFile,
+          plugins: [plugin],
+        },
+      });
+    });
+
+    it('does not add existing plugin entry without props', async () => {
+      createProject('/plugins-modification-existing-simple', {
+        'app.json': JSON.stringify({ ...appFile, plugins: ['expo-font', 'expo-router'] }),
+      });
+
+      await expect(
+        modifyConfigAsync('/plugins-modification-existing-simple', {
+          plugins: ['expo-font'],
+        })
+      ).resolves.toMatchObject({
+        type: 'success',
+        config: {
+          ...appFile,
+          plugins: ['expo-font', 'expo-router'],
+        },
+      });
+    });
+
+    it('adds plugin properties to plugin entry without props', async () => {
+      createProject('/plugins-modification-add-complex', {
+        'app.json': JSON.stringify({ ...appFile, plugins: ['expo-font', 'expo-router'] }),
+      });
+
+      await expect(
+        modifyConfigAsync('/plugins-modification-add-complex', {
+          plugins: [['expo-font', { test: 'prop' }]],
+        })
+      ).resolves.toMatchObject({
+        type: 'success',
+        config: {
+          ...appFile,
+          plugins: [['expo-font', { test: 'prop' }], 'expo-router'],
+        },
+      });
+    });
+
+    it('merges plugin properties to plugin entry with props', async () => {
+      createProject('/plugins-modification-existing-complex', {
+        'app.json': JSON.stringify({
+          ...appFile,
+          plugins: [['expo-font', { existing: 'prop' }], 'expo-router'],
+        }),
+      });
+
+      await expect(
+        modifyConfigAsync('/plugins-modification-existing-complex', {
+          plugins: [['expo-font', { test: 'prop' }]],
+        })
+      ).resolves.toMatchObject({
+        type: 'success',
+        config: {
+          ...appFile,
+          plugins: [['expo-font', { existing: 'prop', test: 'prop' }], 'expo-router'],
+        },
+      });
+    });
+
+    // This shouldn't be used, but might be if users unnecessarily defines plugins as single array entries
+    it('merges plugin properties to plugin entry with empty props', async () => {
+      createProject('/plugins-modification-existing-unnecessary-complex', {
+        'app.json': JSON.stringify({
+          ...appFile,
+          plugins: [['expo-font'], ['expo-router']],
+        }),
+      });
+
+      await expect(
+        modifyConfigAsync('/plugins-modification-existing-unnecessary-complex', {
+          plugins: [['expo-font', { test: 'prop' }]],
+        })
+      ).resolves.toMatchObject({
+        type: 'success',
+        config: {
+          ...appFile,
+          plugins: [['expo-font', { test: 'prop' }], ['expo-router']],
+        },
+      });
+    });
   });
 });

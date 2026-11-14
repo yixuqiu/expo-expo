@@ -1,23 +1,24 @@
-import { Android, ExpoConfig, IOS } from '@expo/config-types';
+import type { Android, ExpoConfig, IOS } from '@expo/config-types';
+import { resolveFrom } from '@expo/require-utils';
 import { getRuntimeVersionForSDKVersion } from '@expo/sdk-runtime-versions';
 import fs from 'fs';
-import { boolish } from 'getenv';
 import path from 'path';
-import resolveFrom from 'resolve-from';
 import semver from 'semver';
 
-import { AndroidConfig, IOSConfig } from '..';
+import * as AndroidVersion from '../android/Version';
+import * as IOSVersion from '../ios/Version';
+import { env } from './env';
 
 export type ExpoConfigUpdates = Pick<
   ExpoConfig,
-  'sdkVersion' | 'owner' | 'runtimeVersion' | 'updates' | 'slug'
+  'sdkVersion' | 'runtimeVersion' | 'updates' | 'slug'
 >;
 
 export const FINGERPRINT_RUNTIME_VERSION_SENTINEL = 'file:fingerprint';
 
 export function getExpoUpdatesPackageVersion(projectRoot: string): string | null {
-  const expoUpdatesPackageJsonPath = resolveFrom.silent(projectRoot, 'expo-updates/package.json');
-  if (!expoUpdatesPackageJsonPath || !fs.existsSync(expoUpdatesPackageJsonPath)) {
+  const expoUpdatesPackageJsonPath = resolveFrom(projectRoot, 'expo-updates/package.json');
+  if (!expoUpdatesPackageJsonPath) {
     return null;
   }
   const packageJson = JSON.parse(fs.readFileSync(expoUpdatesPackageJsonPath, 'utf8'));
@@ -28,25 +29,38 @@ export function getUpdateUrl(config: Pick<ExpoConfigUpdates, 'updates'>): string
   return config.updates?.url ?? null;
 }
 
-export function getAppVersion(config: Pick<ExpoConfig, 'version'>): string {
+export function getAppVersion(
+  config: Pick<ExpoConfig, 'version'> & {
+    android?: Pick<Android, 'version'>;
+    ios?: Pick<IOS, 'version'>;
+  },
+  platform?: 'android' | 'ios'
+): string {
+  if (platform === 'ios' && config.ios?.version) {
+    return config.ios.version;
+  }
+  if (platform === 'android' && config.android?.version) {
+    return config.android.version;
+  }
   return config.version ?? '1.0.0';
 }
 
 export function getNativeVersion(
   config: Pick<ExpoConfig, 'version'> & {
-    android?: Pick<Android, 'versionCode'>;
-    ios?: Pick<IOS, 'buildNumber'>;
+    android?: Pick<Android, 'version' | 'versionCode'>;
+    ios?: Pick<IOS, 'version' | 'buildNumber'>;
   },
   platform: 'android' | 'ios'
 ): string {
-  const version = IOSConfig.Version.getVersion(config);
   switch (platform) {
     case 'ios': {
-      const buildNumber = IOSConfig.Version.getBuildNumber(config);
+      const version = IOSVersion.getVersion(config);
+      const buildNumber = IOSVersion.getBuildNumber(config);
       return `${version}(${buildNumber})`;
     }
     case 'android': {
-      const versionCode = AndroidConfig.Version.getVersionCode(config);
+      const version = AndroidVersion.getVersionName(config) ?? '1.0.0';
+      const versionCode = AndroidVersion.getVersionCode(config);
       return `${version}(${versionCode})`;
     }
     default: {
@@ -63,7 +77,7 @@ export async function getRuntimeVersionNullableAsync(
   try {
     return await getRuntimeVersionAsync(projectRoot, config, platform);
   } catch (e) {
-    if (boolish('EXPO_DEBUG', false)) {
+    if (env.EXPO_DEBUG) {
       console.log(e);
     }
     return null;
@@ -73,8 +87,8 @@ export async function getRuntimeVersionNullableAsync(
 export async function getRuntimeVersionAsync(
   projectRoot: string,
   config: Pick<ExpoConfig, 'version' | 'runtimeVersion' | 'sdkVersion'> & {
-    android?: Pick<Android, 'versionCode' | 'runtimeVersion'>;
-    ios?: Pick<IOS, 'buildNumber' | 'runtimeVersion'>;
+    android?: Pick<Android, 'version' | 'versionCode' | 'runtimeVersion'>;
+    ios?: Pick<IOS, 'version' | 'buildNumber' | 'runtimeVersion'>;
   },
   platform: 'android' | 'ios'
 ): Promise<string | null> {
@@ -104,13 +118,13 @@ export async function getRuntimeVersionAsync(
 export async function resolveRuntimeVersionPolicyAsync(
   policy: 'appVersion' | 'nativeVersion' | 'sdkVersion',
   config: Pick<ExpoConfig, 'version' | 'sdkVersion'> & {
-    android?: Pick<Android, 'versionCode'>;
-    ios?: Pick<IOS, 'buildNumber'>;
+    android?: Pick<Android, 'version' | 'versionCode'>;
+    ios?: Pick<IOS, 'version' | 'buildNumber'>;
   },
   platform: 'android' | 'ios'
 ): Promise<string> {
   if (policy === 'appVersion') {
-    return getAppVersion(config);
+    return getAppVersion(config, platform);
   } else if (policy === 'nativeVersion') {
     return getNativeVersion(config, platform);
   } else if (policy === 'sdkVersion') {
@@ -137,8 +151,36 @@ export function getUpdatesEnabled(config: Pick<ExpoConfigUpdates, 'updates'>): b
   return getUpdateUrl(config) !== null;
 }
 
+export function getUpdatesUseEmbeddedUpdate(config: Pick<ExpoConfigUpdates, 'updates'>): boolean {
+  if (config.updates?.useEmbeddedUpdate !== undefined) {
+    return config.updates.useEmbeddedUpdate;
+  }
+
+  return true;
+}
+
+export function getUpdatesBsdiffPatchSupportEnabled(
+  config: Pick<ExpoConfigUpdates, 'updates'>
+): boolean {
+  if (config.updates?.enableBsdiffPatchSupport !== undefined) {
+    return config.updates.enableBsdiffPatchSupport;
+  }
+  return true;
+}
+
 export function getUpdatesTimeout(config: Pick<ExpoConfigUpdates, 'updates'>): number {
   return config.updates?.fallbackToCacheTimeout ?? 0;
+}
+
+export function getUpdatesMaxUpdatesToKeep(
+  config: Pick<ExpoConfigUpdates, 'updates'>
+): number | undefined {
+  const value = config.updates?.maxUpdatesToKeep;
+  // Android manifest integer metadata is limited to signed 32-bit values.
+  if (value !== undefined && (!Number.isInteger(value) || value < 2 || value > 2147483647)) {
+    throw new Error('updates.maxUpdatesToKeep must be an integer between 2 and 2147483647.');
+  }
+  return value;
 }
 
 export function getUpdatesCheckOnLaunch(
@@ -210,4 +252,14 @@ export function getUpdatesRequestHeadersStringified(
   }
 
   return JSON.stringify(metadata);
+}
+
+export function getDisableAntiBrickingMeasures(
+  config: Pick<ExpoConfigUpdates, 'updates'>
+): boolean | undefined {
+  return config.updates?.disableAntiBrickingMeasures;
+}
+
+export function getUpdatesExcludeFromBackup(config: Pick<ExpoConfigUpdates, 'updates'>): boolean {
+  return config.updates?.excludeFromBackup ?? false;
 }

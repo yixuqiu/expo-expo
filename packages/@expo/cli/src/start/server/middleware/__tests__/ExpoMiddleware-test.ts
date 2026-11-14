@@ -1,6 +1,6 @@
 import * as Log from '../../../../log';
 import { ExpoMiddleware } from '../ExpoMiddleware';
-import { ServerNext, ServerRequest, ServerResponse } from '../server.types';
+import type { ServerNext, ServerRequest, ServerResponse } from '../server.types';
 
 jest.mock('../../../../log');
 
@@ -25,6 +25,26 @@ describe('shouldHandleRequest', () => {
   it('returns true when the request url is `/`, or `/index.html`', () => {
     expect(middleware.shouldHandleRequest(asReq({ url: '/' }))).toBe(true);
     expect(middleware.shouldHandleRequest(asReq({ url: '/index.html' }))).toBe(true);
+  });
+
+  it('ignores the query and hash of the request url', () => {
+    expect(middleware.shouldHandleRequest(asReq({ url: '/?platform=ios' }))).toBe(true);
+    expect(middleware.shouldHandleRequest(asReq({ url: '/index.html#hash' }))).toBe(true);
+    expect(middleware.shouldHandleRequest(asReq({ url: '/foo?path=/index.html' }))).toBe(false);
+  });
+
+  it('matches the pathname of an absolute request url', () => {
+    expect(middleware.shouldHandleRequest(asReq({ url: 'http://localhost:8081/' }))).toBe(true);
+    expect(
+      middleware.shouldHandleRequest(asReq({ url: 'http://localhost:8081/index.html?a=1' }))
+    ).toBe(true);
+    expect(middleware.shouldHandleRequest(asReq({ url: 'http://localhost:8081/foo' }))).toBe(false);
+  });
+
+  it('does not throw for an invalid absolute request url', () => {
+    expect(() =>
+      middleware.shouldHandleRequest(asReq({ url: 'http://localhost:99999/' }))
+    ).not.toThrow();
   });
 });
 
@@ -56,7 +76,7 @@ describe('getHandler', () => {
     );
 
     // Internals are invoked.
-    expect(middleware.handleRequestAsync).toBeCalled();
+    expect(middleware.handleRequestAsync).toHaveBeenCalled();
 
     // Generally tests that the server I/O works as expected so we don't need to test this in subclasses.
     expect(res.statusCode).toEqual(200);
@@ -91,16 +111,16 @@ describe('getHandler', () => {
     );
 
     // Internals are invoked.
-    expect(middleware.handleRequestAsync).toBeCalled();
+    expect(middleware.handleRequestAsync).toHaveBeenCalled();
 
     // Generally tests that the server I/O works as expected so we don't need to test this in subclasses.
     expect(res.statusCode).toEqual(500);
 
-    expect(next).not.toBeCalled();
+    expect(next).not.toHaveBeenCalled();
     // Returns error info.
-    expect(res.end).toBeCalledWith(JSON.stringify({ error: 'Error: demo' }));
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: 'Error: demo' }));
     // Ensure the user sees the error in the terminal.
-    expect(Log.exception).toBeCalled();
+    expect(Log.exception).toHaveBeenCalled();
   });
 
   it(`continues`, async () => {
@@ -125,7 +145,7 @@ describe('getHandler', () => {
 
     // Generally tests that the server I/O works as expected so we don't need to test this in subclasses.
     expect(res.statusCode).toEqual(200);
-    expect(next).toBeCalled();
-    expect(middleware.handleRequestAsync).not.toBeCalled();
+    expect(next).toHaveBeenCalled();
+    expect(middleware.handleRequestAsync).not.toHaveBeenCalled();
   });
 });

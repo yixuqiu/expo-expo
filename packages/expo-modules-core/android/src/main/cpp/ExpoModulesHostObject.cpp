@@ -1,10 +1,9 @@
 // Copyright © 2021-present 650 Industries, Inc. (aka Expo)
 
+#include "ExpoHeader.pch"
 #include "ExpoModulesHostObject.h"
 #include "LazyObject.h"
 
-#include <folly/dynamic.h>
-#include <jsi/JSIDynamic.h>
 #include <react/bridging/LongLivedObject.h>
 
 namespace jsi = facebook::jsi;
@@ -15,27 +14,27 @@ ExpoModulesHostObject::ExpoModulesHostObject(JSIContext *installer)
   : installer(installer) {}
 
 /**
- * Clears jsi references held by JSRegistry and JavaScriptRuntime. 
+ * Clears jsi references held by JSRegistry and JavaScriptRuntime.
  */
 ExpoModulesHostObject::~ExpoModulesHostObject() {
-#if REACT_NATIVE_TARGET_VERSION >= 75
   auto &runtime = installer->runtimeHolder->get();
   facebook::react::LongLivedObjectCollection::get(runtime).clear();
-#else
-  facebook::react::LongLivedObjectCollection::get().clear();
-#endif
   installer->prepareForDeallocation();
 }
 
 jsi::Value ExpoModulesHostObject::get(jsi::Runtime &runtime, const jsi::PropNameID &name) {
-  auto cName = name.utf8(runtime);
-
-  if (!installer->hasModule(cName)) {
-    modulesCache.erase(cName);
+  if (installer->wasDeallocated()) {
     return jsi::Value::undefined();
   }
+
+  auto cName = name.utf8(runtime);
+
   if (UniqueJSIObject &cachedObject = modulesCache[cName]) {
     return jsi::Value(runtime, *cachedObject);
+  }
+
+  if (!installer->hasModule(cName)) {
+    return jsi::Value::undefined();
   }
 
   // Create a lazy object for the specific module. It defers initialization of the final module object.
@@ -50,7 +49,8 @@ jsi::Value ExpoModulesHostObject::get(jsi::Runtime &runtime, const jsi::PropName
 
       auto module = installer->getModule(cName);
       return module->cthis()->getJSIObject(rt);
-    });
+    }
+  );
 
   // Save the module's lazy host object for later use.
   modulesCache[cName] = std::make_unique<jsi::Object>(

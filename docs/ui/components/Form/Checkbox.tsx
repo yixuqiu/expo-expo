@@ -1,5 +1,5 @@
 import { mergeClasses } from '@expo/styleguide';
-import { CheckIcon } from '@expo/styleguide-icons';
+import { CheckIcon } from '@expo/styleguide-icons/outline/CheckIcon';
 import { forwardRef, Ref, InputHTMLAttributes, ReactNode } from 'react';
 
 import { P } from '../Text';
@@ -13,9 +13,12 @@ export const Checkbox = forwardRef(function Checkbox(
   ref?: Ref<HTMLInputElement>
 ) {
   return (
-    <div className={mergeClasses('flex items-center gap-2 relative', className)}>
+    <div className={mergeClasses('relative flex items-center gap-2', className)}>
       {checked && (
-        <CheckIcon className="absolute w-4 px-0.5 text-palette-white [&_path]:!stroke-[3px]" />
+        <CheckIcon
+          aria-hidden="true"
+          className="pointer-events-none absolute w-4 px-0.5 text-palette-white [&_path]:[stroke-linejoin:round] [&_path]:stroke-current [&_path]:stroke-1"
+        />
       )}
       <input
         type="checkbox"
@@ -25,11 +28,11 @@ export const Checkbox = forwardRef(function Checkbox(
         data-label={label}
         disabled={disabled}
         className={mergeClasses(
-          'rounded-sm border-palette-gray8 bg-default transition-colors border size-4',
+          'size-4 rounded-sm border border-palette-gray8 bg-default transition-colors',
           !disabled &&
             'focus-within:ring-palette-blue10 hocus:cursor-pointer hocus:border-palette-blue10 hocus:bg-palette-blue3',
           !disabled && 'dark:focus:ring-palette-blue8 dark:hocus:border-palette-blue8',
-          'checked:bg-palette-blue10 checked:border-palette-blue10 checked:hocus:bg-palette-blue10',
+          'checked:border-palette-blue10 checked:bg-palette-blue10 checked:hocus:bg-palette-blue10',
           'dark:checked:bg-palette-blue8 dark:checked:hocus:bg-palette-blue8'
         )}
         {...rest}
@@ -37,7 +40,7 @@ export const Checkbox = forwardRef(function Checkbox(
       {label && (
         <label
           htmlFor={id}
-          className={mergeClasses('select-none text-default', !disabled && 'hocus:cursor-pointer')}>
+          className={mergeClasses('text-default select-none', !disabled && 'hocus:cursor-pointer')}>
           {typeof label === 'string' ? <P>{label}</P> : label}
         </label>
       )}

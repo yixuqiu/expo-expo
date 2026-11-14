@@ -1,160 +1,44 @@
 // Copyright © 2021-present 650 Industries, Inc. (aka Expo)
 
+#include "ExpoHeader.pch"
 #include "JSIContext.h"
-#include "ExpoModulesHostObject.h"
+#include "Exceptions.h"
 #include "JavaReferencesCache.h"
 #include "JSReferencesCache.h"
+#include "JSIUtils.h"
 #include "SharedObject.h"
-#include "NativeModule.h"
+#include "decorators/JSDecoratorsBridgingObject.h"
+#include "decorators/JSClassesDecorator.h"
 
 #include <fbjni/detail/Meta.h>
-#include <fbjni/fbjni.h>
 
-#include <memory>
-
-#if IS_NEW_ARCHITECTURE_ENABLED
-
-#include "BridgelessJSCallInvoker.h"
-
-#endif
+#include <shared_mutex>
 
 namespace jni = facebook::jni;
 namespace jsi = facebook::jsi;
 
 namespace expo {
 
-#if IS_NEW_ARCHITECTURE_ENABLED
-
-#include "BridgelessJSCallInvoker.h"
-
-#endif
-
-/*
- * A wrapper for a global reference that can be deallocated on any thread.
- * It should be used with smart pointer. That structure can't be copied or moved.
- */
-template <typename T>
-class ThreadSafeJNIGlobalRef {
-public:
-  ThreadSafeJNIGlobalRef(jobject globalRef) : globalRef(globalRef) {}
-  ThreadSafeJNIGlobalRef(const ThreadSafeJNIGlobalRef &other) = delete;
-  ThreadSafeJNIGlobalRef(ThreadSafeJNIGlobalRef &&other) = delete;
-  ThreadSafeJNIGlobalRef &operator=(const ThreadSafeJNIGlobalRef &other) = delete;
-  ThreadSafeJNIGlobalRef &operator=(ThreadSafeJNIGlobalRef &&other) = delete;
-
-  void use(std::function<void(jni::alias_ref<T> globalRef)> &&action) {
-    if (globalRef == nullptr) {
-      throw std::runtime_error("ThreadSafeJNIGlobalRef: globalRef is null");
-    }
-
-    jni::ThreadScope::WithClassLoader([this, action = std::move(action)]() {
-      jni::alias_ref<jobject> aliasRef = jni::wrap_alias(globalRef);
-      jni::alias_ref<T> jsiContextRef = jni::static_ref_cast<T>(aliasRef);
-      action(jsiContextRef);
-    });
-  }
-
-  ~ThreadSafeJNIGlobalRef() {
-    if (globalRef != nullptr) {
-      jni::ThreadScope::WithClassLoader([this] {
-        jni::Environment::current()->DeleteGlobalRef(this->globalRef);
-      });
-    }
-  }
-
-  jobject globalRef;
-};
-
-jni::local_ref<JSIContext::jhybriddata>
-JSIContext::initHybrid(jni::alias_ref<jhybridobject> jThis) {
-  return makeCxxInstance(jThis);
-}
-
 void JSIContext::registerNatives() {
   registerHybrid({
-                   makeNativeMethod("initHybrid", JSIContext::initHybrid),
-                   makeNativeMethod("installJSI", JSIContext::installJSI),
-#if IS_NEW_ARCHITECTURE_ENABLED
-                   makeNativeMethod("installJSIForBridgeless",
-                                    JSIContext::installJSIForBridgeless),
-#endif
-                   makeNativeMethod("installJSIForTests",
-                                    JSIContext::installJSIForTests),
                    makeNativeMethod("evaluateScript", JSIContext::evaluateScript),
+                   makeNativeMethod("evaluateVoidScript", JSIContext::evaluateVoidScript),
                    makeNativeMethod("global", JSIContext::global),
                    makeNativeMethod("createObject", JSIContext::createObject),
+                   makeNativeMethod("scheduleOnJSThread", JSIContext::scheduleOnJSThread),
                    makeNativeMethod("drainJSEventLoop", JSIContext::drainJSEventLoop),
                    makeNativeMethod("setNativeStateForSharedObject",
                                     JSIContext::jniSetNativeStateForSharedObject),
+                   makeNativeMethod("installModuleClasses",
+                                    JSIContext::installModuleClasses),
                  });
 }
 
-JSIContext::JSIContext(jni::alias_ref<jhybridobject> jThis)
-  : javaPart_(jni::make_global(jThis)) {}
-
-JSIContext::~JSIContext() {
-  unbindJSIContext(runtimeHolder->get());
-  // The runtime would be deallocated automatically.
-  // However, we need to enforce the order of deallocations.
-  // The runtime has to be deallocated before the JNI part.
-  runtimeHolder.reset();
-}
-
-void JSIContext::installJSI(
-  jlong jsRuntimePointer,
-  jni::alias_ref<JNIDeallocator::javaobject> jniDeallocator,
-  jni::alias_ref<react::CallInvokerHolder::javaobject> jsInvokerHolder
-) {
-  prepareJSIContext(
-    jsRuntimePointer,
-    jniDeallocator,
-    jsInvokerHolder->cthis()->getCallInvoker()
-  );
-
-  prepareRuntime();
-}
-
-#if IS_NEW_ARCHITECTURE_ENABLED
-
-void JSIContext::installJSIForBridgeless(
-  jlong jsRuntimePointer,
-  jni::alias_ref<JNIDeallocator::javaobject> jniDeallocator,
-  jni::alias_ref<react::JRuntimeExecutor::javaobject> runtimeExecutor
-) {
-  prepareJSIContext(
-    jsRuntimePointer,
-    jniDeallocator,
-    std::make_shared<BridgelessJSCallInvoker>(runtimeExecutor->cthis()->get())
-  );
-
-  prepareRuntime();
-}
-
-#endif
-
-void JSIContext::installJSIForTests(
-  jni::alias_ref<JNIDeallocator::javaobject> jniDeallocator
-) {
-#if !UNIT_TEST
-  throw std::logic_error("The function is only available when UNIT_TEST is defined.");
-#else
-  this->jniDeallocator = jni::make_global(jniDeallocator);
-
-  runtimeHolder = std::make_shared<JavaScriptRuntime>();
-  jsi::Runtime &jsiRuntime = runtimeHolder->get();
-
-  jsRegistry = std::make_unique<JSReferencesCache>(jsiRuntime);
-
-  prepareRuntime();
-#endif // !UNIT_TEST
-}
-
-void JSIContext::prepareJSIContext(
+JSIContext::JSIContext(
   jlong jsRuntimePointer,
   jni::alias_ref<JNIDeallocator::javaobject> jniDeallocator,
   std::shared_ptr<react::CallInvoker> callInvoker
-) {
-  this->jniDeallocator = jni::make_global(jniDeallocator);
+) : jniDeallocator(jni::make_global(jniDeallocator)) {
   auto runtime = reinterpret_cast<jsi::Runtime *>(jsRuntimePointer);
   jsRegistry = std::make_unique<JSReferencesCache>(*runtime);
 
@@ -164,46 +48,23 @@ void JSIContext::prepareJSIContext(
   );
 }
 
-void JSIContext::prepareRuntime() {
-  jsi::Runtime &runtime = runtimeHolder->get();
+jni::local_ref<JSIContext::javaobject> JSIContext::newJavaInstance(
+  jni::local_ref<jni::detail::HybridData> hybridData,
+  jni::alias_ref<jni::JWeakReference<jobject>::javaobject> runtimeContextHolder
+) {
+  return JSIContext::newObjectJavaArgs(
+    std::move(hybridData),
+    std::move(runtimeContextHolder)
+  );
+}
 
-  bindJSIContext(runtime, this);
-
-  runtimeHolder->installMainObject();
-
-  EventEmitter::installClass(runtime);
-
-  auto threadSafeRef = std::make_shared<ThreadSafeJNIGlobalRef<JSIContext::javaobject>>(
+void JSIContext::bindToJavaPart(
+  jni::local_ref<JSIContext::javaobject> jThis
+) {
+  javaPart_ = jni::make_global(jThis);
+  threadSafeJThis = std::make_shared<ThreadSafeJNIGlobalRef<JSIContext::javaobject>>(
     jni::Environment::current()->NewGlobalRef(javaPart_.get())
   );
-
-  SharedObject::installBaseClass(
-    runtime,
-    // We can't predict the order of deallocation of the JSIContext and the SharedObject.
-    // So we need to pass a new ref to retain the JSIContext to make sure it's not deallocated before the SharedObject.
-    [threadSafeRef = std::move(threadSafeRef)](const SharedObject::ObjectId objectId) {
-      threadSafeRef->use([objectId](jni::alias_ref<JSIContext::javaobject> globalRef) {
-        JSIContext::deleteSharedObject(globalRef, objectId);
-      });
-    }
-  );
-
-  NativeModule::installClass(runtime);
-
-  auto expoModules = std::make_shared<ExpoModulesHostObject>(this);
-  auto expoModulesObject = jsi::Object::createFromHostObject(
-    runtime,
-    expoModules
-  );
-
-  // Define the `global.expo.modules` object.
-  runtimeHolder
-    ->getMainObject()
-    ->setProperty(
-      runtime,
-      "modules",
-      expoModulesObject
-    );
 }
 
 jni::local_ref<JavaScriptModuleObject::javaobject>
@@ -219,20 +80,11 @@ JSIContext::callGetJavaScriptModuleObjectMethod(const std::string &moduleName) c
       "getJavaScriptModuleObject"
     );
 
-  return method(javaPart_, moduleName);
-}
-
-jni::local_ref<JavaScriptModuleObject::javaobject>
-JSIContext::callGetCoreModuleObject() const {
-  if (javaPart_ == nullptr) {
-    throw std::runtime_error("getCoreModule: JSIContext was prepared to be deallocated.");
-  }
-
-  const static auto method = expo::JSIContext::javaClassLocal()
-    ->getMethod<jni::local_ref<JavaScriptModuleObject::javaobject>()>(
-      "getCoreModuleObject"
-    );
-  return method(javaPart_);
+  auto jniString = jni::make_jstring(moduleName);
+  auto result = jni::Environment::current()->CallObjectMethod(javaPart_.get(), method.getId(),
+                                                              jniString.get());
+  throwPendingJniExceptionAsCppException();
+  return jni::adopt_local(static_cast<JavaScriptModuleObject::javaobject>(result));
 }
 
 jni::local_ref<jni::JArrayClass<jni::JString>>
@@ -245,7 +97,10 @@ JSIContext::callGetJavaScriptModulesNames() const {
     ->getMethod<jni::local_ref<jni::JArrayClass<jni::JString>>()>(
       "getJavaScriptModulesName"
     );
-  return method(javaPart_);
+
+  auto result = jni::Environment::current()->CallObjectMethod(javaPart_.get(), method.getId());
+  throwPendingJniExceptionAsCppException();
+  return jni::adopt_local(static_cast<jni::JniType<jni::JArrayClass<jni::JString>>>(result));
 }
 
 bool JSIContext::callHasModule(const std::string &moduleName) const {
@@ -257,16 +112,16 @@ bool JSIContext::callHasModule(const std::string &moduleName) const {
     ->getMethod<jboolean(std::string)>(
       "hasModule"
     );
-  return (bool) method(javaPart_, moduleName);
+  auto jniString = jni::make_jstring(moduleName);
+  auto result = jni::Environment::current()->CallBooleanMethod(javaPart_.get(), method.getId(),
+                                                               jniString.get());
+  throwPendingJniExceptionAsCppException();
+  return static_cast<bool>(result);
 }
 
 jni::local_ref<JavaScriptModuleObject::javaobject>
 JSIContext::getModule(const std::string &moduleName) const {
   return callGetJavaScriptModuleObjectMethod(moduleName);
-}
-
-jni::local_ref<JavaScriptModuleObject::javaobject> JSIContext::getCoreModule() const {
-  return callGetCoreModuleObject();
 }
 
 bool JSIContext::hasModule(const std::string &moduleName) const {
@@ -283,12 +138,25 @@ jni::local_ref<JavaScriptValue::javaobject> JSIContext::evaluateScript(
   return runtimeHolder->evaluateScript(script.toStdString());
 }
 
-jni::local_ref<JavaScriptObject::javaobject> JSIContext::global() {
+void JSIContext::evaluateVoidScript(
+  jni::JString script
+) {
+  runtimeHolder->evaluateVoidScript(script.toStdString());
+}
+
+jni::local_ref<JavaScriptObject::javaobject> JSIContext::global() noexcept {
   return runtimeHolder->global();
 }
 
-jni::local_ref<JavaScriptObject::javaobject> JSIContext::createObject() {
+jni::local_ref<JavaScriptObject::javaobject> JSIContext::createObject() noexcept {
   return runtimeHolder->createObject();
+}
+
+void JSIContext::scheduleOnJSThread(jni::alias_ref<JSRunnable::javaobject> runnable) {
+  auto ref = jni::make_global(runnable);
+  runtimeHolder->jsInvoker->invokeAsync([ref = std::move(ref)](jsi::Runtime &) {
+    ref->run();
+  });
 }
 
 void JSIContext::drainJSEventLoop() {
@@ -308,6 +176,21 @@ void JSIContext::registerSharedObject(
       "registerSharedObject"
     );
   method(javaPart_, std::move(native), std::move(js));
+}
+
+jni::local_ref<JavaScriptObject::javaobject> JSIContext::getSharedObject(
+  int objectId
+) {
+  if (javaPart_ == nullptr) {
+    throw std::runtime_error("getSharedObject: JSIContext was prepared to be deallocated.");
+  }
+
+  const static auto method = expo::JSIContext::javaClassLocal()
+    ->getMethod<jni::local_ref<JavaScriptObject::javaobject>(int)>(
+      "getSharedObject"
+    );
+
+  return method(javaPart_, objectId);
 }
 
 void JSIContext::deleteSharedObject(
@@ -354,27 +237,115 @@ jni::local_ref<JavaScriptObject::javaobject> JSIContext::getJavascriptClass(
   return method(javaPart_, std::move(native));
 }
 
-void JSIContext::prepareForDeallocation() {
+// Returns the JS class for the given native SharedObject class, lazily building it on first access.
+jni::local_ref<JavaScriptObject::javaobject> JSIContext::ensureClassInstalled(jsi::Runtime &rt, jni::local_ref<jclass> nativeClass) {
+  auto jsClassObj = getJavascriptClass(jni::make_local(nativeClass));
+  if (jsClassObj) {
+    return jsClassObj;
+  }
+
+  const static auto buildClassDecorator = expo::JSIContext::javaClassLocal()
+    ->getMethod<jni::local_ref<JSDecoratorsBridgingObject::javaobject>(jni::local_ref<jclass>)>(
+      "buildClassDecorator"
+    );
+  auto decorator = buildClassDecorator(javaPart_, jni::make_local(nativeClass));
+  if (decorator) {
+    auto *classDec = decorator->cthis()->getClassDecorator();
+    if (classDec) {
+      classDec->consumeForWorklet(rt);
+    }
+  }
+
+  return getJavascriptClass(std::move(nativeClass));
+}
+
+// Creates a JS proxy object with the class prototype and the given shared object ID.
+jsi::Value JSIContext::resolveSharedObjectInstance(jsi::Runtime &rt, int objectId, jni::local_ref<JavaScriptObject::javaobject> jsClassObj) {
+  auto jsClass = jsClassObj->cthis()->get();
+  auto proto = jsClass->getProperty(rt, "prototype");
+  if (!proto.isObject()) {
+    throw jsi::JSError(rt, "Failed to get JS prototype for SharedObject with id '" + std::to_string(objectId) + "'");
+  }
+
+  auto protoObj = proto.asObject(rt);
+  auto instance = common::createObjectWithPrototype(rt, &protoObj);
+
+  // Flags = 0 → non-configurable, non-enumerable, non-writable. Freezes the id on the proxy.
+  // Unlike the main-runtime path (SharedObject.cpp) which defines __expo_shared_object_id__
+  // as a getter on the prototype reading NativeState, here it's an own property on the instance
+  // since worklet proxies don't carry NativeState. SharedObjectIdConverter uses getProperty
+  // which finds own props first, so both paths resolve correctly.
+  jsi::Object descriptor = JavaScriptObject::preparePropertyDescriptor(rt, 0);
+  descriptor.setProperty(rt, "value", objectId);
+  common::defineProperty(rt, &instance, "__expo_shared_object_id__", std::move(descriptor));
+
+  return jsi::Value(rt, std::move(instance));
+}
+
+// Installs SharedObject.__resolveInWorklet in the runtime.
+void JSIContext::installModuleClasses() {
+  auto &runtime = runtimeHolder->get();
+  auto expoObj = runtime.global().getPropertyAsObject(runtime, "expo");
+  auto sharedObjectClass = expoObj.getPropertyAsObject(runtime, "SharedObject");
+  auto *self = this;
+
+  auto resolveInWorklet = jsi::Function::createFromHostFunction(
+    runtime,
+    jsi::PropNameID::forAscii(runtime, "__resolveInWorklet"),
+    1,
+    [self](
+      jsi::Runtime &rt,
+      const jsi::Value &,
+      const jsi::Value *args,
+      size_t
+    ) -> jsi::Value {
+      if (self->wasDeallocated()) {
+        throw jsi::JSError(rt, "__resolveInWorklet: JSIContext has been deallocated");
+      }
+
+      int objectId = static_cast<int>(args[0].asNumber());
+
+      // Resolve the native SharedObject's class by ID.
+      const static auto getNativeClass = expo::JSIContext::javaClassLocal()
+        ->getMethod<jni::local_ref<jclass>(int)>("getNativeSharedObjectClass");
+      auto nativeClass = getNativeClass(self->javaPart_, objectId);
+      if (!nativeClass) {
+        throw jsi::JSError(rt, "SharedObject with id '" + std::to_string(objectId) + "' not found in the registry");
+      }
+
+      // Ensure the class prototype is installed (lazy, cached in classRegistry).
+      auto jsClassObj = self->ensureClassInstalled(rt, std::move(nativeClass));
+      if (!jsClassObj) {
+        throw jsi::JSError(rt, "No class definition registered for SharedObject with id '" + std::to_string(objectId) + "'");
+      }
+
+      return self->resolveSharedObjectInstance(rt, objectId, std::move(jsClassObj));
+    }
+  );
+
+  sharedObjectClass.setProperty(runtime, "__resolveInWorklet", std::move(resolveInWorklet));
+}
+
+void JSIContext::prepareForDeallocation() noexcept {
   jsRegistry.reset();
-  runtimeHolder.reset();
+  if (runtimeHolder) {
+    unbindJSIContext(runtimeHolder->get());
+    runtimeHolder.reset();
+  }
+  jsHeapAccessExecutor.reset();
   jniDeallocator.reset();
-  javaPart_.reset();
   wasDeallocated_ = true;
 }
 
 void JSIContext::jniSetNativeStateForSharedObject(
   int id,
   jni::alias_ref<JavaScriptObject::javaobject> jsObject
-) {
-  auto threadSafeRef = std::make_shared<ThreadSafeJNIGlobalRef<JSIContext::javaobject>>(
-    jni::Environment::current()->NewGlobalRef(javaPart_.get())
-  );
-
+) noexcept {
   auto nativeState = std::make_shared<expo::SharedObject::NativeState>(
     id,
     // We can't predict the order of deallocation of the JSIContext and the SharedObject.
     // So we need to pass a new ref to retain the JSIContext to make sure it's not deallocated before the SharedObject.
-    [threadSafeRef = std::move(threadSafeRef)](const SharedObject::ObjectId objectId) {
+    [threadSafeRef = threadSafeJThis](const SharedObject::ObjectId objectId) {
       threadSafeRef->use([objectId](jni::alias_ref<JSIContext::javaobject> globalRef) {
         JSIContext::deleteSharedObject(globalRef, objectId);
       });
@@ -387,18 +358,30 @@ void JSIContext::jniSetNativeStateForSharedObject(
     ->setNativeState(runtimeHolder->get(), std::move(nativeState));
 }
 
-bool JSIContext::wasDeallocated() const {
+bool JSIContext::wasDeallocated() const noexcept {
   return wasDeallocated_;
 }
 
-thread_local std::unordered_map<uintptr_t, JSIContext *> jsiContexts;
+static std::unordered_map<uintptr_t, JSIContext *> jsiContexts;
+static std::shared_mutex jsiContextsMutex;
 
 void bindJSIContext(const jsi::Runtime &runtime, JSIContext *jsiContext) {
+  std::unique_lock lock(jsiContextsMutex);
   jsiContexts[reinterpret_cast<uintptr_t>(&runtime)] = jsiContext;
 }
 
 void unbindJSIContext(const jsi::Runtime &runtime) {
+  std::unique_lock lock(jsiContextsMutex);
   jsiContexts.erase(reinterpret_cast<uintptr_t>(&runtime));
+}
+
+JSIContext *getJSIContext(const jsi::Runtime &runtime) {
+  std::shared_lock lock(jsiContextsMutex);
+  const auto iterator = jsiContexts.find(reinterpret_cast<uintptr_t>(&runtime));
+  if (iterator == jsiContexts.end()) {
+    throw std::invalid_argument("JSIContext for the given runtime doesn't exist");
+  }
+  return iterator->second;
 }
 
 } // namespace expo

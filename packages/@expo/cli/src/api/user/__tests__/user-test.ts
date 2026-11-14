@@ -1,4 +1,3 @@
-import { getUserStatePath } from '@expo/config/build/getUserState';
 import { fs, vol } from 'memfs';
 import nock from 'nock';
 
@@ -7,15 +6,15 @@ import {
   getDevelopmentCodeSigningDirectory,
 } from '../../../utils/codesigning';
 import { getExpoApiBaseUrl } from '../../endpoint';
-import UserSettings from '../UserSettings';
+import { getSession, getSettingsFilePath } from '../UserSettings';
 import { getSessionUsingBrowserAuthFlowAsync } from '../expoSsoLauncher';
+import type { Actor } from '../user';
 import {
-  Actor,
   getActorDisplayName,
   getUserAsync,
   loginAsync,
   logoutAsync,
-  ssoLoginAsync,
+  browserLoginAsync,
 } from '../user';
 
 jest.mock('../expoSsoLauncher', () => ({
@@ -23,21 +22,15 @@ jest.mock('../expoSsoLauncher', () => ({
 }));
 
 jest.mock('../../../log');
-jest.mock('../../../utils/telemetry');
-jest.unmock('../UserSettings');
-jest.mock('../../graphql/client', () => ({
-  graphqlClient: {
-    query: () => {
-      return {
-        toPromise: () =>
-          Promise.resolve({ data: { meUserActor: { id: 'USER_ID', username: 'USERNAME' } } }),
-      };
-    },
-  },
+jest.mock('../../../utils/interactive', () => ({
+  isInteractive: () => true,
 }));
+jest.unmock('../UserSettings');
+jest.mock('../../graphql/client', () => ({ graphql: (x: string) => `${x}` }));
 jest.mock('../../graphql/queries/UserQuery', () => ({
   UserQuery: {
     currentUserAsync: async () => ({ __typename: 'User', username: 'USERNAME', id: 'USER_ID' }),
+    meUserActorAsync: async () => ({ id: 'USER_ID', username: 'USERNAME' }),
   },
 }));
 
@@ -50,7 +43,7 @@ const userStub: Actor = {
   id: 'userId',
   username: 'username',
   accounts: [],
-  isExpoAdmin: false,
+  primaryAccount: { id: 'stub' },
 };
 
 const ssoUserStub: Actor = {
@@ -58,7 +51,7 @@ const ssoUserStub: Actor = {
   id: 'userId',
   username: 'username',
   accounts: [],
-  isExpoAdmin: false,
+  primaryAccount: { id: 'stub' },
 };
 
 const robotStub: Actor = {
@@ -66,7 +59,13 @@ const robotStub: Actor = {
   id: 'userId',
   firstName: 'GLaDOS',
   accounts: [],
-  isExpoAdmin: false,
+};
+
+const partnerActorStub: Actor = {
+  __typename: 'PartnerActor',
+  id: 'userId',
+  username: 'partner-username',
+  accounts: [],
 };
 
 function mockLoginRequest() {
@@ -122,7 +121,7 @@ describe(loginAsync, () => {
     mockLoginRequest();
     await loginAsync({ username: 'USERNAME', password: 'PASSWORD' });
 
-    expect(await fs.promises.readFile(getUserStatePath(), 'utf8')).toMatchInlineSnapshot(`
+    expect(await fs.promises.readFile(getSettingsFilePath(), 'utf8')).toMatchInlineSnapshot(`
       "{
         "auth": {
           "sessionSecret": "SESSION_SECRET",
@@ -136,13 +135,23 @@ describe(loginAsync, () => {
   });
 });
 
-describe(ssoLoginAsync, () => {
+describe(browserLoginAsync, () => {
+  let write: jest.SpyInstance;
+
+  beforeEach(() => {
+    write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    write.mockRestore();
+  });
+
   it('saves user data to ~/.expo/state.json', async () => {
     jest.mocked(getSessionUsingBrowserAuthFlowAsync).mockResolvedValue('SESSION_SECRET');
 
-    await ssoLoginAsync();
+    await browserLoginAsync({ sso: false });
 
-    expect(await fs.promises.readFile(getUserStatePath(), 'utf8')).toMatchInlineSnapshot(`
+    expect(await fs.promises.readFile(getSettingsFilePath(), 'utf8')).toMatchInlineSnapshot(`
       "{
         "auth": {
           "sessionSecret": "SESSION_SECRET",
@@ -154,21 +163,49 @@ describe(ssoLoginAsync, () => {
       "
     `);
   });
+
+  it('passes sso parameter to getSessionUsingBrowserAuthFlowAsync', async () => {
+    jest.mocked(getSessionUsingBrowserAuthFlowAsync).mockResolvedValue('SESSION_SECRET');
+
+    await browserLoginAsync({ sso: true });
+
+    expect(getSessionUsingBrowserAuthFlowAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ sso: true })
+    );
+  });
+
+  it('reports blocked while waiting for the browser login', async () => {
+    let writesWhileWaiting: unknown[][] = [];
+    jest.mocked(getSessionUsingBrowserAuthFlowAsync).mockImplementation(async () => {
+      writesWhileWaiting = [...write.mock.calls];
+      return 'SESSION_SECRET';
+    });
+
+    await browserLoginAsync({ sso: false });
+
+    expect(writesWhileWaiting).toEqual([
+      ['\x1b]7501;state=blocked:app=expo:kind=auth:msg=V2FpdGluZyBmb3IgYnJvd3NlciBsb2dpbg==\x1b\\'],
+    ]);
+  });
 });
 
 describe(logoutAsync, () => {
   resetEnv();
   it('removes the session secret', async () => {
     mockLoginRequest();
+    nock(getExpoApiBaseUrl()).post('/v2/auth/logout').reply(200, { data: {} });
+
     await loginAsync({ username: 'USERNAME', password: 'PASSWORD' });
-    expect(UserSettings.getSession()?.sessionSecret).toBe('SESSION_SECRET');
+    expect(getSession()?.sessionSecret).toBe('SESSION_SECRET');
 
     await logoutAsync();
-    expect(UserSettings.getSession()?.sessionSecret).toBeUndefined();
+    expect(getSession()?.sessionSecret).toBeUndefined();
   });
 
   it('removes code signing data', async () => {
     mockLoginRequest();
+    nock(getExpoApiBaseUrl()).post('/v2/auth/logout').reply(200, { data: {} });
+
     await loginAsync({ username: 'USERNAME', password: 'PASSWORD' });
 
     await DevelopmentCodeSigningInfoFile.setAsync('test', {});
@@ -176,6 +213,39 @@ describe(logoutAsync, () => {
 
     await logoutAsync();
     expect(fs.existsSync(getDevelopmentCodeSigningDirectory())).toBe(false);
+  });
+
+  it('calls the server logout endpoint when session secret exists', async () => {
+    mockLoginRequest();
+    const logoutScope = nock(getExpoApiBaseUrl())
+      .post('/v2/auth/logout')
+      .matchHeader('expo-session', 'SESSION_SECRET')
+      .reply(200, { data: {} });
+
+    await loginAsync({ username: 'USERNAME', password: 'PASSWORD' });
+    await logoutAsync();
+
+    expect(logoutScope.isDone()).toBe(true);
+  });
+
+  it('clears the local session even if the server logout call fails', async () => {
+    mockLoginRequest();
+    nock(getExpoApiBaseUrl()).post('/v2/auth/logout').reply(500, 'Internal Server Error');
+
+    await loginAsync({ username: 'USERNAME', password: 'PASSWORD' });
+    expect(getSession()?.sessionSecret).toBe('SESSION_SECRET');
+
+    await logoutAsync();
+    expect(getSession()?.sessionSecret).toBeUndefined();
+  });
+
+  it('skips the server logout call when there is no session secret', async () => {
+    const logoutScope = nock(getExpoApiBaseUrl()).post('/v2/auth/logout').reply(200, { data: {} });
+
+    await logoutAsync();
+
+    expect(logoutScope.isDone()).toBe(false);
+    nock.cleanAll();
   });
 });
 
@@ -199,5 +269,9 @@ describe(getActorDisplayName, () => {
 
   it('returns robot prefix only for robot actors without firstName', () => {
     expect(getActorDisplayName({ ...robotStub, firstName: undefined })).toBe('robot');
+  });
+
+  it('returns username for partner provisioned actors', () => {
+    expect(getActorDisplayName(partnerActorStub)).toBe('partner-username');
   });
 });

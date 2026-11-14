@@ -23,11 +23,12 @@ describe(queryAndGenerateAsync, () => {
         files: ['file1', 'file2'],
         props: {
           webStaticPath: 'web',
+          appDirPath: 'app',
         },
         extras: [],
       })
     ).rejects.toThrowErrorMatchingInlineSnapshot(
-      `"Invalid files: file1, file2. Allowed: babel.config.js, webpack.config.js, metro.config.js, web/serve.json, web/index.html, tsconfig.json"`
+      `"Invalid files: file1, file2. Allowed: babel.config.js, metro.config.js, tsconfig.json, .eslintrc.js (deprecated), eslint.config.js, web/index.html, webpack.config.js, app/+html.tsx, app/+native-intent.ts"`
     );
   });
   it(`does nothing`, async () => {
@@ -35,26 +36,27 @@ describe(queryAndGenerateAsync, () => {
       files: [],
       props: {
         webStaticPath: 'web',
+        appDirPath: 'app',
       },
       extras: ['foobar'],
     });
-    expect(copyAsync).not.toBeCalled();
-    expect(installAsync).not.toBeCalled();
+    expect(copyAsync).not.toHaveBeenCalled();
+    expect(installAsync).not.toHaveBeenCalled();
   });
   it(`queries a file, generates, and installs`, async () => {
     await queryAndGenerateAsync('/', {
       files: ['babel.config.js'],
       props: {
         webStaticPath: 'web',
+        appDirPath: 'app',
       },
       extras: ['foobar'],
     });
-    expect(copyAsync).toBeCalledWith(
+    expect(copyAsync).toHaveBeenCalledWith(
       expect.stringMatching(/@expo\/cli\/static\/template\/babel\.config\.js/),
-      '/babel.config.js',
-      { overwrite: true, recursive: true }
+      '/babel.config.js'
     );
-    expect(installAsync).toBeCalledWith(['babel-preset-expo'], {}, ['--dev', 'foobar']);
+    expect(installAsync).toHaveBeenCalledWith(['babel-preset-expo'], {}, ['--dev', 'foobar']);
   });
 });
 
@@ -70,13 +72,14 @@ describe(selectAndGenerateAsync, () => {
       selectAndGenerateAsync('/', {
         props: {
           webStaticPath: 'web',
+          appDirPath: 'app',
         },
         extras: [],
       })
     ).rejects.toThrow(/EXIT/);
 
-    expect(copyAsync).not.toBeCalled();
-    expect(installAsync).not.toBeCalled();
+    expect(copyAsync).not.toHaveBeenCalled();
+    expect(installAsync).not.toHaveBeenCalled();
   });
 
   it(`selects a file, generates, and installs`, async () => {
@@ -87,31 +90,32 @@ describe(selectAndGenerateAsync, () => {
       '/'
     );
 
-    jest.mocked(selectTemplatesAsync).mockResolvedValue([1]);
+    jest.mocked(selectTemplatesAsync).mockResolvedValue([6]);
 
     await selectAndGenerateAsync('/', {
       props: {
         webStaticPath: 'web',
+        appDirPath: 'app',
       },
       extras: [],
     });
 
-    expect(copyAsync).toBeCalledWith(
+    expect(copyAsync).toHaveBeenCalledWith(
       expect.stringMatching(/@expo\/webpack-config\/template\/webpack\.config\.js/),
-      '/webpack.config.js',
-      { overwrite: true, recursive: true }
+      '/webpack.config.js'
     );
-    expect(installAsync).not.toBeCalled();
+    expect(installAsync).not.toHaveBeenCalled();
   });
 
   it(`selects a file from installed, and generates`, async () => {
     vol.fromJSON({}, '/');
 
-    jest.mocked(selectTemplatesAsync).mockResolvedValue([1]);
+    jest.mocked(selectTemplatesAsync).mockResolvedValue([6]);
 
     await selectAndGenerateAsync('/', {
       props: {
         webStaticPath: 'web',
+        appDirPath: 'app',
       },
       extras: [],
     });
@@ -119,11 +123,10 @@ describe(selectAndGenerateAsync, () => {
     // NOTE(EvanBacon): This logic makes no sense anymore.
     // Why install a package after not using the versioned template?
     // This isn't high priority since the file never changes and we should drop Webpack.
-    expect(copyAsync).toBeCalledWith(
+    expect(copyAsync).toHaveBeenCalledWith(
       expect.stringMatching(/@expo\/cli\/static\/template\/webpack\.config\.js/),
-      '/webpack.config.js',
-      { overwrite: true, recursive: true }
+      '/webpack.config.js'
     );
-    expect(installAsync).toBeCalledWith(['@expo/webpack-config'], {}, ['--dev']);
+    expect(installAsync).toHaveBeenCalledWith(['@expo/webpack-config'], {}, ['--dev']);
   });
 });

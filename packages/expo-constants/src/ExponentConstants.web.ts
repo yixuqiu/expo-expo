@@ -1,4 +1,5 @@
-import { ExecutionEnvironment, NativeConstants, WebManifest } from './Constants.types';
+import type { NativeConstants, WebManifest } from './Constants.types';
+import { ExecutionEnvironment } from './Constants.types';
 
 declare let __DEV__: boolean;
 declare let process: { env: any };
@@ -14,9 +15,9 @@ function getBrowserName(): string | undefined {
       return 'Edge';
     } else if (agent.includes('edg')) {
       return 'Chromium Edge';
-    } else if (agent.includes('opr') && !!window['opr']) {
+    } else if (agent.includes('opr') && 'opr' in window && !!window['opr']) {
       return 'Opera';
-    } else if (agent.includes('chrome') && !!window['chrome']) {
+    } else if (agent.includes('chrome') && 'chrome' in window && !!window['chrome']) {
       return 'Chrome';
     } else if (agent.includes('trident')) {
       return 'IE';

@@ -1,13 +1,14 @@
-import { getExpoHomeDirectory, getUserStatePath } from '@expo/config/build/getUserState';
+import { boolish, getOriginalEnvValue } from '@expo/env';
 import JsonFile from '@expo/json-file';
 import crypto from 'crypto';
+import { homedir } from 'os';
+import * as path from 'path';
 
 type SessionData = {
-  sessionSecret: string;
-  // These fields are potentially used by Expo CLI.
-  userId: string;
-  username: string;
-  currentConnection: 'Username-Password-Authentication' | 'Browser-Flow-Authentication';
+  sessionSecret?: string;
+  userId?: string;
+  username?: string;
+  currentConnection?: 'Username-Password-Authentication' | 'Browser-Flow-Authentication';
 };
 
 export type UserSettingsData = {
@@ -20,48 +21,77 @@ export type UserSettingsData = {
   uuid?: string;
 };
 
+// The ~/.expo directory is used to store authentication sessions,
+// which are shared between EAS CLI and Expo CLI.
+export function getExpoHomeDirectory() {
+  const home = homedir();
+
+  // Read from the pre-dotenv env — this redirects the directory used for the
+  // auth-token cache and other settings. The `__UNSAFE_` prefix marks it as a
+  // shell-only escape hatch; a project `.env` setting it would hijack credentials.
+  const unsafeHome = getOriginalEnvValue('__UNSAFE_EXPO_HOME_DIRECTORY');
+  if (unsafeHome) {
+    return unsafeHome;
+  } else if (boolish('EXPO_STAGING', false)) {
+    return path.join(home, '.expo-staging');
+  } else if (boolish('EXPO_LOCAL', false)) {
+    return path.join(home, '.expo-local');
+  }
+  return path.join(home, '.expo');
+}
+
 /** Return the user cache directory. */
-function getDirectory() {
+export function getSettingsDirectory() {
   return getExpoHomeDirectory();
 }
 
-function getFilePath(): string {
-  return getUserStatePath();
+/** Return the file path of the settings file */
+export function getSettingsFilePath(): string {
+  return path.join(getExpoHomeDirectory(), 'state.json');
 }
 
-function userSettingsJsonFile(): JsonFile<UserSettingsData> {
-  return new JsonFile<UserSettingsData>(getFilePath(), {
+// state.json holds the auth session secret, so restrict it to the owner only.
+const SETTINGS_FILE_MODE = 0o600;
+
+/** Get a new JsonFile instance pointed towards the settings file */
+export function getSettings(): JsonFile<UserSettingsData> {
+  return new JsonFile<UserSettingsData>(getSettingsFilePath(), {
     ensureDir: true,
+    mode: SETTINGS_FILE_MODE,
     jsonParseErrorDefault: {},
+    // This will ensure that an error isn't thrown if the file doesn't exist.
     cantReadFileDefault: {},
   });
 }
 
-async function setSessionAsync(sessionData?: SessionData): Promise<void> {
-  await UserSettings.setAsync('auth', sessionData, {
-    default: {},
-    ensureDir: true,
-  });
-}
-
-function getSession(): SessionData | null {
-  try {
-    return JsonFile.read<UserSettingsData>(getUserStatePath())?.auth ?? null;
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      return null;
-    }
-    throw error;
-  }
-}
-
-function getAccessToken(): string | null {
+export function getAccessToken(): string | null {
   return process.env.EXPO_TOKEN ?? null;
 }
 
-// returns an anonymous, unique identifier for a user on the current computer
-async function getAnonymousIdentifierAsync(): Promise<string> {
-  const settings = await userSettingsJsonFile();
+export function getSession() {
+  return getSettings().get('auth', null);
+}
+
+export async function setSessionAsync(sessionData?: SessionData) {
+  await getSettings().setAsync('auth', sessionData, { default: {} });
+}
+
+/**
+ * Check if there are credentials available, without fetching the user information.
+ * This can be used as a faster check to see if users are authenticated.
+ * Note, this isn't checking the validity of the credentials.
+ */
+export function hasCredentials() {
+  return !!getAccessToken() || !!getSession();
+}
+
+/**
+ * Get an anonymous and randomly generated identifier.
+ * This is used to group telemetry event by unknown actor,
+ * and cannot be used to identify a single user.
+ */
+export async function getAnonymousIdAsync(): Promise<string> {
+  const settings = getSettings();
   let id = await settings.getAsync('uuid', null);
 
   if (!id) {
@@ -72,14 +102,19 @@ async function getAnonymousIdentifierAsync(): Promise<string> {
   return id;
 }
 
-const UserSettings = Object.assign(userSettingsJsonFile(), {
-  getSession,
-  setSessionAsync,
-  getAccessToken,
-  getDirectory,
-  getFilePath,
-  userSettingsJsonFile,
-  getAnonymousIdentifierAsync,
-});
+/**
+ * Get an anonymous and randomly generated identifier.
+ * This is used to group telemetry event by unknown actor,
+ * and cannot be used to identify a single user.
+ */
+export function getAnonymousId(): string {
+  const settings = getSettings();
+  let id = settings.get('uuid', null);
 
-export default UserSettings;
+  if (!id) {
+    id = crypto.randomUUID();
+    settings.set('uuid', id);
+  }
+
+  return id;
+}

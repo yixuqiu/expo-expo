@@ -4,25 +4,16 @@ import plist from '@expo/plist';
 import spawnAsync from '@expo/spawn-async';
 import chalk from 'chalk';
 import fs from 'fs';
-import { sync as globSync } from 'glob';
 import * as path from 'path';
 
-import { CommandError, Options } from './Options';
-
-const ignoredPaths = ['**/@(Carthage|Pods|vendor|node_modules)/**'];
+import type { Options } from './Options';
+import { CommandError } from './Options';
+import { escapeUriParams } from './URIScheme';
 
 export function isAvailable(projectRoot: string): boolean {
-  const reactNativeIos = globSync('ios/*.xcodeproj', {
-    ignore: ignoredPaths,
-    absolute: true,
-    cwd: projectRoot,
-  });
-  const currentIos = globSync('*.xcodeproj', {
-    ignore: ignoredPaths,
-    absolute: true,
-    cwd: projectRoot,
-  });
-  return !!currentIos.length || !!reactNativeIos.length;
+  return [projectRoot, path.join(projectRoot, 'ios')].some((directory) =>
+    readProjectEntries(directory).some((file) => file.endsWith('.xcodeproj'))
+  );
 }
 
 export async function addAsync({
@@ -103,19 +94,20 @@ export async function getAsync({
 
 function getInfoPlistsInDirectory(projectRoot: string): string[] {
   // longer name means more suffixes, we want the shortest possible one to be first.
-  return globSync('*/Info.plist', { ignore: ignoredPaths, absolute: true, cwd: projectRoot }).sort(
-    (a, b) => a.length - b.length
-  );
+  return readProjectEntries(projectRoot)
+    .map((entry) => path.join(entry, 'Info.plist'))
+    .filter((file) => fs.existsSync(file))
+    .sort((a, b) => a.length - b.length);
 }
 
 export function getConfigPath(projectRoot: string): string {
   // TODO: Figure out how to avoid using the Tests info.plist
   const rnInfoPlistPaths = getInfoPlistsInDirectory(path.join(projectRoot, 'ios'));
-  if (rnInfoPlistPaths.length) {
+  if (rnInfoPlistPaths[0] != null) {
     return rnInfoPlistPaths[0];
   }
   const infoPlistPaths = getInfoPlistsInDirectory(projectRoot);
-  if (!infoPlistPaths.length) {
+  if (infoPlistPaths[0] == null) {
     throw new CommandError(`iOS: No Info.plist found for project at root: ${projectRoot}`);
   }
   return infoPlistPaths[0];
@@ -136,4 +128,39 @@ function formatConfig(plistObject: any): string {
 
 function writeConfig(path: string, plistObject: any) {
   fs.writeFileSync(path, formatConfig(plistObject));
+}
+
+/**
+ * `xcrun` expects special characters in the search parameters to be escaped.
+ * When you don't escape these special characters, the wrong screen might be opened without warnings.
+ *
+ * @example
+ * - `myapp://(tabs)/explore` -> `myapp://(tabs)/explore`
+ * - `myapp://(tabs)/explore?test=a|b|c` -> `myapp://(tabs)/explore?test=a%7Cb%7Cc`
+ */
+export function escapeUri(uri: string) {
+  if (!uri.includes('?')) return uri;
+
+  const [uriWithoutParams, uriParams = ''] = uri.split('?', 2);
+
+  return `${uriWithoutParams}?${escapeUriParams(uriParams)}`;
+}
+
+function readProjectEntries(directory: string): string[] {
+  let names: string[];
+  try {
+    names = fs.readdirSync(directory);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return [];
+    throw error;
+  }
+  return names
+    .filter(
+      (name) =>
+        !name.startsWith('.') && !['Carthage', 'Pods', 'vendor', 'node_modules'].includes(name)
+    )
+    .sort()
+    .reverse()
+    .map((name) => path.resolve(directory, name));
 }

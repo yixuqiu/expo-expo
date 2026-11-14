@@ -1,65 +1,26 @@
-import { ExpoModuleConfig } from './ExpoModuleConfig';
+import type { PlatformName } from '@expo/platforms';
 
-export type SupportedPlatform = 'apple' | 'ios' | 'android' | 'web' | 'macos' | 'tvos' | 'devtools';
+import type { ExpoModuleConfig } from './ExpoModuleConfig';
 
-/**
- * Options that can be passed through `expo.autolinking` config in the package.json file.
- */
-export type AutolinkingOptions = {
-  searchPaths?: string[] | null;
-  ignorePaths?: string[] | null;
-  exclude?: string[] | null;
-  flags?: Record<string, any>;
-} & {
-  [key in SupportedPlatform]?: AutolinkingOptions;
-};
+type Required<T, K extends keyof T> = T & { [P in K]-?: T[P] };
 
-export interface SearchOptions {
-  // Available in the CLI
-  searchPaths: string[];
-  ignorePaths?: string[] | null;
-  exclude?: string[] | null;
-  platform: SupportedPlatform;
-  silent?: boolean;
-  nativeModulesDir?: string | null;
-  projectRoot: string;
-  /**
-   * Filter the search results to only include the project dependencies.
-   * In a monorepo, you may like to set this to false and link all modules from the monorepo.
-   * @default true
-   */
-  onlyProjectDeps?: boolean;
+type WithRequired<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>> & Required<T, K>;
 
-  // Scratched from project's config
-  flags?: Record<string, any>;
-}
-
-export interface ResolveOptions extends SearchOptions {
-  json?: boolean;
-}
-
-export interface GenerateOptions extends ResolveOptions {
-  target: string;
-  namespace?: string;
-  empty?: boolean;
-}
-
-export interface GenerateModulesProviderOptions extends ResolveOptions {
-  target: string;
-  packages: string[];
-}
-
-export interface PatchReactImportsOptions {
-  podsRoot: string;
-  dryRun: boolean;
-}
+// NOTE(@kitten): Our code has never guaranteed this to be exhaustive, hence the `| (string & {})` addition
+export type SupportedPlatform = PlatformName | 'apple' | 'devtools' | (string & {});
 
 export type PackageRevision = {
+  name: string;
   path: string;
   version: string;
   config?: ExpoModuleConfig;
   duplicates?: PackageRevision[];
+  /** Whether the package was found in the app's `nativeModulesDir` (local modules). */
+  isLocal?: boolean;
 };
+
+/** Name of the package that local modules and inline modules are exported in. It can't be the name of an npm package. */
+export const LOCAL_PACKAGE_NAME = '$local';
 
 export type SearchResults = {
   [moduleName: string]: PackageRevision;
@@ -68,30 +29,74 @@ export type SearchResults = {
 export interface ModuleAndroidProjectInfo {
   name: string;
   sourceDir: string;
+  modules: ModuleAndroidModuleInfo[];
+  services: string[];
+  packages: string[];
+  publication?: WithRequired<AndroidPublication, 'version'>;
+  aarProjects?: AndroidGradleAarProjectDescriptor[];
+  shouldUsePublicationScriptPath?: string;
+}
+
+export interface ModuleAndroidModuleInfo {
+  name: string | null;
+  classifier: string;
 }
 
 export interface ModuleAndroidPluginInfo {
   id: string;
-  sourceDir: string;
+  group: string;
+  sourceDir?: string;
+  version?: string;
+  applyToRootProject?: boolean;
 }
 
-export interface ModuleDescriptorAndroid {
+export interface ModuleAndroidAarProjectInfo extends AndroidGradleAarProjectDescriptor {
+  projectDir: string;
+}
+
+export interface CommonNativeModuleDescriptor {
   packageName: string;
-  projects: ModuleAndroidProjectInfo[];
+  coreFeatures?: string[];
+}
+
+export interface ModuleDescriptorAndroid extends CommonNativeModuleDescriptor {
+  projects?: ModuleAndroidProjectInfo[];
   plugins?: ModuleAndroidPluginInfo[];
-  modules: string[];
 }
 
 export interface ModuleIosPodspecInfo {
   podName: string;
   podspecDir: string;
 }
-export interface ModuleDescriptorIos {
-  packageName: string;
+export interface ModuleIosConfig {
+  name: string | null;
+  class: string;
+}
+export interface ModuleDescriptorIos extends CommonNativeModuleDescriptor {
+  /**
+   * Name of the package that the modules declared with the `@ExpoModule` macro are exported in, when it differs
+   * from `packageName`. Local modules use `LOCAL_PACKAGE_NAME`.
+   */
+  exportedPackageName?: string;
+  modules: ModuleIosConfig[];
+  /**
+   * The modules from `modules` that `scan-modules` found, so they're declared with the `@ExpoModule` macro
+   * (Expo Modules API 2.0). The generated modules provider also lists these modules by package in `packages`.
+   */
+  expoModules?: ModuleIosConfig[];
+  /**
+   * Names of the `@SharedObject` classes that `scan-modules` found. The generated modules provider lists them by
+   * package in `packages`, next to the modules.
+   */
+  expoSharedObjects?: string[];
+  /**
+   * Names of the `@ExpoView` classes that `scan-modules` found. The generated modules provider lists them by
+   * package in `packages`, next to the modules.
+   */
+  expoViews?: string[];
   pods: ModuleIosPodspecInfo[];
   flags: Record<string, any> | undefined;
   swiftModuleNames: string[];
-  modules: string[];
   appDelegateSubscribers: string[];
   reactDelegateHandlers: string[];
   debugOnly: boolean;
@@ -100,13 +105,35 @@ export interface ModuleDescriptorIos {
 export interface ModuleDescriptorDevTools {
   packageName: string;
   packageRoot: string;
-  webpageRoot: string;
+  webpageRoot?: string;
+  bannerTitle?: boolean | string;
+  serverEntryPoint?: string;
+  cliExtensions?: {
+    description: string;
+    commands: {
+      name: string;
+      title: string;
+      environments: ('cli' | 'mcp')[];
+      parameters?: {
+        name: string;
+        type: 'text' | 'number' | 'confirm';
+        description?: string;
+      }[];
+    }[];
+    entryPoint: string;
+  };
+}
+
+export interface ModuleDescriptorWeb {
+  packageName: string;
+  packageRoot: string;
 }
 
 export type ModuleDescriptor =
   | ModuleDescriptorAndroid
   | ModuleDescriptorIos
-  | ModuleDescriptorDevTools;
+  | ModuleDescriptorDevTools
+  | ModuleDescriptorWeb;
 
 export interface AndroidGradlePluginDescriptor {
   /**
@@ -122,23 +149,68 @@ export interface AndroidGradlePluginDescriptor {
   /**
    * Relative path to the gradle plugin directory
    */
-  sourceDir: string;
+  sourceDir?: string;
+
+  /**
+   * Version of a published gradle plugin.
+   * Ignored when `sourceDir` is declared.
+   */
+  version?: string;
+
+  /**
+   * Whether to apply the plugin to the root project
+   * Defaults to true
+   */
+  applyToRootProject?: boolean;
 }
 
+export interface AndroidGradleAarProjectDescriptor {
+  /**
+   * Gradle project name
+   */
+  name: string;
+
+  /**
+   * Path to the AAR file
+   */
+  aarFilePath: string;
+}
+
+/**
+ * Information about the available publication of an Android AAR file.
+ */
+export interface AndroidPublication {
+  /**
+   * The Maven artifact ID.
+   */
+  artifactId: string;
+  /**
+   * The Maven group ID.
+   */
+  groupId: string;
+  /**
+   * The Maven version. Defaults to the package version when omitted from module config.
+   */
+  version?: string;
+  /**
+   * The Maven repository.
+   */
+  repository: string;
+}
+
+export type RawAppleModuleConfig = {
+  name: string;
+  class: string;
+};
 /**
  * Represents a raw config specific to Apple platforms.
  */
 export type RawModuleConfigApple = {
   /**
    * Names of Swift native modules classes to put to the generated modules provider file.
+   * Declaring it, even empty, disables `@ExpoModule` scanning for the package.
    */
-  modules?: string[];
-
-  /**
-   * Names of Swift native modules classes to put to the generated modules provider file.
-   * @deprecated Deprecated in favor of `modules`. Might be removed in the future releases.
-   */
-  modulesClassNames?: string[];
+  modules?: (string | RawAppleModuleConfig)[];
 
   /**
    * Names of Swift classes that hooks into `ExpoAppDelegate` to receive AppDelegate life-cycle events.
@@ -169,6 +241,71 @@ export type RawModuleConfigApple = {
   debugOnly?: boolean;
 };
 
+export type RawAndroidModuleConfig = {
+  /**
+   * Names of the modules to be linked in the project.
+   */
+  name: string;
+  class: string;
+};
+
+/**
+ * Represents a raw config specific to Android platforms.
+ */
+export type RawAndroidProjectConfig = {
+  /**
+   * The name of the project. It will be used as the Gradle project name.
+   */
+  name?: string;
+
+  /**
+   * The path to the project directory. Should contain the `build.gradle{.kts}` file.
+   * It's relative to the module root directory.
+   */
+  path?: string;
+
+  /**
+   * Information about the available publication of an Android AAR file
+   */
+  publication?: AndroidPublication;
+
+  /**
+   * The path to the script that determines whether the publication should be used.
+   * Evaluate in the context of the `settings.gradle` file.
+   * Won't be run if the publication is not defined.
+   */
+  shouldUsePublicationScriptPath?: string;
+
+  /**
+   * List of modules provided by the package.
+   */
+  modules?: (string | RawAndroidModuleConfig)[];
+
+  /**
+   * Full qualified names of Android services (`expo.modules.kotlin.services.Service`) provided by the package.
+   */
+  services?: string[];
+
+  /**
+   * Prebuilded AAR projects.
+   */
+  gradleAarProjects?: AndroidGradleAarProjectDescriptor[];
+
+  gradlePath?: string;
+};
+
+export type RawAndroidConfig = {
+  projects?: WithRequired<RawAndroidProjectConfig, 'name' | 'path'>[];
+  /**
+   * Gradle plugins.
+   */
+  gradlePlugins?: AndroidGradlePluginDescriptor[];
+
+  /**
+   * Gradle projects containing AAR files.
+   */
+} & RawAndroidProjectConfig;
+
 /**
  * Represents a raw config from `expo-module.json`.
  */
@@ -185,7 +322,6 @@ export interface RawExpoModuleConfig {
 
   /**
    * The legacy config previously used for iOS platform. For backwards compatibility it's used as the fallback for `apple`.
-   * Also due to backwards compatibility, it includes the deprecated `modulesClassNames` field.
    * @deprecated As the module can now support more than iOS platform, use the generic `apple` config instead.
    */
   ios?: RawModuleConfigApple;
@@ -193,38 +329,82 @@ export interface RawExpoModuleConfig {
   /**
    * Android-specific config.
    */
-  android?: {
-    /**
-     * Full names (package + class name) of Kotlin native modules classes to put to the generated package provider file.
-     */
-    modules?: string[];
+  android?: RawAndroidConfig;
 
-    /**
-     * Full names (package + class name) of Kotlin native modules classes to put to the generated package provider file.
-     * @deprecated Deprecated in favor of `modules`. Might be removed in the future releases.
-     */
-    modulesClassNames?: string[];
-
-    /**
-     * build.gradle relative path.
-     * To have multiple build.gradle projects, string array type is also supported.
-     */
-    gradlePath?: string | string[];
-
-    /**
-     * Gradle plugins.
-     */
-    gradlePlugins?: AndroidGradlePluginDescriptor[];
-  };
+  /**
+   * List of core features that this module requires.
+   */
+  coreFeatures?: string[];
 
   /**
    * DevTools-specific config.
    */
   devtools?: {
     /**
-     * The webpage root directory for Expo CLI DevTools to serve the web resources.
+     * The webpage root directory for Expo CLI DevTools to serve the web resources. Only set if the module has a web interface.
      */
-    webpageRoot: string;
+    webpageRoot?: string;
+    /**
+     * The title to show in the Expo CLI startup banner. Defaults to the package name if passing `true`,
+     * otherwise the banner is not shown.
+     */
+    bannerTitle?: string | boolean;
+    /**
+     * A package-local JavaScript file default-exporting a `handler(request)` function that
+     * handles requests to the plugin endpoint and optional `webSocketHandlers` for WebSocket connections.
+     * Runs in the Expo CLI Node.js process.
+     */
+    serverEntryPoint?: string;
+    /**
+     * Cli extension config for the module.
+     */
+    cliExtensions?: {
+      /*
+       * The description of the module that will be displayed in the CLI.
+       */
+      description: string;
+      /**
+       * The commands that the module provides in the CLI.
+       * Each command has a name and a caption.
+       */
+      commands: {
+        /**
+         * Name of command
+         */
+        name: string;
+        /**
+         * Title for the command that will be displayed in the CLI.
+         */
+        title: string;
+        /**
+         * Optional array of disabled environments for the command. By default all commands are enabled on all environments.
+         * Environments can be 'cli' for the CLI or 'mcp' for the Model Context Protocol.
+         */
+        environments: ('cli' | 'mcp')[];
+        /**
+         * Optional parameters for the command.
+         */
+        parameters?: {
+          /**
+           * Name of the parameter.
+           */
+          name: string;
+          /**
+           * Type of the parameter.
+           * Can be 'text', 'number', or 'confirm'.
+           */
+          type: 'text' | 'number' | 'confirm';
+          /**
+           * Description of the parameter that will be displayed in the CLI.
+           */
+          description?: string;
+        }[];
+      }[];
+      /**
+       * The main entry point for the module in the CLI.
+       */
+      entryPoint: string;
+    };
   };
 }
 
@@ -283,3 +463,13 @@ interface ApplePod {
 }
 
 export type ExtraDependencies = AndroidMavenRepository[] | ApplePod[];
+
+/**
+ * Represents code signing entitlements passed to the `ExpoModulesProvider` for Apple platforms.
+ */
+export interface AppleCodeSignEntitlements {
+  /**
+   * @see https://developer.apple.com/documentation/bundleresources/entitlements/com_apple_security_application-groups
+   */
+  appGroups?: string[];
+}

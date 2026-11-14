@@ -1,8 +1,8 @@
-import { requireNativeViewManager } from 'expo-modules-core';
-import * as React from 'react';
+import { requireNativeView } from 'expo';
+import type { ComponentType } from 'react';
 
-import { CameraNativeProps } from './Camera.types';
+import type { CameraNativeProps } from './Camera.types';
 
-const ExpoCamera: React.ComponentType<CameraNativeProps> = requireNativeViewManager('ExpoCamera');
+const ExpoCamera: ComponentType<CameraNativeProps> = requireNativeView('ExpoCamera');
 
 export default ExpoCamera;

@@ -1,13 +1,13 @@
-import ExpoModulesCore
 import CryptoKit
+import ExpoModulesCore
 
-internal class UnableToDownloadAssetException: GenericException<URL> {
+internal final class UnableToDownloadAssetException: GenericException<URL> {
   override var reason: String {
     "Unable to download asset from url: '\(param.absoluteString)'"
   }
 }
 
-internal class UnableToSaveAssetToDirectoryException: GenericException<URL> {
+internal final class UnableToSaveAssetToDirectoryException: GenericException<URL> {
   override var reason: String {
     "Unable to save asset to directory: '\(param.absoluteString)'"
   }
@@ -17,14 +17,18 @@ public class AssetModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ExpoAsset")
 
+    // NOTE: this is exposed in JS as globalThis.expo.modules.ExpoAsset.downloadAsync
+    // and potentially consumed outside of Expo (e.g. RN vector icons)
+    // do NOT change the function signature as it'll break consumers!
     AsyncFunction("downloadAsync") { (url: URL, md5Hash: String?, type: String, promise: Promise) in
       if url.isFileURL {
         promise.resolve(url.standardizedFileURL.absoluteString)
         return
       }
       guard let cacheFileId = md5Hash ?? getMD5Hash(fromURL: url),
-      let cachesDirectory = appContext?.fileSystem?.cachesDirectory,
-      let appContext = appContext else {
+        let cachesDirectory = appContext?.fileSystem?.cachesDirectory,
+        let appContext = appContext
+      else {
         promise.reject(UnableToDownloadAssetException(url))
         return
       }
@@ -62,12 +66,11 @@ public class AssetModule: Module {
       promise.reject(UnableToSaveAssetToDirectoryException(url))
       return
     }
-    do {
-      try fileSystem.ensureDirExists(withPath: localUrl.path)
-    } catch {
+    if !fileSystem.ensureDirExists(withPath: localUrl.path) {
       promise.reject(UnableToSaveAssetToDirectoryException(localUrl))
       return
     }
+
     guard fileSystem.permissions(forURI: localUrl).contains(EXFileSystemPermissionFlags.write) else {
       promise.reject(UnableToSaveAssetToDirectoryException(localUrl))
       return

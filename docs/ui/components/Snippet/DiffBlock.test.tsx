@@ -1,10 +1,16 @@
 import { jest } from '@jest/globals';
 import { render, Screen, screen } from '@testing-library/react';
 import fs from 'fs-extra';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import GithubSlugger from 'github-slugger';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { createHeadingManager } from '~/common/headingManager';
+import { axe } from '~/common/test-utilities';
+import { HeadingsContext } from '~/common/withHeadingManager';
 
 import { DiffBlock } from '.';
+import { PermalinkedSnippetHeader } from './PermalinkedSnippetHeader';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -12,10 +18,7 @@ const DIFF_PATH = '/static/diffs/expo-ios.diff';
 const DIFF_CONTENT = fs.readFileSync(path.join(dirname, '../../../public', DIFF_PATH)).toString();
 
 const validateDiffContent = (screen: Screen) => {
-  expect(screen.getByText('ios/myapp/AppDelegate.h')).toBeInTheDocument();
   expect(screen.getByText('ios/Podfile')).toBeInTheDocument();
-  expect(screen.getByText('#import <UIKit/UIKit.h>')).toBeInTheDocument();
-  expect(screen.getByText('#import <Expo/Expo.h>')).toBeInTheDocument();
 };
 
 describe(DiffBlock, () => {
@@ -28,7 +31,7 @@ describe(DiffBlock, () => {
 
     render(<DiffBlock source={DIFF_PATH} />);
 
-    await screen.findByText('ios/myapp/AppDelegate.h');
+    await screen.findByText('ios/Podfile');
 
     validateDiffContent(screen);
   });
@@ -76,5 +79,40 @@ index fa45c70206..0000000000
     render(<DiffBlock raw={diffWithDelete} collapseDeletedFiles />);
 
     expect(screen.queryByText(`import 'react-native';`)).not.toBeInTheDocument();
+  });
+
+  it('keeps permalinked diff header actions outside of the permalink link', () => {
+    const headingManager = createHeadingManager(new GithubSlugger(), { headings: [] });
+    const singleFileDiff = `diff --git a/templates/expo-template-bare-minimum/android/app/src/main/AndroidManifest.xml b/templates/expo-template-bare-minimum/android/app/src/main/AndroidManifest.xml
+index 43aaf83..3d5a6c7 100644
+--- a/templates/expo-template-bare-minimum/android/app/src/main/AndroidManifest.xml
++++ b/templates/expo-template-bare-minimum/android/app/src/main/AndroidManifest.xml
+@@ -1 +1 @@
+-<manifest />
++<manifest xmlns:tools="http://schemas.android.com/tools" />`;
+
+    render(
+      <HeadingsContext.Provider value={headingManager}>
+        <DiffBlock
+          raw={singleFileDiff}
+          filenameModifier={str => str.replace('templates/expo-template-bare-minimum/', '')}
+          filenameToLinkUrl={filename => `https://github.com/expo/expo/tree/sdk-55/${filename}`}
+          SnippetHeaderComponent={PermalinkedSnippetHeader}
+        />
+      </HeadingsContext.Provider>
+    );
+
+    expect(
+      screen.getByRole('link', { name: 'android/app/src/main/AndroidManifest.xml' })
+    ).toHaveAttribute('href', '#androidappsrcmainandroidmanifestxml');
+    expect(screen.queryByRole('link', { name: /Raw/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Show settings/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Raw' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show settings' })).toBeInTheDocument();
+  });
+
+  it('has no axe violations', async () => {
+    const { container } = render(<DiffBlock raw={DIFF_CONTENT} />);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

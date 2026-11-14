@@ -2,6 +2,7 @@
 
 // swiftlint:disable closure_body_length
 
+import EXUpdatesInterface
 import ExpoModulesCore
 
 final class CheckForUpdateProcedure: StateMachineProcedure {
@@ -12,12 +13,14 @@ final class CheckForUpdateProcedure: StateMachineProcedure {
   private let getLaunchedUpdate: () -> Update?
   private let successBlock: (_ checkForUpdateResult: CheckForUpdateResult) -> Void
   private let errorBlock: (_ error: Exception) -> Void
+  private let fileDownloader: FileDownloader
 
   init(
     database: UpdatesDatabase,
     config: UpdatesConfig,
     selectionPolicy: SelectionPolicy,
     logger: UpdatesLogger,
+    updatesDirectory: URL,
     getLaunchedUpdate: @escaping () -> Update?,
     successBlock: @escaping (_: CheckForUpdateResult) -> Void,
     errorBlock: @escaping (_: Exception) -> Void
@@ -29,6 +32,13 @@ final class CheckForUpdateProcedure: StateMachineProcedure {
     self.getLaunchedUpdate = getLaunchedUpdate
     self.successBlock = successBlock
     self.errorBlock = errorBlock
+
+    self.fileDownloader = FileDownloader(
+      config: self.config,
+      logger: self.logger,
+      updatesDirectory: updatesDirectory,
+      database: self.database
+    )
   }
 
   func getLoggerTimerLabel() -> String {
@@ -36,18 +46,19 @@ final class CheckForUpdateProcedure: StateMachineProcedure {
   }
 
   func run(procedureContext: ProcedureContext) {
-    procedureContext.processStateEvent(UpdatesStateEventCheck())
+    procedureContext.processStateEvent(.check)
 
     database.databaseQueue.async {
       let embeddedUpdate = EmbeddedAppLoader.embeddedManifest(withConfig: self.config, database: self.database)
       let extraHeaders = FileDownloader.extraHeadersForRemoteUpdateRequest(
         withDatabase: self.database,
         config: self.config,
+        logger: self.logger,
         launchedUpdate: self.getLaunchedUpdate(),
         embeddedUpdate: embeddedUpdate
       )
 
-      FileDownloader(config: self.config).downloadRemoteUpdate(
+      self.fileDownloader.downloadRemoteUpdate(
         fromURL: self.config.updateUrl,
         withDatabase: self.database,
         extraHeaders: extraHeaders) { updateResponse in
@@ -58,20 +69,20 @@ final class CheckForUpdateProcedure: StateMachineProcedure {
             switch updateDirective {
             case is NoUpdateAvailableUpdateDirective:
               self.successBlock(CheckForUpdateResult.noUpdateAvailable(reason: RemoteCheckResultNotAvailableReason.noUpdateAvailableOnServer))
-              procedureContext.processStateEvent(UpdatesStateEventCheckComplete())
+              procedureContext.processStateEvent(.checkCompleteUnavailable)
               procedureContext.onComplete()
               return
             case let rollBackUpdateDirective as RollBackToEmbeddedUpdateDirective:
               if !self.config.hasEmbeddedUpdate {
                 self.successBlock(CheckForUpdateResult.noUpdateAvailable(reason: RemoteCheckResultNotAvailableReason.rollbackNoEmbedded))
-                procedureContext.processStateEvent(UpdatesStateEventCheckComplete())
+                procedureContext.processStateEvent(.checkCompleteUnavailable)
                 procedureContext.onComplete()
                 return
               }
 
               guard let embeddedUpdate = embeddedUpdate else {
                 self.successBlock(CheckForUpdateResult.noUpdateAvailable(reason: RemoteCheckResultNotAvailableReason.rollbackNoEmbedded))
-                procedureContext.processStateEvent(UpdatesStateEventCheckComplete())
+                procedureContext.processStateEvent(.checkCompleteUnavailable)
                 procedureContext.onComplete()
                 return
               }
@@ -83,15 +94,13 @@ final class CheckForUpdateProcedure: StateMachineProcedure {
                 filters: manifestFilters
               ) {
                 self.successBlock(CheckForUpdateResult.noUpdateAvailable(reason: RemoteCheckResultNotAvailableReason.rollbackRejectedBySelectionPolicy))
-                procedureContext.processStateEvent(UpdatesStateEventCheckComplete())
+                procedureContext.processStateEvent(.checkCompleteUnavailable)
                 procedureContext.onComplete()
                 return
               }
 
               self.successBlock(CheckForUpdateResult.rollBackToEmbedded(commitTime: rollBackUpdateDirective.commitTime))
-              procedureContext.processStateEvent(
-                UpdatesStateEventCheckCompleteWithRollback(rollbackCommitTime: rollBackUpdateDirective.commitTime)
-              )
+              procedureContext.processStateEvent(.checkCompleteWithRollback(rollbackCommitTime: rollBackUpdateDirective.commitTime))
               procedureContext.onComplete()
               return
             default:
@@ -101,7 +110,7 @@ final class CheckForUpdateProcedure: StateMachineProcedure {
 
           guard let update = updateResponse.manifestUpdateResponsePart?.updateManifest else {
             self.successBlock(CheckForUpdateResult.noUpdateAvailable(reason: RemoteCheckResultNotAvailableReason.noUpdateAvailableOnServer))
-            procedureContext.processStateEvent(UpdatesStateEventCheckComplete())
+            procedureContext.processStateEvent(.checkCompleteUnavailable)
             procedureContext.onComplete()
             return
           }
@@ -133,7 +142,7 @@ final class CheckForUpdateProcedure: StateMachineProcedure {
 
           if shouldLaunch {
             self.successBlock(CheckForUpdateResult.updateAvailable(manifest: update.manifest.rawManifestJSON()))
-            procedureContext.processStateEvent(UpdatesStateEventCheckCompleteWithUpdate(manifest: update.manifest.rawManifestJSON()))
+            procedureContext.processStateEvent(.checkCompleteWithUpdate(manifest: update.manifest.rawManifestJSON()))
             procedureContext.onComplete()
             return
           }
@@ -142,11 +151,12 @@ final class CheckForUpdateProcedure: StateMachineProcedure {
             RemoteCheckResultNotAvailableReason.updatePreviouslyFailed :
             RemoteCheckResultNotAvailableReason.updateRejectedBySelectionPolicy
           self.successBlock(CheckForUpdateResult.noUpdateAvailable(reason: reason))
-          procedureContext.processStateEvent(UpdatesStateEventCheckComplete())
+          procedureContext.processStateEvent(.checkCompleteUnavailable)
           procedureContext.onComplete()
           return
         } errorBlock: { error in
-          procedureContext.processStateEvent(UpdatesStateEventCheckError(message: error.localizedDescription))
+          self.logger.errorForLoadFailure(error, failed: .remoteCheckFailed, unreachable: .remoteCheckUnreachable)
+          procedureContext.processStateEvent(.checkError(errorMessage: error.localizedDescription))
           self.successBlock(CheckForUpdateResult.error(error: error))
           procedureContext.onComplete()
           return

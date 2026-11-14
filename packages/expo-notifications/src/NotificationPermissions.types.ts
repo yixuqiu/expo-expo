@@ -1,17 +1,26 @@
-import { PermissionResponse, PermissionHookOptions } from 'expo-modules-core';
+import type { PermissionResponse } from 'expo';
 
+/**
+ * @platform ios
+ * */
 export enum IosAlertStyle {
   NONE = 0,
   BANNER = 1,
   ALERT = 2,
 }
 
+/**
+ * @platform ios
+ * */
 export enum IosAllowsPreviews {
   NEVER = 0,
   ALWAYS = 1,
   WHEN_AUTHENTICATED = 2,
 }
 
+/**
+ * @platform ios
+ * */
 export enum IosAuthorizationStatus {
   NOT_DETERMINED = 0,
   DENIED = 1,
@@ -19,8 +28,6 @@ export enum IosAuthorizationStatus {
   PROVISIONAL = 3,
   EPHEMERAL = 4,
 }
-
-export { PermissionHookOptions };
 
 // @docsMissing
 export interface NotificationPermissionsStatus extends PermissionResponse {
@@ -36,17 +43,18 @@ export interface NotificationPermissionsStatus extends PermissionResponse {
     allowsAlert: boolean | null;
     allowsBadge: boolean | null;
     allowsSound: boolean | null;
-    allowsCriticalAlerts?: boolean | null;
+    allowsCriticalAlerts: boolean | null;
     alertStyle: IosAlertStyle;
-    allowsPreviews?: IosAllowsPreviews;
-    providesAppNotificationSettings?: boolean;
-    allowsAnnouncements?: boolean | null;
+    allowsPreviews: IosAllowsPreviews | null;
+    providesAppNotificationSettings: boolean | null;
+    allowsAnnouncements: boolean | null;
   };
 }
 
 /**
  * Available configuration for permission request on iOS platform.
  * See Apple documentation for [`UNAuthorizationOptions`](https://developer.apple.com/documentation/usernotifications/unauthorizationoptions) to learn more.
+ * @platform ios
  */
 export interface IosNotificationPermissionsRequest {
   /**
@@ -77,11 +85,6 @@ export interface IosNotificationPermissionsRequest {
    * The ability to post noninterrupting notifications provisionally to the Notification Center.
    */
   allowProvisional?: boolean;
-  /**
-   * The ability for Siri to automatically read out messages over AirPods.
-   * @deprecated
-   */
-  allowAnnouncements?: boolean;
 }
 
 export type NativeNotificationPermissionsRequest = IosNotificationPermissionsRequest | object;

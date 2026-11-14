@@ -1,0 +1,307 @@
+import { Slot } from '@radix-ui/react-slot';
+import type { ReactNode, ReactElement, ComponentProps } from 'react';
+import { use, useCallback } from 'react';
+import type { View, PressableProps } from 'react-native';
+import { StyleSheet, Pressable } from 'react-native';
+
+import { appendBaseUrl } from '../fork/getPathFromState';
+import { useEnqueueRoutingIntent } from '../global-state/routingQueueContext';
+import { findStateByKey } from '../global-state/stateUtils';
+import { router } from '../imperative-api';
+import { shouldHandleMouseEvent } from '../link/useLinkToPathProps';
+import { stripGroupSegmentsFromPath } from '../matchers';
+import type { TabNavigationState } from '../react-navigation/native';
+import type { Href } from '../types';
+import { useNavigatorContext } from '../views/Navigator';
+import { TabNavigatorStatesContext, TabTriggerMapContext } from './TabContext';
+import { buildTabAction, type TriggerMap } from './common';
+
+type PressablePropsWithoutFunctionChildren = Omit<PressableProps, 'children'> & {
+  children?: ReactNode | undefined;
+};
+
+export type TabTriggerProps = PressablePropsWithoutFunctionChildren & {
+  /**
+   *  Name of tab. When used within a `TabList` this sets the name of the tab.
+   * Otherwise, this references the name.
+   */
+  name: string;
+  /**
+   * Name of tab. Required when used within a `TabList`.
+   */
+  href?: Href;
+  /**
+   * Forward props to child component. Useful for custom wrappers.
+   */
+  asChild?: boolean;
+  /**
+   * Resets the route when switching to a tab.
+   */
+  resetOnFocus?: boolean;
+  /**
+   * Overrides React Activity behavior inherited from `Tabs` for this route when used in a
+   * `TabList`.
+   */
+  activityEnabled?: boolean;
+};
+
+export type TabTriggerOptions = {
+  name: string;
+  href: Href;
+};
+
+export type TabTriggerSlotProps = PressablePropsWithoutFunctionChildren &
+  React.RefAttributes<View> & {
+    isFocused?: boolean;
+    href?: string;
+  };
+
+const TabTriggerSlot = Slot as React.ForwardRefExoticComponent<TabTriggerSlotProps>;
+
+/**
+ * Creates a trigger to navigate to a tab. When used as child of `TabList`, its
+ * functionality slightly changes since the `href` prop is required,
+ * and the trigger also defines what routes are present in the `Tabs`.
+ *
+ * When used outside of `TabList`, this component no longer requires an `href`.
+ *
+ * @example
+ * ```tsx
+ * <Tabs>
+ *  <TabSlot />
+ *  <TabList>
+ *   <TabTrigger name="home" href="/" />
+ *  </TabList>
+ * </Tabs>
+ * ```
+ */
+export function TabTrigger({ asChild, name, href, resetOnFocus, ...props }: TabTriggerProps) {
+  const { trigger, triggerProps } = useTabTrigger({
+    name,
+    resetOnFocus,
+    ...props,
+  });
+
+  if (trigger?.hidden) {
+    return null;
+  }
+
+  // Pressable doesn't accept the extra props, so only pass them if we are using asChild
+  if (asChild) {
+    return (
+      <TabTriggerSlot
+        style={styles.tabTrigger}
+        {...props}
+        {...triggerProps}
+        href={trigger?.resolvedHref}>
+        {props.children}
+      </TabTriggerSlot>
+    );
+  } else {
+    // These props are not typed, but are allowed by React Native Web
+    const reactNativeWebProps = { href: trigger?.resolvedHref };
+
+    return (
+      <Pressable style={styles.tabTrigger} {...reactNativeWebProps} {...props} {...triggerProps}>
+        {props.children}
+      </Pressable>
+    );
+  }
+}
+
+/**
+ * @hidden
+ */
+export function isTabTrigger(
+  child: ReactElement<any>
+): child is ReactElement<ComponentProps<typeof TabTrigger>> {
+  return child.type === TabTrigger;
+}
+
+/**
+ * Options for `switchTab` function.
+ */
+export type SwitchToOptions = {
+  /**
+   * Navigate and reset the history on route focus.
+   */
+  resetOnFocus?: boolean;
+};
+
+export type Trigger = TriggerMap[string] & {
+  hidden: boolean;
+  isFocused: boolean;
+  resolvedHref: string;
+  route?: TabNavigationState<any>['routes'][number];
+};
+
+export type UseTabTriggerResult = {
+  switchTab: (name: string, options: SwitchToOptions) => void;
+  getTrigger: (name: string) => Trigger | undefined;
+  trigger?: Trigger;
+  triggerProps: TriggerProps;
+};
+
+export type TriggerProps = {
+  isFocused: boolean;
+  onPress: PressableProps['onPress'];
+  onLongPress: PressableProps['onLongPress'];
+};
+
+/**
+ * Utility hook creating custom `TabTrigger`.
+ */
+export function useTabTrigger(options: TabTriggerProps): UseTabTriggerResult {
+  const { state, navigation, contextKey, descriptors } = useNavigatorContext();
+  const { name, resetOnFocus, onPress, onLongPress } = options;
+  const triggerMap = use(TabTriggerMapContext);
+  const navigatorStates = use(TabNavigatorStatesContext);
+  const enqueue = useEnqueueRoutingIntent();
+
+  const getTrigger = useCallback(
+    (name: string) => {
+      const config = triggerMap[name];
+
+      if (!config) {
+        return;
+      }
+
+      const route =
+        config.type === 'internal'
+          ? state.routes.find((route) => route.name === config.routeNode.route)
+          : undefined;
+      const routeOptions =
+        config.type === 'internal'
+          ? descriptors[route?.key ?? config.routeNode.route]?.options
+          : undefined;
+      const hidden =
+        routeOptions != null && 'hidden' in routeOptions && routeOptions.hidden === true;
+
+      // Parent triggers are inherited, so read the state of the navigator that registered them.
+      const owningState =
+        config.type === 'internal' ? navigatorStates[config.contextKey] : undefined;
+      const routeIndex =
+        config.type === 'internal'
+          ? (owningState?.routes.findIndex((route) => route.name === config.routeNode.route) ?? -1)
+          : -1;
+
+      return {
+        hidden,
+        isFocused: owningState?.index === routeIndex,
+        route: owningState?.routes[routeIndex],
+        resolvedHref: stripGroupSegmentsFromPath(appendBaseUrl(config.href)),
+        ...config,
+      };
+    },
+    [descriptors, navigatorStates, state, triggerMap]
+  );
+
+  const trigger = name !== undefined ? getTrigger(name) : undefined;
+
+  const switchTab = useCallback(
+    (name: string, options?: SwitchToOptions) => {
+      const config = triggerMap[name];
+
+      if (config) {
+        if (config.type === 'external') {
+          return router.navigate(config.href);
+        } else {
+          const owningState = navigatorStates[config.contextKey];
+          if (!owningState) {
+            return;
+          }
+          return enqueue({
+            type: 'COMPUTED_ACTION',
+            payload: {
+              originKey: state.key,
+              compute(rootState, registry) {
+                const currentOwningState = findStateByKey(rootState, owningState.key);
+                if (!currentOwningState) {
+                  return;
+                }
+                const action = buildTabAction(
+                  config,
+                  currentOwningState,
+                  registry,
+                  options?.resetOnFocus
+                );
+                return config.contextKey !== contextKey
+                  ? { ...action, target: action.target ?? currentOwningState.key }
+                  : action;
+              },
+            },
+          });
+        }
+      } else {
+        return navigation?.dispatch({
+          type: 'JUMP_TO',
+          payload: { name },
+        });
+      }
+    },
+    [contextKey, enqueue, navigation, navigatorStates, state.key, triggerMap]
+  );
+
+  const handleOnPress = useCallback<NonNullable<PressableProps['onPress']>>(
+    (event) => {
+      onPress?.(event);
+      if (!trigger) return;
+      if (event?.isDefaultPrevented()) return;
+
+      navigation?.emit({
+        type: 'tabPress',
+        target: trigger.route?.key ?? trigger.href,
+        canPreventDefault: true,
+      });
+
+      if (!shouldHandleMouseEvent(event)) return;
+
+      if (!trigger.isFocused || (trigger.type === 'internal' && trigger.deep)) {
+        switchTab(name, { resetOnFocus });
+      }
+    },
+    [onPress, name, resetOnFocus, trigger]
+  );
+
+  const handleOnLongPress = useCallback<NonNullable<PressableProps['onLongPress']>>(
+    (event) => {
+      onLongPress?.(event);
+      if (!trigger) return;
+      if (event?.isDefaultPrevented()) return;
+
+      navigation?.emit({
+        type: 'tabLongPress',
+        target: trigger.route?.key ?? trigger.href,
+      });
+
+      if (!shouldHandleMouseEvent(event)) return;
+
+      if (!trigger.isFocused) {
+        switchTab(name, {
+          resetOnFocus,
+        });
+      }
+    },
+    [onLongPress, name, resetOnFocus, trigger]
+  );
+
+  const triggerProps = {
+    isFocused: Boolean(trigger?.isFocused),
+    onPress: handleOnPress,
+    onLongPress: handleOnLongPress,
+  };
+
+  return {
+    switchTab,
+    getTrigger,
+    trigger,
+    triggerProps,
+  };
+}
+
+const styles = StyleSheet.create({
+  tabTrigger: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+});

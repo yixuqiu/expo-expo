@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import expo.modules.notifications.notifications.NotificationManager
+import expo.modules.notifications.notifications.NotificationSerializer
 import expo.modules.notifications.notifications.model.Notification
 import expo.modules.notifications.notifications.model.NotificationResponse
 import expo.modules.notifications.service.NotificationForwarderActivity
@@ -45,12 +46,10 @@ class ExpoHandlingDelegate(protected val context: Context) : HandlingDelegate {
       }
 
       sListenersReferences[listener] = WeakReference(listener)
-      if (!sPendingNotificationResponses.isEmpty()) {
-        val responseIterator = sPendingNotificationResponses.iterator()
-        while (responseIterator.hasNext()) {
-          listener.onNotificationResponseReceived(responseIterator.next())
-          responseIterator.remove()
-        }
+      val responseIterator = sPendingNotificationResponses.iterator()
+      while (responseIterator.hasNext()) {
+        listener.onNotificationResponseReceived(responseIterator.next())
+        responseIterator.remove()
       }
     }
 
@@ -60,7 +59,7 @@ class ExpoHandlingDelegate(protected val context: Context) : HandlingDelegate {
      *   - the foreground main Activity
      *   - the background [NotificationForwarderActivity] Activity that send notification clicked events through broadcast
      */
-    fun createPendingIntentForOpeningApp(context: Context, broadcastIntent: Intent, notificationResponse: NotificationResponse): PendingIntent {
+    fun createPendingIntentForOpeningApp(context: Context, broadcastIntent: Intent): PendingIntent {
       var intentFlags = PendingIntent.FLAG_UPDATE_CURRENT
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         // The intent may include `RemoteInput` from `TextInputNotificationAction`.
@@ -70,7 +69,7 @@ class ExpoHandlingDelegate(protected val context: Context) : HandlingDelegate {
 
       val backgroundActivityIntent = Intent(context, NotificationForwarderActivity::class.java)
       backgroundActivityIntent.data = broadcastIntent.data
-      backgroundActivityIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+      backgroundActivityIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION
       backgroundActivityIntent.putExtras(broadcastIntent)
       val requestCode = broadcastIntent.component?.className?.hashCode() ?: NotificationsService::class.java.hashCode()
       return PendingIntent.getActivity(context, requestCode, backgroundActivityIntent, intentFlags)
@@ -97,8 +96,19 @@ class ExpoHandlingDelegate(protected val context: Context) : HandlingDelegate {
       return null
     }
 
-    private fun getMainActivityLauncher(context: Context) =
-      context.packageManager.getLaunchIntentForPackage(context.packageName)
+    /**
+     * Returns the intent that launches the app's main activity, or `null` if there is none.
+     *
+     * Some OEM ROMs throw (e.g. `NullPointerException: class name is null`) instead of
+     * returning `null` when no launcher activity resolves for the package. A throwing
+     * lookup is treated as "no launch intent" so callers degrade gracefully.
+     */
+    fun getMainActivityLauncher(context: Context): Intent? =
+      runCatching { context.packageManager.getLaunchIntentForPackage(context.packageName) }
+        .onFailure {
+          Log.w("expo-notifications", "getLaunchIntentForPackage threw while resolving the main activity launcher; treating as no launch intent.", it)
+        }
+        .getOrNull()
   }
 
   fun isAppInForeground() = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
@@ -106,11 +116,24 @@ class ExpoHandlingDelegate(protected val context: Context) : HandlingDelegate {
   fun getListeners() = sListenersReferences.values.mapNotNull { it.get() }
 
   override fun handleNotification(notification: Notification) {
+    /**
+     * When the app is in background, only data-only notifications reach this point.
+     * We do not inform JS about those. If JS wants to respond to data-only notifications,
+     * it needs to happen via expo-task-manager: https://docs.expo.dev/versions/latest/sdk/notifications/#background-notifications
+     * */
     if (isAppInForeground()) {
+      /**
+       * this calls [NotificationsHandler] which calls `handleNotification` in JS to determine the behavior.
+       * Then `SingleNotificationHandlerTask.processNotificationWithBehavior` may present it.
+       */
       getListeners().forEach {
         it.onNotificationReceived(notification)
       }
     } else if (notification.shouldPresent()) {
+      // only data-only notifications reach this point and we present them if they fall into the documented exception:
+      // https://docs.expo.dev/push-notifications/what-you-need-to-know/#headless-background-notifications
+      // this call can not be triggered by expo push service, only when using FCM directly.
+      // We keep this because we used to document this as a valid use case.
       NotificationsService.present(context, notification)
     }
   }
@@ -129,10 +152,26 @@ class ExpoHandlingDelegate(protected val context: Context) : HandlingDelegate {
       openAppToForeground(context, notificationResponse)
     }
 
-    if (getListeners().isEmpty()) {
+    // Run background tasks only for custom notification action buttons (not the default tap).
+    // When the default notification tap launches the app from killed state, calling
+    // runTaskManagerTasks starts a headless React instance that races with the foreground app.
+    // The foreground TaskManager gets misclassified as headless (via isRunningInHeadlessMode),
+    // then wiped by invalidateAppRecord — breaking all subsequent background task execution.
+    if (!isAppInForeground() && notificationResponse.actionIdentifier != NotificationResponse.DEFAULT_ACTION_IDENTIFIER) {
+      FirebaseMessagingDelegate.runTaskManagerTasks(
+        context.applicationContext,
+        NotificationSerializer.toBundle(notificationResponse)
+      )
+    }
+
+    // NOTE the listeners are not set up when the app is killed
+    // and is launched in response to tapping a notification button
+    // this code is a noop in that case
+    val listeners = getListeners()
+    if (listeners.isEmpty()) {
       sPendingNotificationResponses.add(notificationResponse)
     } else {
-      getListeners().forEach {
+      listeners.forEach {
         it.onNotificationResponseReceived(notificationResponse)
       }
     }

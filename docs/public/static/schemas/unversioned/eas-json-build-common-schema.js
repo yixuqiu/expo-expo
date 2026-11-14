@@ -3,7 +3,7 @@ export default [
     name: 'withoutCredentials',
     type: 'boolean',
     description: [
-      "When set to `true`, EAS CLI won't require you to configure credentials when building the app. This comes in handy when using EAS Build [custom builds](/custom-builds/get-started/). Defaults to `false`.",
+      "When set to `true`, EAS CLI won't require you to configure credentials when building the app. This comes in handy when using Expo Build [custom builds](/custom-builds/get-started/). Defaults to `false`.",
     ],
   },
   {
@@ -19,7 +19,7 @@ export default [
     description: [
       'The source of credentials used to sign the application archive.',
       ' - `local` - if you want to provide your own [**credentials.json**](/app-signing/local-credentials).',
-      ' - `remote` - if you want to use the credentials managed by EAS (default option).',
+      ' - `remote` - if you want to use the credentials managed by Expo Services (default option).',
     ],
   },
   {
@@ -28,18 +28,18 @@ export default [
     description: [
       '**Deprecated**: Name of the release channel for the Classic Updates service, which is only supported in SDK 49 and lower. If you do not specify a channel, your binary will pull releases from the `default` channel.',
       '',
-      'EAS Update uses the [channel](#channel) field, so you can remove [`releaseChannel`](#releasechannel) after [migrating to EAS Update](/eas-update/migrate-from-classic-updates/).',
+      'Expo Update uses the [channel](#channel) field, so you can remove [`releaseChannel`](#releasechannel) after [migrating to Expo Update](/eas-update/migrate-from-classic-updates/).',
     ],
   },
   {
     name: 'channel',
     type: 'string',
     description: [
-      'The EAS Update channel where this build will look for updates. [Learn more](../../eas-update/how-it-works). Standalone builds will check for and download updates matching platform, native runtime, and channel.',
+      'The Expo Update channel where this build will look for updates. [Learn more](../../eas-update/how-it-works). Standalone builds will check for and download updates matching platform, native runtime, and channel.',
       '',
-      'This field has no effect when [developmentClient](#developmentclient) is set to `true`, as development builds can run updates from any channnel.',
+      'This field has no effect when [`developmentClient`](#developmentclient) is set to `true`, as development builds can run updates from any channel.',
       '',
-      'If you have not yet migrated from Classic Updates to EAS Update, then continue to use the [`releaseChannel`](#releasechannel) field instead.',
+      'If you have not yet migrated from Classic Updates to Expo Update, then continue to use the [`releaseChannel`](#releasechannel) field instead.',
     ],
   },
   {
@@ -75,7 +75,7 @@ export default [
     name: 'prebuildCommand',
     type: 'string',
     description: [
-      'Optional override of the [prebuild](/more/expo-cli/#prebuild) command used by EAS.',
+      'Optional override of the [prebuild](/more/expo-cli/#prebuild) command used by Expo Build.',
       '',
       'For example, you can specify `prebuild --template example-template` to use a custom template.',
       '',
@@ -86,13 +86,29 @@ export default [
     name: 'buildArtifactPaths',
     type: 'string[]',
     description: [
-      'List of paths (or patterns) where EAS Build is going to look for the build artifacts. Use `applicationArchivePath` for specifying the path for uploading the application archive. Build artifacts are uploaded even if the build fails. EAS Build uses the `fast-glob` npm library for [pattern matching](https://github.com/mrmlnc/fast-glob#pattern-syntax).',
+      'List of paths (or patterns) where Expo Build is going to look for the build artifacts. Use `applicationArchivePath` for specifying the path for uploading the application archive. Build artifacts are uploaded even if the build fails. Expo Build uses [glob patterns](https://github.com/isaacs/node-glob#glob-primer) for pattern matching.',
+    ],
+  },
+  {
+    name: 'uploadSourceMaps',
+    type: 'boolean',
+    description: [
+      'If set to `true`, the JavaScript source map generated during the build is uploaded to Expo servers. Stored source maps are used by [Expo Observe](/eas/observe/errors/#symbolicated-stack-traces) to symbolicate reported error stack traces. The source code embedded in the map is removed before upload. Defaults to `false`.',
+      '',
+      '**Note**: only available for builds that run on Expo Build servers. Local builds do not upload source maps.',
     ],
   },
   {
     name: 'node',
     type: 'string',
     description: ['Version of Node.js used for build.'],
+  },
+  {
+    name: 'corepack',
+    type: 'boolean',
+    description: [
+      'If set to `true`, [corepack](https://nodejs.org/api/corepack.html) will be enabled at the beginning of build process. Defaults to `false`.',
+    ],
   },
   {
     name: 'yarn',
@@ -107,7 +123,9 @@ export default [
   {
     name: 'bun',
     type: 'string',
-    description: ['Version of Bun used for build. You can also use a specific version. Learn [how to configure the exact version in eas.json](/guides/using-bun/#customize-bun-version-on-eas).'],
+    description: [
+      'Version of Bun used for build. You can also use a specific version. Learn [how to configure the exact version in eas.json](/guides/using-bun/#customize-bun-version-on-expo-build).',
+    ],
   },
   {
     name: 'expoCli',
@@ -115,14 +133,14 @@ export default [
     description: [
       '**Deprecated**: Version of [`expo-cli`](https://www.npmjs.com/package/expo-cli) used to [prebuild](/more/expo-cli/#prebuild) your app. It only affects managed projects on Expo SDK 45 and lower.',
       '',
-      'For newer SDKs, EAS Build will use the versioned [Expo CLI](/more/expo-cli/). It is included with `expo` library. You can opt out of using the versioned Expo CLI by setting the `EXPO_USE_LOCAL_CLI=0` environment variable in the build profile.',
+      'For newer SDKs, Expo Build will use the versioned [Expo CLI](/more/expo-cli/). It is included with `expo` library. You can opt out of using the versioned Expo CLI by setting the `EXPO_USE_LOCAL_CLI=0` environment variable in the build profile.',
     ],
   },
   {
     name: 'env',
     type: 'object',
     description: [
-      '[Environment variables](/guides/environment-variables/) that should be set during the build process. It should only be used for values that you would commit to your git repository and not for passwords or [secrets](/build-reference/variables/).',
+      '[Environment variables](/guides/environment-variables/) that should be set during the build process. It should only be used for values that you would commit to your git repository and not for passwords or [secrets](/eas/environment-variables/#visibility-settings-for-environment-variables).',
     ],
   },
   {
@@ -166,7 +184,14 @@ export default [
     description: [
       'Custom workflow file name that will be used to run this build. You can also specify this property on platform level for platform-specific workflows. [Learn more](/custom-builds/get-started/).',
       '',
-      'Example: `"config": "production.yml"` will use workflow from `.eas/build/production.yml`.'
+      'Example: `"config": "production.yml"` will use workflow from `.eas/build/production.yml`.',
+    ],
+  },
+  {
+    name: 'environment',
+    enum: ['development', 'preview', 'production'],
+    description: [
+      'The environment used to apply environment variables for the build process. [Learn more](/eas/environment-variables).',
     ],
   },
 ];

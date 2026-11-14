@@ -1,11 +1,11 @@
-import { JSONObject } from '@expo/json-file';
+import type { JSONObject } from '@expo/json-file';
+import { derefSchema } from '@expo/schema-utils';
 import fs from 'fs';
-import schemaDerefSync from 'json-schema-deref-sync';
 import path from 'path';
 
-import { createCachedFetch } from './rest/client';
 import { env } from '../utils/env';
 import { CommandError } from '../utils/errors';
+import { createCachedFetch, getResponseDataOrThrow } from './rest/client';
 
 export type Schema = any;
 
@@ -15,11 +15,9 @@ export type AssetSchema = {
 
 const schemaJson: { [sdkVersion: string]: Schema } = {};
 
-// TODO: Maybe move json-schema-deref-sync out of api (1.58MB -- lodash)
-// https://packagephobia.com/result?p=json-schema-deref-sync
-async function getSchemaAsync(sdkVersion: string): Promise<Schema> {
+export async function _getSchemaAsync(sdkVersion: string): Promise<Schema> {
   const json = await getSchemaJSONAsync(sdkVersion);
-  return schemaDerefSync(json.schema);
+  return derefSchema(json.schema);
 }
 
 /**
@@ -29,7 +27,7 @@ async function getSchemaAsync(sdkVersion: string): Promise<Schema> {
  */
 export async function getAssetSchemasAsync(sdkVersion: string = 'UNVERSIONED'): Promise<string[]> {
   // If no SDK version is available then fall back to unversioned
-  const schema = await getSchemaAsync(sdkVersion);
+  const schema = await _getSchemaAsync(sdkVersion);
   const assetSchemas: string[] = [];
   const visit = (node: Schema, fieldPath: string) => {
     if (node.meta && node.meta.asset) {
@@ -87,6 +85,7 @@ async function getConfigurationSchemaAsync(sdkVersion: string): Promise<JSONObje
     ttl: 1000 * 60 * 60 * 24 * 7,
   });
   const response = await fetchAsync(`project/configuration/schema/${sdkVersion}`);
-  const { data } = await response.json();
-  return data;
+  const json = await response.json();
+
+  return getResponseDataOrThrow<JSONObject>(json);
 }

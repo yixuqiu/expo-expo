@@ -1,0 +1,133 @@
+import { BASE_DESCRIPTIONS, SITE_NAMES, type SupportedLocale } from '../common/i18n';
+
+type BreadcrumbItem = {
+  name: string;
+  url?: string;
+};
+
+export function buildBreadcrumbListSchema(items: BreadcrumbItem[]) {
+  if (items.length < 2) {
+    return null;
+  }
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((item, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: item.name,
+      ...(item.url ? { item: item.url } : {}),
+    })),
+  };
+}
+
+type TechArticleInput = {
+  title: string;
+  description?: string;
+  modificationDate?: string;
+  image?: string;
+  url: string;
+};
+
+function toISODateTime(date: string) {
+  const parsed = new Date(date.replace(/(\d+)(st|nd|rd|th)/, '$1'));
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}T00:00:00Z`;
+}
+
+export function buildTechArticleSchema({
+  title,
+  description,
+  modificationDate,
+  image,
+  url,
+}: TechArticleInput) {
+  const dateModified = modificationDate ? toISODateTime(modificationDate) : undefined;
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'TechArticle',
+    headline: title,
+    ...(description ? { description } : {}),
+    ...(dateModified ? { dateModified } : {}),
+    ...(image ? { image } : {}),
+    author: organizationSchema,
+    publisher: organizationSchema,
+    url,
+  };
+}
+
+type FAQItem = { question: string; answer: string };
+
+export function buildFAQPageSchema(items: FAQItem[]) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: items.map(item => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: { '@type': 'Answer', text: item.answer },
+    })),
+  };
+}
+
+export const organizationSchema = {
+  '@type': 'Organization',
+  '@id': 'https://expo.dev/#organization',
+  name: 'Expo',
+  legalName: '650 Industries, Inc.',
+  description: BASE_DESCRIPTIONS.en,
+  url: 'https://expo.dev',
+  contactPoint: {
+    '@type': 'ContactPoint',
+    contactType: 'customer support',
+    email: 'support@expo.dev',
+  },
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: '624 University Ave, FL1',
+    addressLocality: 'Palo Alto',
+    addressRegion: 'CA',
+    postalCode: '94301',
+    addressCountry: 'US',
+  },
+  logo: {
+    '@type': 'ImageObject',
+    url: 'https://docs.expo.dev/static/images/expo-logo.svg',
+  },
+  sameAs: [
+    'https://github.com/expo',
+    'https://www.npmjs.com/org/expo',
+    'https://x.com/expo',
+    'https://bsky.app/profile/expo.dev',
+    'https://www.linkedin.com/company/expo-dev/',
+    'https://www.youtube.com/@expodevelopers',
+  ],
+};
+
+export function buildWebsiteSchema(locale: SupportedLocale) {
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      organizationSchema,
+      {
+        '@type': 'WebSite',
+        name: SITE_NAMES[locale],
+        description: BASE_DESCRIPTIONS[locale],
+        url: 'https://docs.expo.dev',
+        publisher: { '@id': organizationSchema['@id'] },
+      },
+    ],
+  };
+}

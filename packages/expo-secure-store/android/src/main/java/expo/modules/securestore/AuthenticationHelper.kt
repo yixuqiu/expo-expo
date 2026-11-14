@@ -2,6 +2,7 @@ package expo.modules.securestore
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.KeyguardManager
 import android.content.Context
 import android.os.Build
 import androidx.biometric.BiometricManager
@@ -19,9 +20,9 @@ class AuthenticationHelper(
 ) {
   private var isAuthenticating = false
 
-  suspend fun authenticateCipher(cipher: Cipher, requiresAuthentication: Boolean, title: String): Cipher {
-    if (requiresAuthentication) {
-      return openAuthenticationPrompt(cipher, title).cryptoObject?.cipher
+  internal suspend fun authenticateCipher(cipher: Cipher, options: AuthenticationPromptOptions): Cipher {
+    if (options.authenticationMethod.isAuthenticationRequired) {
+      return openAuthenticationPrompt(cipher, options).cryptoObject?.cipher
         ?: throw AuthenticationException("Couldn't get cipher from authentication result")
     }
     return cipher
@@ -29,7 +30,7 @@ class AuthenticationHelper(
 
   private suspend fun openAuthenticationPrompt(
     cipher: Cipher,
-    title: String
+    options: AuthenticationPromptOptions
   ): BiometricPrompt.AuthenticationResult {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
       throw AuthenticationException("Biometric authentication requires Android API 23")
@@ -40,19 +41,43 @@ class AuthenticationHelper(
 
     isAuthenticating = true
 
-    assertBiometricsSupport()
-    val fragmentActivity = getCurrentActivity() as? FragmentActivity
-      ?: throw AuthenticationException("Cannot display biometric prompt when the app is not in the foreground")
+    try {
+      if (options.authenticationMethod == AuthenticationMethod.DEVICE_CREDENTIALS) {
+        assertDeviceSecurity()
+      } else {
+        assertBiometricsSupport()
+      }
 
-    val authenticationPrompt = AuthenticationPrompt(fragmentActivity, context, title)
+      val fragmentActivity = getCurrentActivity() as? FragmentActivity
+        ?: throw AuthenticationException("Cannot display biometric prompt when the app is not in the foreground")
 
-    return withContext(Dispatchers.Main.immediate) {
-      try {
+      val authenticationPrompt = AuthenticationPrompt(
+        fragmentActivity,
+        context,
+        options.authenticationPrompt,
+        options.requireConfirmation,
+        options.authenticationMethod
+      )
+
+      return withContext(Dispatchers.Main.immediate) {
         return@withContext authenticationPrompt.authenticate(cipher)
           ?: throw AuthenticationException("Couldn't get the authentication result")
-      } finally {
-        isAuthenticating = false
       }
+    } finally {
+      isAuthenticating = false
+    }
+  }
+
+  fun isDeviceSecure(): Boolean {
+    val manager = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+    return manager.isDeviceSecure
+  }
+
+  fun assertDeviceSecurity() {
+    if (!isDeviceSecure()) {
+      throw AuthenticationException(
+        "A secure lock screen (PIN, pattern, or password) is required for device credential authentication, but the device has none. Ask the user to set a screen lock, or check canUseDeviceCredentialsAuthentication() before you use 'deviceCredentials'."
+      )
     }
   }
 

@@ -1,6 +1,7 @@
 import { CommandError } from '../../../../utils/errors';
 import { AppleDeviceManager } from '../AppleDeviceManager';
-import { Device, getInfoPlistValueAsync, openAppIdAsync, openUrlAsync } from '../simctl';
+import type { Device } from '../simctl';
+import { getInfoPlistValueAsync, openAppIdAsync, openUrlAsync } from '../simctl';
 
 jest.mock('../simctl', () => ({
   openAppIdAsync: jest.fn(),
@@ -60,14 +61,25 @@ describe('launchApplicationIdAsync', () => {
     device.activateWindowAsync = jest.fn();
     jest.mocked(openAppIdAsync).mockResolvedValueOnce({ status: 0 } as any);
     await device.launchApplicationIdAsync('host.exp.Exponent');
-    expect(device.activateWindowAsync).toBeCalled();
+    expect(device.activateWindowAsync).toHaveBeenCalled();
   });
   it(`asserts that an unexpected error occurred`, async () => {
     const device = createDevice();
     jest.mocked(openAppIdAsync).mockImplementationOnce(() => {
       throw new Error('...');
     });
-    await expect(device.launchApplicationIdAsync).rejects.toThrow(/\.\.\./);
+    await expect(device.launchApplicationIdAsync('host.exp.Exponent')).rejects.toThrow(/\.\.\./);
+  });
+});
+
+describe('ensureExpoGoAsync', () => {
+  it(`throws when device is an Apple Watch`, async () => {
+    const device = new AppleDeviceManager(
+      asDevice({ name: 'Apple Watch Series 7 - 41mm', udid: '123', osType: 'watchOS' })
+    );
+    await expect(device.ensureExpoGoAsync('51.0.0')).rejects.toThrow(
+      /Expo Go is not supported on Apple Watch/
+    );
   });
 });
 
@@ -75,7 +87,7 @@ describe('openUrlAsync', () => {
   it('launches into Expo Go', async () => {
     const device = createDevice();
     await device.openUrlAsync('exp://foobar');
-    expect(openUrlAsync).toBeCalledWith(
+    expect(openUrlAsync).toHaveBeenCalledWith(
       { name: 'iPhone 13', udid: '123' },
       { url: 'exp://foobar' }
     );
@@ -83,8 +95,8 @@ describe('openUrlAsync', () => {
   it('opens a URL on a device', async () => {
     const device = createDevice();
     await device.openUrlAsync('http://foobar');
-    expect(openAppIdAsync).not.toBeCalled();
-    expect(openUrlAsync).toBeCalledWith(
+    expect(openAppIdAsync).not.toHaveBeenCalled();
+    expect(openUrlAsync).toHaveBeenCalledWith(
       { name: 'iPhone 13', udid: '123' },
       { url: 'http://foobar' }
     );

@@ -2,15 +2,17 @@
 #include "EventEmitter.h"
 #include "LazyObject.h"
 
+#include <cxxreact/ErrorUtils.h>
+
 namespace expo::EventEmitter {
 
 #pragma mark - Listeners
 
-void Listeners::add(jsi::Runtime &runtime, std::string eventName, const jsi::Function &listener) noexcept {
+void Listeners::add(jsi::Runtime &runtime, const std::string& eventName, const jsi::Function &listener) noexcept {
   listenersMap[eventName].emplace_back(runtime, listener);
 }
 
-void Listeners::remove(jsi::Runtime &runtime, std::string eventName, const jsi::Function &listener) noexcept {
+void Listeners::remove(jsi::Runtime &runtime, const std::string& eventName, const jsi::Function &listener) noexcept {
   if (!listenersMap.contains(eventName)) {
     return;
   }
@@ -21,7 +23,7 @@ void Listeners::remove(jsi::Runtime &runtime, std::string eventName, const jsi::
   });
 }
 
-void Listeners::removeAll(std::string eventName) noexcept {
+void Listeners::removeAll(const std::string& eventName) noexcept {
   if (listenersMap.contains(eventName)) {
     listenersMap[eventName].clear();
   }
@@ -31,18 +33,19 @@ void Listeners::clear() noexcept {
   listenersMap.clear();
 }
 
-size_t Listeners::listenersCount(std::string eventName) noexcept {
+size_t Listeners::listenersCount(const std::string& eventName) noexcept {
   if (!listenersMap.contains(eventName)) {
     return 0;
   }
   return listenersMap[eventName].size();
 }
 
-void Listeners::call(jsi::Runtime &runtime, std::string eventName, const jsi::Object &thisObject, const jsi::Value *args, size_t count) noexcept {
-  if (!listenersMap.contains(eventName)) {
+void Listeners::call(jsi::Runtime &runtime, const std::string& eventName, const jsi::Object &thisObject, const jsi::Value *args, size_t count) noexcept {
+  auto entry = listenersMap.find(eventName);
+  if (entry == listenersMap.end()) {
     return;
   }
-  ListenersList &listenersList = listenersMap[eventName];
+  ListenersList &listenersList = entry->second;
   size_t listSize = listenersList.size();
 
   if (listSize == 0) {
@@ -51,14 +54,18 @@ void Listeners::call(jsi::Runtime &runtime, std::string eventName, const jsi::Ob
   }
   if (listSize == 1) {
     // The most common scenario – just call the only listener.
-    listenersList
-      .front()
-      .asObject(runtime)
-      .asFunction(runtime)
-      .callWithThis(runtime, thisObject, args, count);
+    try {
+      listenersList
+        .front()
+        .asObject(runtime)
+        .asFunction(runtime)
+        .callWithThis(runtime, thisObject, args, count);
+    } catch (jsi::JSError& error) {
+      facebook::react::handleJSError(runtime, error, false);
+    }
     return;
   }
-  // When there are more than one listener, we copy the list to a vector as the list may be modified during the loop.
+  // When there is more than one listener, we copy the list to a vector as the list may be modified during the loop.
   std::vector<jsi::Function> listenersVector;
   listenersVector.reserve(listSize);
 
@@ -71,21 +78,46 @@ void Listeners::call(jsi::Runtime &runtime, std::string eventName, const jsi::Ob
   // i.e. newly added listeners will not be called and removed listeners will be called one last time.
   // This is compliant with the EventEmitter in Node.js
   for (const jsi::Function &listener : listenersVector) {
-    listener.callWithThis(runtime, thisObject, args, count);
+    // As opposed to Node.js and fbemitter, when the listener throws an error the behavior is the same as on web.
+    // That is, it doesn't stop the execution of subsequent listeners and the error is not propagated to the `emit` function.
+    // The motivation behind this is that errors thrown from a module or user's code shouldn't affect other modules' behavior.
+    try {
+      listener.callWithThis(runtime, thisObject, args, count);
+    } catch (jsi::JSError& error) {
+      facebook::react::handleJSError(runtime, error, false);
+    }
   }
 }
 
 #pragma mark - NativeState
 
-NativeState::NativeState() : jsi::NativeState() {}
+NativeState::NativeState(void *context, void (*contextDeallocator)(void *))
+#if __has_include(<ExpoModulesJSI/NativeState.h>)
+  : NativeStateBase(context, contextDeallocator) {}
+#else
+  : NativeStateBase() {}
+#endif
 
 NativeState::~NativeState() {
   listeners.clear();
+  setListeningHook(nullptr, nullptr, nullptr);
+}
+
+void NativeState::setListeningHook(void *context, ListeningHook hook, void (*releaseContext)(void *)) noexcept {
+  if (releaseListeningHookContext != nullptr) {
+    releaseListeningHookContext(listeningHookContext);
+  }
+  listeningHookContext = context;
+  listeningHook = hook;
+  releaseListeningHookContext = releaseContext;
 }
 
 NativeState::Shared NativeState::get(jsi::Runtime &runtime, const jsi::Object &object, bool createIfMissing) {
-  if (object.hasNativeState<NativeState>(runtime)) {
-    return object.getNativeState<NativeState>(runtime);
+  // The untyped `hasNativeState` is a single runtime call. The state is then fetched once, and its type is checked.
+  if (object.hasNativeState(runtime)) {
+    if (NativeState::Shared state = std::dynamic_pointer_cast<NativeState>(object.getNativeState(runtime))) {
+      return state;
+    }
   }
   if (createIfMissing) {
     NativeState::Shared state = std::make_shared<NativeState>();
@@ -97,7 +129,7 @@ NativeState::Shared NativeState::get(jsi::Runtime &runtime, const jsi::Object &o
 
 #pragma mark - Utils
 
-void callObservingFunction(jsi::Runtime &runtime, const jsi::Object &object, const char* functionName, std::string eventName) {
+void callObservingFunction(jsi::Runtime &runtime, const jsi::Object &object, const char* functionName, const std::string& eventName) {
   jsi::Value fnValue = object.getProperty(runtime, functionName);
 
   if (!fnValue.isObject()) {
@@ -113,12 +145,21 @@ void callObservingFunction(jsi::Runtime &runtime, const jsi::Object &object, con
     });
 }
 
+void notifyListening(jsi::Runtime &runtime, const jsi::Object &emitter, NativeState &state, const std::string &eventName, bool isListening) {
+  if (state.listeningHook != nullptr) {
+    state.listeningHook(state.listeningHookContext, eventName.c_str(), isListening);
+    return;
+  }
+  callObservingFunction(runtime, emitter, isListening ? "__expo_onStartListeningToEvent" : "__expo_onStopListeningToEvent", eventName);
+  callObservingFunction(runtime, emitter, isListening ? "startObserving" : "stopObserving", eventName);
+}
+
 void addListener(jsi::Runtime &runtime, const jsi::Object &emitter, const std::string &eventName, const jsi::Function &listener) {
   if (NativeState::Shared state = NativeState::get(runtime, emitter, true)) {
     state->listeners.add(runtime, eventName, listener);
 
     if (state->listeners.listenersCount(eventName) == 1) {
-      callObservingFunction(runtime, emitter, "startObserving", eventName);
+      notifyListening(runtime, emitter, *state, eventName, true);
     }
   }
 }
@@ -130,7 +171,7 @@ void removeListener(jsi::Runtime &runtime, const jsi::Object &emitter, const std
     state->listeners.remove(runtime, eventName, listener);
 
     if (listenersCountBefore >= 1 && state->listeners.listenersCount(eventName) == 0) {
-      callObservingFunction(runtime, emitter, "stopObserving", eventName);
+      notifyListening(runtime, emitter, *state, eventName, false);
     }
   }
 }
@@ -142,7 +183,7 @@ void removeAllListeners(jsi::Runtime &runtime, const jsi::Object &emitter, const
     state->listeners.removeAll(eventName);
 
     if (listenersCountBefore >= 1) {
-      callObservingFunction(runtime, emitter, "stopObserving", eventName);
+      notifyListening(runtime, emitter, *state, eventName, false);
     }
   }
 }
@@ -167,10 +208,20 @@ jsi::Value createEventSubscription(jsi::Runtime &runtime, const std::string &eve
   std::shared_ptr<jsi::Value> listenerValue = std::make_shared<jsi::Value>(runtime, listener);
 
   jsi::HostFunctionType removeSubscription = [eventName, emitterValue, listenerValue](jsi::Runtime &runtime, const jsi::Value &thisValue, const jsi::Value *args, size_t count) -> jsi::Value {
+    if (!listenerValue->isObject()) {
+      // The subscription has already been removed.
+      return jsi::Value::undefined();
+    }
     jsi::Object emitter = emitterValue->getObject(runtime);
     jsi::Function listener = listenerValue->getObject(runtime).getFunction(runtime);
 
     removeListener(runtime, emitter, eventName, listener);
+
+    // Values held by this host function are GC roots. The listener's closure often references the subscription
+    // (e.g. a React effect returning `() => subscription.remove()`), so keeping them after the removal would form
+    // a cycle through a root that the garbage collector can never break, leaking the listener and the emitter.
+    *emitterValue = jsi::Value::undefined();
+    *listenerValue = jsi::Value::undefined();
     return jsi::Value::undefined();
   };
 
@@ -181,7 +232,7 @@ jsi::Value createEventSubscription(jsi::Runtime &runtime, const std::string &eve
 
 #pragma mark - Public API
 
-void emitEvent(jsi::Runtime &runtime, jsi::Object &emitter, const std::string &eventName, const std::vector<jsi::Value> &arguments) {
+void emitEvent(jsi::Runtime &runtime, const jsi::Object &emitter, const std::string &eventName, const std::vector<jsi::Value> &arguments) {
   emitEvent(runtime, emitter, eventName, arguments.data(), arguments.size());
 }
 
@@ -195,8 +246,13 @@ void installClass(jsi::Runtime &runtime) {
     // To provide backwards compatibility with the old EventEmitter where the native module object was passed as an argument.
     // We're checking if the argument is already an instance of the new emitter and if so, just return it without unnecessarily wrapping it.
     if (count > 0) {
-      jsi::Object firstArg = args[0].asObject(runtime);
-      jsi::Function constructor = thisValue.asObject(runtime).getPropertyAsFunction(runtime, "constructor");
+      // We need the tmp object to correctly unwrap the lazy object.
+      // For some reason, if we inline the retrieval of the first argument, the instanceOf check fails on Android.
+      // This is probably because the object is copied somewhere in the process.
+      const jsi::Object &tmp = args[0].asObject(runtime);
+      const jsi::Object &firstArg = LazyObject::unwrapObjectIfNecessary(runtime, tmp);
+
+      jsi::Function constructor = thisValue.getObject(runtime).getPropertyAsFunction(runtime, "constructor");
 
       if (firstArg.instanceOf(runtime, constructor)) {
         return jsi::Value(runtime, args[0]);

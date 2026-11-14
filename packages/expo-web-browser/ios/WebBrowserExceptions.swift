@@ -13,3 +13,16 @@ final class WebBrowserInvalidURLException: Exception {
     return "The provided URL is not valid."
   }
 }
+
+final class WebBrowserNotOpenException: Exception {
+  override var reason: String {
+    "There is no web browser to dismiss"
+  }
+}
+
+final class WebAuthSessionFailedToStartException: Exception {
+  override var reason: String {
+    "The authentication session could not be started."
+  }
+}
+

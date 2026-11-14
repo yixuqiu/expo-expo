@@ -1,6 +1,6 @@
 ---
-title: Use Next.js with Expo for Web
-sidebar_title: Use Next.js
+title: Using Next.js with Expo for web
+sidebar_title: Using Next.js
 description: A guide for integrating Next.js with Expo for the web.
 ---
 
@@ -20,10 +20,17 @@ Using Expo with Next.js means you can share some of your existing components and
 
 To quickly get started, create a new project using [with-nextjs](https://github.com/expo/examples/tree/master/with-nextjs) template:
 
-<Terminal cmd={['$ npx create-expo-app -e with-nextjs']} />
+<Terminal
+  cmd={{
+    npm: ['$ npx create-expo-app -e with-nextjs'],
+    yarn: ['$ yarn create expo-app -e with-nextjs'],
+    pnpm: ['$ pnpm create expo-app -e with-nextjs'],
+    bun: ['$ bun create expo -e with-nextjs'],
+  }}
+/>
 
-- **Native**: `npx expo start` &mdash; start the Expo project
-- **Web**: `npx next dev` &mdash; start the Next.js project
+- **Native**: `npx expo start` — start the Expo project
+- **Web**: `npx next dev` — start the Next.js project
 
 ## Manual setup
 
@@ -31,7 +38,14 @@ To quickly get started, create a new project using [with-nextjs](https://github.
 
 Ensure you have `expo`, `next`, `@expo/next-adapter` installed in your project:
 
-<Terminal cmd={['$ yarn add expo next @expo/next-adapter']} />
+<Terminal
+  cmd={{
+    npm: ['$ npm install expo next @expo/next-adapter'],
+    yarn: ['$ yarn add expo next @expo/next-adapter'],
+    pnpm: ['$ pnpm add expo next @expo/next-adapter'],
+    bun: ['$ bun add expo next @expo/next-adapter'],
+  }}
+/>
 
 ### Transpilation
 
@@ -39,7 +53,7 @@ Configure Next.js to transform language features:
 
 <Collapsible summary={<>Next.js with swc. (Recommended)</>}>
 
-Using Next.js with SWC is recommended. You can configure the **babel.config.js** to only account for native:
+Using Next.js with SWC is recommended. You can configure the [**babel.config.js**](/versions/latest/config/babel/) to only account for native:
 
 ```js babel.config.js
 module.exports = function (api) {
@@ -97,6 +111,7 @@ module.exports = withExpo({
   // older versions can use next-transpile-modules
   transpilePackages: [
     'react-native',
+    'react-native-web',
     'expo',
     // Add more React Native/Expo packages here...
   ],
@@ -114,6 +129,7 @@ const nextConfig = withExpo({
   swcMinify: true,
   transpilePackages: [
     'react-native',
+    'react-native-web',
     'expo',
     // Add more React Native/Expo packages here...
   ],
@@ -216,8 +232,9 @@ module.exports = withExpo({
     transpilePackages: [
       // NOTE: Even though `react-native` is never used in Next.js,
       // you need to list `react-native` because `react-native-web`
-      // is aliased to `react-native`. Adding `react-native-web` will not work.
+      // is aliased to `react-native`.
       'react-native',
+      'react-native-web',
       'expo',
       // Add more React Native/Expo packages here...
     ],
@@ -230,25 +247,40 @@ module.exports = withExpo({
 This is Vercel's preferred method for deploying Next.js projects to production.
 
 <Step label="1">
-  Add a **build** script to your **package.json**:
-  ```json package.json
-  {
-    "scripts": {
-      "build": "next build"
-    }
+
+Add a `build` script to your **package.json**:
+
+```json package.json
+{
+  "scripts": {
+    "build": "next build"
   }
-  ```
+}
+```
+
 </Step>
 
 <Step label="2">
-  Install the Vercel CLI:
-  <Terminal cmd={['$ npm i -g vercel']} />
+
+Install the Vercel CLI:
+
+<Terminal
+  cmd={{
+    npm: ['$ npm install --global vercel'],
+    yarn: ['$ yarn global add vercel'],
+    pnpm: ['$ pnpm add --global vercel'],
+    bun: ['$ bun add --global vercel'],
+  }}
+/>
+
 </Step>
 
-
 <Step label="3">
-  Deploy to Vercel:
-  <Terminal cmd={['$ vercel']} />
+
+Deploy to Vercel:
+
+<Terminal cmd={['$ vercel']} />
+
 </Step>
 
 ## Limitations or differences compared to the default Expo for Web
@@ -277,6 +309,7 @@ module.exports = withExpo({
   experimental: {
     transpilePackages: [
       'react-native',
+      'react-native-web',
       'expo',
       // Add the failing package here, and restart the server...
     ],

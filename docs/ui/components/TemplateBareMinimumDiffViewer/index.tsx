@@ -1,15 +1,15 @@
-import { css } from '@emotion/react';
-import { spacing } from '@expo/styleguide-base';
+import { mergeClasses } from '@expo/styleguide';
 import { useRouter } from 'next/compat/router';
 import { useEffect } from 'react';
-
-import { VersionSelector } from './VersionSelector';
 
 import versions from '~/public/static/constants/versions.json';
 import diffInfo from '~/public/static/diffs/template-bare-minimum/diffInfo.json';
 import { DiffBlock } from '~/ui/components/Snippet';
 import { PermalinkedSnippetHeader } from '~/ui/components/Snippet/PermalinkedSnippetHeader';
-import { RawH3, RawH4 } from '~/ui/components/Text';
+import { P, RawH3, RawH4 } from '~/ui/components/Text';
+
+import { NativeUpgradePromptCallout } from './NativeUpgradePromptCallout';
+import { VersionSelector, BETA_MAJOR_VERSION } from './VersionSelector';
 
 // versions used by SDK selector. This has "unversioned" removed on production versions. The diff selectors will match that.
 const { VERSIONS } = versions;
@@ -21,22 +21,22 @@ export const TemplateBareMinimumDiffViewer = () => {
 
   // default to from: last SDK, to: current SDK
   const lastTwoProductionVersions = bareDiffVersions
-    .filter((d: string) => d !== 'unversioned')
+    .filter((d: string) => d !== 'unversioned' && d !== BETA_MAJOR_VERSION)
     .slice(-2);
 
-  const fromVersion = router?.query.fromSdk || lastTwoProductionVersions[0];
-  const toVersion = router?.query.toSdk || lastTwoProductionVersions[1];
+  const fromVersion = router?.query.fromSdk ?? lastTwoProductionVersions[0];
+  const toVersion = router?.query.toSdk ?? lastTwoProductionVersions[1];
 
   // Ensure that URL always contains from and to SDK version, even on first load
   // to avoid copying links that would change with new SDK versions.
   useEffect(() => {
     if (router?.isReady && (!router?.query.fromSdk || !router?.query.toSdk)) {
-      router?.push({ query: { fromSdk: fromVersion, toSdk: toVersion } });
+      void router?.push({ query: { fromSdk: fromVersion, toSdk: toVersion } });
     }
   }, [router?.query.fromSdk, router?.query.toSdk, router?.isReady]);
 
   // remove unversioned if this environment doesn't show it in the SDK reference
-  if (!VERSIONS.find((version: string) => version === 'unversioned')) {
+  if (!VERSIONS.includes('unversioned')) {
     bareDiffVersions = bareDiffVersions.filter((version: string) => version !== 'unversioned');
   }
 
@@ -48,16 +48,10 @@ export const TemplateBareMinimumDiffViewer = () => {
   const diff = diffInfo.diffs[diffName as keyof typeof diffInfo.diffs];
 
   return (
-    <div>
-      <div
-        css={css({
-          display: 'flex',
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          gap: spacing[4],
-        })}>
-        <div css={selectorOuterStyle}>
-          <RawH4>From SDK version:</RawH4>
+    <>
+      <div className={mergeClasses('grid grid-cols-2 gap-4', 'max-sm:grid-cols-1')}>
+        <div>
+          <RawH4 className="mt-2 max-sm:my-0!">From SDK version:</RawH4>
           <VersionSelector
             version={fromVersion as string}
             setVersion={newFromVersion =>
@@ -66,8 +60,8 @@ export const TemplateBareMinimumDiffViewer = () => {
             availableVersions={bareDiffVersions.filter((version: string) => version !== maxVersion)}
           />
         </div>
-        <div css={selectorOuterStyle}>
-          <RawH4>To SDK version:</RawH4>
+        <div>
+          <RawH4 className="mt-2 max-sm:my-0!">To SDK version:</RawH4>
           <VersionSelector
             version={toVersion as string}
             setVersion={newToVersion =>
@@ -82,6 +76,16 @@ export const TemplateBareMinimumDiffViewer = () => {
           <RawH3>
             Native code changes from SDK {fromVersion} to {toVersion}
           </RawH3>
+          {diff === '' ? (
+            <P>
+              No native code changes from SDK {fromVersion} to {toVersion}.
+            </P>
+          ) : null}
+          <NativeUpgradePromptCallout
+            fromVersion={fromVersion as string}
+            toVersion={toVersion as string}
+            diff={diff}
+          />
           <DiffBlock
             key={diffName /* force re-mount on raw diff change */}
             raw={diff}
@@ -95,10 +99,6 @@ export const TemplateBareMinimumDiffViewer = () => {
           />
         </>
       ) : null}
-    </div>
+    </>
   );
 };
-
-const selectorOuterStyle = css({
-  flex: 1,
-});

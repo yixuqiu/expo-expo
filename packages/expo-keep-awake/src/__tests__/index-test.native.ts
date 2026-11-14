@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react-hooks';
+import { renderHook } from '@testing-library/react-native';
 import { mockProperty, unmockAllProperties } from 'jest-expo';
 
 import ExpoKeepAwake from '../ExpoKeepAwake';
@@ -19,17 +19,27 @@ describe(useKeepAwake, () => {
   });
 
   it('test default calls without any parameters', async () => {
-    const { unmount } = renderHook(() => useKeepAwake());
-    unmount();
+    const { unmount } = await renderHook(useKeepAwake);
+    await unmount();
     expect(mockActivate.mock.calls.length).toBe(1);
     expect(mockDeactivate.mock.calls.length).toBe(1);
   });
 
   it('test explicit calls with parameters', async () => {
-    const { unmount } = renderHook(() => useKeepAwake('tag', { suppressDeactivateWarnings: true }));
-    unmount();
+    const { unmount } = await renderHook(() =>
+      useKeepAwake('tag', { suppressDeactivateWarnings: true })
+    );
+    await unmount();
     expect(mockActivate.mock.calls.length).toBe(1);
     expect(mockDeactivate.mock.calls.length).toBe(1);
     expect(mockDeactivate.mock.calls[0][0]).toEqual('tag');
+  });
+
+  it('test calls in different components default to using unique tags', async () => {
+    await renderHook(useKeepAwake);
+    const firstComponentTag = mockActivate.mock.lastCall[0];
+    await renderHook(useKeepAwake);
+    const secondComponentTag = mockActivate.mock.lastCall[0];
+    expect(firstComponentTag).not.toEqual(secondComponentTag);
   });
 });

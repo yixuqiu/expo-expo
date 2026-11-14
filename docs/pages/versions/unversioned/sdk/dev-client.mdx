@@ -4,28 +4,47 @@ description: A library that allows creating a development build and includes use
 sourceCodeUrl: 'https://github.com/expo/expo/tree/main/packages/expo-dev-client'
 packageName: 'expo-dev-client'
 iconUrl: '/static/images/packages/expo-dev-client.png'
-platforms: ['android', 'ios']
+platforms: ['android', 'ios', 'tvos']
 ---
 
 import APISection from '~/components/plugins/APISection';
 import { APIInstallSection } from '~/components/plugins/InstallSection';
-import { ConfigPluginExample, ConfigPluginProperties } from '~/components/plugins/ConfigSection';
+import { ConfigPluginExample, ConfigPluginProperties } from '~/ui/components/ConfigSection';
 
 `expo-dev-client` adds various useful development tools to your debug builds:
 
 - A configurable launcher UI, so you can launch updates (such as from [PR previews](/develop/development-builds/development-workflows#pr-previews)) and switch between development servers without needing to recompile the native app
-- Improved debugging tools (such as support for [inspecting network requests](/debugging/tools/#inspecting-network-requests))
+- Improved debugging tools (such as support for [inspecting network requests](/debugging/tools/#inspecting-network-requests-expo-only))
 - [A powerful and extensible developer menu UI](/debugging/tools#developer-menu)
 
 Expo documentation refers to debug builds that include `expo-dev-client` as [development builds](/develop/development-builds/introduction/).
 
 ## Installation
 
-<APIInstallSection />
+<APIInstallSection hideBareInstructions />
 
-## Configuration in app.json/app.config.js
+When you create a build with Expo Build, set `developmentClient` to `true` on a build profile in your **eas.json**. Without it, Expo Build produces a standalone build with no development tools. For example:
 
-You can configure development client launcher using its built-in [config plugin](/config-plugins/introduction/) if you use config plugins in your project ([EAS Build](/build/introduction) or `npx expo run:[android|ios]`). The plugin allows you to configure various properties that cannot be set at runtime and require building a new app binary to take effect.
+```json eas.json
+{
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+      /* @hide ... */ /* @end */
+    }
+  }
+  /* @hide ... */ /* @end */
+}
+```
+
+For more information, see the [`developmentClient` property in the eas.json reference](/eas/json/#developmentclient).
+
+If you are installing this in an [existing React Native app](/bare/overview/), start by installing [`expo`](/bare/installing-expo-modules/) in your project. Then, follow the instructions from [Install `expo-dev-client` in an existing React Native project](/bare/install-dev-builds-in-bare/).
+
+## Configuration in app config
+
+You can configure development client launcher using its built-in [config plugin](/config-plugins/introduction/) if you use config plugins in your project ([Continuous Native Generation (CNG)](/workflow/continuous-native-generation/)). The plugin allows you to configure various properties that cannot be set at runtime and require building a new app binary to take effect. If your app does **not** use CNG, then you'll need to manually configure the library.
 
 <ConfigPluginExample>
 
@@ -34,9 +53,16 @@ You can configure development client launcher using its built-in [config plugin]
   "expo": {
     "plugins": [
       [
-        "expo-dev-launcher",
+        "expo-dev-client",
         {
-          "launchMode": "most-recent"
+          "launchMode": "most-recent",
+          "defaultLaunchURL": "http://localhost:8081",
+          "android": {
+            "defaultLaunchURL": "http://10.0.2.2:8081"
+          },
+          "toolsButton": true,
+          "skipOnboarding": false,
+          "showMenuAtLaunch": true
         }
       ]
     ]
@@ -57,8 +83,52 @@ You can configure development client launcher using its built-in [config plugin]
       ].join('\n'),
       default: '"most-recent"',
     },
+    {
+      name: 'addGeneratedScheme',
+      description: [
+        'By default, `expo-dev-client` will register a custom URL scheme to open a project. Set this property to `false` to disable this scheme.',
+      ].join('\n'),
+      default: 'true',
+    },
+    {
+      name: 'defaultLaunchURL',
+      description: [
+        'Launch directly into this URL instead of navigating to launcher screen.',
+        'If `launchMode` is set to `most-recent`, then launcher will use the `defaultLaunchURL` as a fallback.',
+      ].join('\n'),
+    },
+    {
+      name: 'toolsButton',
+      description:
+        'Whether to show the floating tools button by default. Use `setToolsButtonVisible` from `expo-dev-client` to change it at runtime.',
+      default: 'true',
+    },
+    {
+      name: 'embeddedBundle',
+      description:
+        'Whether to enable loading an embedded JavaScript bundle from the launcher. When enabled and a bundle file is present in the app, a "Load embedded bundle" option appears in the launcher.',
+      default: 'false',
+    },
+    {
+      name: 'skipOnboarding',
+      description:
+        'Skip the onboarding screen that shows in the dev menu on the first launch of the app.',
+      default: 'false',
+    },
+    {
+      name: 'showMenuAtLaunch',
+      description: 'Show the developer menu immediately after launching the app.',
+      default: 'true',
+    },
   ]}
 />
+
+These properties set build-time defaults. To skip onboarding, hide the tools button, or keep the dev menu closed for one launch, add `__expo_disable_onboarding=1`, `__expo_disable_fab=1`, or `__expo_disable_auto_launch=1` to the launch URL. See [Deep linking to an update's URL](/develop/development-builds/development-workflows/#deep-linking-to-an-updates-url).
+
+## TV support
+
+- **Android TV**: All operations are supported, similar to an Android phone.
+- **Apple TV**: Basic operations with a local or tunneled packager are supported. Authentication to Expo Services and listing of builds and updates is not yet supported.
 
 ## API
 
@@ -66,4 +136,4 @@ You can configure development client launcher using its built-in [config plugin]
 import * as DevClient from 'expo-dev-client';
 ```
 
-<APISection packageName={['expo-dev-menu', 'expo-dev-launcher']} apiName="DevClient" />
+<APISection packageName={['expo-dev-client']} apiName="DevClient" />

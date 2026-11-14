@@ -1,9 +1,18 @@
 /** @jest-environment jsdom */
-import { render } from '@testing-library/react';
-import React from 'react';
+import { fireEvent, render } from '@testing-library/react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Link } from '../Link';
+
+const mockLinkTo = jest.fn();
+
+jest.mock('../../global-state/useRouterActions', () => ({
+  useRouterActions: () => ({ linkTo: mockLinkTo }),
+}));
+
+beforeEach(() => {
+  mockLinkTo.mockClear();
+});
 
 it('renders a Link', () => {
   const { getByTestId } = render(
@@ -37,7 +46,7 @@ it('renders a Link with a slot', () => {
   expect(asFragment().getRootNode()).toMatchInlineSnapshot(`
     <DocumentFragment>
       <a
-        class="css-view-175oi2r"
+        class="css-view-g5y9jx"
         data-testid="pressable"
         href="/foo"
         role="link"
@@ -52,6 +61,20 @@ it('renders a Link with a slot', () => {
       </a>
     </DocumentFragment>
   `);
+});
+
+it('renders a Link with a slot and array style', () => {
+  expect(() =>
+    render(
+      <Link asChild href="/foo">
+        <View testID="pressable" style={[{ padding: 10 }, { margin: 5 }]}>
+          <Text testID="inner-text">Button</Text>
+        </View>
+      </Link>
+    )
+  ).toThrow(
+    '[expo-router]: You are passing an array of styles to a child of <Slot>. Consider flattening the styles with StyleSheet.flatten before passing them to the child component.'
+  );
 });
 
 it('supports target blank', () => {
@@ -145,4 +168,179 @@ it('uses web-only href attributes', () => {
       Hello
     </a>
   `);
+});
+
+describe('parentheses in hrefs', () => {
+  it('preserves search params containing parentheses', () => {
+    const { getByTestId } = render(
+      <Link testID="link" href={{ pathname: '/test', params: { a: '(a)', b: 'b' } }}>
+        Foo
+      </Link>
+    );
+    expect(getByTestId('link').getAttribute('href')).toBe('/test?a=(a)&b=b');
+  });
+
+  it('strips groups from the path but not the search params', () => {
+    const { getByTestId } = render(
+      <Link testID="link" href="/(app)/test?a=(a)">
+        Foo
+      </Link>
+    );
+    expect(getByTestId('link').getAttribute('href')).toBe('/test?a=(a)');
+  });
+
+  it('does not strip parentheses from external URLs', () => {
+    const { getByTestId } = render(
+      <Link testID="link" href="https://example.com/my/cool/(file).pdf">
+        Foo
+      </Link>
+    );
+    expect(getByTestId('link').getAttribute('href')).toBe('https://example.com/my/cool/(file).pdf');
+  });
+});
+
+describe('base url relative links', () => {
+  let old_base_url: string | undefined = undefined;
+
+  beforeAll(() => {
+    old_base_url = process.env.EXPO_BASE_URL;
+    process.env.EXPO_BASE_URL = '/base_url';
+  });
+
+  afterAll(() => {
+    process.env.EXPO_BASE_URL = old_base_url;
+  });
+
+  it('appends base url to paths uris', () => {
+    const { getByTestId } = render(
+      <Link testID="link" href="/foo">
+        Foo
+      </Link>
+    );
+    const node = getByTestId('link');
+    expect(node.getAttribute('href')).toBe('/base_url/foo');
+  });
+
+  it('does not append base url to absolute network', () => {
+    const { getByTestId } = render(
+      <Link testID="link" href="//www.example.com/foo">
+        Foo
+      </Link>
+    );
+    const node = getByTestId('link');
+    expect(node.getAttribute('href')).toBe('//www.example.com/foo');
+  });
+
+  it('does not append base url to absolute uris', () => {
+    const { getByTestId } = render(
+      <Link testID="link" href="https://www.example.com/foo">
+        Foo
+      </Link>
+    );
+    const node = getByTestId('link');
+    expect(node.getAttribute('href')).toBe('https://www.example.com/foo');
+  });
+});
+
+describe('web click navigation', () => {
+  it('intercepts unmodified same-tab clicks', () => {
+    const { getByTestId } = render(
+      <Link testID="link" href="/foo">
+        Foo
+      </Link>
+    );
+
+    fireEvent.click(getByTestId('link'), { button: 0 });
+
+    expect(mockLinkTo).toHaveBeenCalledWith('/foo', {
+      dangerouslySingular: undefined,
+      event: undefined,
+      relativeToDirectory: undefined,
+      withAnchor: undefined,
+    });
+  });
+
+  it.each([
+    ['metaKey', { metaKey: true }],
+    ['altKey', { altKey: true }],
+    ['ctrlKey', { ctrlKey: true }],
+    ['shiftKey', { shiftKey: true }],
+    ['middle click', { button: 1 }],
+  ])('does not intercept %s clicks', (_name, event) => {
+    const { getByTestId } = render(
+      <Link testID="link" href="/foo">
+        Foo
+      </Link>
+    );
+
+    fireEvent.click(getByTestId('link'), event);
+
+    expect(mockLinkTo).not.toHaveBeenCalled();
+  });
+
+  it('does not intercept links with a target', () => {
+    const { getByTestId } = render(
+      <Link testID="link" href="/foo" target="_blank">
+        Foo
+      </Link>
+    );
+
+    fireEvent.click(getByTestId('link'), { button: 0 });
+
+    expect(mockLinkTo).not.toHaveBeenCalled();
+  });
+
+  it.each(['https://expo.dev', '//expo.dev/router', 'mailto:hello@example.com'])(
+    'intercepts external href %s',
+    (href) => {
+      const { getByTestId } = render(
+        <Link testID="link" href={href}>
+          Foo
+        </Link>
+      );
+
+      fireEvent.click(getByTestId('link'), { button: 0 });
+
+      expect(mockLinkTo).toHaveBeenCalled();
+    }
+  );
+});
+
+describe('Link with preview', () => {
+  it('renders a Link with preview as normal link', () => {
+    const { getByTestId } = render(
+      <Link href="/foo" testID="link">
+        <Link.Trigger>
+          <Text>Foo</Text>
+        </Link.Trigger>
+        <Link.Preview />
+        <Link.Menu>
+          <Link.MenuAction title="Bar" onPress={() => {}}>
+            Bar
+          </Link.MenuAction>
+        </Link.Menu>
+      </Link>
+    );
+
+    expect(getByTestId('link')).toMatchSnapshot();
+  });
+  it('correctly renders link with Preview and asChild', () => {
+    const { getByTestId } = render(
+      <View testID="link-wrapper">
+        <Link href="/foo" asChild>
+          <Link.Trigger>
+            <Text testID="inner-text">Foo</Text>
+          </Link.Trigger>
+          <Link.Preview />
+          <Link.Menu>
+            <Link.MenuAction title="Bar" onPress={() => {}}>
+              Bar
+            </Link.MenuAction>
+          </Link.Menu>
+        </Link>
+      </View>
+    );
+    const linkWrapper = getByTestId('link-wrapper');
+    expect(linkWrapper).toMatchSnapshot();
+  });
 });

@@ -1,13 +1,15 @@
 import { Themes } from '@expo/styleguide';
-import { DotsVerticalIcon } from '@expo/styleguide-icons';
-
-import { Checkbox } from '../../Form/Checkbox';
-import { SnippetAction, SnippetActionProps } from '../SnippetAction';
+import { DotsVerticalIcon } from '@expo/styleguide-icons/outline/DotsVerticalIcon';
+import { useIntl } from 'react-intl';
 
 import { useCodeBlockSettingsContext } from '~/providers/CodeBlockSettingsProvider';
 import * as Dropdown from '~/ui/components/Dropdown';
 
+import { Checkbox } from '../../Form/Checkbox';
+import { SnippetAction, SnippetActionProps } from '../SnippetAction';
+
 export const SettingsAction = ({ ...rest }: SnippetActionProps) => {
+  const intl = useIntl();
   const { preferredTheme, setPreferredTheme, wordWrap, setWordWrap } =
     useCodeBlockSettingsContext();
 
@@ -26,17 +28,18 @@ export const SettingsAction = ({ ...rest }: SnippetActionProps) => {
   return (
     <Dropdown.Dropdown
       trigger={
-        <div>
-          <SnippetAction
-            className="px-3 min-w-[44px]"
-            leftSlot={<DotsVerticalIcon className="shrink-0 icon-md text-icon-secondary" />}
-            {...rest}
-          />
-        </div>
+        <SnippetAction
+          className="min-w-11 px-3"
+          aria-label="Show settings"
+          leftSlot={
+            <DotsVerticalIcon aria-hidden="true" className="icon-md shrink-0 text-icon-secondary" />
+          }
+          {...rest}
+        />
       }>
       <Dropdown.Item
         preventAutoClose
-        label="Use dark theme"
+        label={intl.formatMessage({ id: 'codeUseDarkTheme' })}
         onSelect={onThemeChange}
         rightSlot={
           <Checkbox
@@ -48,7 +51,7 @@ export const SettingsAction = ({ ...rest }: SnippetActionProps) => {
       />
       <Dropdown.Item
         preventAutoClose
-        label="Wrap long lines"
+        label={intl.formatMessage({ id: 'codeWrapLines' })}
         onSelect={onWordWrapChange}
         rightSlot={<Checkbox checked={wordWrap} readOnly className="pointer-events-none" />}
       />

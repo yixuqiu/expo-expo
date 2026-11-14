@@ -1,20 +1,18 @@
+import type { Terminal } from '@expo/metro/metro-core';
+import type { WatcherStatus } from '@expo/metro/metro-file-map';
 // This file represents an abstraction on the metro TerminalReporter.
 // We use this abstraction to safely extend the TerminalReporter for our own custom logging.
+import UpstreamTerminalReporter from '@expo/metro/metro/lib/TerminalReporter';
 import chalk from 'chalk';
-import UpstreamTerminalReporter from 'metro/src/lib/TerminalReporter';
-import { Terminal } from 'metro-core';
-import type { WatcherStatus } from 'metro-file-map';
 import util from 'util';
 
-import {
+import { stripAnsi } from '../../../utils/ansi';
+import type {
   BundleDetails,
   BundleProgressUpdate,
   TerminalReportableEvent,
   TerminalReporterInterface,
 } from './TerminalReporter.types';
-import { stripAnsi } from '../../../utils/ansi';
-
-const debug = require('debug')('expo:metro:logger') as typeof console.log;
 
 /**
  * A standard way to log a warning to the terminal. This should not be called
@@ -54,10 +52,33 @@ export class TerminalReporter extends XTerminalReporter implements TerminalRepor
   _bundleDetails: Map<string, BundleDetails> = new Map();
 
   /** Keep track of how long a bundle takes to complete */
-  _bundleTimers: Map<string, number> = new Map();
+  _bundleTimers: Map<string, bigint> = new Map();
 
   /** Keep track of bundle processes that should not be logged. */
   _hiddenBundleEvents: Set<string> = new Set();
+
+  /**
+   * Override Metro's update() to clear the status before _log() runs.
+   *
+   * Metro's Terminal.#update() is async and snapshots #nextStatusStr at the start.
+   * When _log() calls terminal.log(), Terminal starts #update() which captures
+   * whatever status is currently set — often a stale progress bar. This progress bar
+   * gets written as permanent output between log lines because the next #update()
+   * cycle (which would clear it) runs 33ms later.
+   *
+   * By clearing the status to empty before _log(), Terminal's #update() captures
+   * an empty status and doesn't write any progress bars alongside log lines.
+   * The correct status is then restored by terminal.status() at the end.
+   */
+  update(event: TerminalReportableEvent): void {
+    if (
+      event.type !== 'bundle_transform_progressed' &&
+      event.type !== ('bundle_transform_progressed_throttled' as string)
+    ) {
+      this.terminal.status('');
+    }
+    super.update(event);
+  }
 
   _log(event: TerminalReportableEvent): void {
     switch (event.type) {
@@ -75,11 +96,7 @@ export class TerminalReporter extends XTerminalReporter implements TerminalRepor
   }
 
   /** Gives subclasses an easy interface for filtering out logs. Return `true` to skip. */
-  shouldFilterClientLog(event: {
-    type: 'client_log';
-    level: 'trace' | 'info' | 'warn' | 'log' | 'group' | 'groupCollapsed' | 'groupEnd' | 'debug';
-    data: unknown[];
-  }): boolean {
+  shouldFilterClientLog(event: TerminalReportableEvent): boolean {
     return false;
   }
 
@@ -100,7 +117,21 @@ export class TerminalReporter extends XTerminalReporter implements TerminalRepor
    * @param event event object.
    * @param duration duration of the build in milliseconds.
    */
-  bundleBuildEnded(event: TerminalReportableEvent, duration: number): void {}
+  bundleBuildEnded(event: TerminalReportableEvent, duration: bigint | number): void {}
+
+  // Add a custom format to logs that come from the worker threads.
+  // `| <contents>`
+  _logWorkerChunk(origin: 'stdout' | 'stderr', chunk: string): void {
+    const lines = chunk.split('\n');
+    if (lines.length >= 1 && lines[lines.length - 1] === '') {
+      lines.splice(lines.length - 1, 1);
+    }
+
+    const originTag = origin === 'stdout' ? chalk.dim('|') : chalk.yellow('|');
+    lines.forEach((line: string) => {
+      this.terminal.log(originTag, line);
+    });
+  }
 
   _logWatcherStatus(status: WatcherStatus) {
     // Metro logs this warning twice. This helps reduce the noise.
@@ -127,7 +158,6 @@ export class TerminalReporter extends XTerminalReporter implements TerminalRepor
 
     if (buildID && !this._hiddenBundleEvents.has(buildID)) {
       if (this.shouldFilterBundleEvent(event)) {
-        debug('skipping bundle events for', buildID, event);
         this._hiddenBundleEvents.add(buildID);
       } else {
         super._updateState(event);
@@ -146,13 +176,13 @@ export class TerminalReporter extends XTerminalReporter implements TerminalRepor
           break;
         }
 
-        this.bundleBuildEnded(event, startTime ? Date.now() - startTime : 0);
+        this.bundleBuildEnded(event, startTime ? process.hrtime.bigint() - startTime : 0);
         this._bundleTimers.delete(event.buildID);
         break;
       }
       case 'bundle_build_started':
         this._bundleDetails.set(event.buildID, event.bundleDetails);
-        this._bundleTimers.set(event.buildID, Date.now());
+        this._bundleTimers.set(event.buildID, process.hrtime.bigint());
         break;
     }
   }

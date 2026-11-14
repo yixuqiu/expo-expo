@@ -3,66 +3,78 @@ package expo.modules.image
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.PorterDuff
 import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.os.Build
 import android.util.Log
+import android.view.ViewConfiguration
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.graphics.transform
 import androidx.core.view.isVisible
-import com.facebook.react.modules.i18nmanager.I18nUtil
-import com.facebook.react.uimanager.PixelUtil
-import com.facebook.react.views.view.ReactViewBackgroundDrawable
-import expo.modules.image.drawing.OutlineProvider
+import com.facebook.react.common.annotations.UnstableReactNativeAPI
 import expo.modules.image.enums.ContentFit
 import expo.modules.image.records.ContentPosition
+import expo.modules.image.svg.SVGPictureDrawable
 
+@OptIn(UnstableReactNativeAPI::class)
 @SuppressLint("ViewConstructor")
 class ExpoImageView(
   context: Context
 ) : AppCompatImageView(context) {
+  internal var targetBindingId = 0L
+    private set
+
   var currentTarget: ImageViewWrapperTarget? = null
+    set(value) {
+      field = value
+      targetBindingId += 1
+    }
+
   var isPlaceholder: Boolean = false
 
-  fun recycleView(): ImageViewWrapperTarget? {
-    setImageDrawable(null)
+  internal fun recycleViewIfBindingMatches(
+    target: ImageViewWrapperTarget?,
+    bindingId: Long
+  ): ImageViewWrapperTarget? {
+    if (currentTarget !== target || targetBindingId != bindingId) {
+      return null
+    }
+    return recycleView()
+  }
 
+  fun recycleView(): ImageViewWrapperTarget? {
     val target = currentTarget?.apply {
       isUsed = false
     }
-
+    // Cleared before the animation is cancelled, so the cancellation callback of a transition
+    // still running on this view sees that the view no longer holds that target and skips its
+    // cleanup instead of re-entering this method.
     currentTarget = null
+
+    // A view can be recycled midway through a fade. Without this the view keeps animating towards
+    // an alpha it no longer wants, and can be left partially or fully transparent once it is bound
+    // to its next image.
+    animate().cancel()
+    // ViewPropertyAnimator keeps its listener across animations, so leaving it attached can run
+    // cleanup from the previous image after this view has been rebound to a new one.
+    animate().setListener(null)
+    alpha = 1f
+    setImageDrawable(null)
+
     isVisible = false
     isPlaceholder = false
 
     return target
   }
 
-  private val outlineProvider = OutlineProvider(context)
-
   private var transformationMatrixChanged = false
-
-  private val borderDrawableLazyHolder = lazy {
-    ReactViewBackgroundDrawable(context).apply {
-      callback = this@ExpoImageView
-
-      outlineProvider.borderRadiiConfig
-        .map { it.ifYogaDefinedUse(PixelUtil::toPixelFromDIP) }
-        .withIndex()
-        .forEach { (i, radius) ->
-          if (i == 0) {
-            setRadius(radius)
-          } else {
-            setRadius(radius, i - 1)
-          }
-        }
-    }
-  }
 
   override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
     super.onLayout(changed, left, top, right, bottom)
+
+    updateImageRenderingLayer()
     applyTransformationMatrix()
   }
 
@@ -106,13 +118,38 @@ class ExpoImageView(
     }
   }
 
-  private val borderDrawable
-    get() = borderDrawableLazyHolder.value
-
   init {
     clipToOutline = true
     scaleType = ScaleType.MATRIX
-    super.setOutlineProvider(outlineProvider)
+  }
+
+  override fun setImageDrawable(drawable: Drawable?) {
+    super.setImageDrawable(drawable)
+
+    updateImageRenderingLayer()
+  }
+
+  private fun updateImageRenderingLayer() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+      // On older Android renderers, hardware drawing of the SVG PictureDrawable can appear blurry.
+      // Large views cannot fit in a software layer and would otherwise render blank.
+      // Recheck on layout and when a reused view receives a different image.
+      val maximumDrawingCacheSize = ViewConfiguration.get(context).scaledMaximumDrawingCacheSize
+
+      val svgLayerType = if (
+        drawable is SVGPictureDrawable &&
+        width > 0 && height > 0 &&
+        width.toLong() * height <= maximumDrawingCacheSize / 4 // Each pixel needs four bytes. Divide the limit to avoid overflowing the view area.
+      ) {
+        LAYER_TYPE_SOFTWARE
+      } else {
+        LAYER_TYPE_NONE
+      }
+
+      if (layerType != svgLayerType) {
+        setLayerType(svgLayerType, null)
+      }
+    }
   }
 
   // region Component Props
@@ -134,65 +171,11 @@ class ExpoImageView(
       transformationMatrixChanged = true
     }
 
-  internal fun setBorderRadius(position: Int, borderRadius: Float) {
-    val isInvalidated = outlineProvider.setBorderRadius(borderRadius, position)
-    if (isInvalidated) {
-      invalidateOutline()
-      if (!outlineProvider.hasEqualCorners()) {
-        invalidate()
-      }
-    }
-
-    // Setting the border-radius doesn't necessarily mean that a border
-    // should to be drawn. Only update the border-drawable when needed.
-    if (borderDrawableLazyHolder.isInitialized()) {
-      val radius = borderRadius.ifYogaDefinedUse(PixelUtil::toPixelFromDIP)
-      borderDrawableLazyHolder.value.apply {
-        if (position == 0) {
-          setRadius(radius)
-        } else {
-          setRadius(radius, position - 1)
-        }
-      }
-    }
-  }
-
-  internal fun setBorderWidth(position: Int, width: Float) {
-    borderDrawable.setBorderWidth(position, width)
-  }
-
-  internal fun setBorderColor(position: Int, rgb: Float, alpha: Float) {
-    borderDrawable.setBorderColor(position, rgb, alpha)
-  }
-
-  internal fun setBorderStyle(style: String?) {
-    borderDrawable.setBorderStyle(style)
-  }
-
-  internal fun setBackgroundColor(color: Int?) {
-    if (color == null) {
-      setBackgroundColor(Color.TRANSPARENT)
-    } else {
-      setBackgroundColor(color)
-    }
-  }
-
   internal fun setTintColor(color: Int?) {
     color?.let { setColorFilter(it, PorterDuff.Mode.SRC_IN) } ?: clearColorFilter()
   }
 
-  override fun invalidateDrawable(drawable: Drawable) {
-    super.invalidateDrawable(drawable)
-    if (borderDrawableLazyHolder.isInitialized() && drawable === borderDrawable) {
-      invalidate()
-    }
-  }
-
   override fun draw(canvas: Canvas) {
-    // When the border-radii are not all the same, a convex-path
-    // is used for the Outline. Unfortunately clipping is not supported
-    // for convex-paths and we fallback to Canvas clipping.
-    outlineProvider.clipCanvasIfNeeded(canvas, this)
     // If we encounter a recycled bitmap here, it suggests an issue where we may have failed to
     // finish clearing the image bitmap before the UI attempts to display it.
     // One solution could be to suppress the error and assume that the second image view is currently responsible for displaying the correct view.
@@ -205,23 +188,5 @@ class ExpoImageView(
       }
     }
     super.draw(canvas)
-  }
-
-  public override fun onDraw(canvas: Canvas) {
-    super.onDraw(canvas)
-    // Draw borders on top of the background and image
-    if (borderDrawableLazyHolder.isInitialized()) {
-      val layoutDirection = if (I18nUtil.getInstance().isRTL(context)) {
-        LAYOUT_DIRECTION_RTL
-      } else {
-        LAYOUT_DIRECTION_LTR
-      }
-
-      borderDrawable.apply {
-        resolvedLayoutDirection = layoutDirection
-        setBounds(0, 0, width, height)
-        draw(canvas)
-      }
-    }
   }
 }

@@ -1,113 +1,494 @@
 package expo.modules.updates.loader
 
-import android.content.Context
+import androidx.annotation.VisibleForTesting
+import com.facebook.react.modules.network.OkHttpClientProvider
+import expo.modules.core.logging.localizedMessageWithCauseLocalizedMessage
 import expo.modules.jsonutils.require
+import expo.modules.structuredheaders.Dictionary
+import expo.modules.structuredheaders.OuterList
+import expo.modules.structuredheaders.StringItem
+import expo.modules.updates.BSPatch
 import expo.modules.updates.UpdatesConfiguration
 import expo.modules.updates.UpdatesUtils
-import expo.modules.updates.db.entity.AssetEntity
-import expo.modules.structuredheaders.Dictionary
-import expo.modules.updates.launcher.NoDatabaseLauncher
-import expo.modules.updates.selectionpolicy.SelectionPolicies
-import okhttp3.*
-import okhttp3.brotli.BrotliInterceptor
-import org.json.JSONObject
-import java.io.File
-import java.io.IOException
-import java.util.*
-import kotlin.math.min
-import kotlin.math.max
-import org.apache.commons.fileupload.MultipartStream
-import org.apache.commons.fileupload.ParameterParser
-import java.io.ByteArrayOutputStream
-import expo.modules.easclient.EASClientID
-import expo.modules.structuredheaders.OuterList
-import okhttp3.Headers.Companion.toHeaders
-import expo.modules.structuredheaders.StringItem
+import expo.modules.updates.UpdatesUtils.parseContentDispositionNameParameter
 import expo.modules.updates.codesigning.ValidationResult
 import expo.modules.updates.db.UpdatesDatabase
+import expo.modules.updates.db.entity.AssetEntity
 import expo.modules.updates.db.entity.UpdateEntity
+import expo.modules.updates.launcher.NoDatabaseLauncher
 import expo.modules.updates.logging.UpdatesErrorCode
+import expo.modules.updates.logging.LoggedException
+import expo.modules.updates.logging.LoadFailures
 import expo.modules.updates.logging.UpdatesLogger
-import expo.modules.updates.manifest.*
+import expo.modules.updates.manifest.ManifestMetadata
+import expo.modules.updates.manifest.ResponseHeaderData
+import expo.modules.updates.manifest.ResponsePartHeaderData
+import expo.modules.updates.manifest.ResponsePartInfo
+import expo.modules.updates.manifest.UpdateFactory
+import expo.modules.updates.selectionpolicy.SelectionPolicies
+import expo.modules.updates.utils.AndroidResourceAssetUtils
+import expo.modules.updatesinterface.UpdatesLogMessage
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Cache
+import okhttp3.Headers
+import okhttp3.MediaType
+import okhttp3.MultipartReader
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody
+import okio.Buffer
+import okio.BufferedSource
+import okio.ForwardingSource
+import okio.Source
+import okio.buffer
+import org.json.JSONObject
+import java.io.File
+import java.io.FileInputStream
+import java.io.IOException
 import java.security.cert.CertificateException
+import java.util.Date
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.math.max
+import kotlin.math.min
+
+private const val PATCH_TEMP_SUFFIX = ".patch"
+private const val PATCHED_TEMP_SUFFIX = ".patched"
+private const val PATCH_BASE_TEMP_SUFFIX = ".base"
+private const val A_IM_HEADER = "A-IM"
+private const val IM_HEADER = "im"
+private const val EXPO_BASE_UPDATE_ID_RESPONSE_HEADER = "expo-base-update-id"
+private const val EXPO_CURRENT_UPDATE_ID_HEADER = "Expo-Current-Update-ID"
+private const val EXPO_REQUESTED_UPDATE_ID_HEADER = "Expo-Requested-Update-ID"
+private const val EXPO_EMBEDDED_UPDATE_ID_HEADER = "Expo-Embedded-Update-ID"
+
+internal typealias EmbeddedAssetExtractor = (AssetEntity, File) -> Unit
 
 /**
  * Utility class that holds all the logic for downloading data and files, such as update manifests
  * and assets, using an instance of [OkHttpClient].
  */
-class FileDownloader(context: Context, private val configuration: UpdatesConfiguration) {
+class FileDownloader(
+  private val filesDirectory: File,
+  private val easClientID: String,
+  private val configuration: UpdatesConfiguration,
+  private val logger: UpdatesLogger,
+  private val database: UpdatesDatabase
+) {
   // If the configured launch wait milliseconds is greater than the okhttp default (10_000)
   // we should use that as the timeout. For example, let's say launchWaitMs is 20 seconds,
   // the HTTP timeout should be at least 20 seconds.
-  private var client: OkHttpClient = OkHttpClient.Builder()
-    .cache(getCache(context))
+  private var client: OkHttpClient = OkHttpClientProvider.getOkHttpClient().newBuilder()
+    .cache(getCache())
     .connectTimeout(max(configuration.launchWaitMs.toLong(), 10_000L), TimeUnit.MILLISECONDS)
     .readTimeout(max(configuration.launchWaitMs.toLong(), 10_000L), TimeUnit.MILLISECONDS)
-    .addInterceptor(BrotliInterceptor)
+    .addInterceptor(CompressionInterceptor)
     .build()
 
   /**
    * Constructor for tests
    */
-  constructor(context: Context, configuration: UpdatesConfiguration, client: OkHttpClient) : this(context, configuration) {
+  constructor(
+    filesDirectory: File,
+    easClientID: String,
+    configuration: UpdatesConfiguration,
+    logger: UpdatesLogger,
+    database: UpdatesDatabase,
+    client: OkHttpClient
+  ) : this(filesDirectory, easClientID, configuration, logger, database) {
     this.client = client
   }
 
-  private val logger = UpdatesLogger(context)
+  data class FileDownloadResult(val file: File, val hash: ByteArray)
+  data class AssetDownloadResult(val assetEntity: AssetEntity, val isNew: Boolean)
+  class AssetHttpResponseException(val statusCode: Int, body: String) :
+    IOException("HTTP response error $statusCode: $body")
 
-  interface FileDownloadCallback {
-    fun onFailure(e: Exception)
-    fun onSuccess(file: File, hash: ByteArray)
-  }
-
-  interface RemoteUpdateDownloadCallback {
-    fun onFailure(message: String, e: Exception)
-    fun onSuccess(updateResponse: UpdateResponse)
-  }
-
-  interface AssetDownloadCallback {
-    fun onFailure(e: Exception, assetEntity: AssetEntity)
-    fun onSuccess(assetEntity: AssetEntity, isNew: Boolean)
-  }
-
-  private fun downloadAssetAndVerifyHashAndWriteToPath(
+  @VisibleForTesting
+  internal suspend fun downloadAssetAndVerifyHashAndWriteToPath(
+    asset: AssetEntity,
+    extraHeaders: JSONObject,
     request: Request,
     expectedBase64URLEncodedSHA256Hash: String?,
     destination: File,
-    callback: FileDownloadCallback
-  ) {
-    downloadData(
-      request,
-      object : Callback {
-        override fun onFailure(call: Call, e: IOException) {
-          logger.error("Failed to download asset from ${request.url}", UpdatesErrorCode.AssetsFailedToLoad, e)
-          callback.onFailure(e)
+    updatesDirectory: File,
+    progressListener: FileDownloadProgressListener? = null,
+    allowPatch: Boolean,
+    launchedUpdate: UpdateEntity? = null,
+    requestedUpdate: UpdateEntity? = null,
+    embeddedAssetExtractor: EmbeddedAssetExtractor? = null
+  ): FileDownloadResult {
+    try {
+      val response = downloadData(request, progressListener)
+      val hash = response.use { resp ->
+        if (!resp.isSuccessful) {
+          throw IOException(
+            "Asset download request not successful",
+            AssetHttpResponseException(resp.code, truncateForErrorMessage(resp.body?.string() ?: "Unknown error"))
+          )
         }
 
-        @Throws(IOException::class)
-        override fun onResponse(call: Call, response: Response) {
-          if (!response.isSuccessful) {
-            val error = Exception("Network request failed: " + response.body!!.string())
-            logger.error("Failed to download file from ${request.url}", UpdatesErrorCode.AssetsFailedToLoad, error)
-            callback.onFailure(error)
-            return
-          }
-          try {
-            response.body!!.byteStream().use { inputStream ->
-              val hash = UpdatesUtils.verifySHA256AndWriteToFile(inputStream, destination, expectedBase64URLEncodedSHA256Hash)
-              callback.onSuccess(destination, hash)
+        val responseBody = resp.body
+          ?: throw IOException("Asset download response from ${request.url} had no body")
+        responseBody.use { body ->
+          val patchMetadata = parsePatchResponseMetadata(resp)
+          if (patchMetadata == null) {
+            body.byteStream().use { inputStream ->
+              UpdatesUtils.verifySHA256AndWriteToFile(
+                inputStream,
+                destination,
+                expectedBase64URLEncodedSHA256Hash
+              )
             }
-          } catch (e: Exception) {
-            logger.error("Failed to write file from ${request.url} to destination $destination", UpdatesErrorCode.AssetsFailedToLoad, e)
-            callback.onFailure(e)
+          } else {
+            val requestedUpdateId = requestedUpdate?.id?.toString()
+            val idsAreDifferent = launchedUpdate != null && requestedUpdate != null && launchedUpdate.id != requestedUpdate.id
+            val shouldAttemptPatch = allowPatch && asset.isLaunchAsset && idsAreDifferent && expectedBase64URLEncodedSHA256Hash != null
+
+            if (!shouldAttemptPatch) {
+              logger.warn(
+                UpdatesLogMessage.RemotePatchFallback,
+                values = mapOf("assetKey" to UpdatesLogger.assetKeyValue(asset.key), "reason" to "patchDisabled"),
+                updateId = requestedUpdateId,
+                assetId = asset.key
+              )
+              return@use fallbackBundleDownload(
+                asset = asset,
+                extraHeaders = extraHeaders,
+                progressListener = progressListener,
+                destination = destination,
+                expectedBase64URLEncodedSHA256Hash = expectedBase64URLEncodedSHA256Hash
+              )
+            }
+
+            if (!validatePatchResponseMetadata(patchMetadata, launchedUpdate)) {
+              logger.warn(
+                UpdatesLogMessage.RemotePatchFallback,
+                values = mapOf("assetKey" to UpdatesLogger.assetKeyValue(asset.key), "reason" to "invalidHeaders"),
+                updateId = requestedUpdateId,
+                assetId = asset.key
+              )
+              return@use fallbackBundleDownload(
+                asset = asset,
+                extraHeaders = extraHeaders,
+                progressListener = progressListener,
+                destination = destination,
+                expectedBase64URLEncodedSHA256Hash = expectedBase64URLEncodedSHA256Hash
+              )
+            }
+
+            return@use runCatching {
+              applyPatchAndVerify(
+                asset = asset,
+                responseBody = body,
+                destination = destination,
+                updatesDirectory = updatesDirectory,
+                launchedUpdate = launchedUpdate,
+                requestedUpdate = requestedUpdate,
+                expectedBase64URLEncodedSHA256Hash = expectedBase64URLEncodedSHA256Hash,
+                embeddedAssetExtractor = embeddedAssetExtractor
+              )
+            }.getOrElse { e ->
+              logger.warn(
+                UpdatesLogMessage.RemotePatchFallback,
+                values = mapOf("assetKey" to UpdatesLogger.assetKeyValue(asset.key), "reason" to "applyFailed", "cause" to e.localizedMessageWithCauseLocalizedMessage()),
+                updateId = requestedUpdateId,
+                assetId = asset.key
+              )
+              fallbackBundleDownload(
+                asset = asset,
+                extraHeaders = extraHeaders,
+                progressListener = progressListener,
+                destination = destination,
+                expectedBase64URLEncodedSHA256Hash = expectedBase64URLEncodedSHA256Hash
+              )
+            }
           }
         }
       }
+      return FileDownloadResult(destination, hash)
+    } catch (e: IOException) {
+      throw IOException("Failed to download asset from URL ${request.url}", e)
+    }
+  }
+
+  private suspend fun fallbackBundleDownload(
+    asset: AssetEntity,
+    extraHeaders: JSONObject,
+    progressListener: FileDownloadProgressListener?,
+    destination: File,
+    expectedBase64URLEncodedSHA256Hash: String?
+  ): ByteArray {
+    val fallbackRequest = createRequestForAsset(
+      assetEntity = asset,
+      extraHeaders = extraHeaders,
+      configuration = configuration,
+      allowPatch = false
+    )
+
+    val fallbackResponse = downloadData(fallbackRequest, progressListener)
+    return fallbackResponse.use { fallbackResp ->
+      val fallbackBody = fallbackResp.body
+        ?: throw IOException("Fallback asset download response from ${fallbackRequest.url} had no body")
+
+      fallbackBody.use { body ->
+        if (!fallbackResp.isSuccessful) {
+          throw IOException(
+            "Fallback asset download request not successful",
+            AssetHttpResponseException(fallbackResp.code, truncateForErrorMessage(body.string()))
+          )
+        }
+
+        body.byteStream().use { inputStream ->
+          UpdatesUtils.verifySHA256AndWriteToFile(
+            inputStream,
+            destination,
+            expectedBase64URLEncodedSHA256Hash
+          )
+        }
+      }
+    }
+  }
+
+  private data class PatchResponseMetadata(
+    val hasImBsdiff: Boolean,
+    val statusCode: Int,
+    val expoBaseUpdateId: String?
+  )
+
+  private fun parsePatchResponseMetadata(response: Response): PatchResponseMetadata? {
+    val hasImBsdiff = response.header(IM_HEADER)
+      ?.split(',')
+      ?.map { it.trim() }
+      ?.any { it.equals("bsdiff", ignoreCase = true) }
+      ?: false
+    val statusCode = response.code
+
+    if (!hasImBsdiff && statusCode != 226) {
+      return null
+    }
+
+    return PatchResponseMetadata(
+      hasImBsdiff = hasImBsdiff,
+      statusCode = statusCode,
+      expoBaseUpdateId = response.header(EXPO_BASE_UPDATE_ID_RESPONSE_HEADER)
     )
   }
 
-  internal fun parseRemoteUpdateResponse(response: Response, callback: RemoteUpdateDownloadCallback) {
+  private fun validatePatchResponseMetadata(
+    metadata: PatchResponseMetadata,
+    launchedUpdate: UpdateEntity?
+  ): Boolean {
+    val expectedBase = launchedUpdate?.id?.toString()?.lowercase()
+    val expoBaseUpdateId = metadata.expoBaseUpdateId?.lowercase()
+
+    if (!metadata.hasImBsdiff && metadata.statusCode != 226) {
+      return false
+    }
+
+    if (expoBaseUpdateId == null) {
+      return false
+    }
+
+    if (expectedBase != null && expoBaseUpdateId != expectedBase) {
+      return false
+    }
+
+    return true
+  }
+
+  @Throws(IOException::class)
+  private fun applyPatchAndVerify(
+    asset: AssetEntity,
+    responseBody: ResponseBody,
+    destination: File,
+    updatesDirectory: File,
+    launchedUpdate: UpdateEntity,
+    requestedUpdate: UpdateEntity?,
+    expectedBase64URLEncodedSHA256Hash: String?,
+    embeddedAssetExtractor: EmbeddedAssetExtractor? = null
+  ): ByteArray {
+    val launchAssetContext = prepareAssetForDiff(
+      asset = asset,
+      responseBody = responseBody,
+      destination = destination,
+      updatesDirectory = updatesDirectory,
+      launchedUpdate = launchedUpdate,
+      embeddedAssetExtractor = embeddedAssetExtractor
+    )
+
+    try {
+      return applyHermesDiff(
+        baseFile = launchAssetContext.baseFile,
+        diffBody = responseBody,
+        destination = destination,
+        expectedBase64URLEncodedSHA256Hash = expectedBase64URLEncodedSHA256Hash,
+        asset = asset,
+        requestedUpdateId = requestedUpdate?.id?.toString()
+      )
+    } finally {
+      if (launchAssetContext.isTemporary) {
+        launchAssetContext.baseFile.delete()
+      }
+    }
+  }
+
+  internal data class LaunchAssetContext(val baseFile: File, val isTemporary: Boolean = false)
+
+  @VisibleForTesting
+  internal fun prepareAssetForDiff(
+    asset: AssetEntity,
+    responseBody: ResponseBody,
+    destination: File,
+    updatesDirectory: File,
+    launchedUpdate: UpdateEntity,
+    embeddedAssetExtractor: EmbeddedAssetExtractor? = null
+  ): LaunchAssetContext {
+    return try {
+      preparePatchBaseAsset(asset, destination, updatesDirectory, launchedUpdate, embeddedAssetExtractor)
+    } catch (e: Exception) {
+      responseBody.close()
+      if (e is IOException) {
+        throw e
+      } else {
+        throw IOException("Failed to prepare asset for diff", e)
+      }
+    }
+  }
+
+  private fun preparePatchBaseAsset(
+    asset: AssetEntity,
+    destination: File,
+    updatesDirectory: File,
+    launchedUpdate: UpdateEntity,
+    embeddedAssetExtractor: EmbeddedAssetExtractor? = null
+  ): LaunchAssetContext {
+    if (!asset.isLaunchAsset) {
+      throw IOException("Received patch for non-launch asset ${asset.key}")
+    }
+
+    val currentUpdateId = launchedUpdate.id
+
+    val launchAssetEntity = database.updateDao().loadLaunchAssetForUpdate(currentUpdateId)
+      ?: throw IOException("Launch asset not found for current update $currentUpdateId")
+
+    val launchAssetRelativePath = launchAssetEntity.relativePath
+      ?: throw IOException("Launch asset for update $currentUpdateId is missing a relative path")
+
+    // BSPatch needs a real path, so an asset inside the APK is extracted first.
+    val isEmbeddedLaunchAsset = AndroidResourceAssetUtils.isAndroidResourceAsset(launchAssetRelativePath)
+    val baseFile = if (isEmbeddedLaunchAsset) {
+      extractEmbeddedPatchBaseAsset(launchAssetEntity, destination, embeddedAssetExtractor)
+    } else {
+      File(updatesDirectory, launchAssetRelativePath)
+    }
+    if (!baseFile.exists()) {
+      throw IOException("Base asset $baseFile is missing; cannot apply patch")
+    }
+
+    val expectedBaseHash = launchAssetEntity.expectedHash
+    if (expectedBaseHash != null) {
+      val actualBaseHash = try {
+        UpdatesUtils.toBase64Url(UpdatesUtils.sha256(baseFile))
+      } catch (_: Exception) {
+        null
+      }
+      if (actualBaseHash != null && expectedBaseHash != actualBaseHash) {
+        if (isEmbeddedLaunchAsset) {
+          baseFile.delete()
+        }
+        throw IOException("Asset hash mismatch for update $currentUpdateId; expected=$expectedBaseHash actual=$actualBaseHash")
+      }
+    }
+
+    return LaunchAssetContext(baseFile, isTemporary = isEmbeddedLaunchAsset)
+  }
+
+  @Throws(IOException::class)
+  private fun extractEmbeddedPatchBaseAsset(
+    launchAssetEntity: AssetEntity,
+    destination: File,
+    embeddedAssetExtractor: EmbeddedAssetExtractor?
+  ): File {
+    if (embeddedAssetExtractor == null) {
+      throw IOException("The launch asset lives in the app binary and cannot be extracted without an extractor")
+    }
+
+    val baseFile = File(destination.absolutePath + PATCH_BASE_TEMP_SUFFIX)
+    try {
+      baseFile.parentFile?.mkdirs()
+      embeddedAssetExtractor(launchAssetEntity, baseFile)
+    } catch (e: Exception) {
+      baseFile.delete()
+      throw e as? IOException ?: IOException("Failed to extract the embedded launch asset", e)
+    }
+    return baseFile
+  }
+
+  @VisibleForTesting
+  internal var applyPatch: (String, String, String) -> Int = { baseFilePath, newFilePath, patchFilePath ->
+    BSPatch.applyPatch(baseFilePath, newFilePath, patchFilePath)
+  }
+
+  @VisibleForTesting
+  internal fun applyHermesDiff(
+    baseFile: File,
+    diffBody: ResponseBody,
+    destination: File,
+    expectedBase64URLEncodedSHA256Hash: String?,
+    asset: AssetEntity,
+    requestedUpdateId: String?
+  ): ByteArray {
+    val patchFile = File(destination.absolutePath + PATCH_TEMP_SUFFIX)
+    val patchedTempFile = File(destination.absolutePath + PATCHED_TEMP_SUFFIX)
+
+    try {
+      patchFile.parentFile?.mkdirs()
+      patchedTempFile.parentFile?.mkdirs()
+
+      diffBody.byteStream().use { input ->
+        patchFile.outputStream().use { output -> input.copyTo(output) }
+      }
+
+      val patchResult = applyPatch(
+        baseFile.absolutePath,
+        patchedTempFile.absolutePath,
+        patchFile.absolutePath
+      )
+
+      if (patchResult != 0) {
+        throw IOException("BSPatch exited with code $patchResult while applying patch")
+      }
+
+      FileInputStream(patchedTempFile).use { patchedInputStream ->
+        val result = UpdatesUtils.verifySHA256AndWriteToFile(
+          patchedInputStream,
+          destination,
+          expectedBase64URLEncodedSHA256Hash
+        )
+        logger.info(
+          "Applied diff for asset ${asset.key}",
+          UpdatesErrorCode.None,
+          requestedUpdateId,
+          asset.key
+        )
+        return result
+      }
+    } catch (e: Exception) {
+      throw e as? IOException ?: IOException("Failed to apply patch", e)
+    } finally {
+      if (patchFile.exists()) {
+        patchFile.delete()
+      }
+      if (patchedTempFile.exists()) {
+        patchedTempFile.delete()
+      }
+    }
+  }
+
+  internal fun parseRemoteUpdateResponse(response: Response): UpdateResponse {
     val responseHeaders = response.headers
     val responseHeaderData = ResponseHeaderData(
       protocolVersionRaw = responseHeaders["expo-protocol-version"],
@@ -120,40 +501,19 @@ class FileDownloader(context: Context, private val configuration: UpdatesConfigu
       // If the protocol version greater than 0, we support returning a 204 and no body to mean no-op.
       // A 204 has no content-type.
       if (responseHeaderData.protocolVersion != null && responseHeaderData.protocolVersion > 0) {
-        callback.onSuccess(
-          UpdateResponse(
-            responseHeaderData = responseHeaderData,
-            manifestUpdateResponsePart = null,
-            directiveUpdateResponsePart = null
-          )
+        return UpdateResponse(
+          responseHeaderData = responseHeaderData,
+          manifestUpdateResponsePart = null,
+          directiveUpdateResponsePart = null
         )
-        return
       }
 
-      val message = "Missing body in remote update"
-      logger.error(message, UpdatesErrorCode.UpdateFailedToLoad)
-      callback.onFailure(
-        message,
-        IOException(message)
-      )
-      return
+      throw IOException("Invalid update response", IOException("Empty body"))
     }
 
-    val contentType = response.header("content-type") ?: ""
-    val isMultipart = contentType.startsWith("multipart/", ignoreCase = true)
+    val isMultipart = responseBody.contentType()?.type == "multipart"
     if (isMultipart) {
-      val boundaryParameter = ParameterParser().parse(contentType, ';')["boundary"]
-      if (boundaryParameter == null) {
-        val message = "Missing boundary in multipart remote update content-type"
-        logger.error(message, UpdatesErrorCode.UpdateFailedToLoad)
-        callback.onFailure(
-          message,
-          IOException(message)
-        )
-        return
-      }
-
-      parseMultipartRemoteUpdateResponse(responseBody, responseHeaderData, boundaryParameter, callback)
+      return parseMultipartRemoteUpdateResponse(response, responseBody, responseHeaderData)
     } else {
       val manifestResponseInfo = ResponsePartInfo(
         responseHeaderData = responseHeaderData,
@@ -163,113 +523,76 @@ class FileDownloader(context: Context, private val configuration: UpdatesConfigu
         body = response.body!!.string()
       )
 
-      parseManifest(
+      val manifestUpdateResponsePart = parseManifest(
         manifestResponseInfo,
         null,
-        null,
-        object : ParseManifestCallback {
-          override fun onFailure(message: String, e: Exception) {
-            callback.onFailure(message, e)
-          }
+        null
+      )
 
-          override fun onSuccess(manifestUpdateResponsePart: UpdateResponsePart.ManifestUpdateResponsePart) {
-            callback.onSuccess(
-              UpdateResponse(
-                responseHeaderData = responseHeaderData,
-                manifestUpdateResponsePart = manifestUpdateResponsePart,
-                directiveUpdateResponsePart = null
-              )
-            )
-          }
-        }
+      return UpdateResponse(
+        responseHeaderData = responseHeaderData,
+        manifestUpdateResponsePart = manifestUpdateResponsePart,
+        directiveUpdateResponsePart = null
       )
     }
   }
 
-  private fun parseHeaders(text: String): Headers {
-    val headers = mutableMapOf<String, String>()
-    val lines = text.split(CRLF)
-    for (line in lines) {
-      val indexOfSeparator = line.indexOf(":")
-      if (indexOfSeparator == -1) {
-        continue
-      }
-      val key = line.substring(0, indexOfSeparator).trim()
-      val value = line.substring(indexOfSeparator + 1).trim()
-      headers[key] = value
-    }
-    return headers.toHeaders()
-  }
-
-  private fun parseMultipartRemoteUpdateResponse(responseBody: ResponseBody, responseHeaderData: ResponseHeaderData, boundary: String, callback: RemoteUpdateDownloadCallback) {
+  private fun parseMultipartRemoteUpdateResponse(response: Response, responseBody: ResponseBody, responseHeaderData: ResponseHeaderData): UpdateResponse {
     var manifestPartBodyAndHeaders: Pair<String, Headers>? = null
     var extensionsBody: String? = null
     var certificateChainString: String? = null
     var directivePartBodyAndHeaders: Pair<String, Headers>? = null
 
-    val multipartStream = MultipartStream(responseBody.byteStream(), boundary.toByteArray())
-
-    try {
-      var nextPart = multipartStream.skipPreamble()
-      while (nextPart) {
-        val headers = parseHeaders(multipartStream.readHeaders())
-
-        // always read the body to progress the reader
-        val output = ByteArrayOutputStream()
-        multipartStream.readBodyData(output)
-
-        val contentDispositionValue = headers["content-disposition"]
-        if (contentDispositionValue != null) {
-          val contentDispositionParameterMap = ParameterParser().parse(contentDispositionValue, ';')
-          val contentDispositionName = contentDispositionParameterMap["name"]
-          if (contentDispositionName != null) {
-            when (contentDispositionName) {
-              "manifest" -> manifestPartBodyAndHeaders = Pair(output.toString(), headers)
-              "extensions" -> extensionsBody = output.toString()
-              "certificate_chain" -> certificateChainString = output.toString()
-              "directive" -> directivePartBodyAndHeaders = Pair(output.toString(), headers)
+    val isEmpty = response.peekBody(1).bytes().isEmpty()
+    if (!isEmpty) {
+      try {
+        MultipartReader(responseBody).use { reader ->
+          while (true) {
+            val nextPart = reader.nextPart() ?: break
+            nextPart.use { part ->
+              val headers = part.headers
+              val body = part.body
+              val contentDispositionValue = headers["content-disposition"]
+              if (contentDispositionValue != null) {
+                val contentDispositionName =
+                  contentDispositionValue.parseContentDispositionNameParameter()
+                if (contentDispositionName != null) {
+                  when (contentDispositionName) {
+                    "manifest" -> manifestPartBodyAndHeaders = Pair(body.readUtf8(), headers)
+                    "extensions" -> extensionsBody = body.readUtf8()
+                    "certificate_chain" -> certificateChainString = body.readUtf8()
+                    "directive" -> directivePartBodyAndHeaders = Pair(body.readUtf8(), headers)
+                  }
+                }
+              }
             }
           }
         }
-        nextPart = multipartStream.readBoundary()
+      } catch (e: Exception) {
+        // okhttp multipart reader doesn't support empty multipart bodies, but our spec does
+        throw IOException("Error while reading multipart remote update response", e)
       }
-    } catch (e: Exception) {
-      val message = "Error while reading multipart remote update response"
-      logger.error(message, UpdatesErrorCode.UpdateFailedToLoad, e)
-      callback.onFailure(
-        message,
-        e
-      )
-      return
     }
 
     val extensions = try {
       extensionsBody?.let { JSONObject(it) }
     } catch (e: Exception) {
-      val message = "Failed to parse multipart remote update extensions"
-      logger.error(message, UpdatesErrorCode.UpdateFailedToLoad)
-      callback.onFailure(
-        message,
-        e
-      )
-      return
+      throw IOException("Failed to parse multipart remote update extensions part", e)
     }
 
     // in v0 compatibility mode require a manifest
     if (configuration.enableExpoUpdatesProtocolV0CompatibilityMode && manifestPartBodyAndHeaders == null) {
-      val message = "Multipart response missing manifest part. Manifest is required in version 0 of the expo-updates protocol. This may be due to the update being a rollback or other directive."
-      logger.error(message, UpdatesErrorCode.UpdateFailedToLoad)
-      callback.onFailure(message, IOException(message))
-      return
+      val cause = IOException("Multipart response missing manifest part. Manifest is required in version 0 of the expo-updates protocol. This may be due to the response being for a different protocol version.")
+      throw IOException("Invalid update response", cause)
     }
 
     val manifestResponseInfo = manifestPartBodyAndHeaders?.let {
       ResponsePartInfo(
         responseHeaderData = responseHeaderData,
         responsePartHeaderData = ResponsePartHeaderData(
-          signature = manifestPartBodyAndHeaders.second["expo-signature"]
+          signature = it.second["expo-signature"]
         ),
-        body = manifestPartBodyAndHeaders.first
+        body = it.first
       )
     }
 
@@ -281,462 +604,472 @@ class FileDownloader(context: Context, private val configuration: UpdatesConfigu
         ResponsePartInfo(
           responseHeaderData = responseHeaderData,
           responsePartHeaderData = ResponsePartHeaderData(
-            signature = directivePartBodyAndHeaders.second["expo-signature"]
+            signature = it.second["expo-signature"]
           ),
-          body = directivePartBodyAndHeaders.first
+          body = it.first
         )
       }
     }
 
-    var parseManifestResponse: UpdateResponsePart.ManifestUpdateResponsePart? = null
-    var parseDirectiveResponse: UpdateResponsePart.DirectiveUpdateResponsePart? = null
-    var didError = false
-
-    // need to parse the directive and manifest in parallel, to do so use this common callback.
-    // would be a great place to have better coroutine stuff
-    val maybeFinish = {
-      if (!didError) {
-        val isManifestDone = manifestResponseInfo == null || parseManifestResponse != null
-        val isDirectiveDone = directiveResponseInfo == null || parseDirectiveResponse != null
-
-        if (isManifestDone && isDirectiveDone) {
-          callback.onSuccess(
-            UpdateResponse(
-              responseHeaderData = responseHeaderData,
-              manifestUpdateResponsePart = parseManifestResponse,
-              directiveUpdateResponsePart = parseDirectiveResponse
-            )
-          )
-        }
-      }
+    val parseManifestResponse = manifestResponseInfo?.let {
+      parseManifest(it, extensions, certificateChainString)
+    }
+    val parseDirectiveResponse = directiveResponseInfo?.let {
+      parseDirective(it, certificateChainString)
     }
 
-    if (directiveResponseInfo != null) {
-      parseDirective(
-        directiveResponseInfo,
-        certificateChainString,
-        object : ParseDirectiveCallback {
-          override fun onFailure(message: String, e: Exception) {
-            if (!didError) {
-              didError = true
-              callback.onFailure(message, e)
-            }
-          }
-
-          override fun onSuccess(directiveUpdateResponsePart: UpdateResponsePart.DirectiveUpdateResponsePart) {
-            parseDirectiveResponse = directiveUpdateResponsePart
-            maybeFinish()
-          }
-        }
-      )
-    }
-
-    if (manifestResponseInfo != null) {
-      parseManifest(
-        manifestResponseInfo,
-        extensions,
-        certificateChainString,
-        object : ParseManifestCallback {
-          override fun onFailure(message: String, e: Exception) {
-            if (!didError) {
-              didError = true
-              callback.onFailure(message, e)
-            }
-          }
-          override fun onSuccess(manifestUpdateResponsePart: UpdateResponsePart.ManifestUpdateResponsePart) {
-            parseManifestResponse = manifestUpdateResponsePart
-            maybeFinish()
-          }
-        }
-      )
-    }
-
-    // if both parts are empty, we still want to finish
-    if (manifestResponseInfo == null && directiveResponseInfo == null) {
-      maybeFinish()
-    }
-  }
-
-  interface ParseDirectiveCallback {
-    fun onFailure(message: String, e: Exception)
-    fun onSuccess(directiveUpdateResponsePart: UpdateResponsePart.DirectiveUpdateResponsePart)
+    return UpdateResponse(
+      responseHeaderData = responseHeaderData,
+      manifestUpdateResponsePart = parseManifestResponse,
+      directiveUpdateResponsePart = parseDirectiveResponse
+    )
   }
 
   private fun parseDirective(
     directiveResponsePartInfo: ResponsePartInfo,
-    certificateChainFromManifestResponse: String?,
-    callback: ParseDirectiveCallback
-  ) {
-    try {
-      val body = directiveResponsePartInfo.body
+    certificateChainFromManifestResponse: String?
+  ): UpdateResponsePart.DirectiveUpdateResponsePart {
+    val body = directiveResponsePartInfo.body
 
-      // check code signing if code signing is configured
-      // 1. verify the code signing signature (throw if invalid)
-      // 2. then, if the code signing certificate is only valid for a particular project, verify that the directive
-      //    has the correct info for code signing. If the code signing certificate doesn't specify a particular
-      //    project, it is assumed to be valid for all projects
-      // 3. consider the directive verified if both of these pass
-      try {
-        configuration.codeSigningConfiguration?.let { codeSigningConfiguration ->
-          val signatureValidationResult = codeSigningConfiguration.validateSignature(
-            directiveResponsePartInfo.responsePartHeaderData.signature,
-            body.toByteArray(),
-            certificateChainFromManifestResponse
-          )
-          if (signatureValidationResult.validationResult == ValidationResult.INVALID) {
-            throw IOException("Directive download was successful, but signature was incorrect")
-          }
-
-          if (signatureValidationResult.validationResult != ValidationResult.SKIPPED) {
-            val directiveForProjectInformation = UpdateDirective.fromJSONString(body)
-            signatureValidationResult.expoProjectInformation?.let { expoProjectInformation ->
-              if (expoProjectInformation.projectId != directiveForProjectInformation.signingInfo?.easProjectId ||
-                expoProjectInformation.scopeKey != directiveForProjectInformation.signingInfo.scopeKey
-              ) {
-                throw CertificateException("Invalid certificate for directive project ID or scope key")
-              }
-            }
-          }
-        }
+    // check code signing if code signing is configured
+    // 1. verify the code signing signature (throw if invalid)
+    // 2. then, if the code signing certificate is only valid for a particular project, verify that the directive
+    //    has the correct info for code signing. If the code signing certificate doesn't specify a particular
+    //    project, it is assumed to be valid for all projects
+    // 3. consider the directive verified if both of these pass
+    configuration.codeSigningConfiguration?.let { codeSigningConfiguration ->
+      val signatureValidationResult = try {
+        codeSigningConfiguration.validateSignature(
+          directiveResponsePartInfo.responsePartHeaderData.signature,
+          body.toByteArray(),
+          certificateChainFromManifestResponse,
+          logger
+        )
       } catch (e: Exception) {
-        callback.onFailure(e.message!!, e)
-        return
+        throw codeSigningFailure("directive", e)
+      }
+      if (signatureValidationResult.validationResult == ValidationResult.INVALID) {
+        throw codeSigningFailure("directive", IOException("Incorrect signature"))
       }
 
-      callback.onSuccess(UpdateResponsePart.DirectiveUpdateResponsePart(UpdateDirective.fromJSONString(body)))
-    } catch (e: Exception) {
-      val message = "Failed to parse directive data: ${e.localizedMessage}"
-      logger.error(message, UpdatesErrorCode.UpdateFailedToLoad, e)
-      callback.onFailure(
-        message,
-        e
-      )
+      if (signatureValidationResult.validationResult != ValidationResult.SKIPPED) {
+        val directiveForProjectInformation = UpdateDirective.fromJSONString(body)
+        signatureValidationResult.expoProjectInformation?.let { expoProjectInformation ->
+          if (expoProjectInformation.projectId != directiveForProjectInformation.signingInfo?.easProjectId ||
+            expoProjectInformation.scopeKey != directiveForProjectInformation.signingInfo.scopeKey
+          ) {
+            throw codeSigningFailure(
+              "directive",
+              CertificateException("Code signing certificate project ID or scope key does not match project ID or scope key in response part")
+            )
+          }
+        }
+      }
     }
-  }
 
-  interface ParseManifestCallback {
-    fun onFailure(message: String, e: Exception)
-    fun onSuccess(manifestUpdateResponsePart: UpdateResponsePart.ManifestUpdateResponsePart)
+    return UpdateResponsePart.DirectiveUpdateResponsePart(UpdateDirective.fromJSONString(body))
   }
 
   private fun parseManifest(
     manifestResponseInfo: ResponsePartInfo,
     extensions: JSONObject?,
-    certificateChainFromManifestResponse: String?,
-    callback: ParseManifestCallback
-  ) {
-    try {
-      checkCodeSigningAndCreateManifest(
-        bodyString = manifestResponseInfo.body,
-        preManifest = JSONObject(manifestResponseInfo.body),
-        responseHeaderData = manifestResponseInfo.responseHeaderData,
-        responsePartHeaderData = manifestResponseInfo.responsePartHeaderData,
-        extensions = extensions,
-        certificateChainFromManifestResponse = certificateChainFromManifestResponse,
-        configuration = configuration,
-        logger = logger,
-        callback = callback
-      )
-    } catch (e: Exception) {
-      val message = "Failed to parse manifest data: ${e.localizedMessage}"
-      logger.error(message, UpdatesErrorCode.UpdateFailedToLoad, e)
-      callback.onFailure(
-        message,
-        e
-      )
+    certificateChainFromManifestResponse: String?
+  ): UpdateResponsePart.ManifestUpdateResponsePart {
+    return checkCodeSigningAndCreateManifest(
+      bodyString = manifestResponseInfo.body,
+      preManifest = JSONObject(manifestResponseInfo.body),
+      responseHeaderData = manifestResponseInfo.responseHeaderData,
+      responsePartHeaderData = manifestResponseInfo.responsePartHeaderData,
+      extensions = extensions,
+      certificateChainFromManifestResponse = certificateChainFromManifestResponse,
+      configuration = configuration,
+      logger = logger
+    )
+  }
+
+  /**
+   * Summarizes an unsuccessful response for use as an error message. The status code is included
+   * because the body alone is often an opaque HTML page, and the body is truncated because it ends
+   * up in the error that `checkForUpdateAsync` and `fetchUpdateAsync` reject with.
+   */
+  private fun describeUnsuccessfulResponse(response: Response): String {
+    val body = try {
+      response.body?.string()
+    } catch (e: IOException) {
+      logger.info("Could not read body of unsuccessful remote update response: ${e.localizedMessageWithCauseLocalizedMessage()}", UpdatesErrorCode.UpdateFailedToLoad)
+      null
+    }
+    val summary = body?.takeIf { it.isNotBlank() }?.let { truncateForErrorMessage(it) } ?: "Unknown error"
+    return "HTTP ${response.code}: $summary"
+  }
+
+  private fun truncateForErrorMessage(body: String): String {
+    return if (body.length <= MAX_ERROR_BODY_LENGTH) {
+      body
+    } else {
+      "${body.take(MAX_ERROR_BODY_LENGTH)}… (truncated, ${body.length} characters total)"
     }
   }
 
-  fun downloadRemoteUpdate(
-    extraHeaders: JSONObject?,
-    context: Context,
-    callback: RemoteUpdateDownloadCallback
-  ) {
+  suspend fun downloadRemoteUpdate(
+    extraHeaders: JSONObject?
+  ): UpdateResponse {
     try {
-      downloadData(
-        createRequestForRemoteUpdate(extraHeaders, configuration, context),
-        object : Callback {
-          override fun onFailure(call: Call, e: IOException) {
-            val message = "Failed to download remote update from URL: ${configuration.updateUrl}: ${e.localizedMessage}"
-            logger.error(message, UpdatesErrorCode.UpdateFailedToLoad, e)
-            callback.onFailure(
-              message,
-              e
-            )
-          }
+      val response = downloadData(
+        createRequestForRemoteUpdate(extraHeaders, configuration, logger)
+      )
 
-          @Throws(IOException::class)
-          override fun onResponse(call: Call, response: Response) {
-            if (!response.isSuccessful) {
-              val message = "Failed to download remote update from URL: ${configuration.updateUrl}"
-              logger.error(message, UpdatesErrorCode.UpdateFailedToLoad)
-              callback.onFailure(
-                message,
-                Exception(response.body!!.string())
-              )
-              return
-            }
+      if (!response.isSuccessful) {
+        throw IOException("Remote update request not successful", IOException(describeUnsuccessfulResponse(response)))
+      }
 
-            parseRemoteUpdateResponse(response, callback)
+      return parseRemoteUpdateResponse(response)
+    } catch (e: Exception) {
+      throw IOException("Failed to download remote update", e)
+    }
+  }
+
+  suspend fun downloadAsset(
+    asset: AssetEntity,
+    destinationDirectory: File,
+    extraHeaders: JSONObject,
+    launchedUpdate: UpdateEntity?,
+    requestedUpdate: UpdateEntity?,
+    assetLoadProgressListener: ((Double) -> Unit)? = null,
+    embeddedAssetExtractor: EmbeddedAssetExtractor? = null
+  ): AssetDownloadResult {
+    if (asset.url == null) {
+      throw logAssetDownloadFailure(asset, requestedUpdate, Exception("Asset missing URL"))
+    }
+
+    val filename = UpdatesUtils.createFilenameForAsset(asset)
+    if (!UpdatesUtils.isSafeFilename(filename)) {
+      throw logAssetDownloadFailure(
+        asset,
+        requestedUpdate,
+        IOException("Asset filename \"$filename\" would resolve outside the updates directory")
+      )
+    }
+    val path = File(destinationDirectory, filename)
+
+    if (path.exists()) {
+      if (isExistingAssetFileValid(path, asset, requestedUpdate)) {
+        asset.relativePath = filename
+        return AssetDownloadResult(asset, false)
+      }
+      // the file on disk is not the asset we expect (for example, it was truncated when a previous
+      // process was killed); throw it away and download again
+      path.delete()
+    }
+
+    val canApplyPatch =
+      asset.isLaunchAsset &&
+        launchedUpdate != null &&
+        requestedUpdate != null &&
+        launchedUpdate.id != requestedUpdate.id
+
+    try {
+      val downloadResult = downloadAssetAndVerifyHashAndWriteToPath(
+        asset,
+        extraHeaders,
+        createRequestForAsset(
+          asset,
+          extraHeaders,
+          configuration,
+          allowPatch = canApplyPatch
+        ),
+        asset.expectedHash,
+        path,
+        destinationDirectory,
+        assetLoadProgressListener?.let { listener -> { listener.invoke(it) } },
+        allowPatch = canApplyPatch,
+        launchedUpdate = launchedUpdate,
+        requestedUpdate = requestedUpdate,
+        embeddedAssetExtractor = embeddedAssetExtractor
+      )
+
+      asset.downloadTime = Date()
+      asset.relativePath = filename
+      asset.hash = downloadResult.hash
+      return AssetDownloadResult(asset, true)
+    } catch (e: Exception) {
+      throw logAssetDownloadFailure(asset, requestedUpdate, e)
+    }
+  }
+
+  /**
+   * An asset file that already exists on disk is only reused when its contents match the hash the
+   * manifest declares for the asset. Trusting the file because it exists is unsafe: a process
+   * killed while the file was being written leaves a truncated file behind, and the launch asset
+   * then fails to load with a Hermes `Buffer is smaller than the size stated in the file header`
+   * error. When the manifest has no hash for the asset there is nothing to verify against, so the
+   * file is reused as before.
+   */
+  private fun isExistingAssetFileValid(path: File, asset: AssetEntity, requestedUpdate: UpdateEntity?): Boolean {
+    val expectedHash = asset.expectedHash ?: return true
+    val actualHash = try {
+      UpdatesUtils.toBase64Url(UpdatesUtils.sha256(path))
+    } catch (e: Exception) {
+      logger.warn(
+        UpdatesLogMessage.LocalAssetFileInvalid,
+        e,
+        mapOf("assetKey" to UpdatesLogger.assetKeyValue(asset.key), "reason" to "hashFailed"),
+        requestedUpdate?.loggingId,
+        asset.key
+      )
+      return false
+    }
+    if (actualHash == expectedHash) {
+      return true
+    }
+    logger.warn(
+      UpdatesLogMessage.LocalAssetFileInvalid,
+      values = mapOf("assetKey" to UpdatesLogger.assetKeyValue(asset.key), "reason" to "hashMismatch", "size" to path.length().toString()),
+      updateId = requestedUpdate?.loggingId,
+      assetId = asset.key
+    )
+    return false
+  }
+
+  private fun logAssetDownloadFailure(asset: AssetEntity, requestedUpdate: UpdateEntity?, cause: Exception): IOException {
+    val error = IOException("Failed to download asset ${asset.key}", cause)
+    logger.warn(
+      LoadFailures.message(cause, UpdatesLogMessage.RemoteAssetDownloadFailed, UpdatesLogMessage.RemoteAssetDownloadUnreachable),
+      cause,
+      mapOf("assetKey" to UpdatesLogger.assetKeyValue(asset.key)),
+      requestedUpdate?.loggingId,
+      asset.key
+    )
+    return error
+  }
+
+  private suspend fun downloadData(request: Request, progressListener: FileDownloadProgressListener? = null): Response =
+    suspendCancellableCoroutine { continuation ->
+      val call = client.newCall(request)
+
+      continuation.invokeOnCancellation {
+        call.cancel()
+      }
+
+      try {
+        val response = call.execute()
+        val wrappedResponse = progressListener?.let { listener ->
+          response.body?.let { responseBody ->
+            val wrappedBody = FileDownloadProgressResponseBody(responseBody, listener)
+            response.newBuilder().body(wrappedBody).build()
           }
         }
-      )
-    } catch (e: Exception) {
-      val message = "Failed to download remote update from URL: ${configuration.updateUrl}: ${e.localizedMessage}"
-      logger.error(message, UpdatesErrorCode.UpdateFailedToLoad, e)
-      callback.onFailure(
-        message,
-        e
-      )
+        continuation.resume(wrappedResponse ?: response)
+      } catch (e: Exception) {
+        continuation.resumeWithException(e)
+      }
     }
+
+  private fun getCache(): Cache {
+    val cacheSize = 50 * 1024 * 1024 // 50 MiB
+    return Cache(getCacheDirectory(), cacheSize.toLong())
   }
 
-  fun downloadAsset(
-    asset: AssetEntity,
-    destinationDirectory: File?,
-    context: Context,
-    callback: AssetDownloadCallback
-  ) {
-    if (asset.url == null) {
-      val message = "Could not download asset " + asset.key + " with no URL"
-      logger.error(message, UpdatesErrorCode.AssetsFailedToLoad)
-      callback.onFailure(Exception(message), asset)
-      return
-    }
-    val filename = UpdatesUtils.createFilenameForAsset(asset)
-    val path = File(destinationDirectory, filename)
-    if (path.exists()) {
-      asset.relativePath = filename
-      callback.onSuccess(asset, false)
-    } else {
-      try {
-        downloadAssetAndVerifyHashAndWriteToPath(
-          createRequestForAsset(asset, configuration, context),
-          asset.expectedHash,
-          path,
-          object : FileDownloadCallback {
-            override fun onFailure(e: Exception) {
-              callback.onFailure(e, asset)
-            }
+  private fun getCacheDirectory(): File {
+    return File(filesDirectory, "okhttp")
+  }
 
-            override fun onSuccess(file: File, hash: ByteArray) {
-              asset.downloadTime = Date()
-              asset.relativePath = filename
-              asset.hash = hash
-              callback.onSuccess(asset, true)
-            }
-          }
+  @VisibleForTesting
+  fun createRequestForAsset(
+    assetEntity: AssetEntity,
+    extraHeaders: JSONObject,
+    configuration: UpdatesConfiguration,
+    allowPatch: Boolean = true
+  ): Request = Request.Builder()
+    .url(assetEntity.url!!.toString())
+    .addHeadersFromJSONObject(assetEntity.extraRequestHeaders)
+    .addHeadersFromJSONObject(extraHeaders)
+    .header("Expo-Platform", "android")
+    .header("Expo-Protocol-Version", "1")
+    .header("Expo-API-Version", "1")
+    .header("Expo-Updates-Environment", "BARE")
+    .header("EAS-Client-ID", easClientID)
+    .apply {
+      val shouldRequestPatch = allowPatch && assetEntity.isLaunchAsset && configuration.enableBsdiffPatchSupport && assetEntity.expectedHash != null
+      val currentId = extraHeaders.optString(EXPO_CURRENT_UPDATE_ID_HEADER, "")
+      val requestedId = extraHeaders.optString(EXPO_REQUESTED_UPDATE_ID_HEADER, "")
+      header("Accept", "*/*")
+      if (shouldRequestPatch) {
+        header(A_IM_HEADER, "bsdiff")
+      } else {
+        removeHeader(A_IM_HEADER)
+      }
+      val runtimeVersion = configuration.runtimeVersionRaw
+      if (!runtimeVersion.isNullOrEmpty()) {
+        header("Expo-Runtime-Version", runtimeVersion)
+      }
+    }
+    .apply {
+      for ((key, value) in configuration.requestHeaders) {
+        header(key, value)
+      }
+    }
+    .build()
+
+  private fun checkCodeSigningAndCreateManifest(
+    bodyString: String,
+    preManifest: JSONObject,
+    responseHeaderData: ResponseHeaderData,
+    responsePartHeaderData: ResponsePartHeaderData,
+    extensions: JSONObject?,
+    certificateChainFromManifestResponse: String?,
+    configuration: UpdatesConfiguration,
+    logger: UpdatesLogger
+  ): UpdateResponsePart.ManifestUpdateResponsePart {
+    // Set the isVerified field in the manifest itself so that it is stored in the database.
+    // Note that this is not considered for code signature verification.
+    // currently this is only used by Expo Go, but moving it out of the library would require
+    // also storing the signature so database-loaded-update validity could be derived at load
+    // time.
+    preManifest.put("isVerified", false)
+
+    // check code signing if code signing is configured
+    // 1. verify the code signing signature (throw if invalid)
+    // 2. then, if the code signing certificate is only valid for a particular project, verify that the manifest
+    //    has the correct info for code signing. If the code signing certificate doesn't specify a particular
+    //    project, it is assumed to be valid for all projects
+    // 3. mark the manifest as verified if both of these pass
+    configuration.codeSigningConfiguration?.let { codeSigningConfiguration ->
+      val signatureValidationResult = try {
+        codeSigningConfiguration.validateSignature(
+          responsePartHeaderData.signature,
+          bodyString.toByteArray(),
+          certificateChainFromManifestResponse,
+          logger
         )
       } catch (e: Exception) {
-        logger.error("Failed to download asset ${asset.key}: ${e.localizedMessage}", UpdatesErrorCode.AssetsFailedToLoad, e)
-        callback.onFailure(e, asset)
+        throw codeSigningFailure("manifest", e)
       }
-    }
-  }
-
-  private fun downloadData(request: Request, callback: Callback) {
-    downloadData(request, callback, false)
-  }
-
-  private fun downloadData(request: Request, callback: Callback, isRetry: Boolean) {
-    client.newCall(request).enqueue(object : Callback {
-      override fun onFailure(call: Call, e: IOException) {
-        if (isRetry) {
-          callback.onFailure(call, e)
-        } else {
-          downloadData(request, callback, true)
-        }
+      if (signatureValidationResult.validationResult == ValidationResult.INVALID) {
+        throw codeSigningFailure("manifest", IOException("Incorrect signature"))
       }
 
-      @Throws(IOException::class)
-      override fun onResponse(call: Call, response: Response) {
-        callback.onResponse(call, response)
-      }
-    })
-  }
-
-  companion object {
-    private val TAG = FileDownloader::class.java.simpleName
-
-    // Standard line separator for HTTP.
-    private const val CRLF = "\r\n"
-
-    @Throws(Exception::class)
-    private fun checkCodeSigningAndCreateManifest(
-      bodyString: String,
-      preManifest: JSONObject,
-      responseHeaderData: ResponseHeaderData,
-      responsePartHeaderData: ResponsePartHeaderData,
-      extensions: JSONObject?,
-      certificateChainFromManifestResponse: String?,
-      configuration: UpdatesConfiguration,
-      logger: UpdatesLogger,
-      callback: ParseManifestCallback
-    ) {
-      // Set the isVerified field in the manifest itself so that it is stored in the database.
-      // Note that this is not considered for code signature verification.
-      // currently this is only used by Expo Go, but moving it out of the library would require
-      // also storing the signature so database-loaded-update validity could be derived at load
-      // time.
-      preManifest.put("isVerified", false)
-
-      // check code signing if code signing is configured
-      // 1. verify the code signing signature (throw if invalid)
-      // 2. then, if the code signing certificate is only valid for a particular project, verify that the manifest
-      //    has the correct info for code signing. If the code signing certificate doesn't specify a particular
-      //    project, it is assumed to be valid for all projects
-      // 3. mark the manifest as verified if both of these pass
-      try {
-        configuration.codeSigningConfiguration?.let { codeSigningConfiguration ->
-          val signatureValidationResult = codeSigningConfiguration.validateSignature(
-            responsePartHeaderData.signature,
-            bodyString.toByteArray(),
-            certificateChainFromManifestResponse
-          )
-          if (signatureValidationResult.validationResult == ValidationResult.INVALID) {
-            throw IOException("Manifest download was successful, but signature was incorrect")
-          }
-
-          if (signatureValidationResult.validationResult != ValidationResult.SKIPPED) {
-            val manifestForProjectInformation = UpdateFactory.getUpdate(
-              preManifest,
-              responseHeaderData,
-              extensions,
-              configuration
-            ).manifest
-            signatureValidationResult.expoProjectInformation?.let { expoProjectInformation ->
-              if (expoProjectInformation.projectId != manifestForProjectInformation.getEASProjectID() ||
-                expoProjectInformation.scopeKey != manifestForProjectInformation.getScopeKey()
-              ) {
-                throw CertificateException("Invalid certificate for manifest project ID or scope key")
-              }
-            }
-
-            logger.info("Update code signature verified successfully")
-            preManifest.put("isVerified", true)
+      if (signatureValidationResult.validationResult != ValidationResult.SKIPPED) {
+        val manifestForProjectInformation = UpdateFactory.getUpdate(
+          preManifest,
+          responseHeaderData,
+          extensions,
+          configuration
+        ).manifest
+        signatureValidationResult.expoProjectInformation?.let { expoProjectInformation ->
+          if (expoProjectInformation.projectId != manifestForProjectInformation.getEASProjectID() ||
+            expoProjectInformation.scopeKey != manifestForProjectInformation.getScopeKey()
+          ) {
+            throw codeSigningFailure(
+              "manifest",
+              CertificateException("Code signing certificate project ID or scope key does not match project ID or scope key in response")
+            )
           }
         }
-      } catch (e: Exception) {
-        logger.error(e.message!!, UpdatesErrorCode.UpdateCodeSigningError)
-        callback.onFailure(e.message!!, e)
-        return
-      }
 
-      val update = UpdateFactory.getUpdate(preManifest, responseHeaderData, extensions, configuration)
-      if (!SelectionPolicies.matchesFilters(update.updateEntity!!, responseHeaderData.manifestFilters)) {
-        val message =
-          "Downloaded manifest is invalid; provides filters that do not match its content"
-        callback.onFailure(message, Exception(message))
-      } else {
-        callback.onSuccess(UpdateResponsePart.ManifestUpdateResponsePart(update))
+        logger.info("Manifest code signing signature verified successfully")
+        preManifest.put("isVerified", true)
       }
     }
 
-    private fun Request.Builder.addHeadersFromJSONObject(headers: JSONObject?): Request.Builder {
-      if (headers == null) {
-        return this
-      }
+    val update = UpdateFactory.getUpdate(preManifest, responseHeaderData, extensions, configuration)
+    if (!SelectionPolicies.matchesFilters(update.updateEntity!!, responseHeaderData.manifestFilters)) {
+      throw Exception("Manifest filters do not match manifest content for downloaded manifest")
+    } else {
+      return UpdateResponsePart.ManifestUpdateResponsePart(update)
+    }
+  }
 
-      headers.keys().asSequence().forEach { key ->
-        header(key, headers.require<Any>(key).toString())
-      }
+  /**
+   * Logs a code signing failure and returns the exception to throw, which [UpdatesLogger.errorForLoadFailure]
+   * does not log again. Manifest and directive parse errors are not code signing failures and must not
+   * come here.
+   */
+  private fun codeSigningFailure(kind: String, cause: Exception): LoggedException {
+    logger.error(UpdatesLogMessage.SystemCodeSigningVerificationFailed, cause, mapOf("kind" to kind))
+    return LoggedException("Code signing verification failed for $kind", cause)
+  }
+
+  private fun Request.Builder.addHeadersFromJSONObject(headers: JSONObject?): Request.Builder {
+    if (headers == null) {
       return this
     }
 
-    internal fun createRequestForAsset(
-      assetEntity: AssetEntity,
-      configuration: UpdatesConfiguration,
-      context: Context
-    ): Request {
-      return Request.Builder()
-        .url(assetEntity.url!!.toString())
-        .addHeadersFromJSONObject(assetEntity.extraRequestHeaders)
-        .header("Expo-Platform", "android")
-        .header("Expo-Protocol-Version", "1")
-        .header("Expo-API-Version", "1")
-        .header("Expo-Updates-Environment", "BARE")
-        .header("EAS-Client-ID", EASClientID(context).uuid.toString())
-        .apply {
-          for ((key, value) in configuration.requestHeaders) {
-            header(key, value)
-          }
-        }
-        .build()
+    headers.keys().asSequence().forEach { key ->
+      header(key, headers.require<Any>(key).toString())
     }
+    return this
+  }
 
-    internal fun createRequestForRemoteUpdate(
-      extraHeaders: JSONObject?,
-      configuration: UpdatesConfiguration,
-      context: Context
-    ): Request {
-      return Request.Builder()
-        .url(configuration.updateUrl.toString())
-        .addHeadersFromJSONObject(extraHeaders)
-        .header("Accept", "multipart/mixed,application/expo+json,application/json")
-        .header("Expo-Platform", "android")
-        .header("Expo-Protocol-Version", "1")
-        .header("Expo-API-Version", "1")
-        .header("Expo-Updates-Environment", "BARE")
-        .header("Expo-JSON-Error", "true")
-        .header("EAS-Client-ID", EASClientID(context).uuid.toString())
-        .apply {
-          val runtimeVersion = configuration.runtimeVersionRaw
-          if (!runtimeVersion.isNullOrEmpty()) {
-            header("Expo-Runtime-Version", runtimeVersion)
-          }
+  @VisibleForTesting
+  fun createRequestForRemoteUpdate(
+    extraHeaders: JSONObject?,
+    configuration: UpdatesConfiguration,
+    logger: UpdatesLogger
+  ): Request {
+    return Request.Builder()
+      .url(configuration.updateUrl.toString())
+      .addHeadersFromJSONObject(extraHeaders)
+      .header("Accept", "multipart/mixed,application/expo+json,application/json")
+      .header("Expo-Platform", "android")
+      .header("Expo-Protocol-Version", "1")
+      .header("Expo-API-Version", "1")
+      .header("Expo-Updates-Environment", "BARE")
+      .header("Expo-JSON-Error", "true")
+      .header("EAS-Client-ID", easClientID)
+      .apply {
+        val runtimeVersion = configuration.runtimeVersionRaw
+        if (!runtimeVersion.isNullOrEmpty()) {
+          header("Expo-Runtime-Version", runtimeVersion)
         }
-        .apply {
-          val previousFatalError = NoDatabaseLauncher.consumeErrorLog(context)
-          if (previousFatalError != null) {
-            // some servers can have max length restrictions for headers,
-            // so we restrict the length of the string to 1024 characters --
-            // this should satisfy the requirements of most servers
-            header(
-              "Expo-Fatal-Error",
-              previousFatalError.substring(0, min(1024, previousFatalError.length))
-            )
-          }
+      }
+      .apply {
+        val previousFatalError = NoDatabaseLauncher.consumeErrorLog(filesDirectory, logger)
+        if (previousFatalError != null) {
+          // some servers can have max length restrictions for headers,
+          // so we restrict the length of the string to 1024 characters --
+          // this should satisfy the requirements of most servers
+          header(
+            "Expo-Fatal-Error",
+            previousFatalError.substring(0, min(1024, previousFatalError.length))
+          )
         }
-        .apply {
-          for ((key, value) in configuration.requestHeaders) {
-            header(key, value)
-          }
+      }
+      .apply {
+        for ((key, value) in configuration.requestHeaders) {
+          header(key, value)
         }
-        .apply {
-          configuration.codeSigningConfiguration?.let {
-            header("expo-expect-signature", it.getAcceptSignatureHeader())
-          }
+      }
+      .apply {
+        configuration.codeSigningConfiguration?.let {
+          header("expo-expect-signature", it.getAcceptSignatureHeader())
         }
-        .build()
-    }
+      }
+      .build()
+  }
 
-    private fun getCache(context: Context): Cache {
-      val cacheSize = 50 * 1024 * 1024 // 50 MiB
-      return Cache(getCacheDirectory(context), cacheSize.toLong())
-    }
-
-    private fun getCacheDirectory(context: Context): File {
-      return File(context.cacheDir, "okhttp")
-    }
+  companion object {
+    private const val MAX_ERROR_BODY_LENGTH = 512
 
     fun getExtraHeadersForRemoteUpdateRequest(
       database: UpdatesDatabase,
       configuration: UpdatesConfiguration,
       launchedUpdate: UpdateEntity?,
-      embeddedUpdate: UpdateEntity?
+      embeddedUpdate: UpdateEntity?,
+      logger: UpdatesLogger
     ): JSONObject {
       val extraHeaders =
-        ManifestMetadata.getServerDefinedHeaders(database, configuration) ?: JSONObject()
+        ManifestMetadata.getServerDefinedHeaders(database, configuration, logger) ?: JSONObject()
 
-      ManifestMetadata.getExtraParams(database, configuration)?.let {
+      ManifestMetadata.getExtraParams(database, configuration, logger)?.let {
         extraHeaders.put("Expo-Extra-Params", Dictionary.valueOf(it.mapValues { elem -> StringItem.valueOf(elem.value) }).serialize())
       }
 
       launchedUpdate?.let {
-        extraHeaders.put("Expo-Current-Update-ID", it.id.toString().lowercase())
+        extraHeaders.put(EXPO_CURRENT_UPDATE_ID_HEADER, it.id.toString().lowercase())
       }
       embeddedUpdate?.let {
-        extraHeaders.put("Expo-Embedded-Update-ID", it.id.toString().lowercase())
+        extraHeaders.put(EXPO_EMBEDDED_UPDATE_ID_HEADER, it.id.toString().lowercase())
       }
 
       database.updateDao().loadRecentUpdateIdsWithFailedLaunch().let {
@@ -749,6 +1082,69 @@ class FileDownloader(context: Context, private val configuration: UpdatesConfigu
       }
 
       return extraHeaders
+    }
+
+    fun getExtraHeadersForRemoteAssetRequest(
+      launchedUpdate: UpdateEntity?,
+      embeddedUpdate: UpdateEntity?,
+      requestedUpdate: UpdateEntity?
+    ): JSONObject {
+      val extraHeaders = JSONObject()
+
+      launchedUpdate?.let {
+        extraHeaders.put(EXPO_CURRENT_UPDATE_ID_HEADER, it.id.toString().lowercase())
+      }
+      embeddedUpdate?.let {
+        extraHeaders.put(EXPO_EMBEDDED_UPDATE_ID_HEADER, it.id.toString().lowercase())
+      }
+      requestedUpdate?.let {
+        extraHeaders.put(EXPO_REQUESTED_UPDATE_ID_HEADER, it.id.toString().lowercase())
+      }
+
+      return extraHeaders
+    }
+  }
+}
+
+internal fun interface FileDownloadProgressListener {
+  fun update(bytesRead: Long, contentLength: Long) {
+    // Only emit progress if content length is known
+    if (contentLength > 0) {
+      onProgressUpdate(bytesRead.toDouble() / contentLength.toDouble())
+    }
+  }
+
+  fun onProgressUpdate(progress: Double)
+}
+
+private class FileDownloadProgressResponseBody(
+  private val responseBody: ResponseBody,
+  private val progressListener: FileDownloadProgressListener
+) : ResponseBody() {
+  override fun contentType(): MediaType? = responseBody.contentType()
+
+  override fun contentLength(): Long = responseBody.contentLength()
+
+  private val bufferedSource by lazy {
+    source(responseBody.source()).buffer()
+  }
+
+  override fun source(): BufferedSource = bufferedSource
+
+  private fun source(source: Source): Source {
+    return object : ForwardingSource(source) {
+      var totalBytesRead: Long = 0
+
+      override fun read(sink: Buffer, byteCount: Long): Long {
+        val bytesRead = super.read(sink, byteCount)
+        totalBytesRead += if (bytesRead != -1L) {
+          bytesRead
+        } else {
+          0
+        }
+        progressListener.update(totalBytesRead, responseBody.contentLength())
+        return bytesRead
+      }
     }
   }
 }

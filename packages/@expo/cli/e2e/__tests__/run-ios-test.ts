@@ -1,7 +1,8 @@
 /* eslint-env jest */
 import fs from 'fs/promises';
 
-import { execute, getLoadedModulesAsync, projectRoot } from './utils';
+import { executeExpoAsync } from '../utils/expo';
+import { getLoadedModulesAsync, projectRoot } from './utils';
 
 const originalForceColor = process.env.FORCE_COLOR;
 const originalCI = process.env.CI;
@@ -28,7 +29,7 @@ it('loads expected modules by default', async () => {
 });
 
 it('runs `npx expo run:ios --help`', async () => {
-  const results = await execute('run:ios', '--help');
+  const results = await executeExpoAsync(projectRoot, ['run:ios', '--help']);
   expect(results.stdout).toMatchInlineSnapshot(`
     "
       Info
@@ -42,13 +43,18 @@ it('runs `npx expo run:ios --help`', async () => {
         --no-install                     Skip installing dependencies
         --no-bundler                     Skip starting the Metro bundler
         --scheme [scheme]                Scheme to build
+        --binary <path>                  Path to existing .app or .ipa to install.
         --configuration <configuration>  Xcode configuration to use. Debug or Release. Default: Debug
-        -d, --device [device]            Device name or UDID to build the app on
+        -d, --device [device]            Device name, UDID, or "generic" for build-only
+        -o, --output <path>              Directory to output the built app binary
         -p, --port <port>                Port to start the Metro bundler on. Default: 8081
         -h, --help                       Usage info
 
       Build for production (unsigned) with the Release configuration:
         $ npx expo run:ios --configuration Release
+
+      Build for simulator without installing (build-only):
+        $ npx expo run:ios --configuration Release --device generic --output ./build
     "
   `);
 });

@@ -4,18 +4,13 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.util.Base64
 import android.util.Log
-import com.facebook.react.bridge.Arguments
-import com.facebook.react.bridge.WritableMap
-import expo.modules.kotlin.AppContext
 import expo.modules.updates.UpdatesConfiguration.CheckAutomaticallyConfiguration
 import expo.modules.updates.db.entity.AssetEntity
-import expo.modules.updates.logging.UpdatesErrorCode
 import expo.modules.updates.logging.UpdatesLogger
-import org.apache.commons.io.FileUtils
+import expo.modules.updatesinterface.UpdatesLogMessage
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.*
-import java.lang.ref.WeakReference
 import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
@@ -23,16 +18,13 @@ import java.text.DateFormat
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.experimental.and
+import java.util.regex.Pattern
 
 /**
  * Miscellaneous helper functions that are used by multiple classes in the library.
  */
 object UpdatesUtils {
   private val TAG = UpdatesUtils::class.java.simpleName
-
-  @get:Synchronized @set:Synchronized
-  private var eventsToSendToJS = mutableListOf<Pair<String, WritableMap>>()
 
   private const val UPDATES_DIRECTORY_NAME = ".expo-internal"
 
@@ -94,13 +86,19 @@ object UpdatesUtils {
   @Throws(NoSuchAlgorithmException::class, IOException::class)
   fun sha256(file: File): ByteArray {
     try {
+      val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
       FileInputStream(file).use { inputStream ->
         DigestInputStream(
           inputStream,
           MessageDigest.getInstance("SHA-256")
         ).use { digestInputStream ->
-          val md = digestInputStream.messageDigest
-          return md.digest()
+          while (true) {
+            val bytesRead = digestInputStream.read(buffer)
+            if (bytesRead == -1) {
+              break
+            }
+          }
+          return digestInputStream.messageDigest.digest()
         }
       }
     } catch (e: NoSuchAlgorithmException) {
@@ -115,43 +113,73 @@ object UpdatesUtils {
   @Throws(NoSuchAlgorithmException::class, IOException::class)
   fun verifySHA256AndWriteToFile(inputStream: InputStream, destination: File, expectedBase64URLEncodedHash: String?): ByteArray {
     DigestInputStream(inputStream, MessageDigest.getInstance("SHA-256")).use { digestInputStream ->
-      // write file atomically by writing it to a temporary path and then renaming
-      // this protects us against partially written files if the process is interrupted
+      // Write to a temporary path first and only move the file into place after the hash is
+      // verified. The move is a rename on the same filesystem, so the destination is either absent
+      // or complete; it can never be observed partially written. A streamed copy into the
+      // destination (the previous implementation) left a truncated file behind when the process
+      // was killed mid-copy, and that file was later trusted because it existed.
       val tmpFile = File(destination.absolutePath + ".tmp")
-      FileUtils.copyInputStreamToFile(digestInputStream, tmpFile)
-
-      // this message digest must be read after the input stream has been consumed in order to get the hash correctly
-      val md = digestInputStream.messageDigest
-      val hash = md.digest()
-      // base64url - https://datatracker.ietf.org/doc/html/rfc4648#section-5
-      val hashBase64String = Base64.encodeToString(hash, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-      if (expectedBase64URLEncodedHash != null && expectedBase64URLEncodedHash != hashBase64String) {
-        throw IOException("File download was successful but base64url-encoded SHA-256 did not match expected; expected: $expectedBase64URLEncodedHash; actual: $hashBase64String")
-      }
-      // only rename after the hash has been verified
-      // Since renameTo() does not expose detailed errors, and can fail if source and destination
-      // are not on the same mount point, we do a copyTo followed by delete
-      // if there are two assets with identical content, they will be written to the same file path,
-      // so we allow overwrites
+      tmpFile.parentFile?.mkdirs()
       try {
-        tmpFile.copyTo(destination, true)
-      } catch (e: NoSuchFileException) {
-        throw IOException("File download was successful, but temp file ${tmpFile.absolutePath} does not exist")
-      } catch (e: Exception) {
-        throw IOException("File download was successful, but an exception occurred: $e")
+        digestInputStream.use { input ->
+          FileOutputStream(tmpFile).use { output ->
+            input.copyTo(output)
+            // flush to disk before the file becomes visible at the final path, so a reboot or
+            // power loss right after the move cannot leave a truncated file behind
+            output.fd.sync()
+          }
+        }
+
+        // this message digest must be read after the input stream has been consumed in order to get the hash correctly
+        val md = digestInputStream.messageDigest
+        val hash = md.digest()
+        val hashBase64String = toBase64Url(hash)
+        if (expectedBase64URLEncodedHash != null && expectedBase64URLEncodedHash != hashBase64String) {
+          throw IOException("File download was successful but base64url-encoded SHA-256 did not match expected; expected: $expectedBase64URLEncodedHash; actual: $hashBase64String")
+        }
+
+        // if there are two assets with identical content, they will be written to the same file path,
+        // so we allow overwrites
+        moveFileAtomically(tmpFile, destination)
+
+        return hash
       } finally {
         tmpFile.delete()
       }
-
-      return hash
     }
   }
 
-  fun createFilenameForAsset(asset: AssetEntity): String {
-    var fileExtension: String? = ""
-    if (asset.type != null) {
-      fileExtension = if (asset.type!!.startsWith(".")) asset.type else "." + asset.type
+  /**
+   * Moves [source] to [destination], replacing any existing file. The temp file and the destination
+   * live in the same directory, so `rename(2)` applies and the move is atomic. If the rename is
+   * rejected anyway (for example, the two paths end up on different mount points), fall back to a
+   * copy so the download still succeeds.
+   */
+  @Throws(IOException::class)
+  internal fun moveFileAtomically(source: File, destination: File) {
+    if (!source.exists()) {
+      throw IOException("File download was successful, but temp file ${source.absolutePath} does not exist")
     }
+    if (source.renameTo(destination)) {
+      return
+    }
+    Log.w(TAG, "Atomic rename of ${source.absolutePath} to ${destination.absolutePath} failed; falling back to copy")
+    try {
+      source.copyTo(destination, true)
+    } catch (e: Exception) {
+      throw IOException("File download was successful, but an exception occurred: $e")
+    }
+  }
+
+  fun toBase64Url(bytes: ByteArray): String {
+    return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+  }
+
+  /**
+   * Create an asset filename in file system (files are saved in the `.expo-internal` directory)
+   */
+  fun createFilenameForAsset(asset: AssetEntity): String {
+    val fileExtension = asset.getFileExtension()
     return if (asset.key == null) {
       // create a filename that's unlikely to collide with any other asset
       "asset-" + Date().time + "-" + Random().nextInt() + fileExtension
@@ -160,71 +188,20 @@ object UpdatesUtils {
     }
   }
 
-  fun sendEventToAppContext(
-    shouldEmitJsEvents: Boolean,
-    weakAppContext: WeakReference<AppContext>?,
-    logger: UpdatesLogger,
-    eventName: String,
-    eventType: String,
-    params: WritableMap?
-  ) {
-    val eventParams = params ?: Arguments.createMap()
-    eventParams.putString("type", eventType)
-
-    if (!shouldEmitJsEvents) {
-      eventsToSendToJS.add(Pair(eventName, eventParams))
-      logger.error("Could not emit $eventName $eventType event; no subscribers registered.", UpdatesErrorCode.JSRuntimeError)
-      return
-    }
-    val appContext = weakAppContext?.get() ?: run {
-      eventsToSendToJS.add(Pair(eventName, eventParams))
-      logger.error("Could not emit $eventName $eventType event; no app context was found.", UpdatesErrorCode.JSRuntimeError)
-      return
-    }
-    val updatesModule = appContext.registry.getModule("ExpoUpdates") ?: run {
-      eventsToSendToJS.add(Pair(eventName, eventParams))
-      logger.error("Could not emit $eventName $eventType event; no ExpoUpdates module was found.", UpdatesErrorCode.JSRuntimeError)
-      return
-    }
-    val eventEmitter = appContext.eventEmitter(updatesModule) ?: run {
-      eventsToSendToJS.add(Pair(eventName, eventParams))
-      logger.error("Could not emit $eventName $eventType event; no event emitter was found.", UpdatesErrorCode.JSRuntimeError)
-      return
-    }
-
-    logger.info("Emitted event: name = $eventName, type = $eventType")
-    eventEmitter.emit(eventName, eventParams)
-  }
-
-  fun sendQueuedEventsToAppContext(
-    shouldEmitJsEvents: Boolean,
-    weakAppContext: WeakReference<AppContext>?,
-    logger: UpdatesLogger
-  ) {
-    if (!shouldEmitJsEvents) {
-      return
-    }
-    val appContext = weakAppContext?.get() ?: run {
-      return
-    }
-    val updatesModule = appContext.registry.getModule("ExpoUpdates") ?: run {
-      return
-    }
-    val eventEmitter = appContext.eventEmitter(updatesModule) ?: run {
-      return
-    }
-
-    eventsToSendToJS.forEach { event ->
-      val eventName = event.first
-      val eventParams = event.second
-      logger.info("Emitted event: name = $eventName, type = ${eventParams.getString("type")}")
-      eventEmitter.emit(eventName, eventParams)
-    }
-    eventsToSendToJS.clear()
+  /**
+   * Asset filenames are built from manifest-controlled values, so a filename holding a path
+   * separator or a `..` component would resolve outside the updates directory.
+   */
+  fun isSafeFilename(filename: String): Boolean {
+    return filename.isNotEmpty() &&
+      filename != "." &&
+      filename != ".." &&
+      filename.none { it == '/' || it == '\\' || it == '\u0000' }
   }
 
   fun shouldCheckForUpdateOnLaunch(
     updatesConfiguration: UpdatesConfiguration,
+    logger: UpdatesLogger,
     context: Context
   ): Boolean {
     return when (updatesConfiguration.checkOnLaunch) {
@@ -234,14 +211,13 @@ object UpdatesUtils {
       CheckAutomaticallyConfiguration.WIFI_ONLY -> {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager?
         if (cm == null) {
-          Log.e(
-            TAG,
-            "Could not determine active network connection is metered; not checking for updates"
-          )
+          val cause = Exception("Null ConnectivityManager system service")
+          logger.error(UpdatesLogMessage.SystemMeteredNetworkCheckFailed, cause)
           return false
         }
         !cm.isActiveNetworkMetered
       }
+
       CheckAutomaticallyConfiguration.ALWAYS -> true
     }
   }
@@ -251,7 +227,7 @@ object UpdatesUtils {
   fun bytesToHex(bytes: ByteArray): String {
     val hexChars = CharArray(bytes.size * 2)
     for (j in bytes.indices) {
-      val v = (bytes[j] and 0xFF.toByte()).toInt()
+      val v = bytes[j].toInt() and 0xFF
       hexChars[j * 2] = HEX_ARRAY[v ushr 4]
       hexChars[j * 2 + 1] = HEX_ARRAY[v and 0x0F]
     }
@@ -276,5 +252,55 @@ object UpdatesUtils {
       // Throw if the second parse attempt fails
       throw e
     }
+  }
+
+  private val PARAMETER_PATTERN: Pattern by lazy {
+    val token = "([a-zA-Z0-9-!#$%&'*+.^_`{|}~]+)"
+    val quoted = "\"([^\"]*)\""
+    Pattern.compile(";\\s*(?:\\s*$token\\s*=\\s*(?:$token|$quoted))?\\s*")
+  }
+
+  /**
+   * Parse name parameter from content-disposition header value.
+   *
+   * Derived from Okhttp String.toMediaType
+   */
+  fun String.parseContentDispositionNameParameter(): String? {
+    val parameterNamesAndValues = mutableMapOf<String, String?>()
+    val parameter = PARAMETER_PATTERN.matcher(this)
+    var s = this.indexOf(';')
+    while (s < length) {
+      parameter.region(s, length)
+      require(parameter.lookingAt()) {
+        "Parameter is not formatted correctly: \"${substring(s)}\" for: \"$this\""
+      }
+
+      val name: String? = parameter.group(1)
+      if (name == null) {
+        s = parameter.end()
+        continue
+      }
+
+      val token: String? = parameter.group(2)
+      val value: String? = when {
+        token == null -> {
+          // Value is "double-quoted". That's valid and our regex group already strips the quotes.
+          parameter.group(3)
+        }
+
+        token.startsWith("'") && token.endsWith("'") && token.length > 2 -> {
+          // If the token is 'single-quoted' it's invalid! But we're lenient and strip the quotes.
+          token.substring(1, token.length - 1)
+        }
+
+        else -> token
+      }
+
+      if (!parameterNamesAndValues.containsKey(name)) {
+        parameterNamesAndValues[name] = value
+      }
+      s = parameter.end()
+    }
+    return parameterNamesAndValues["name"]
   }
 }

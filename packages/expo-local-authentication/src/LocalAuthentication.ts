@@ -1,22 +1,22 @@
-import { UnavailabilityError } from 'expo-modules-core';
+import { UnavailabilityError } from 'expo';
 import invariant from 'invariant';
 
 import ExpoLocalAuthentication from './ExpoLocalAuthentication';
-import {
+import type {
+  SecurityLevel,
   LocalAuthenticationOptions,
   AuthenticationType,
   LocalAuthenticationResult,
-  SecurityLevel,
-  BiometricsSecurityLevel,
 } from './LocalAuthentication.types';
 
 export {
-  LocalAuthenticationOptions,
+  type LocalAuthenticationOptions,
   AuthenticationType,
-  LocalAuthenticationResult,
+  type LocalAuthenticationResult,
   SecurityLevel,
-  BiometricsSecurityLevel,
-};
+  type BiometricsSecurityLevel,
+  type LocalAuthenticationError,
+} from './LocalAuthentication.types';
 
 // @needsAudit
 /**
@@ -36,7 +36,7 @@ export async function hasHardwareAsync(): Promise<boolean> {
  * Determine what kinds of authentications are available on the device.
  * @return Returns a promise which fulfils to an array containing [`AuthenticationType`s](#authenticationtype).
  *
- * Devices can support multiple authentication methods- i.e. `[1,2]` means the device supports both
+ * Devices can support multiple authentication methods - i.e. `[1,2]` means the device supports both
  * fingerprint and facial recognition. If none are supported, this method returns an empty array.
  */
 export async function supportedAuthenticationTypesAsync(): Promise<AuthenticationType[]> {
@@ -99,7 +99,12 @@ export async function authenticateAsync(
   }
 
   const promptMessage = options.promptMessage || 'Authenticate';
-  const result = await ExpoLocalAuthentication.authenticateAsync({ ...options, promptMessage });
+  const cancelLabel = options.cancelLabel || 'Cancel';
+  const result = await ExpoLocalAuthentication.authenticateAsync({
+    ...options,
+    promptMessage,
+    cancelLabel,
+  });
 
   return result;
 }

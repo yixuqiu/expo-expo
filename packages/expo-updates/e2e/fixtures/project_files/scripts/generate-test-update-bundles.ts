@@ -1,11 +1,11 @@
-#!/usr/bin/env yarn --silent ts-node --transpile-only
+#!/usr/bin/env pnpm --silent ts-node --transpile-only
 
 const spawnAsync = require('@expo/spawn-async');
 const fs = require('fs/promises');
 const path = require('path');
 
 const projectRoot = path.resolve(__dirname, '..');
-const notifyStrings = [
+let notifyStrings = [
   'test-update-1',
   'test-update-2',
   'test-update-3',
@@ -16,6 +16,11 @@ const notifyStrings = [
 ];
 
 const platform = process.argv[2];
+
+// If a specific test update is specified, only generate that one
+if (process.argv.length > 3) {
+  notifyStrings = notifyStrings.filter((s) => s === process.argv[3]);
+}
 
 createTestUpdateBundles(projectRoot, notifyStrings, platform);
 
@@ -91,8 +96,11 @@ async function createUpdateBundleAsync(projectRoot: string, platform?: string) {
   const args = ['expo', 'export'];
   if (platform) {
     args.push('--platform', platform);
+  } else {
+    args.push('--platform', 'ios');
+    args.push('--platform', 'android');
   }
-  await spawnAsync('npx', args, {
+  await spawnAsync('pnpm', args, {
     cwd: projectRoot,
     stdio: 'inherit',
   });

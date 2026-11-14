@@ -6,6 +6,7 @@ import com.google.firebase.messaging.RemoteMessage;
 
 import java.util.Map;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 /**
@@ -19,7 +20,7 @@ public class RemoteMessageSerializer {
    * @param message {@link RemoteMessage} to serialize
    * @return Serialized message
    */
-  public static Bundle toBundle(RemoteMessage message) {
+  public static @NonNull Bundle toBundle(RemoteMessage message) {
     Bundle serializedMessage = new Bundle();
     serializedMessage.putString("collapseKey", message.getCollapseKey());
     serializedMessage.putBundle("data", toBundle(message.getData()));
@@ -40,6 +41,11 @@ public class RemoteMessageSerializer {
     for (Map.Entry<String, String> dataEntry : data.entrySet()) {
       serializedData.putString(dataEntry.getKey(), dataEntry.getValue());
     }
+    // we put the dataString in the bundle to achieve a cross-platform behavior
+    // users can call JSON.parse() on the dataString to get the data in JS.
+    // Converting to Bundle which would seem to be the equivalent of JSON.parse
+    // lacks some dynamic properties of JSON.parse so we don't do it.
+    serializedData.putString("dataString", data.getOrDefault("body", null));
     return serializedData;
   }
 
@@ -93,7 +99,9 @@ public class RemoteMessageSerializer {
     serializedNotification.putString("title", notification.getTitle());
     serializedNotification.putStringArray("titleLocalizationArgs", notification.getTitleLocalizationArgs());
     serializedNotification.putString("titleLocalizationKey", notification.getTitleLocalizationKey());
-    serializedNotification.putLongArray("vibrateTimings", notification.getVibrateTimings());
+    if (notification.getVibrateTimings() != null) {
+      serializedNotification.putLongArray("vibrateTimings", notification.getVibrateTimings());
+    }
     if (notification.getVisibility() != null) {
       serializedNotification.putInt("visibility", notification.getVisibility());
     } else {

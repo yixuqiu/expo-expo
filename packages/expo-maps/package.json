@@ -1,44 +1,60 @@
 {
   "name": "expo-maps",
-  "version": "0.4.0",
-  "description": "ExpoMaps standalone module",
-  "main": "build/Map.js",
-  "types": "build/Map.d.ts",
-  "scripts": {
-    "build": "expo-module build",
-    "clean": "expo-module clean",
-    "lint": "expo-module lint",
-    "test": "expo-module test",
-    "prepare": "expo-module prepare",
-    "prepublishOnly": "expo-module prepublishOnly",
-    "expo-module": "expo-module"
-  },
+  "version": "58.0.10",
+  "description": "Provides a Map component that uses Google Maps on Android and Apple Maps on iOS.",
   "keywords": [
-    "react-native",
+    "UI components",
     "expo",
-    "expo-maps"
+    "react-native"
   ],
+  "homepage": "https://docs.expo.dev/versions/latest/sdk/maps/",
+  "license": "MIT",
+  "author": "650 Industries, Inc.",
   "repository": {
     "type": "git",
     "url": "https://github.com/expo/expo.git",
-    "directory": "packages/expo-maps"
+    "directory": "packages/expo-ui"
   },
-  "bugs": {
-    "url": "https://github.com/expo/expo/issues"
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "exports": {
+    ".": {
+      "types": {
+        "expo-source": "./src/index.ts",
+        "default": "./build/index.d.ts"
+      },
+      "expo-source": "./src/index.ts",
+      "default": "./build/index.js"
+    },
+    "./app.plugin": "./app.plugin.js",
+    "./app.plugin.js": "./app.plugin.js",
+    "./plugin": "./plugin/build/index.js",
+    "./package.json": "./package.json"
   },
-  "author": "650 Industries, Inc.",
-  "license": "MIT",
-  "homepage": "https://docs.expo.dev",
-  "dependencies": {
-    "expo-asset": "^10.0.0"
+  "scripts": {
+    "precompile-ios": "et prebuild-package-for-publish",
+    "precompile-android": "et prebuild-android-package-for-publish",
+    "build": "pnpm run build:lib && pnpm run build:plugin",
+    "build:lib": "expo-build src",
+    "build:plugin": "expo-build --base plugin cjs:src",
+    "clean": "expo-module clean",
+    "lint": "oxlint --config oxlint.config.mjs .",
+    "format": "expo-module format",
+    "prepack": "expo-module prepack",
+    "prepublishOnly": "expo-module prepublishOnly",
+    "depscheck": "expo-module depscheck",
+    "typecheck": "tsc -b tsconfig.all.json"
   },
   "devDependencies": {
-    "expo-module-scripts": "^3.0.0"
+    "@expo/internal-scripts": "workspace:*",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.14.0",
+    "@types/react": "~19.3.0",
+    "expo": "workspace:*"
   },
   "peerDependencies": {
-    "expo": "*"
-  },
-  "jest": {
-    "preset": "expo-module-scripts/ios"
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
   }
 }

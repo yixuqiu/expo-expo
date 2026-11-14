@@ -1,0 +1,14 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["BlobModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.blob.BlobModule"],
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.blob",
+      "repository": "local-maven-repo"
+    }
+  }
+}

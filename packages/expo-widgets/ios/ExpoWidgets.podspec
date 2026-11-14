@@ -1,0 +1,73 @@
+require 'json'
+
+package = JSON.parse(File.read(File.join(__dir__, '..', 'package.json')))
+
+Pod::Spec.new do |s|
+  s.name           = 'ExpoWidgets'
+  s.version        = package['version']
+  s.summary        = package['description']
+  s.description    = package['description']
+  s.license        = package['license']
+  s.author         = package['author']
+  s.homepage       = package['homepage']
+  s.platforms      = {
+    :ios => '16.4'
+  }
+  s.swift_version  = '5.9'
+  s.source         = { git: 'https://github.com/expo/expo.git' }
+  s.static_framework = true
+
+  s.dependency 'ExpoModulesCore'
+  s.dependency 'ExpoUI'
+
+  s.source_files = "**/*.{h,m,swift}"
+
+  # Swift/Objective-C compatibility
+  s.pod_target_xcconfig = {
+    'DEFINES_MODULE' => 'YES',
+    'SWIFT_COMPILATION_MODE' => 'wholemodule'
+  }
+
+  # `bash -l -c` re-parses its argument as a fresh command line, so the script path has to stay
+  # quoted through that second round of parsing - otherwise a project path containing a space is
+  # word-split and the phase fails.
+  project_root_env_var = ENV['PROJECT_ROOT'] ? "export PROJECT_ROOT=\"#{ENV['PROJECT_ROOT']}\"\n" : ""
+  build_bundle_script = {
+    :name => 'Build ExpoWidgets Bundle',
+    :script => project_root_env_var + 'bash -l -c "\"$PODS_TARGET_SRCROOT/../scripts/xcode-build-bundle.sh\""',
+    :execution_position => :before_compile,
+    # NOTE: The bundle depends on JS sources that Xcode cannot track through input files (this
+    # package, `@expo/ui`, and the app's own widget layouts), so the phase declares no inputs or
+    # outputs.
+  }
+  copy_bundle_script = {
+    :name => 'Prepare ExpoWidgets Resources',
+    :script => %Q{
+      echo "Preparing ExpoWidgets.bundle..."
+      source="#{__dir__}/../bundle/build/ExpoWidgets.bundle"
+      registry_source="#{__dir__}/../bundle/build/ExpoWidgetsLayoutRegistry.json"
+      dest="${BUILT_PRODUCTS_DIR}/ExpoWidgets.bundle"
+      mkdir -p "${dest}"
+      echo "Copying ${source} to ${dest}"
+      cp "${source}" "${dest}"
+      echo "Copying ${registry_source} to ${dest}/ExpoWidgetsLayoutRegistry.json"
+      cp "${registry_source}" "${dest}/ExpoWidgetsLayoutRegistry.json"
+    },
+    :execution_position => :before_compile,
+    :input_files  => [
+      "#{__dir__}/../bundle/build/ExpoWidgets.bundle",
+      "#{__dir__}/../bundle/build/ExpoWidgetsLayoutRegistry.json",
+    ]
+  }
+  # :always_out_of_date is only available in CocoaPods 1.13.0 and later
+  if Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.13.0')
+    # always run the scripts without warning
+    build_bundle_script[:always_out_of_date] = "1"
+    copy_bundle_script[:always_out_of_date] = "1"
+  end
+  s.script_phases = [build_bundle_script, copy_bundle_script]
+  s.resource_bundles = {
+    'ExpoWidgets' => [],
+  }
+
+end

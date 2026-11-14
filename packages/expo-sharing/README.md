@@ -7,18 +7,20 @@
   </a>
 </p>
 
-Sharing standalone module
+Provides a way to share files directly with other compatible applications and to receive compatible data shared from other apps.
 
 # API documentation
 
-- [Documentation for the main branch](https://github.com/expo/expo/blob/main/docs/pages/versions/unversioned/sdk/sharing.mdx)
 - [Documentation for the latest stable release](https://docs.expo.dev/versions/latest/sdk/sharing/)
+- [Documentation for the main branch](https://docs.expo.dev/versions/unversioned/sdk/sharing/)
 
 # Installation in managed Expo projects
 
 For [managed](https://docs.expo.dev/archive/managed-vs-bare/) Expo projects, please follow the installation instructions in the [API documentation for the latest stable release](https://docs.expo.dev/versions/latest/sdk/sharing/).
 
 # Installation in bare React Native projects
+
+**_Sharing content into your app is not supported in bare React Native projects._**
 
 For bare React Native projects, you must ensure that you have [installed and configured the `expo` package](https://docs.expo.dev/bare/installing-expo-modules/) before continuing.
 
@@ -27,10 +29,6 @@ For bare React Native projects, you must ensure that you have [installed and con
 ```
 npx expo install expo-sharing
 ```
-
-### Configure for iOS
-
-Run `npx pod-install` after installing the npm package.
 
 ### Configure for Android
 

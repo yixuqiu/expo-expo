@@ -1,0 +1,506 @@
+// @ts-ignore-next-line: no @types/node
+import fs from 'fs/promises';
+
+import type { SQLiteDatabase } from '../SQLiteDatabase';
+import {
+  deserializeDatabaseAsync,
+  deserializeDatabaseSync,
+  openDatabaseAsync,
+  openDatabaseSync,
+} from '../SQLiteDatabase';
+
+jest.mock('expo/devtools', () => ({
+  getDevToolsPluginClientAsync: jest.fn(),
+}));
+jest.mock('../ExpoSQLite', () => require('../__mocks__/ExpoSQLite'));
+
+interface TestEntity {
+  value: string;
+  intValue: number;
+}
+
+describe('Database', () => {
+  let db: SQLiteDatabase | null = null;
+
+  afterEach(async () => {
+    await db?.closeAsync();
+    await fs.unlink('test.db').catch(() => {});
+  });
+
+  it('openDatabaseAsync should return a database that could be closed', async () => {
+    db = await openDatabaseAsync(':memory:');
+    expect(db).toBeDefined();
+    await db.closeAsync();
+    db = null;
+  });
+
+  it('execAsync should execute a create table command', async () => {
+    db = await openDatabaseAsync(':memory:');
+    await db.execAsync(
+      'CREATE TABLE test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER)'
+    );
+  });
+
+  it('execAsync should throw error from an invalid command', async () => {
+    db = await openDatabaseAsync(':memory:');
+    let error: any;
+    try {
+      await db.execAsync('INVALID COMMAMD');
+    } catch (e: any) {
+      error = e;
+    }
+    expect(error).toBeDefined();
+    expect(error.toString()).toContain('syntax error');
+  });
+
+  it('runAsync should return SQLiteRunResult', async () => {
+    db = await openDatabaseAsync(':memory:');
+    await db.execAsync(
+      'CREATE TABLE test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER)'
+    );
+    const result = await db.runAsync(
+      'INSERT INTO test (value, intValue) VALUES (?, ?)',
+      'test',
+      123
+    );
+    expect(result.lastInsertRowId).toBe(1);
+    expect(result.changes).toBe(1);
+  });
+
+  it('getFirstAsync should return a row', async () => {
+    db = await openDatabaseAsync(':memory:');
+    await db.execAsync(
+      'CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER)'
+    );
+    await db.runAsync('INSERT INTO test (value, intValue) VALUES (?, ?)', 'test', 123);
+    const result = await db.getFirstAsync<TestEntity>('SELECT * FROM test');
+    expect(result?.value).toBe('test');
+    expect(result?.intValue).toBe(123);
+  });
+
+  it('getEachAsync should return async iterable', async () => {
+    db = await openDatabaseAsync(':memory:');
+    await db.execAsync(`
+  CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER);
+  INSERT INTO test (value, intValue) VALUES ('test1', 123);
+  INSERT INTO test (value, intValue) VALUES ('test2', 456);
+  INSERT INTO test (value, intValue) VALUES ('test3', 789);
+  `);
+    const results: TestEntity[] = [];
+    for await (const row of db.getEachAsync<TestEntity>(
+      'SELECT * FROM test ORDER BY intValue DESC'
+    )) {
+      results.push(row);
+    }
+    expect(results[0]?.intValue).toBe(789);
+    expect(results[1]?.intValue).toBe(456);
+    expect(results[2]?.intValue).toBe(123);
+  });
+
+  it('getEachAsync should finalize from early iterator return', async () => {
+    db = await openDatabaseAsync(':memory:');
+    const mockPrepareAsync = jest.spyOn(db, 'prepareAsync');
+    await db.execAsync(`
+  CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER);
+  INSERT INTO test (value, intValue) VALUES ('test1', 123);
+  INSERT INTO test (value, intValue) VALUES ('test2', 456);
+  INSERT INTO test (value, intValue) VALUES ('test3', 789);
+  `);
+    for await (const _row of db.getEachAsync<TestEntity>(
+      'SELECT * FROM test ORDER BY intValue DESC'
+    )) {
+      break;
+    }
+    const mockStatement = await mockPrepareAsync.mock.results[0]?.value;
+    expect(mockStatement.nativeStatement.finalizeAsync).toHaveBeenCalled();
+  });
+
+  it('getEachSync should finalize from early iterator return', async () => {
+    db = await openDatabaseAsync(':memory:');
+    const mockPrepareSync = jest.spyOn(db, 'prepareSync');
+    await db.execAsync(`
+  CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER);
+  INSERT INTO test (value, intValue) VALUES ('test1', 123);
+  INSERT INTO test (value, intValue) VALUES ('test2', 456);
+  INSERT INTO test (value, intValue) VALUES ('test3', 789);
+  `);
+    for (const _row of db.getEachSync<TestEntity>('SELECT * FROM test ORDER BY intValue DESC')) {
+      break;
+    }
+    const mockStatement = await mockPrepareSync.mock.results[0]?.value;
+    expect(mockStatement.nativeStatement.finalizeSync).toHaveBeenCalled();
+  });
+
+  it('getAllAsync should return all items', async () => {
+    db = await openDatabaseAsync(':memory:');
+    await db.execAsync(`
+  CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER);
+  INSERT INTO test (value, intValue) VALUES ('test1', 123);
+  INSERT INTO test (value, intValue) VALUES ('test2', 456);
+  INSERT INTO test (value, intValue) VALUES ('test3', 789);
+  `);
+    const results = await db.getAllAsync<TestEntity>('SELECT * FROM test ORDER BY intValue DESC');
+    expect(results[0]?.intValue).toBe(789);
+    expect(results[1]?.intValue).toBe(456);
+    expect(results[2]?.intValue).toBe(123);
+  });
+
+  it('withTransactionAsync should commit changes', async () => {
+    db = await openDatabaseAsync(':memory:');
+    await db.execAsync(
+      'CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER)'
+    );
+
+    await db.withTransactionAsync(async () => {
+      await db?.runAsync('INSERT INTO test (value, intValue) VALUES (?, ?)', 'test', 123);
+    });
+    const results = await db.getAllAsync<TestEntity>('SELECT * FROM test');
+    expect(results.length).toBe(1);
+  });
+
+  it('withTransactionAsync should rollback changes when exceptions happen', async () => {
+    db = await openDatabaseAsync(':memory:');
+    await db.execAsync(
+      'CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER)'
+    );
+
+    await expect(
+      db?.withTransactionAsync(async () => {
+        await db?.runAsync('INSERT INTO test (value, intValue) VALUES (?, ?)', 'test', 123);
+        throw new Error('Exception inside transaction');
+      })
+    ).rejects.toThrow();
+
+    const results = await db.getAllAsync<TestEntity>('SELECT * FROM test');
+    expect(results.length).toBe(0);
+  });
+
+  it.each(['async', 'exclusive', 'sync'] as const)(
+    '%s transactions preserve the original error after SQLite rolls back automatically',
+    async (mode) => {
+      // Exclusive transactions open a separate connection, so use a file database.
+      const database = await openDatabaseAsync('test.db');
+      db = database;
+      await database.execAsync(`
+        DROP TABLE IF EXISTS rollback_test;
+        CREATE TABLE rollback_test (value INTEGER UNIQUE ON CONFLICT ROLLBACK);
+        INSERT INTO rollback_test VALUES (1);
+      `);
+      const write = 'INSERT INTO rollback_test VALUES (2); INSERT INTO rollback_test VALUES (1)';
+
+      if (mode === 'sync') {
+        expect(() => database.withTransactionSync(() => database.execSync(write))).toThrow(
+          /UNIQUE constraint failed/
+        );
+      } else {
+        const result =
+          mode === 'exclusive'
+            ? database.withExclusiveTransactionAsync((txn) => txn.execAsync(write))
+            : database.withTransactionAsync(() => database.execAsync(write));
+        await expect(result).rejects.toThrow(/UNIQUE constraint failed/);
+      }
+
+      expect(await database.isInTransactionAsync()).toBe(false);
+      expect(await database.getAllAsync('SELECT value FROM rollback_test')).toEqual([{ value: 1 }]);
+      await database.execAsync('INSERT INTO rollback_test VALUES (3)');
+      expect(await database.getAllAsync('SELECT value FROM rollback_test ORDER BY value')).toEqual([
+        { value: 1 },
+        { value: 3 },
+      ]);
+    }
+  );
+
+  it('withTransactionAsync could possibly have other async queries interrupted inside the transaction', async () => {
+    db = await openDatabaseAsync('test.db');
+    await db.execAsync(`
+DROP TABLE IF EXISTS users;
+CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY NOT NULL, name VARCHAR(64));
+INSERT INTO users (name) VALUES ('aaa');
+  `);
+
+    const promise1 = db.withTransactionAsync(async () => {
+      for (let i = 0; i < 10; ++i) {
+        const result = await db?.getFirstAsync<{ name: string }>('SELECT name FROM users');
+        if (result?.name !== 'aaa') {
+          throw new Error(`Exception from promise1: Expected aaa but received ${result?.name}}`);
+        }
+        await db?.runAsync('UPDATE users SET name = ?', 'aaa');
+        await delayAsync(200);
+      }
+    });
+
+    const promise2 = new Promise(async (resolve, reject) => {
+      try {
+        await delayAsync(100);
+        await db?.runAsync('UPDATE users SET name = ?', 'bbb');
+        const result = await db?.getFirstAsync<{ name: string }>('SELECT name FROM users');
+        if (result?.name !== 'bbb') {
+          throw new Error(`Exception from promise2: Expected bbb but received ${result?.name}}`);
+        }
+        resolve(null);
+      } catch (e: any) {
+        reject(new Error(`Exception from promise2: ${e.toString()}`));
+      }
+    });
+
+    await expect(Promise.all([promise1, promise2])).rejects.toThrow(
+      /Exception from promise1: Expected aaa but received bbb/
+    );
+  });
+
+  it('withExclusiveTransactionAsync should execute a transaction atomically and abort other write query', async () => {
+    db = await openDatabaseAsync('test.db');
+    await db.execAsync(`
+DROP TABLE IF EXISTS users;
+CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY NOT NULL, name VARCHAR(64));
+INSERT INTO users (name) VALUES ('aaa');
+  `);
+
+    const promise1 = db.withExclusiveTransactionAsync(async (txn) => {
+      for (let i = 0; i < 10; ++i) {
+        const result = await txn.getFirstAsync<{ name: string }>('SELECT name FROM users');
+        if (result?.name !== 'aaa') {
+          throw new Error(`Exception from promise1: Expected aaa but received ${result?.name}}`);
+        }
+        await txn.runAsync('UPDATE users SET name = ?', 'aaa');
+        await delayAsync(30);
+      }
+    });
+
+    const promise2 = new Promise(async (resolve, reject) => {
+      try {
+        await delayAsync(50);
+        await db?.runAsync('UPDATE users SET name = ?', 'bbb');
+        const result = await db?.getFirstAsync<{ name: string }>('SELECT name FROM users');
+        if (result?.name !== 'bbb') {
+          throw new Error(`Exception from promise2: Expected bbb but received ${result?.name}}`);
+        }
+        resolve(null);
+      } catch (e: any) {
+        reject(new Error(`Exception from promise2: ${e.toString()}`));
+      }
+    });
+
+    await expect(Promise.all([promise1, promise2])).rejects.toThrow(
+      /Exception from promise2:[\s\S]*database is locked/
+    );
+
+    // We still need to wait for promise1 to finish for promise1 to finalize the transaction.
+    await promise1;
+  }, 10000);
+
+  it('concurrent statement shorthands should each return their own rows', async () => {
+    db = await openDatabaseAsync(':memory:');
+    await db.execAsync(`
+CREATE TABLE test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+INSERT INTO test (id, value) VALUES (1, 'one');
+INSERT INTO test (id, value) VALUES (2, 'two');
+INSERT INTO test (id, value) VALUES (3, 'three');
+`);
+    // Each shorthand prepares its own statement, so concurrent callers must not share a cursor.
+    const rows = await Promise.all([
+      db.getAllAsync<{ value: string }>('SELECT value FROM test WHERE id = ?', 1),
+      db.getAllAsync<{ value: string }>('SELECT value FROM test WHERE id = ?', 2),
+      db.getAllAsync<{ value: string }>('SELECT value FROM test WHERE id = ?', 3),
+      db.getAllAsync<{ value: string }>('SELECT value FROM test WHERE id = ?', 1),
+    ]);
+    expect(rows.map((result) => result.map((row) => row.value))).toEqual([
+      ['one'],
+      ['two'],
+      ['three'],
+      ['one'],
+    ]);
+  });
+
+  it('concurrent writes and reads through the shorthands should all apply', async () => {
+    db = await openDatabaseAsync(':memory:');
+    await db.execAsync('CREATE TABLE test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL)');
+    await Promise.all([
+      db.runAsync('INSERT INTO test (value) VALUES (?)', ['a']),
+      db.runAsync('INSERT INTO test (value) VALUES (?)', ['b']),
+      db.runAsync('INSERT INTO test (value) VALUES (?)', ['c']),
+    ]);
+    const values = await db.getAllAsync<{ value: string }>('SELECT value FROM test ORDER BY id');
+    expect(values.map((row) => row.value).sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('getEachAsync should yield every row when abandoned partway and re-run', async () => {
+    db = await openDatabaseAsync(':memory:');
+    await db.execAsync(`
+CREATE TABLE test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+INSERT INTO test (id, value) VALUES (1, 'one');
+INSERT INTO test (id, value) VALUES (2, 'two');
+INSERT INTO test (id, value) VALUES (3, 'three');
+`);
+    // Breaking out of the loop finalizes the statement mid-cursor.
+    for await (const row of db.getEachAsync<{ value: string }>(
+      'SELECT value FROM test ORDER BY id'
+    )) {
+      expect(row.value).toBe('one');
+      break;
+    }
+    const all: string[] = [];
+    for await (const row of db.getEachAsync<{ value: string }>(
+      'SELECT value FROM test ORDER BY id'
+    )) {
+      all.push(row.value);
+    }
+    expect(all).toEqual(['one', 'two', 'three']);
+  });
+});
+
+describe('Database - Synchronous calls', () => {
+  let db: SQLiteDatabase | null = null;
+
+  afterEach(async () => {
+    db?.closeSync();
+    await fs.unlink('test.db').catch(() => {});
+  });
+
+  it('openDatabaseSync should return a database that could be closed', () => {
+    db = openDatabaseSync(':memory:');
+    expect(db).toBeDefined();
+    db.closeSync();
+    db = null;
+  });
+
+  it('getFirstSync should return a row', () => {
+    db = openDatabaseSync(':memory:');
+    db.execSync(
+      'CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER)'
+    );
+    db.runSync('INSERT INTO test (value, intValue) VALUES (?, ?)', 'test', 123);
+    const result = db.getFirstSync<TestEntity>('SELECT * FROM test');
+    expect(result?.value).toBe('test');
+    expect(result?.intValue).toBe(123);
+  });
+
+  it('getEachSync should return iterable', () => {
+    db = openDatabaseSync(':memory:');
+    db.execSync(`
+  CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER);
+  INSERT INTO test (value, intValue) VALUES ('test1', 123);
+  INSERT INTO test (value, intValue) VALUES ('test2', 456);
+  INSERT INTO test (value, intValue) VALUES ('test3', 789);
+  `);
+    const results: TestEntity[] = [];
+    for (const row of db.getEachSync<TestEntity>('SELECT * FROM test ORDER BY intValue DESC')) {
+      results.push(row);
+    }
+    expect(results[0]?.intValue).toBe(789);
+    expect(results[1]?.intValue).toBe(456);
+    expect(results[2]?.intValue).toBe(123);
+  });
+
+  it('withTransactionSync should commit changes', () => {
+    db = openDatabaseSync(':memory:');
+    db.execSync(
+      'CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER)'
+    );
+
+    db.withTransactionSync(() => {
+      db?.runSync('INSERT INTO test (value, intValue) VALUES (?, ?)', 'test', 123);
+    });
+    const results = db.getAllSync<TestEntity>('SELECT * FROM test');
+    expect(results.length).toBe(1);
+  });
+
+  it('withTransactionSync should rollback changes when exceptions happen', () => {
+    db = openDatabaseSync(':memory:');
+    db.execAsync(
+      'CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER)'
+    );
+
+    expect(() => {
+      db?.withTransactionSync(() => {
+        db?.runSync('INSERT INTO test (value, intValue) VALUES (?, ?)', 'test', 123);
+        throw new Error('Exception inside transaction');
+      });
+    }).toThrow();
+
+    const results = db.getAllSync<TestEntity>('SELECT * FROM test');
+    expect(results.length).toBe(0);
+  });
+});
+
+// Skipping is safe where node:sqlite lacks serialize/deserialize: the JS wrappers are pass-throughs
+// and the native behavior is covered by the Swift/Kotlin unit tests.
+function supportsSerialize(): boolean {
+  const db = openDatabaseSync(':memory:');
+  let serialized: Uint8Array;
+  try {
+    serialized = db.serializeSync();
+  } catch {
+    return false;
+  } finally {
+    db.closeSync();
+  }
+  try {
+    deserializeDatabaseSync(serialized).closeSync();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+(supportsSerialize() ? describe : describe.skip)('Database - serialize / deserialize', () => {
+  it('serialize / deserialize in between should keep the data', async () => {
+    const db = await openDatabaseAsync(':memory:');
+    await db.execAsync(
+      'CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL, intValue INTEGER)'
+    );
+    await db.runAsync('INSERT INTO test (value, intValue) VALUES (?, ?)', 'test', 123);
+
+    const serialized = await db.serializeAsync();
+    await db.closeAsync();
+
+    const db2 = await deserializeDatabaseAsync(serialized);
+    const result = await db2.getFirstAsync<TestEntity>('SELECT * FROM test');
+    expect(result?.value).toBe('test');
+    expect(result?.intValue).toBe(123);
+    await db2.closeAsync();
+  });
+});
+
+async function delayAsync(timeMs: number) {
+  return new Promise((resolve) => setTimeout(resolve, timeMs));
+}
+
+describe('Database - serialize result', () => {
+  // Android hands the serialized bytes over as an ArrayBuffer and iOS as a Uint8Array; both
+  // reach the caller as a Uint8Array over the same bytes.
+  it('serializeAsync turns an ArrayBuffer from the native database into a Uint8Array', async () => {
+    const db = await openDatabaseAsync(':memory:');
+    const bytes = new Uint8Array([1, 2, 3]);
+    jest.spyOn(db.nativeDatabase, 'serializeAsync').mockResolvedValueOnce(bytes.buffer);
+
+    const serialized = await db.serializeAsync();
+    await db.closeAsync();
+
+    expect(serialized).toBeInstanceOf(Uint8Array);
+    expect(Array.from(serialized)).toEqual([1, 2, 3]);
+  });
+
+  it('serializeSync turns an ArrayBuffer from the native database into a Uint8Array', () => {
+    const db = openDatabaseSync(':memory:');
+    const bytes = new Uint8Array([4, 5]);
+    jest.spyOn(db.nativeDatabase, 'serializeSync').mockReturnValueOnce(bytes.buffer);
+
+    const serialized = db.serializeSync();
+    db.closeSync();
+
+    expect(serialized).toBeInstanceOf(Uint8Array);
+    expect(Array.from(serialized)).toEqual([4, 5]);
+  });
+
+  it('serializeSync passes a Uint8Array from the native database through', () => {
+    const db = openDatabaseSync(':memory:');
+    const bytes = new Uint8Array([6]);
+    jest.spyOn(db.nativeDatabase, 'serializeSync').mockReturnValueOnce(bytes);
+
+    const serialized = db.serializeSync();
+    db.closeSync();
+
+    expect(serialized).toBe(bytes);
+  });
+});

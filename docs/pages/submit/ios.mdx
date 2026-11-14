@@ -1,125 +1,183 @@
 ---
-title: Submit to the Apple App Store
-sidebar_title: Submit to Apple
-description: Learn how to submit your app to the Apple App Store from your computer and CI.
+title: Submit to the Apple App Store with Expo Submit
+sidebar_title: Submit to Apple App Store
+description: Learn how to submit your iOS app to the Apple App Store with Expo Submit.
 ---
 
-import { Collapsible } from '~/ui/components/Collapsible';
-import { Terminal } from '~/ui/components/Snippet';
+import { AppleAppStoreIcon } from '@expo/styleguide-icons/custom/AppleAppStoreIcon';
 
-This guide outlines how to submit your app to the Apple App Store from your own computer and from CI.
+import { BoxLink } from '~/ui/components/BoxLink';
+import { Collapsible } from '~/ui/components/Collapsible';
+import { ContentSpotlight } from '~/ui/components/ContentSpotlight';
+import { Prerequisites, Requirement } from '~/ui/components/Prerequisites';
+import { Terminal } from '~/ui/components/Snippet';
+import { CODE } from '~/ui/components/Text';
+
+[Expo Submit](/deploy/submit-to-app-stores/) is the recommended way to upload your iOS app to the Apple App Store. The `eas submit` command works the same way on your machine and inside CI/CD. [Expo Workflows](/eas/workflows/introduction/) is the simplest way to run it automatically after a build. Expo Submit works on macOS, Linux, and Windows, so you don't need a Mac to ship iOS builds.
 
 ## Prerequisites
 
-- A paid developer account is required to submit an app &mdash; you can create an Apple Developer account on the [Apple Developer Portal](https://developer.apple.com/account/).
-- You will also need to have EAS CLI installed and authenticated with your Expo account:
-  <Terminal cmd={['$ npm install -g eas-cli && eas login']} />
+<Prerequisites>
+  <Requirement title="Sign up for an Apple Developer account">
+    A paid Apple Developer account is required to submit apps to the Apple App Store. Sign up on the [Apple Developer Portal](https://developer.apple.com/account/).
+  </Requirement>
+  <Requirement title="Include a bundle identifier in app config">
+    Include your app's bundle identifier in **app.json**:
 
-## 1. Build a standalone app
+    ```json app.json
+    {
+      "ios": {
+        "bundleIdentifier": "com.yourcompany.yourapp"
+      }
+    }
+    ```
 
-You'll need a native app binary signed for store submission. You can either use [EAS Build](/build/introduction.mdx) or do it on your own.
+  </Requirement>
+  <Requirement title="Install EAS CLI and authenticate with your Expo account">
+    Install EAS CLI and log in with your Expo account:
 
-## 2. Start the submission
+    <Terminal
+      cmd={{
+        npm: ['$ npm install --global eas-cli && eas login'],
+        yarn: ['$ yarn global add eas-cli && eas login'],
+        pnpm: ['$ pnpm add --global eas-cli && eas login'],
+        bun: ['$ bun add --global eas-cli && eas login'],
+      }}
+    />
 
-To submit the binary to the App Store, run `eas submit -p ios` from inside your project directory. The command will lead you step by step through the process of submitting the app. See the [Configuration with eas.json](./eas-json.mdx) page to learn how to pre-configure your submission.
+  </Requirement>
+</Prerequisites>
 
-> Although it's possible to upload any binary to the store, each submission is associated with an Expo project. That's why it's important to start a submission from inside your project's directory - that's where your [app configuration](../workflow/configuration.mdx) is defined.
+## Build a production app
 
-If you have not generated an App Store Connect API Key yet, you can let EAS CLI take care of that for you by signing into your Apple Developer Program account and following the prompts. You can also upload your own [API Key](https://expo.fyi/creating-asc-api-key) or pass in an [Apple app-specific password](https://expo.fyi/apple-app-specific-password).
+You need a production **.ipa** to submit. Create one with [Expo Build](/build/introduction/):
 
-To upload your iOS app to the Apple App Store, run `eas submit --platform ios` and follow the instructions on the screen.
+<Terminal cmd={['$ eas build --platform ios --profile production']} />
 
-The command will perform the following steps:
+Alternatively, build on your own computer with `eas build --platform ios --profile production --local` or with Xcode.
 
-- Log in to your Expo account and ensure that your app project exists on EAS servers.
-- Ensure that your app exists on App Store Connect and its [Bundle Identifier](https://expo.fyi/bundle-identifier) is registered on Apple Developer Portal:
+## Submit with `eas submit`
 
-  - You will be asked to log in to your Apple Developer account and select your team. You can also provide this information in **eas.json** by setting `appleId` and `appleTeamId` in the submit profile. The Apple ID password has to be set with the `EXPO_APPLE_PASSWORD` environment variable.
-  - The command will look for `ios.bundleIdentifier` in the app config.
-  - If you are submitting your app for the first time, it will be automatically created.
-    Unless `expo.name` in your app configuration is found or `appName` is provided in **eas.json**, you will be prompted for the app name.
-    You can also specify your app's language and SKU using `language` and `sku` keys in **eas.json**. If you have never submitted any app before, you may also have to specify your company name with `companyName`.
+Once the build is ready, submit it to the Apple App Store:
 
-  > If you already have an App Store Connect app, this step can be skipped by providing the `ascAppId` in the submit profile. The [ASC App ID](https://expo.fyi/asc-app-id) can be found either on App Store Connect, or later during this command in the _Submission Summary_ table.
+<Terminal cmd={['$ eas submit --platform ios']} />
 
-- Ensure you have the proper credentials set up. If none can be found, you can let EAS CLI set some up for you.
+The command will walk you through selecting a build, prompt for your Apple ID on first run, and upload the binary to App Store Connect. The build appears in [TestFlight](/submit/testflight/) after processing (usually 10-15 minutes). To release to production, log in to [App Store Connect](https://appstoreconnect.apple.com/) and submit the build for App Review.
 
-  <Collapsible summary="Do you want to use your own credentials?">
+### Configure a submission profile
 
-  **App Store Connect API Key:** Create your own [API Key](https://expo.fyi/creating-asc-api-key) then set it with the `ascApiKeyPath`, `ascApiKeyIssuerId`, and `ascApiKeyId` fields in **eas.json**.
+Add a submission profile in **eas.json** with your App Store Connect app ID:
 
-  **App Specific Password:** Provide your [password](https://expo.fyi/apple-app-specific-password) and Apple ID Username by passing them in with the `EXPO_APPLE_APP_SPECIFIC_PASSWORD` environment variable and `appleId` field in **eas.json**, respectively.
+```json eas.json
+{
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "your-app-store-connect-app-id"
+      }
+    }
+  }
+}
+```
 
-  </Collapsible>
+<Collapsible summary={<>How to find <CODE>ascAppId</CODE></>}>
+  1. Sign in to [App Store Connect](https://appstoreconnect.apple.com/) and select your team.
+  2. Navigate to [Apps](https://appstoreconnect.apple.com/apps).
+  3. Click your app.
+  4. Ensure the **App Store** tab is active.
+  5. On the left pane, under **General**, select **App Information**.
+  6. Your `ascAppId` is listed under **General Information** as **Apple ID**.
 
-- Ask for which binary to submit. You can select one of the following:
+  <ContentSpotlight
+    alt="Apple ID and Apple Team ID in App Store Connect"
+    src="/static/images/eas-submit/finding-ascAppId.webp"
+    className="max-w-[800px]"
+  />
+</Collapsible>
 
-  - The latest successful iOS build for the project on EAS servers.
-  - Specific build ID. It can be found on the [builds dashboard](https://expo.dev/builds).
-  - Path to an **.ipa** archive on your local filesystem.
-  - URL to the app archive.
+See the [eas.json reference](/eas/json/#ios-specific-options-1) for every available option.
 
-  > This step can be skipped if one of the following CLI parameters is provided: `--latest`, `--id`, `--path`, or `--url`.
+### Build and submit in one step
 
-- A summary of the provided configuration is displayed and the submission process begins. The submission progress is displayed on the screen.
-- Your build should now be visible on [App Store Connect](https://appstoreconnect.apple.com). If something goes wrong, an appropriate message is displayed on the screen.
+Pass `--auto-submit` to `eas build` to hand the finished build off to Expo Submit automatically:
 
-## Submitting your app using CI
+<Terminal cmd={['$ eas build --platform ios --auto-submit']} />
 
-The `eas submit` command is able to perform submissions from a CI environment. All you have to do is ensure that all required information is provided with **eas.json** and environment variables.
+See [Automate submissions](/build/automate-submissions/) for details.
 
-You must do the following:
+## Automate with Expo Workflows
 
-- Provide the archive source (`--latest`, `--id`, `--path`, or `--url`).
-- Make sure that the iOS Bundle Identifier is present in your [app config file](/workflow/configuration.mdx).
-- Set the ASC App ID (`ascAppId` in **eas.json**). The ASC App ID is required to skip the Apple Developer log-in process, which will likely not be possible on CI due to the 2FA prompt.
-- Set up your App Store Connect API Key with EAS Servers. You can check the state of your credentials by running `eas credentials` or by running `eas submit -p ios` interactively.
+[Expo Workflows](/eas/workflows/introduction/) runs the same submit step on Expo infrastructure, triggered by a git push or run manually from the CLI. First, configure an App Store Connect API Key so workflows can authenticate with Apple non-interactively:
 
-  <Collapsible summary="Do you want to use your own credentials?">
+<Terminal cmd={['$ eas credentials --platform ios']} />
 
-  **App Store Connect API Key:** Create your own [API Key](https://expo.fyi/creating-asc-api-key) then set it with the `ascApiKeyPath`, `ascApiKeyIssuerId`, and `ascApiKeyId` fields in **eas.json**.
+1. Select the `production` build profile.
+2. Log in with your Apple Developer account and follow the prompts.
+3. Select **App Store Connect: Manage your API Key**.
+4. Select **Set up your project to use an API Key for Expo Submit**.
 
-  **App Specific Password:** Provide your [password](https://expo.fyi/apple-app-specific-password) and Apple ID Username by passing them in with the `EXPO_APPLE_APP_SPECIFIC_PASSWORD` environment variable and `appleId` field in **eas.json**, respectively.
+<Collapsible summary="Prefer to bring your own credentials?">
 
-  </Collapsible>
+**App Store Connect API Key:** Create your own [API Key](https://expo.fyi/creating-asc-api-key) and set it with the `ascApiKeyPath`, `ascApiKeyIssuerId`, and `ascApiKeyId` fields in **eas.json**.
 
-Example usage:
-
-<Terminal cmd={['$ eas submit -p ios --latest --profile foobar']} />
-
-## Manual submissions
-
-If you ever need to submit your build without going through EAS Submit, for example, if the service is temporarily unavailable for maintenance, you can upload to the Apple App Store manually from a macOS device.
-
-<Collapsible summary="How to upload to the Apple App Store manually from a macOS device">
-
-#### Creating an entry on App Store Connect
-
-Start by creating an app profile in App Store Connect, if you haven't already:
-
-1. Go to [App Store Connect][asc] and sign in. Make sure you have accepted any legal notices or terms at the top of the page.
-2. Click the blue plus button by the Apps header, then click **New App**.
-3. Add your app's name, language, bundle identifier, and SKU (this isn't seen by end users, it can be any unique string. A common choice is your app's bundle identifier, for example, "com.company.my-app").
-4. Click **Create**. If this succeeds, then you have created your application record.
-
-#### Uploading with Transporter
-
-Finally, you need to upload the IPA to the Apple App Store.
-
-1. Download [**Transporter** from the App Store](https://apps.apple.com/app/transporter/id1450874784).
-2. Sign in with your Apple ID.
-3. Add the build either by dragging the IPA file directly into the Transporter window or by selecting it from the file dialog opened with **+** or **Add App** button.
-4. Submit it by clicking the **Deliver** button.
-
-This process can take a few minutes, then another 10-15 minutes of processing on Apple's servers. Afterward, you can check the status of your binary in [App Store Connect][asc]:
-
-1. Visit [App Store Connect][asc], select **My Apps**, and click on the app entry you created earlier.
-2. Scroll down to the **Build** section and select your newly uploaded binary.
+**App-specific password:** Provide your [app-specific password](https://expo.fyi/apple-app-specific-password) via the `EXPO_APPLE_APP_SPECIFIC_PASSWORD` environment variable and set your Apple ID with the `appleId` field in **eas.json**.
 
 </Collapsible>
 
-## Automating submissions
+Create a workflow file named **.eas/workflows/submit-ios.yml** with the following contents:
 
-To learn how to automatically submit your app after a successful build, refer to the [Automating submissions](/build/automate-submissions).
+```yaml .eas/workflows/submit-ios.yml
+name: Submit iOS
 
-[asc]: https://appstoreconnect.apple.com/apps
+on:
+  push:
+    branches: ['main']
+
+jobs:
+  build_ios:
+    name: Build iOS app
+    type: build
+    params:
+      platform: ios
+      profile: production
+
+  submit_ios:
+    name: Submit to TestFlight
+    needs: [build_ios]
+    type: testflight
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
+```
+
+This builds an iOS app on every push to `main` and submits it to TestFlight. The [pre-packaged `testflight` job](/eas/workflows/pre-packaged-jobs/#testflight) can also share the build with internal and external testing groups. Trigger the workflow manually with:
+
+<Terminal cmd={['$ eas workflow:run submit-ios.yml']} />
+
+See the [workflow examples guide](/eas/workflows/examples/introduction/) for more patterns.
+
+## Use other CI/CD services
+
+You can run `eas submit` from any CI/CD service, such as GitHub Actions, GitLab CI, and others:
+
+<Terminal cmd={['$ eas submit --platform ios --profile production']} />
+
+This requires a [personal access token](/accounts/programmatic-access/#personal-access-tokens) to authenticate with your Expo account. Set the `EXPO_TOKEN` environment variable in your CI service so `eas submit` can run non-interactively.
+
+With `--non-interactive`, `eas submit` and `eas build --auto-submit` cannot prompt you for an App Store Connect API Key. Unless you bring your own credentials, they use the key assigned to your app. If your app has no key, they fail with the following error:
+
+```text
+App Store Connect API Keys cannot be set up in --non-interactive mode.
+```
+
+To fix this, assign a key to your app or bring your own credentials, as described in [Automate with Expo Workflows](#automate-with-expo-workflows). In non-interactive mode, your submission profile also needs [`ascAppId`](#configure-a-submission-profile).
+
+## Manual fallback
+
+If Expo Submit is temporarily unavailable, you can upload to the Apple App Store manually from a Mac with Xcode.
+
+<BoxLink
+  title="Manually submit an iOS app with Xcode"
+  description="Archive and upload an iOS app to App Store Connect using Xcode on macOS."
+  href="/submit/ios-manual/"
+  Icon={AppleAppStoreIcon}
+/>

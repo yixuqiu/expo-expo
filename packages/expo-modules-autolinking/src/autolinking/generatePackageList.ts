@@ -1,23 +1,33 @@
-import chalk from 'chalk';
+import { getLinkingImplementationForPlatform } from '../platforms';
+import type { ModuleDescriptor, ModuleDescriptorIos, SupportedPlatform } from '../types';
 
-import { getLinkingImplementationForPlatform } from './utils';
-import { GenerateOptions, ModuleDescriptor } from '../types';
+interface GenerateModulesProviderParams {
+  platform: SupportedPlatform;
+  targetPath: string;
+  targetName?: string;
+  entitlementPath: string | null;
+  watchedDirectories: string[];
+  inlineModulesTargets: { mainTarget?: string; targets: string[] };
+  appRoot: string;
+  corePath?: string | null;
+}
 
-/**
- * Generates a source file listing all packages to link.
- * Right know it works only for Android platform.
+/** Generates ExpoModulesProvider file listing all packages to link (Apple-only)
  */
-export async function generatePackageListAsync(
+export async function generateModulesProviderAsync(
   modules: ModuleDescriptor[],
-  options: GenerateOptions
+  params: GenerateModulesProviderParams
 ) {
-  try {
-    const platformLinking = getLinkingImplementationForPlatform(options.platform);
-    await platformLinking.generatePackageListAsync(modules, options.target, options.namespace);
-  } catch (e) {
-    console.error(
-      chalk.red(`Generating package list is not available for platform: ${options.platform}`)
+  const platformLinking = getLinkingImplementationForPlatform(params.platform);
+  if (!('generateModulesProviderAsync' in platformLinking)) {
+    throw new Error(
+      `Generating modules provider is not available for platform "${params.platform}"`
     );
-    throw e;
   }
+  await platformLinking.generateModulesProviderAsync(
+    modules as ModuleDescriptorIos[],
+    params.targetPath,
+    params.entitlementPath,
+    params
+  );
 }

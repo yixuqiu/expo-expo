@@ -9,6 +9,7 @@ While it's possible to develop expo-updates in the context of Expo Go, it's usua
 There are a few ways to hook up your local copy of expo-updates to your test app. If you're not importing anything from expo-updates in your JS, you may be able to use `yarn link`, which is the most straightforward solution.
 
 Unfortunately, Metro doesn't support symlinks (at the time of this writing) so if you do need to use the Updates JS module methods in your app, `yarn link` will not suffice. A couple of suggestions are:
+
 - in package.json, replace the expo-updates dependency with: `"expo-updates": "file:/path/to/expo/expo/packages/expo-updates"`. You'll need to run `yarn --force` each time you make changes to your expo-updates source to make yarn copy them into node_modules.
 - if you don't want to wait for yarn to run each time, you can just manually copy expo-updates into node_modules each time you make a change.
 
@@ -25,11 +26,7 @@ Configuration for iOS should be done in Expo.plist. On Android, most options can
 
 If you are using expo-updates to test a server you're developing, you may want to tell expo-updates to ignore the embedded update. Otherwise, each time you make a new build, it will create a new bundle with a new creation time and will refuse to load any updates published previously.
 
-You can do tell expo-updates to ignore the embedded bundle and force a remote update by setting `EXUpdatesHasEmbeddedUpdate` and `expo.modules.updates.HAS_EMBEDDED_UPDATE` to false.
-
-### New Manifest Format
-
-To test the new EAS update manifest format, set `EXUpdatesUsesLegacyManifest` and `expo.modules.updates.EXPO_LEGACY_MANIFEST` to false.
+You can tell expo-updates to ignore the embedded bundle and force a remote update by setting `EXUpdatesHasEmbeddedUpdate` and `expo.modules.updates.HAS_EMBEDDED_UPDATE` to false.
 
 ### Additional Headers
 
@@ -67,9 +64,33 @@ sed -i '' 's/SKIP_BUNDLING/FORCE_BUNDLING/g;' ios/<project name>.xcodeproj/proje
 
 Now you can make a debug build of your app which behaves as if it were a release build (but without an embedded update).
 
+### Fail loudly on an invalid state transition
+
+When the updates state machine receives an event that is not allowed from its current state, it
+drops the event and writes a warning to the updates log. To make such a drop stop the app instead --
+for example so an E2E run fails rather than passing unnoticed -- set this environment variable
+before building:
+
+```bash
+export EX_UPDATES_ASSERT_INVALID_STATE=true
+```
+
+On iOS you must reinstall Cocoapods (`npx pod-install` from the top-level project directory) so the
+flag reaches the compiler. On Android the same name also works as a Gradle property, either on the
+command line (`-PEX_UPDATES_ASSERT_INVALID_STATE=true`) or in `gradle.properties`.
+
+# BSPatch and BZip2
+
+expo-updates includes support for applying binary patches to assets.
+We use a modified version of the FreeBSD version of [BSPatch](https://github.com/freebsd/freebsd-src/blob/main/usr.bin/bsdiff/bspatch/bspatch.c)
+https://github.com/freebsd/freebsd-src/blob/b202176dc76d862f886778439b96dd1243d8b999/usr.bin/bsdiff/bspatch/bspatch.c. We make these modifications to make it safe to use in the mobile environment without crashing the user app.
+
+BSPatch relies on [BZip2](https://www.sourceware.org/bzip2/downloads.html). On iOS, we link against the system BZip2 library. On Android, we include a copy of the BZip2 source code in our repo and build it as part of the native code build. We only include the parts of BZip2 that handle decompression. When updating, download the bzip2 source code and replace the necessary files in `packages/expo-updates/android/src/main/cpp/third-party/bzip2`.
+
 ## Troubleshooting
 
 If expo-updates is not loading an update you expect it to, check that:
+
 - the creation time of the update you're trying to load is newer than the embedded bundle, or you've configured expo-updates to [ignore the embedded bundle](#ignore-embedded-update).
 - the SDK or runtime version configured in Expo.plist or AndroidManifest.xml matches the one in the manifest you're trying to load.
 

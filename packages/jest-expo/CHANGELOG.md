@@ -1,14 +1,459 @@
 # Changelog
 
-## Unpublished
+## 58.0.12
+
+### Patch Changes
+
+- Skip Jest's own stack frames when looking up native module mocks. On Jest 30 this lookup reread Jest's runtime source for every native module and slowed down test runs. ([#51778](https://github.com/expo/expo/pull/51778) by [@expo-bot](https://github.com/expo-bot))
+
+## 58.0.11
+
+### Patch Changes
+
+- Upgrade React Native to 0.88.0. ([#51613](https://github.com/expo/expo/pull/51613) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 58.0.10
+
+### Patch Changes
+
+- Accept `jest@^29` again as a peer dependency. ([#51462](https://github.com/expo/expo/pull/51462) by [@hassankhan](https://github.com/hassankhan))
+
+## 58.0.9
+
+### Patch Changes
+
+- Remove the internal-only `expo-source` export condition. ([#51215](https://github.com/expo/expo/pull/51215) by [@kitten](https://github.com/kitten))
+- Remapped `import.meta.url` under Jest to the module's `file://` URL. `jest-expo` now reports `bundler: 'jest'` to Babel. ([#51110](https://github.com/expo/expo/pull/51110) by [@abappi19](https://github.com/abappi19))
+
+## 58.0.8
+
+### Patch Changes
+
+- [Internal] Import React Native internals from `react-native/unstable-internals-do-not-use`. ([#50860](https://github.com/expo/expo/pull/50860) by [@huntie](https://github.com/huntie))
+
+## 58.0.7
+
+### Patch Changes
+
+- Upgrade to Jest 30 and declare `jest@^30` as a peer dependency. ([#50427](https://github.com/expo/expo/pull/50427) by [@hassankhan](https://github.com/hassankhan))
+- Preserve the base preset's `moduleNameMapper` entries in web and Node presets. ([#50444](https://github.com/expo/expo/pull/50444) by [@joernroeder](https://github.com/joernroeder))
+- Bump `lodash` to `^4.18.1`. ([#50391](https://github.com/expo/expo/pull/50391) by [@hassankhan](https://github.com/hassankhan))
+
+## 58.0.6
+
+### Patch Changes
+
+- [Internal] Replace `react-test-renderer` with `test-renderer` for `@testing-library/react-native` v14 compatibility. ([#50686](https://github.com/expo/expo/pull/50686) by [@hassankhan](https://github.com/hassankhan))
+
+## 58.0.5
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.4 — 2026-09-28
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.3 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-15
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.1 — 2026-09-14
+
+### 💡 Others
+
+- Upgrade React Native to 0.88.0-rc.0 ([#49910](https://github.com/expo/expo/pull/49910) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 58.0.0 — 2026-09-10
 
 ### 🛠 Breaking changes
 
-### 🎉 New features
+- Align `jest-expo` Babel options for all platforms with `resolveBabelOptions` output
 
 ### 🐛 Bug fixes
 
+- Support React Native 0.87's `react-native/asset-registry`. ([#47729](https://github.com/expo/expo/pull/47729) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Keep the upstream React Native `moduleNameMapper` entries in the iOS and Android presets, so React Native 0.87's `react-native/setup-env` mock resolves. ([#47729](https://github.com/expo/expo/pull/47729) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 57.0.3 - 2026-07-29
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-20
+
+### 🎉 New features
+
+- Align `jest-expo`'s Babel config loading with `@expo/metro-config` changes ([#45968](https://github.com/expo/expo/pull/45968) by [@kitten](https://github.com/kitten))
+
+## 56.0.3 — 2026-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-13
+
+### 🐛 Bug fixes
+
+- Switch from `react-native/jest-preset` to `@react-native/jest-preset` ([#45699](https://github.com/expo/expo/pull/45699) by [@kitten](https://github.com/kitten))
+
 ### 💡 Others
+
+- Bump to `react-server-dom-webpack@~19.0.6` ([#45645](https://github.com/expo/expo/pull/45645) by [@kitten](https://github.com/kitten))
+
+## 56.0.0 — 2026-05-05
+
+### 🐛 Bug fixes
+
+- Add missing `expo-modules-core` dependency. ([#44874](https://github.com/expo/expo/pull/44874) by [@zoontek](https://github.com/zoontek))
+- Add `@react-native/babel-preset` to ignored transform patterns, since it's part of the transformer pipeline ([#44152](https://github.com/expo/expo/pull/44152) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Drop expo dependencies from `jest-expo` to prevent cycles ([#45048](https://github.com/expo/expo/pull/45048) by [@kitten](https://github.com/kitten))
+- Fixed `expo/fetch` testing. ([#44987](https://github.com/expo/expo/pull/44987) by [@kudo](https://github.com/kudo))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.84.x. ([#43018](https://github.com/expo/expo/pull/43018) by [@chrfalch](https://github.com/chrfalch))
+
+## 55.0.17 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.16 - 2026-04-13
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-03-19
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+### 🐛 Bug fixes
+
+- Fix `expo-file-system` mock to target `expo-file-system/legacy` instead of replacing the entire module, and preserve prototype chains for native module class mocks. ([#43005](https://github.com/expo/expo/pull/43005) by [@aleqsio](https://github.com/aleqsio))
+
+## 55.0.6 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-01-27
+
+### 💡 Others
+
+- Bump `react-server-dom-webpack` ([#42570](https://github.com/expo/expo/pull/42570) by [@vonovak](https://github.com/vonovak))
+
+## 55.0.4 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-23
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 💡 Others
+
+- Improve local mock lookup. ([#39743](https://github.com/expo/expo/pull/39743) by [@aleqsio](https://github.com/aleqsio))
+- Remove `experiments.reactCanary` support in favor of built-in React +19.1 support. ([#40386](https://github.com/expo/expo/pull/40386) by [@EvanBacon](https://github.com/EvanBacon))
+- Fixed check-packages error on Windows. ([#41194](https://github.com/expo/expo/pull/41194) by [@kudo](https://github.com/kudo))
+- Switch `react-server-dom-webpack` to optional peer dependency ([#41379](https://github.com/expo/expo/pull/41379) by [@kitten](https://github.com/kitten))
+- Bump `react-server-dom-webpack` ([#41574](https://github.com/expo/expo/pull/41574) by [@kitten](https://github.com/kitten)) ([#41589](https://github.com/expo/expo/pull/41589) by [@kitten](https://github.com/kitten))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.82.x. ([#39678](https://github.com/expo/expo/pull/39678) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 54.0.13 - 2025-10-21
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.12 - 2025-09-18
+
+### 🐛 Bug fixes
+
+- Simplify `transformIgnorePatterns` to avoid unnecessary transforms and remove legacy packages. ([#39807](https://github.com/expo/expo/pull/39807) by [@byCedric](https://github.com/byCedric))
+
+## 54.0.11 — 2025-09-12
+
+### 🐛 Bug fixes
+
+- Add missing trailing `/` to `transformIgnorePatterns` resolving pnpm isolated modules paths. ([#39605](https://github.com/expo/expo/pull/39605) by [@byCedric](https://github.com/byCedric))
+
+## 54.0.10 — 2025-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.9 — 2025-09-10
+
+### 💡 Others
+
+- Remove dependency on `find-up` ([#39470](https://github.com/expo/expo/pull/39470) by [@kitten](https://github.com/kitten))
+
+## 54.0.8 — 2025-09-04
+
+### 💡 Others
+
+- Change `ExpoLiquidGlassConstants` to `ExpoGlassEffect` in expoModules mocks ([#39349](https://github.com/expo/expo/pull/39349) by [@Ubax](https://github.com/Ubax))
+
+## 54.0.7 — 2025-09-02
+
+### 💡 Others
+
+- Add `ExpoLiquidGlassConstants` to expoModules mocks ([#39333](https://github.com/expo/expo/pull/39333) by [@Ubax](https://github.com/Ubax))
+
+## 54.0.6 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.5 — 2025-08-28
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.4 — 2025-08-26
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.2 — 2025-08-21
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.1 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0 — 2025-08-13
+
+### 🐛 Bug fixes
+
+- Mock Expo's default async-require messaging socket. ([#37524](https://github.com/expo/expo/pull/37524) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Change the `global.expo` polyfill to work with package exports and be more explicit. ([#37588](https://github.com/expo/expo/pull/37588) by [@EvanBacon](https://github.com/EvanBacon))
+- add experimental link preview ([#37336](https://github.com/expo/expo/pull/37336) by [@Ubax](https://github.com/Ubax))
+- Add ExpoFont to ignorelist. ([#37736](https://github.com/expo/expo/pull/37736) by [@aleqsio](https://github.com/aleqsio))
+- Update mocks for SDK54. ([#38679](https://github.com/expo/expo/pull/38679) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 53.0.9 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.8 - 2025-07-01
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.7 - 2025-06-06
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.6 - 2025-06-04
+
+### 🐛 Bug fixes
+
+- Fix `requireOptionalNativeModule` throwing error if mock is missing. ([#36839](https://github.com/expo/expo/pull/36839) by [@aleqsio](https://github.com/aleqsio))
+
+### 💡 Others
+
+- Fix ES6 import syntax inconsistency in setup.js by converting to CommonJS require. ([#37240](https://github.com/expo/expo/pull/37240) by [@huextrat](https://github.com/huextrat))
+- Rework mock generation for expo modules. ([#36677](https://github.com/expo/expo/pull/36677) by [@aleqsio](https://github.com/aleqsio))
+
+## 53.0.5 — 2025-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.4 — 2025-05-02
+
+### 🐛 Bug fixes
+
+- Add ExpoFontUtils mock ([#36585](https://github.com/expo/expo/pull/36585) by [@brentvatne](https://github.com/brentvatne))
+
+## 53.0.3 — 2025-05-01
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.2 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.1 — 2025-04-28
+
+### 🎉 New features
+
+- add web stream API support globally on native ([#36407](https://github.com/expo/expo/pull/36407) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 53.0.0 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.3 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.2 — 2025-04-11
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.1 — 2025-04-08
+
+_This version does not introduce any user-facing changes._
+
+## 53.0.0-preview.0 — 2025-04-04
+
+### 🛠 Breaking changes
+
+- upgrade RN to 0.78 ([#35050](https://github.com/expo/expo/pull/35050) by [@vonovak](https://github.com/vonovak))
+
+### 🐛 Bug fixes
+
+- Drop `fbemitter` in favor of internal logic. ([#35318](https://github.com/expo/expo/pull/35319) by [@kitten](https://github.com/kitten)
+- Update mocks to for esm exports. ([#35574](https://github.com/expo/expo/pull/35574) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 52.0.6 - 2025-03-11
+
+### 🐛 Bug fixes
+
+- Fixed jest error from `FormData`. ([#35162](https://github.com/expo/expo/pull/35162) by [@WoLewicki](https://github.com/WoLewicki))
+
+## 52.0.5 - 2025-02-21
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.4 - 2025-02-14
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.3 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.2 — 2024-11-15
+
+### 🐛 Bug fixes
+
+- Fixed error when `babel.config.js` is not existed. ([#32942](https://github.com/expo/expo/pull/32942) by [@kudo](https://github.com/kudo))
+
+## 52.0.1 — 2024-11-14
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0 — 2024-11-11
+
+### 🐛 Bug fixes
+
+- Update transform ignore patterns to replace deprecated Sentry SDK with current one. ([#32528](https://github.com/expo/expo/pull/32528) by [@KoenCa](https://github.com/KoenCa))
+
+## 52.0.0-preview.4 — 2024-11-05
+
+### 💡 Others
+
+- Add mocks for internal native methods in splash screen ([#32610](https://github.com/expo/expo/pull/32610) by [@brentvatne](https://github.com/brentvatne))
+
+## 52.0.0-preview.3 — 2024-10-31
+
+### 💡 Others
+
+- Update SplashScreen api to add `hide` method. ([#32484](https://github.com/expo/expo/pull/32484) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 52.0.0-preview.2 — 2024-10-29
+
+### 🐛 Bug fixes
+
+- Fix mocking for requireOptionalNativeModule. ([#32412](https://github.com/expo/expo/pull/32412) by [@aleqsio](https://github.com/aleqsio))
+
+## 52.0.0-preview.1 — 2024-10-24
+
+_This version does not introduce any user-facing changes._
+
+## 52.0.0-preview.0 — 2024-10-22
+
+### 🎉 New features
+
+- Add experimental `jest-expo/rsc` preset for testing React Server Components. ([#29404](https://github.com/expo/expo/pull/29404) by [@EvanBacon](https://github.com/EvanBacon))
+- Load view mocks included in packages. ([#28157](https://github.com/expo/expo/pull/28157) by [@aleqsio](https://github.com/aleqsio))
+
+### 🐛 Bug fixes
+
+- Fix snapshot writing for RSC. ([#30589](https://github.com/expo/expo/pull/30589) by [@EvanBacon](https://github.com/EvanBacon))
+- Fixes jest spitting console error caused by ref stubbing. ([#29420](https://github.com/expo/expo/pull/29420) by [@aleqsio](https://github.com/aleqsio))
+- Avoid adding typescript wildcard paths as jest module mapping. ([#29836](https://github.com/expo/expo/pull/29836) by [@byCedric](https://github.com/byCedric))
+- Add missing `fbemitter` dependency and `expo`/`react-native` peer dependencies. ([#30573](https://github.com/expo/expo/pull/30573) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Mock files from the `src` folder instead of `build`. ([#29702](https://github.com/expo/expo/pull/29702) by [@tsapeta](https://github.com/tsapeta))
+- Rewrite experimental `jest-expo/rsc` matchers to Jest only matchers. ([#30710](https://github.com/expo/expo/pull/30710) by [@byCedric](https://github.com/byCedric))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.75.x. ([#30034](https://github.com/expo/expo/pull/30034), [#30828](https://github.com/expo/expo/pull/30828) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Added support for React Native 0.76.x. ([#31552](https://github.com/expo/expo/pull/31552) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 51.0.2 — 2024-05-16
+
+_This version does not introduce any user-facing changes._
 
 ## 51.0.1 — 2024-04-24
 

@@ -1,27 +1,29 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`CSS Modules web transforms for dev, minified 1`] = `
 {
   "input": "module.exports=Object.assign({"container":"_R_BGG_container"},{unstable_styles:{"container":{"$$css":true,"_":"_R_BGG_container"}}},{});
-(() => {
-  if (typeof window === 'undefined') {
-    return
-  }
-  const head = document.head || document.getElementsByTagName('head')[0];
-  const style = document.createElement('style');
-  style.setAttribute('data-expo-css-hmr', "acme_module_css");
-  const previousStyle = document.querySelector('[data-expo-css-hmr="acme_module_css"]');
+(function () {
+if (typeof window === 'undefined') {
+  return;
+}
+var head = document.head || document.getElementsByTagName('head')[0];
+var style = document.createElement('style');
+style.setAttribute('data-expo-css-hmr', "acme_module_css");
+  var previousStyle = document.querySelector('[data-expo-css-hmr="acme_module_css"]');
   if (previousStyle) {
-    previousStyle.parentNode.removeChild(previousStyle);
+    previousStyle.parentNode.replaceChild(style, previousStyle);
   }
-  style.setAttribute('data-expo-loader', 'css');
-  head.appendChild(style);
-  const css = \`._R_BGG_container{background:red}\`;
-  if (style.styleSheet){
-    style.styleSheet.cssText = css;
-  } else {
-    style.appendChild(document.createTextNode(css));
-  }
+style.setAttribute('data-expo-loader', 'css');
+if (!style.parentNode) head.appendChild(style);
+var css = "._R_BGG_container{background:red}";
+if (style.styleSheet){
+  style.styleSheet.cssText = css;
+} else {
+  style.appendChild(document.createTextNode(css));
+}
+
+if (module.hot) module.hot.accept();
 })();",
   "output": {
     "dependencies": [],
@@ -30,10 +32,13 @@ exports[`CSS Modules web transforms for dev, minified 1`] = `
         "data": {
           "css": {
             "code": "._R_BGG_container{background:red}",
+            "externalImports": [],
             "functionMap": null,
             "lineCount": 1,
             "map": [],
+            "skipCache": false,
           },
+          "skipCache": undefined,
         },
         "type": "js/module",
       },
@@ -45,28 +50,27 @@ exports[`CSS Modules web transforms for dev, minified 1`] = `
 exports[`CSS Modules web transforms for dev, not minified 1`] = `
 {
   "input": "module.exports=Object.assign({"container":"_R_BGG_container"},{unstable_styles:{"container":{"$$css":true,"_":"_R_BGG_container"}}},{});
-(() => {
-  if (typeof window === 'undefined') {
-    return
-  }
-  const head = document.head || document.getElementsByTagName('head')[0];
-  const style = document.createElement('style');
-  style.setAttribute('data-expo-css-hmr', "acme_module_css");
-  const previousStyle = document.querySelector('[data-expo-css-hmr="acme_module_css"]');
-  if (previousStyle) {
-    previousStyle.parentNode.removeChild(previousStyle);
-  }
-  style.setAttribute('data-expo-loader', 'css');
-  head.appendChild(style);
-  const css = \`._R_BGG_container {
-  background: red;
+(function () {
+if (typeof window === 'undefined') {
+  return;
 }
-\`;
-  if (style.styleSheet){
-    style.styleSheet.cssText = css;
-  } else {
-    style.appendChild(document.createTextNode(css));
+var head = document.head || document.getElementsByTagName('head')[0];
+var style = document.createElement('style');
+style.setAttribute('data-expo-css-hmr', "acme_module_css");
+  var previousStyle = document.querySelector('[data-expo-css-hmr="acme_module_css"]');
+  if (previousStyle) {
+    previousStyle.parentNode.replaceChild(style, previousStyle);
   }
+style.setAttribute('data-expo-loader', 'css');
+if (!style.parentNode) head.appendChild(style);
+var css = "._R_BGG_container {\\n  background: red;\\n}\\n";
+if (style.styleSheet){
+  style.styleSheet.cssText = css;
+} else {
+  style.appendChild(document.createTextNode(css));
+}
+
+if (module.hot) module.hot.accept();
 })();",
   "output": {
     "dependencies": [],
@@ -78,10 +82,13 @@ exports[`CSS Modules web transforms for dev, not minified 1`] = `
   background: red;
 }
 ",
+            "externalImports": [],
             "functionMap": null,
             "lineCount": 4,
             "map": [],
+            "skipCache": false,
           },
+          "skipCache": undefined,
         },
         "type": "js/module",
       },
@@ -96,25 +103,27 @@ exports[`CSS Modules web transforms for prod, not minified 1`] = `"module.export
 
 exports[`transforms a global CSS file in dev for web 1`] = `
 {
-  "input": "(() => {
-  if (typeof window === 'undefined') {
-    return
-  }
-  const head = document.head || document.getElementsByTagName('head')[0];
-  const style = document.createElement('style');
-  style.setAttribute('data-expo-css-hmr', "acme_css");
-  const previousStyle = document.querySelector('[data-expo-css-hmr="acme_css"]');
+  "input": "(function () {
+if (typeof window === 'undefined') {
+  return;
+}
+var head = document.head || document.getElementsByTagName('head')[0];
+var style = document.createElement('style');
+style.setAttribute('data-expo-css-hmr', "acme_css");
+  var previousStyle = document.querySelector('[data-expo-css-hmr="acme_css"]');
   if (previousStyle) {
-    previousStyle.parentNode.removeChild(previousStyle);
+    previousStyle.parentNode.replaceChild(style, previousStyle);
   }
-  style.setAttribute('data-expo-loader', 'css');
-  head.appendChild(style);
-  const css = \`body { background: red; }\`;
-  if (style.styleSheet){
-    style.styleSheet.cssText = css;
-  } else {
-    style.appendChild(document.createTextNode(css));
-  }
+style.setAttribute('data-expo-loader', 'css');
+if (!style.parentNode) head.appendChild(style);
+var css = "body {\\n  background: red;\\n}\\n";
+if (style.styleSheet){
+  style.styleSheet.cssText = css;
+} else {
+  style.appendChild(document.createTextNode(css));
+}
+
+if (module.hot) module.hot.accept();
 })();",
   "output": {
     "dependencies": [],
@@ -126,11 +135,13 @@ exports[`transforms a global CSS file in dev for web 1`] = `
   background: red;
 }
 ",
+            "externalImports": [],
             "functionMap": null,
             "lineCount": 4,
             "map": [],
             "skipCache": false,
           },
+          "skipCache": undefined,
         },
         "type": "js/module",
       },

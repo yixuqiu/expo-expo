@@ -1,10 +1,18 @@
 {
   "platforms": ["apple", "android"],
   "apple": {
-    "modules": ["FileSystemModule"],
+    "modules": ["FileSystemModule", "FileSystemLegacyModule"],
     "appDelegateSubscribers": ["FileSystemBackgroundSessionHandler"]
   },
   "android": {
-    "modules": ["expo.modules.filesystem.FileSystemModule"]
+    "modules": [
+      "expo.modules.filesystem.FileSystemModule",
+      "expo.modules.filesystem.legacy.FileSystemLegacyModule"
+    ],
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.filesystem",
+      "repository": "local-maven-repo"
+    }
   }
 }

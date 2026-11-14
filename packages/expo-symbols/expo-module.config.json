@@ -1,9 +1,6 @@
 {
-  "platforms": ["ios", "android"],
-  "ios": {
+  "platforms": ["apple"],
+  "apple": {
     "modules": ["SymbolModule"]
-  },
-  "android": {
-    "modules": ["expo.modules.symbols.SymbolModule"]
   }
 }

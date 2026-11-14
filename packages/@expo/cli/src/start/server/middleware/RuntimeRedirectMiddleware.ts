@@ -1,19 +1,17 @@
-import { parse } from 'url';
-
+import * as Log from '../../../log';
 import { disableResponseCache, ExpoMiddleware } from './ExpoMiddleware';
+import type { ForwardedRequestInfo } from './resolveForwarded';
+import { parseForwardedRequestInfo } from './resolveForwarded';
+import type { RuntimePlatform } from './resolvePlatform';
 import {
   assertMissingRuntimePlatform,
   assertRuntimePlatform,
   parsePlatformHeader,
   resolvePlatformFromUserAgentHeader,
-  RuntimePlatform,
 } from './resolvePlatform';
-import { ServerRequest, ServerResponse } from './server.types';
-import * as Log from '../../../log';
+import type { ServerRequest, ServerResponse } from './server.types';
 
-const debug = require('debug')(
-  'expo:start:server:middleware:runtimeRedirect'
-) as typeof console.log;
+export const LinkEndpoint = '/_expo/link';
 
 /** Runtime to target: expo = Expo Go, custom = Dev Client. */
 type RuntimeTarget = 'expo' | 'custom';
@@ -27,26 +25,30 @@ export class RuntimeRedirectMiddleware extends ExpoMiddleware {
   constructor(
     protected projectRoot: string,
     protected options: {
-      onDeepLink: DeepLinkHandler;
-      getLocation: (props: { runtime: RuntimeTarget }) => string | null | undefined;
+      onDeepLink?: DeepLinkHandler;
+      getLocation: (props: {
+        runtime: RuntimeTarget;
+        forwarded: ForwardedRequestInfo | null;
+      }) => string | null | undefined;
     }
   ) {
-    super(projectRoot, ['/_expo/link']);
+    super(projectRoot, [LinkEndpoint]);
   }
 
   async handleRequestAsync(req: ServerRequest, res: ServerResponse): Promise<void> {
-    const { query } = parse(req.url!, true);
-    const isDevClient = query['choice'] === 'expo-dev-client';
+    const query = URL.parse(req.url!, 'file:')?.searchParams;
+    const isDevClient = query?.get('choice') === 'expo-dev-client';
     const platform = parsePlatformHeader(req) ?? resolvePlatformFromUserAgentHeader(req);
     assertMissingRuntimePlatform(platform);
     assertRuntimePlatform(platform);
     const runtime = isDevClient ? 'custom' : 'expo';
 
-    debug(`props:`, { platform, runtime });
+    this.options.onDeepLink?.({ runtime, platform });
 
-    this.options.onDeepLink({ runtime, platform });
-
-    const redirect = this.options.getLocation({ runtime });
+    const redirect = this.options.getLocation({
+      runtime,
+      forwarded: parseForwardedRequestInfo(req),
+    });
     if (!redirect) {
       Log.warn(
         `[redirect middleware]: Unable to determine redirect location for runtime '${runtime}' and platform '${platform}'`
@@ -55,7 +57,6 @@ export class RuntimeRedirectMiddleware extends ExpoMiddleware {
       res.end();
       return;
     }
-    debug('Redirect ->', redirect);
     res.setHeader('Location', redirect);
 
     // Disable caching

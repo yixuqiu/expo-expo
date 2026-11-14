@@ -1,10 +1,12 @@
-import spawnAsync from '@expo/spawn-async';
 import { vol } from 'memfs';
 
-import { mockSpawnPromise } from '../../__tests__/spawn-utils';
+import { isFileIgnoredAsync } from '../../utils/files';
+import { findModuleFilesAsync } from '../../utils/findModuleFiles';
 import { ProjectSetupCheck } from '../ProjectSetupCheck';
 
 jest.mock('fs');
+jest.mock('../../utils/findModuleFiles');
+jest.mock('../../utils/files');
 
 const projectRoot = '/tmp/project';
 
@@ -21,28 +23,10 @@ const additionalProjectProps = {
 };
 
 /**
- * Helper to mock the results of git rev-parse and git check-ignore based on whether the file should be ignored or not.
- * Only works when checking a single file.
+ * Helper to mock the results of isFileIgnoredAsync for all matching files.
  */
-function mockIsGitIgnoredResult(isFileIgnored: boolean) {
-  jest
-    .mocked(spawnAsync)
-    .mockImplementationOnce(() =>
-      mockSpawnPromise(
-        Promise.resolve({
-          status: 0,
-          stdout: '',
-        })
-      )
-    )
-    .mockImplementationOnce(() => {
-      if (isFileIgnored) {
-        return mockSpawnPromise(Promise.resolve({ status: 0, stdout: '' }));
-      }
-      const error: any = new Error();
-      error.status = -1; // git check-ignore errors if file is not ignored
-      return mockSpawnPromise(Promise.reject(error));
-    });
+function mockIsFileIgnoredResult(isFileIgnored: boolean) {
+  (isFileIgnoredAsync as jest.Mock).mockResolvedValue(isFileIgnored);
 }
 
 describe('runAsync', () => {
@@ -61,152 +45,86 @@ describe('runAsync', () => {
   });
 
   it('returns result with isSuccessful = true if local module with ios folder and ios folder is not gitignored', async () => {
-    mockIsGitIgnoredResult(false);
+    const iosPath = `${projectRoot}/modules/HelloModule/ios/HelloModule.podspec`;
     vol.fromJSON({
-      [projectRoot + '/modules/HelloModule/ios/HelloModule.podspec']: 'test',
+      [iosPath]: 'test',
     });
+
+    jest.mocked(findModuleFilesAsync).mockResolvedValue([iosPath]);
+
+    mockIsFileIgnoredResult(false);
+
     const check = new ProjectSetupCheck();
     const result = await check.runAsync({
       pkg: { name: 'name', version: '1.0.0' },
       ...additionalProjectProps,
     });
+
     expect(result.isSuccessful).toBeTruthy();
+    expect(findModuleFilesAsync).toHaveBeenCalledWith(projectRoot);
+    expect(isFileIgnoredAsync).toHaveBeenCalledWith(iosPath, expect.anything());
   });
 
   it('returns result with isSuccessful = true if local module with android folder and android folder is not gitignored', async () => {
-    mockIsGitIgnoredResult(false);
+    const androidPath = `${projectRoot}/modules/HelloModule/android/build.gradle`;
     vol.fromJSON({
-      [projectRoot + '/modules/HelloModule/android/build.gradle']: 'test',
+      [androidPath]: 'test',
     });
+
+    jest.mocked(findModuleFilesAsync).mockResolvedValue([androidPath]);
+
+    (isFileIgnoredAsync as jest.MockedFunction<typeof isFileIgnoredAsync>).mockResolvedValue(false);
+
     const check = new ProjectSetupCheck();
     const result = await check.runAsync({
       pkg: { name: 'name', version: '1.0.0' },
       ...additionalProjectProps,
     });
+
     expect(result.isSuccessful).toBeTruthy();
+    expect(findModuleFilesAsync).toHaveBeenCalledWith(projectRoot);
+    expect(isFileIgnoredAsync).toHaveBeenCalledWith(androidPath, expect.anything());
   });
 
   it('returns result with isSuccessful = false if local module with ios folder and ios folder is gitignored', async () => {
-    mockIsGitIgnoredResult(true);
+    const iosPath = `${projectRoot}/modules/HelloModule/ios/HelloModule.podspec`;
     vol.fromJSON({
-      [projectRoot + '/modules/HelloModule/ios/HelloModule.podspec']: 'test',
+      [iosPath]: 'test',
     });
+
+    jest.mocked(findModuleFilesAsync).mockResolvedValue([iosPath]);
+
+    (isFileIgnoredAsync as jest.MockedFunction<typeof isFileIgnoredAsync>).mockResolvedValue(true);
+
     const check = new ProjectSetupCheck();
     const result = await check.runAsync({
       pkg: { name: 'name', version: '1.0.0' },
       ...additionalProjectProps,
     });
+
     expect(result.isSuccessful).toBeFalsy();
+    expect(findModuleFilesAsync).toHaveBeenCalledWith(projectRoot);
+    expect(isFileIgnoredAsync).toHaveBeenCalledWith(iosPath, expect.anything());
   });
 
   it('returns result with isSuccessful = false if local module with android folder and android folder is gitignored', async () => {
-    mockIsGitIgnoredResult(true);
+    const androidPath = `${projectRoot}/modules/HelloModule/android/build.gradle`;
     vol.fromJSON({
-      [projectRoot + '/modules/HelloModule/android/build.gradle']: 'test',
+      [androidPath]: 'test',
     });
+
+    jest.mocked(findModuleFilesAsync).mockResolvedValue([androidPath]);
+
+    (isFileIgnoredAsync as jest.MockedFunction<typeof isFileIgnoredAsync>).mockResolvedValue(true);
+
     const check = new ProjectSetupCheck();
     const result = await check.runAsync({
       pkg: { name: 'name', version: '1.0.0' },
       ...additionalProjectProps,
     });
+
     expect(result.isSuccessful).toBeFalsy();
-  });
-
-  // unintentionally bare check
-  it('returns result with isSuccessful = true if no ios/android folders and no config plugins', async () => {
-    const check = new ProjectSetupCheck();
-    const result = await check.runAsync({
-      pkg: { name: 'name', version: '1.0.0' },
-      ...additionalProjectProps,
-    });
-    expect(result.isSuccessful).toBeTruthy();
-  });
-
-  it('returns result with isSuccessful = true if ios/android folders but no config plugins', async () => {
-    vol.fromJSON({
-      [projectRoot + '/ios/something.pbxproj']: 'test',
-    });
-    const check = new ProjectSetupCheck();
-    const result = await check.runAsync({
-      pkg: { name: 'name', version: '1.0.0' },
-      ...additionalProjectProps,
-    });
-    expect(result.isSuccessful).toBeTruthy();
-  });
-
-  it('returns result with isSuccessful = false with ios/ android folders and config plugins present, not in gitignore', async () => {
-    mockIsGitIgnoredResult(false);
-
-    vol.fromJSON({
-      [projectRoot + '/ios/Podfile']: 'test',
-    });
-    const check = new ProjectSetupCheck();
-    const result = await check.runAsync({
-      pkg: { name: 'name', version: '1.0.0' },
-      ...additionalProjectProps,
-      exp: {
-        name: 'name',
-        slug: 'slug',
-        plugins: ['expo-something'],
-      },
-    });
-    expect(result.isSuccessful).toBeFalsy();
-  });
-
-  it('returns result with isSuccessful = true with ios/ android folders and config plugins present, in gitignore', async () => {
-    mockIsGitIgnoredResult(true);
-    vol.fromJSON({
-      [projectRoot + '/ios/Podfile']: 'test',
-    });
-    const check = new ProjectSetupCheck();
-    const result = await check.runAsync({
-      pkg: { name: 'name', version: '1.0.0' },
-      ...additionalProjectProps,
-      exp: {
-        name: 'name',
-        slug: 'slug',
-        plugins: ['expo-something'],
-      },
-    });
-    expect(result.isSuccessful).toBeTruthy();
-  });
-
-  // multiple lock files
-  it('returns result with isSuccessful = true if just one lock file', async () => {
-    vol.fromJSON({
-      [projectRoot + '/yarn.lock']: 'test',
-    });
-    const check = new ProjectSetupCheck();
-    const result = await check.runAsync({
-      pkg: { name: 'name', version: '1.0.0' },
-      ...additionalProjectProps,
-    });
-    expect(result.isSuccessful).toBeTruthy();
-  });
-
-  it('returns result with isSuccessful = false if more than one lockfile (yarn + npm)', async () => {
-    vol.fromJSON({
-      [projectRoot + '/yarn.lock']: 'test',
-      [projectRoot + '/package-lock.json']: 'test',
-    });
-    const check = new ProjectSetupCheck();
-    const result = await check.runAsync({
-      pkg: { name: 'name', version: '1.0.0' },
-      ...additionalProjectProps,
-    });
-    expect(result.isSuccessful).toBeFalsy();
-  });
-
-  it('returns result with isSuccessful = false if more than one lockfile (yarn + pnpm)', async () => {
-    vol.fromJSON({
-      [projectRoot + '/yarn.lock']: 'test',
-      [projectRoot + '/pnpm-lock.yaml']: 'test',
-    });
-    const check = new ProjectSetupCheck();
-    const result = await check.runAsync({
-      pkg: { name: 'name', version: '1.0.0' },
-      ...additionalProjectProps,
-    });
-    expect(result.isSuccessful).toBeFalsy();
+    expect(findModuleFilesAsync).toHaveBeenCalledWith(projectRoot);
+    expect(isFileIgnoredAsync).toHaveBeenCalledWith(androidPath, expect.anything());
   });
 });

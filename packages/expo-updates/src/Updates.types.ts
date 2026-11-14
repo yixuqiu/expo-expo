@@ -1,4 +1,4 @@
-import { ExpoUpdatesManifest, EmbeddedManifest } from 'expo-manifests';
+import type { ExpoUpdatesManifest, EmbeddedManifest } from 'expo-manifests';
 
 export type Manifest = ExpoUpdatesManifest | EmbeddedManifest;
 
@@ -103,16 +103,6 @@ export type UpdateCheckResult =
   | UpdateCheckResultNotAvailable;
 
 /**
- * @deprecated
- */
-export type UpdateCheckResultSuccess = UpdateCheckResultAvailable;
-
-/**
- * @deprecated
- */
-export type UpdateCheckResultFailure = UpdateCheckResultNotAvailable;
-
-/**
  * The successful result of fetching a new update.
  */
 export type UpdateFetchResultSuccess = {
@@ -209,6 +199,17 @@ export type UpdatesLogEntry = {
    * If present, an Android or iOS native stack trace associated with this log entry.
    */
   stacktrace?: string[];
+  /**
+   * The key of the event that a warning or error entry logs. The key stays the same when the text of
+   * the message changes, so it can be used to filter or group entries. An entry for a group of assets
+   * that failed to load has the `remote.assetsFailed` or `remote.assetsUnreachable` key, also when
+   * the assets were loaded at startup.
+   */
+  key?: UpdatesLogMessageKey;
+  /**
+   * The values that fill the message template of the key, such as `cause` or `assetKey`.
+   */
+  values?: Record<string, string>;
 };
 
 /**
@@ -241,6 +242,67 @@ export enum UpdatesLogEntryLevel {
 }
 
 /**
+ * The key of an `expo-updates` warning or error log entry. A key names one event, and stays the same
+ * when the text of its message changes.
+ */
+export type UpdatesLogMessageKey =
+  | 'config.disabledInvalidConfiguration'
+  | 'config.disabledExplicitly'
+  | 'controller.initializationFailed'
+  | 'config.overrideInvalid'
+  | 'remote.checkFailed'
+  | 'remote.checkUnreachable'
+  | 'remote.fetchFailed'
+  | 'remote.fetchUnreachable'
+  | 'remote.assetsFailed'
+  | 'remote.assetsUnreachable'
+  | 'remote.assetDownloadFailed'
+  | 'remote.assetDownloadUnreachable'
+  | 'remote.patchFallback'
+  | 'remote.extraParamsHeaderInvalid'
+  | 'startup.remoteLoadFailed'
+  | 'startup.remoteLoadUnreachable'
+  | 'startup.errorRecoveryLoadFailed'
+  | 'startup.errorRecoveryLoadUnreachable'
+  | 'startup.markFailedLaunch'
+  | 'startup.launchCountUpdateFailed'
+  | 'local.assetMissing'
+  | 'local.assetFileInvalid'
+  | 'local.missingLaunchAsset'
+  | 'local.selectUpdateFailed'
+  | 'local.scopeKeyMismatch'
+  | 'local.mergeAssetFailed'
+  | 'local.markAccessedFailed'
+  | 'local.assetDatabaseWriteFailed'
+  | 'local.metadataReadFailed'
+  | 'local.databaseOpenFailed'
+  | 'local.databaseMigrationFailed'
+  | 'embedded.assetMissing'
+  | 'embedded.assetCopyFailed'
+  | 'embedded.assetFallback'
+  | 'embedded.updateCopyFailed'
+  | 'embedded.rollbackFailed'
+  | 'launch.failed'
+  | 'errorRecovery.jsException'
+  | 'errorRecovery.startupFailed'
+  | 'errorRecovery.crash'
+  | 'errorRecovery.logWriteFailed'
+  | 'errorRecovery.logReadFailed'
+  | 'reaper.failed'
+  | 'reaper.unsafePath'
+  | 'reaper.assetDeleteFailed'
+  | 'buildData.operationFailed'
+  | 'system.stateMachineEventDropped'
+  | 'system.excludeFromBackupFailed'
+  | 'system.logPurgeFailed'
+  | 'system.codeSigningAlgorithmMismatch'
+  | 'system.codeSigningVerificationFailed'
+  | 'system.meteredNetworkCheckFailed'
+  | 'system.observerSendFailed'
+  | 'devLauncher.configInvalid'
+  | 'devLauncher.launchAssetFileCalled';
+
+/**
  * The possible settings that determine if `expo-updates` will check for updates on app startup.
  * By default, Expo will check for updates every time the app is loaded.
  * Set this to `ON_ERROR_RECOVERY` to disable automatic checking unless recovering from an error.
@@ -270,6 +332,8 @@ export enum UpdatesCheckAutomaticallyValue {
  */
 export type LocalAssets = Record<string, string>;
 
+export type { ReloadScreenOptions, ReloadScreenImageSource } from './ReloadScreen.types';
+
 /**
  * @hidden
  */
@@ -284,17 +348,21 @@ export type UpdatesNativeStateRollback = {
  * @hidden
  */
 export type UpdatesNativeStateMachineContext = {
+  isStartupProcedureRunning: boolean;
   isUpdateAvailable: boolean;
   isUpdatePending: boolean;
   isChecking: boolean;
   isDownloading: boolean;
   isRestarting: boolean;
+  restartCount: number;
   latestManifest?: Manifest;
   downloadedManifest?: Manifest;
   rollback?: UpdatesNativeStateRollback;
   checkError?: Error;
   downloadError?: Error;
   lastCheckForUpdateTime?: Date;
+  sequenceNumber: number;
+  downloadProgress: number;
 };
 
 /**

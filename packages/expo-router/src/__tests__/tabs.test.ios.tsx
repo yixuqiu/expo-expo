@@ -1,0 +1,706 @@
+import { fireEvent, act, screen } from '@testing-library/react-native';
+import { Text, View } from 'react-native';
+
+import { router } from '../exports';
+import { navigationRef } from '../global-state/navigationRef';
+import { useLocalSearchParams, useSegments } from '../hooks';
+import { Stack } from '../layouts/Stack';
+import { Tabs } from '../layouts/Tabs';
+import { renderRouter } from '../testing-library';
+
+it('should not render generated screens', async () => {
+  await renderRouter({
+    _layout: () => (
+      <Tabs>
+        <Tabs.Screen name="index" />
+      </Tabs>
+    ),
+    index: () => <Text testID="index">Index</Text>,
+  });
+
+  expect(screen.getByTestId('index')).toBeVisible();
+
+  const tabList = screen.getByLabelText('index, tab, 1 of 1').parent;
+
+  expect(tabList?.children).toHaveLength(1);
+});
+
+it('only layout-declared screens render tab items', async () => {
+  await renderRouter({
+    _layout: () => (
+      <Tabs>
+        <Tabs.Screen name="visible" />
+      </Tabs>
+    ),
+    index: () => <Text testID="index">Index</Text>,
+    hidden: () => <Text testID="hidden">Hidden</Text>,
+    visible: () => <Text testID="visible">Visible</Text>,
+  });
+
+  const tabList = screen.getByLabelText('visible, tab, 1 of 1').parent;
+
+  expect(tabList?.children).toHaveLength(1);
+  expect(screen.queryByTestId('index')).toBeNull();
+  expect(screen.queryByTestId('hidden')).toBeNull();
+  expect(screen.getByTestId('visible')).toBeVisible();
+});
+
+it('has correct routeInfo when switching tabs as a nested navigator - using api', async () => {
+  const layoutCalls = jest.fn();
+  const indexCalls = jest.fn();
+  const exploreCalls = jest.fn();
+
+  /**
+   * In this instance, React Navigation fires the state update before the screen is rendered.
+   */
+  await renderRouter(
+    {
+      _layout: () => <Stack />,
+      '(tabs)/_layout': function Layout() {
+        layoutCalls(useSegments());
+        return (
+          <Tabs>
+            <Tabs.Screen name="index" />
+            <Tabs.Screen name="explore" />
+          </Tabs>
+        );
+      },
+      '(tabs)/index': function Index() {
+        indexCalls(useSegments());
+        return <Text testID="index">Index</Text>;
+      },
+      '(tabs)/explore': function Explore() {
+        exploreCalls(useSegments());
+        return <Text testID="explore">Explore</Text>;
+      },
+    },
+    {
+      initialUrl: '/?test=123',
+    }
+  );
+
+  expect(layoutCalls).toHaveBeenCalledTimes(1);
+  expect(layoutCalls).toHaveBeenNthCalledWith(1, ['(tabs)']);
+
+  expect(indexCalls).toHaveBeenCalledTimes(1);
+  expect(indexCalls).toHaveBeenCalledWith(['(tabs)']);
+
+  expect(exploreCalls).not.toHaveBeenCalled();
+
+  jest.clearAllMocks();
+  await act(() => router.push('/explore'));
+
+  expect(layoutCalls).toHaveBeenCalledTimes(1);
+  expect(layoutCalls).toHaveBeenNthCalledWith(1, ['(tabs)', 'explore']);
+
+  expect(indexCalls).toHaveBeenCalledTimes(1);
+  expect(indexCalls).toHaveBeenCalledWith(['(tabs)', 'explore']);
+
+  expect(exploreCalls).toHaveBeenCalledTimes(1);
+  expect(exploreCalls).toHaveBeenCalledWith(['(tabs)', 'explore']);
+
+  jest.clearAllMocks();
+  await act(() => router.push('/'));
+
+  expect(layoutCalls).toHaveBeenCalledTimes(1);
+  expect(layoutCalls).toHaveBeenNthCalledWith(1, ['(tabs)']);
+
+  expect(indexCalls).toHaveBeenCalledTimes(1);
+  expect(indexCalls).toHaveBeenCalledWith(['(tabs)']);
+
+  expect(exploreCalls).toHaveBeenCalledTimes(1);
+  expect(exploreCalls).toHaveBeenCalledWith(['(tabs)']);
+});
+
+it('has correct routeInfo when switching tabs as a nested navigator - using press', async () => {
+  /**
+   * This test exists because there are inconsistencies when using press vs the API.
+   * This is due to how React Navigation fires events on press (inconsistent) vs API calls (consistent).
+   */
+  const layoutCalls = jest.fn();
+  const indexCalls = jest.fn();
+  const exploreCalls = jest.fn();
+
+  /**
+   * In this instance, React Navigation fires the state update before the screen is rendered.
+   */
+  await renderRouter(
+    {
+      _layout: () => <Stack />,
+      '(tabs)/_layout': function Layout() {
+        layoutCalls(useSegments());
+        return (
+          <Tabs>
+            <Tabs.Screen name="index" />
+            <Tabs.Screen name="explore" />
+          </Tabs>
+        );
+      },
+      '(tabs)/index': function Index() {
+        indexCalls(useSegments());
+        return <Text testID="index">Index</Text>;
+      },
+      '(tabs)/explore': function Explore() {
+        exploreCalls(useSegments());
+        return <Text testID="explore">Explore</Text>;
+      },
+    },
+    {
+      initialUrl: '/?test=123',
+    }
+  );
+
+  expect(layoutCalls).toHaveBeenCalledTimes(1);
+  expect(layoutCalls).toHaveBeenCalledWith(['(tabs)']);
+
+  expect(indexCalls).toHaveBeenCalledTimes(1);
+  expect(indexCalls).toHaveBeenCalledWith(['(tabs)']);
+
+  expect(exploreCalls).toHaveBeenCalledTimes(0);
+
+  jest.clearAllMocks();
+  await fireEvent.press(screen.getByLabelText('explore, tab, 2 of 2'));
+
+  expect(layoutCalls).toHaveBeenCalledTimes(1);
+  expect(layoutCalls).toHaveBeenCalledWith(['(tabs)', 'explore']);
+
+  expect(indexCalls).toHaveBeenCalledTimes(1);
+  expect(indexCalls).toHaveBeenCalledWith(['(tabs)', 'explore']);
+
+  expect(exploreCalls).toHaveBeenCalledTimes(1);
+  expect(exploreCalls).toHaveBeenCalledWith(['(tabs)', 'explore']);
+
+  jest.clearAllMocks();
+  await fireEvent.press(screen.getByLabelText('index, tab, 1 of 2'));
+
+  expect(layoutCalls).toHaveBeenCalledTimes(1);
+  expect(layoutCalls).toHaveBeenNthCalledWith(1, ['(tabs)']);
+
+  expect(indexCalls).toHaveBeenCalledTimes(1);
+  expect(indexCalls).toHaveBeenCalledWith(['(tabs)']);
+
+  expect(exploreCalls).toHaveBeenCalledTimes(1);
+  expect(exploreCalls).toHaveBeenCalledWith(['(tabs)']);
+
+  jest.clearAllMocks();
+  await fireEvent.press(screen.getByLabelText('explore, tab, 2 of 2'));
+
+  expect(layoutCalls).toHaveBeenCalledTimes(1);
+  expect(layoutCalls).toHaveBeenNthCalledWith(1, ['(tabs)', 'explore']);
+
+  expect(indexCalls).toHaveBeenCalledTimes(1);
+  expect(indexCalls).toHaveBeenCalledWith(['(tabs)', 'explore']);
+
+  expect(exploreCalls).toHaveBeenCalledTimes(1);
+  expect(exploreCalls).toHaveBeenCalledWith(['(tabs)', 'explore']);
+});
+
+it('has correct routeInfo when switching tabs using press', async () => {
+  /**
+   * This test exists because there are inconsistencies when using press vs the API.
+   * This is due to how React Navigation fires events on press (inconsistent) vs API calls (consistent).
+   */
+  const layoutCalls = jest.fn();
+  const indexCalls = jest.fn();
+  const exploreCalls = jest.fn();
+
+  /**
+   * In this instance, React Navigation fires the state update before the screen is rendered.
+   */
+  await renderRouter(
+    {
+      _layout: function Layout() {
+        layoutCalls(useSegments());
+        return (
+          <Tabs>
+            <Tabs.Screen name="index" />
+            <Tabs.Screen name="explore" />
+          </Tabs>
+        );
+      },
+      index: function Index() {
+        indexCalls(useSegments());
+        return <Text testID="index">Index</Text>;
+      },
+      explore: function Explore() {
+        exploreCalls(useSegments());
+        return <Text testID="explore">Explore</Text>;
+      },
+    },
+    {
+      initialUrl: '/explore',
+    }
+  );
+
+  expect(layoutCalls).toHaveBeenCalledTimes(1);
+  expect(layoutCalls).toHaveBeenCalledWith(['explore']);
+
+  expect(exploreCalls).toHaveBeenCalledTimes(1);
+  expect(exploreCalls).toHaveBeenCalledWith(['explore']);
+
+  expect(indexCalls).toHaveBeenCalledTimes(0);
+
+  jest.clearAllMocks();
+  await fireEvent.press(screen.getByLabelText('index, tab, 1 of 2'));
+
+  expect(layoutCalls).toHaveBeenCalledTimes(1);
+  expect(layoutCalls).toHaveBeenNthCalledWith(1, []);
+
+  expect(indexCalls).toHaveBeenCalledTimes(1);
+  expect(indexCalls).toHaveBeenCalledWith([]);
+
+  expect(exploreCalls).toHaveBeenCalledTimes(1);
+  expect(exploreCalls).toHaveBeenCalledWith([]);
+
+  jest.clearAllMocks();
+  await fireEvent.press(screen.getByLabelText('explore, tab, 2 of 2'));
+
+  expect(layoutCalls).toHaveBeenCalledTimes(1);
+  expect(layoutCalls).toHaveBeenCalledWith(['explore']);
+
+  expect(indexCalls).toHaveBeenCalledTimes(1);
+  expect(indexCalls).toHaveBeenCalledWith(['explore']);
+
+  expect(exploreCalls).toHaveBeenCalledTimes(1);
+  expect(exploreCalls).toHaveBeenCalledWith(['explore']);
+
+  jest.clearAllMocks();
+  await fireEvent.press(screen.getByLabelText('index, tab, 1 of 2'));
+
+  expect(layoutCalls).toHaveBeenCalledTimes(1);
+  expect(layoutCalls).toHaveBeenNthCalledWith(1, []);
+
+  expect(indexCalls).toHaveBeenCalledTimes(1);
+  expect(indexCalls).toHaveBeenCalledWith([]);
+
+  expect(exploreCalls).toHaveBeenCalledTimes(1);
+  expect(exploreCalls).toHaveBeenCalledWith([]);
+});
+
+it('can push screens', async () => {
+  await renderRouter(
+    {
+      _layout: () => (
+        <Tabs>
+          <Tabs.Screen name="one" />
+          <Tabs.Screen name="two" />
+        </Tabs>
+      ),
+      one: () => <Text testID="one">One</Text>,
+      two: () => <Text testID="two">Two</Text>,
+    },
+    {
+      initialUrl: '/one',
+    }
+  );
+
+  expect(screen.getByTestId('one')).toBeVisible();
+
+  await act(() => router.push('/two'));
+
+  expect(screen.getByTestId('two')).toBeVisible();
+});
+
+it('works with goBack', async () => {
+  await renderRouter(
+    {
+      _layout: () => (
+        <Tabs>
+          <Tabs.Screen name="one" />
+          <Tabs.Screen name="two" />
+          <Tabs.Screen name="three" />
+        </Tabs>
+      ),
+      one: () => <Text testID="one">One</Text>,
+      two: () => <Text testID="two">Two</Text>,
+      three: () => <Text testID="three">Three</Text>,
+    },
+    {
+      initialUrl: '/one',
+    }
+  );
+
+  expect(screen.getByTestId('one')).toBeVisible();
+
+  await act(() => router.push('/two'));
+  await act(() => router.push('/three'));
+
+  expect(screen.getByTestId('three')).toBeVisible();
+
+  await act(() => router.back());
+
+  // The default back behavior of tabs is first screen
+  expect(screen.getByTestId('one')).toBeVisible();
+});
+
+it('works with goBack (history)', async () => {
+  await renderRouter(
+    {
+      _layout: () => (
+        <Tabs backBehavior="history">
+          <Tabs.Screen name="one" />
+          <Tabs.Screen name="two" />
+          <Tabs.Screen name="three" />
+        </Tabs>
+      ),
+      one: () => <Text testID="one">One</Text>,
+      two: () => <Text testID="two">Two</Text>,
+      three: () => <Text testID="three">Three</Text>,
+    },
+    {
+      initialUrl: '/one',
+    }
+  );
+
+  expect(screen.getByTestId('one')).toBeVisible();
+
+  await act(() => router.push('/two'));
+  await act(() => router.push('/three'));
+
+  expect(screen.getByTestId('three')).toBeVisible();
+
+  await act(() => router.back());
+
+  expect(screen.getByTestId('two')).toBeVisible();
+});
+
+it('can use replace navigation', async () => {
+  await renderRouter(
+    {
+      _layout: () => (
+        <Tabs>
+          <Tabs.Screen name="one" />
+          <Tabs.Screen name="two" />
+        </Tabs>
+      ),
+      one: () => <Text testID="one">One</Text>,
+      two: () => <Text testID="two">Two</Text>,
+    },
+    {
+      initialUrl: '/one',
+    }
+  );
+
+  // The Tabs
+  expect(screen.getByLabelText('one, tab, 1 of 2')).toBeVisible();
+  expect(screen.getByLabelText('two, tab, 2 of 2')).toBeVisible();
+
+  expect(screen.getByTestId('one')).toBeVisible();
+
+  await act(() => router.replace('/two'));
+  expect(screen.getByTestId('two')).toBeVisible();
+  expect(screen.getByLabelText('two, tab, 2 of 2')).toBeVisible();
+  expect(navigationRef.getRootState()).toStrictEqual({
+    index: 0,
+    key: expect.any(String),
+    routeNames: ['__root', '+not-found', '_sitemap'],
+    routes: [
+      {
+        key: expect.any(String),
+        name: '__root',
+        state: {
+          history: [
+            {
+              key: expect.any(String),
+              type: 'route',
+            },
+          ],
+          index: 1,
+          key: expect.any(String),
+          routeNames: ['one', 'two'],
+          routes: [
+            {
+              key: expect.any(String),
+              name: 'one',
+              path: '/one',
+            },
+            {
+              key: expect.any(String),
+              name: 'two',
+              params: {},
+            },
+          ],
+          stale: false,
+          routeKeySeq: expect.any(Number),
+          type: 'tab',
+        },
+      },
+    ],
+    stale: false,
+    routeKeySeq: expect.any(Number),
+  });
+});
+
+it('can use replace navigation with history backBehavior', async () => {
+  await renderRouter(
+    {
+      _layout: () => (
+        <Tabs backBehavior="history">
+          <Tabs.Screen name="one" />
+          <Tabs.Screen name="two" />
+          <Tabs.Screen name="three" />
+        </Tabs>
+      ),
+      one: () => <Text testID="one">One</Text>,
+      two: () => <Text testID="two">Two</Text>,
+      three: () => <Text testID="three">Three</Text>,
+    },
+    {
+      initialUrl: '/one',
+    }
+  );
+
+  expect(screen.getByTestId('one')).toBeVisible();
+
+  await act(() => router.push('/two'));
+  await act(() => router.replace('/three'));
+
+  expect(screen.getByTestId('three')).toBeVisible();
+
+  await act(() => router.back());
+
+  expect(screen.getByTestId('one')).toBeVisible();
+});
+
+it('does not re-render when navigating to different tab', async () => {
+  const onOneRender = jest.fn();
+  const onTwoRender = jest.fn();
+  await renderRouter(
+    {
+      _layout: () => (
+        <Tabs>
+          <Tabs.Screen name="one" />
+          <Tabs.Screen name="two" />
+        </Tabs>
+      ),
+      one: function One() {
+        onOneRender();
+        return <Text testID="one">One</Text>;
+      },
+      two: function Two() {
+        onTwoRender();
+        return <Text testID="two">Two</Text>;
+      },
+    },
+    {
+      initialUrl: '/one',
+    }
+  );
+
+  expect(screen.getByTestId('one')).toBeVisible();
+  expect(onOneRender).toHaveBeenCalledTimes(1);
+  expect(onTwoRender).toHaveBeenCalledTimes(0);
+
+  jest.clearAllMocks();
+  await act(() => router.push('/two'));
+
+  expect(screen.getByTestId('two')).toBeVisible();
+  expect(onOneRender).toHaveBeenCalledTimes(0);
+  expect(onTwoRender).toHaveBeenCalledTimes(1);
+
+  jest.clearAllMocks();
+  await act(() => router.push('/one'));
+
+  expect(screen.getByTestId('one')).toBeVisible();
+  expect(onOneRender).toHaveBeenCalledTimes(0);
+  expect(onTwoRender).toHaveBeenCalledTimes(0);
+});
+
+it('updates route info, when going back to initial screen', async () => {
+  await renderRouter({
+    _layout: function Layout() {
+      const segments = useSegments();
+      return (
+        <View>
+          <Text testID="layout">{JSON.stringify(segments)}</Text>
+          <Stack />
+        </View>
+      );
+    },
+    '(tabs)/_layout': () => (
+      <Tabs>
+        <Tabs.Screen name="index" />
+      </Tabs>
+    ),
+    '(tabs)/index': function Index() {
+      const segments = useSegments();
+      return <Text testID="index">{JSON.stringify(segments)}</Text>;
+    },
+    second: function Second() {
+      const segments = useSegments();
+      return <Text testID="second">{JSON.stringify(segments)}</Text>;
+    },
+  });
+
+  expect(screen.getByTestId('index')).toBeVisible();
+  expect(screen.getByTestId('layout')).toBeVisible();
+  expect(screen.getByTestId('index')).toHaveTextContent('["(tabs)"]');
+  expect(screen.getByTestId('layout')).toHaveTextContent('["(tabs)"]');
+
+  await act(() => router.push('/second'));
+  expect(screen.getByTestId('second')).toBeVisible();
+  expect(screen.getByTestId('layout')).toBeVisible();
+  expect(screen.getByTestId('second')).toHaveTextContent('["second"]');
+  expect(screen.getByTestId('layout')).toHaveTextContent('["second"]');
+
+  await act(() => router.back());
+  expect(screen.getByTestId('index')).toBeVisible();
+  expect(screen.getByTestId('layout')).toBeVisible();
+  expect(screen.getByTestId('index')).toHaveTextContent('["(tabs)"]');
+  expect(screen.getByTestId('layout')).toHaveTextContent('["(tabs)"]');
+
+  await act(() => router.push('/second'));
+  expect(screen.getByTestId('second')).toBeVisible();
+  expect(screen.getByTestId('layout')).toBeVisible();
+  expect(screen.getByTestId('second')).toHaveTextContent('["second"]');
+  expect(screen.getByTestId('layout')).toHaveTextContent('["second"]');
+
+  await act(() => router.back());
+  expect(screen.getByTestId('index')).toBeVisible();
+  expect(screen.getByTestId('layout')).toBeVisible();
+  expect(screen.getByTestId('index')).toHaveTextContent('["(tabs)"]');
+  expect(screen.getByTestId('layout')).toHaveTextContent('["(tabs)"]');
+});
+
+it('can set params for dynamic routes using href', async () => {
+  await renderRouter({
+    _layout: () => (
+      <Tabs>
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="[id]" options={{ href: '/1234' }} />
+      </Tabs>
+    ),
+    index: () => <Text testID="index">Index</Text>,
+    '[id]': function Id() {
+      const { id } = useLocalSearchParams();
+      return <Text testID="id">{id}</Text>;
+    },
+  });
+
+  expect(screen.getByTestId('index')).toBeVisible();
+  expect(screen.getByLabelText('index, tab, 1 of 2')).toBeVisible();
+  expect(screen.getByLabelText('[id], tab, 2 of 2')).toBeVisible();
+
+  await fireEvent.press(screen.getByLabelText('[id], tab, 2 of 2'));
+
+  expect(screen.getByTestId('id')).toBeVisible();
+  expect(screen.getByTestId('id')).toHaveTextContent('1234');
+});
+
+it('can set params for dynamic routes using href in nested folder', async () => {
+  await renderRouter({
+    _layout: () => (
+      <Tabs>
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="[id]/index" options={{ href: '/1234' }} />
+        <Tabs.Screen name="[id]/second" options={{ href: '/2345/second' }} />
+      </Tabs>
+    ),
+    index: () => <Text testID="index">Index</Text>,
+    '[id]/index': function Id() {
+      const { id } = useLocalSearchParams();
+      return <Text testID="id-index">{id}</Text>;
+    },
+    '[id]/second': function Id() {
+      const { id } = useLocalSearchParams();
+      return <Text testID="id-second">{id}</Text>;
+    },
+  });
+
+  expect(screen.getByTestId('index')).toBeVisible();
+  expect(screen.getByLabelText('index, tab, 1 of 3')).toBeVisible();
+  expect(screen.getByLabelText('[id]/index, tab, 2 of 3')).toBeVisible();
+  expect(screen.getByLabelText('[id]/second, tab, 3 of 3')).toBeVisible();
+
+  await fireEvent.press(screen.getByLabelText('[id]/index, tab, 2 of 3'));
+
+  expect(screen.getByTestId('id-index')).toBeVisible();
+  expect(screen.getByTestId('id-index')).toHaveTextContent('1234');
+
+  await fireEvent.press(screen.getByLabelText('[id]/second, tab, 3 of 3'));
+
+  expect(screen.getByTestId('id-second')).toBeVisible();
+  expect(screen.getByTestId('id-second')).toHaveTextContent('2345');
+});
+
+it('can set params for dynamic routes using href when nested stack is used', async () => {
+  await renderRouter({
+    _layout: () => (
+      <Tabs>
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="[id]" options={{ href: '/1234' }} />
+      </Tabs>
+    ),
+    index: () => <Text testID="index">Index</Text>,
+    '[id]/_layout': () => <Stack />,
+    '[id]/index': function Id() {
+      const { id } = useLocalSearchParams();
+      return <Text testID="id-index">{id}</Text>;
+    },
+  });
+
+  expect(screen.getByTestId('index')).toBeVisible();
+  expect(screen.getByLabelText('index, tab, 1 of 2')).toBeVisible();
+  expect(screen.getByLabelText('[id], tab, 2 of 2')).toBeVisible();
+
+  await fireEvent.press(screen.getByLabelText('[id], tab, 2 of 2'));
+
+  expect(screen.getByTestId('id-index')).toBeVisible();
+  expect(screen.getByTestId('id-index')).toHaveTextContent('1234');
+});
+
+it('warns when the layout uses an anchor', async () => {
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+  try {
+    await renderRouter(
+      {
+        _layout: {
+          unstable_settings: { anchor: 'a' },
+          default: () => (
+            <Tabs>
+              <Tabs.Screen name="a" />
+              <Tabs.Screen name="b" />
+            </Tabs>
+          ),
+        },
+        a: () => null,
+        b: () => null,
+      },
+      { initialUrl: '/b' }
+    );
+
+    expect(warn).toHaveBeenCalledWith(
+      'The navigator at "./_layout.js" sets the anchor "a", but its `backBehavior` is "firstRoute". Non-stack navigators go back to the anchor only when `backBehavior` is "initialRoute". Set `backBehavior` to "initialRoute", or remove the anchor.'
+    );
+  } finally {
+    warn.mockRestore();
+  }
+});
+
+it('does not warn when the layout uses an anchor with the initialRoute back behavior', async () => {
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+  try {
+    await renderRouter(
+      {
+        'inner/_layout': {
+          unstable_settings: { anchor: 'a' },
+          default: () => (
+            <Tabs backBehavior="initialRoute">
+              <Tabs.Screen name="a" />
+              <Tabs.Screen name="b" />
+            </Tabs>
+          ),
+        },
+        'inner/a': () => null,
+        'inner/b': () => null,
+      },
+      { initialUrl: '/inner/b' }
+    );
+
+    expect(warn).not.toHaveBeenCalled();
+  } finally {
+    warn.mockRestore();
+  }
+});

@@ -2,6 +2,7 @@ import spawnAsync from '@expo/spawn-async';
 
 import * as Log from '../../../../log';
 import {
+  bootDeviceAsync,
   getContainerPathAsync,
   getDevicesAsync,
   getInfoPlistValueAsync,
@@ -29,9 +30,9 @@ describe(getDevicesAsync, () => {
       stdout: 'foobar',
     } as any);
 
-    await expect(getDevicesAsync()).rejects.toThrowError();
+    await expect(getDevicesAsync()).rejects.toThrow();
     // Blame for the error.
-    expect(Log.error).toBeCalledWith(expect.stringMatching(/Apple's simctl/));
+    expect(Log.error).toHaveBeenCalledWith(expect.stringMatching(/Apple's simctl/));
   });
 
   it(`returns a list of devices`, async () => {
@@ -75,6 +76,26 @@ describe(getInfoPlistValueAsync, () => {
   });
 });
 
+describe(bootDeviceAsync, () => {
+  it(`does not throw when device is already booted`, async () => {
+    jest.mocked(spawnAsync).mockRejectedValueOnce({
+      stderr: 'Unable to boot device in current state: Booted',
+    });
+
+    await expect(bootDeviceAsync({ udid: 'fake-udid' })).resolves.toBeUndefined();
+  });
+
+  it(`throws with troubleshooting link when boot fails`, async () => {
+    jest.mocked(spawnAsync).mockRejectedValueOnce(
+      Object.assign(new Error('xcrun simctl boot exited with non-zero code: 148'), {
+        stderr: 'Unable to boot device in current state: Creating',
+      })
+    );
+
+    await expect(bootDeviceAsync({ udid: 'fake-udid' })).rejects.toThrow(/Troubleshooting guide/);
+  });
+});
+
 describe(getContainerPathAsync, () => {
   it(`returns container path`, async () => {
     jest.mocked(spawnAsync).mockResolvedValueOnce({
@@ -85,7 +106,7 @@ describe(getContainerPathAsync, () => {
       '/path/to/my-app.app'
     );
 
-    expect(spawnAsync).toBeCalledWith(
+    expect(spawnAsync).toHaveBeenCalledWith(
       'xcrun',
       ['simctl', 'get_app_container', 'booted', 'foobar'],
       undefined

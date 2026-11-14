@@ -1,29 +1,28 @@
-// Forked from React Navigation in order to use a custom `useLinking` function.
-// https://github.com/react-navigation/react-navigation/blob/6.x/packages/native/src/NavigationContainer.tsx
-import {
-  BaseNavigationContainer,
-  getActionFromState,
-  getPathFromState,
-  getStateFromPath,
+import React from 'react';
+import { I18nManager } from 'react-native';
+
+import type { RouteNode } from '../Route';
+import { RouterConfigContext } from '../global-state/routerConfigContext';
+import { BaseNavigationContainer } from '../react-navigation/core/BaseNavigationContainer';
+import type {
+  LinkingOptions,
+  LocaleDirection,
   NavigationContainerProps,
+  NavigationState,
   NavigationContainerRef,
   ParamListBase,
-  validatePathConfig,
-} from '@react-navigation/core';
+} from '../react-navigation/native';
 import {
   DefaultTheme,
-  ThemeProvider,
-  DocumentTitleOptions,
-  LinkingOptions,
   LinkingContext,
-  Theme,
-} from '@react-navigation/native';
-import useBackButton from '@react-navigation/native/src/useBackButton';
-import useDocumentTitle from '@react-navigation/native/src/useDocumentTitle';
-import useThenable from '@react-navigation/native/src/useThenable';
-import * as React from 'react';
-
-import useLinking from './useLinking';
+  LocaleDirContext,
+  ThemeProvider,
+} from '../react-navigation/native';
+import { getPathFromState } from './getPathFromState';
+import { getStateFromPath } from './getStateFromPath';
+import { useBackButton } from './useBackButton';
+import { useLinking } from './useLinking';
+import { validatePathConfig } from './validatePathConfig';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -33,123 +32,138 @@ declare global {
   >;
 }
 
-global.REACT_NAVIGATION_DEVTOOLS = new WeakMap();
+globalThis.REACT_NAVIGATION_DEVTOOLS = new WeakMap();
 
-type Props<ParamList extends object> = NavigationContainerProps & {
-  theme?: Theme;
+type Props<ParamList extends object> = Omit<NavigationContainerProps, 'initialState'> & {
+  direction?: LocaleDirection;
   linking?: LinkingOptions<ParamList>;
   fallback?: React.ReactNode;
-  documentTitle?: DocumentTitleOptions;
-  onReady?: () => void;
 };
 
 /**
  * Container component which holds the navigation state designed for React Native apps.
  * This should be rendered at the root wrapping the whole app.
  *
- * @param props.initialState Initial state object for the navigation tree. When deep link handling is enabled, this will override deep links when specified. Make sure that you don't specify an `initialState` when there's a deep link (`Linking.getInitialURL()`).
- * @param props.onReady Callback which is called after the navigation tree mounts.
- * @param props.onStateChange Callback which is called with the latest navigation state when it changes.
- * @param props.theme Theme object for the navigators.
- * @param props.linking Options for deep linking. Deep link handling is enabled when this prop is provided, unless `linking.enabled` is `false`.
- * @param props.fallback Fallback component to render until we have finished getting initial state when linking is enabled. Defaults to `null`.
- * @param props.documentTitle Options to configure the document title on Web. Updating document title is handled by default unless `documentTitle.enabled` is `false`.
+ * @param props.direction Text direction of the components. Defaults to `'ltr'`.
+ * @param props.theme Theme object for the UI elements.
+ * @param props.linking Options for deep linking.
+ * @param props.fallback Fallback component to render until we have finished getting initial state. Defaults to `null`.
  * @param props.children Child elements to render the content.
  * @param props.ref Ref object which refers to the navigation object containing helper methods.
  */
-function NavigationContainerInner(
-  {
-    theme = DefaultTheme,
-    linking,
-    fallback = null,
-    documentTitle,
-    onReady,
-    ...rest
-  }: Props<ParamListBase>,
-  ref?: React.Ref<NavigationContainerRef<ParamListBase> | null>
-) {
-  const isLinkingEnabled = linking ? linking.enabled !== false : false;
+function NavigationContainerInner({
+  direction = I18nManager.getConstants().isRTL ? 'rtl' : 'ltr',
+  theme = DefaultTheme,
+  linking,
+  fallback = null,
+  ref,
+  ...rest
+}: Props<ParamListBase> & {
+  ref?: React.Ref<NavigationContainerRef<ParamListBase> | null>;
+}) {
+  const routerConfig = React.use(RouterConfigContext);
 
   if (linking?.config) {
     validatePathConfig(linking.config);
   }
 
-  const refContainer = React.useRef<NavigationContainerRef<ParamListBase>>(null);
+  const refContainer = React.useRef<NavigationContainerRef<ParamListBase> | null>(null);
 
   useBackButton(refContainer);
-  useDocumentTitle(refContainer, documentTitle);
 
   const { getInitialState } = useLinking(refContainer, {
-    independent: rest.independent,
-    enabled: isLinkingEnabled,
     prefixes: [],
     ...linking,
   });
 
+  const linkingContext = React.useMemo(() => ({ options: linking }), [linking]);
+  // Kept outside the Suspense boundary so a retry after loading reads the same promise.
+  const [initialState] = React.useState(getInitialState);
+
+  return (
+    <React.Suspense fallback={<ThemeProvider value={theme}>{fallback}</ThemeProvider>}>
+      <LocaleDirContext.Provider value={direction}>
+        <LinkingContext.Provider value={linkingContext}>
+          <InitialStateNavigationContainer
+            {...rest}
+            initialState={initialState}
+            linking={linking}
+            theme={theme}
+            routeNode={routerConfig?.routeNode ?? undefined}
+            containerRef={refContainer}
+            ref={ref}
+          />
+        </LinkingContext.Provider>
+      </LocaleDirContext.Provider>
+    </React.Suspense>
+  );
+}
+
+function InitialStateNavigationContainer({
+  initialState: initialStateOrPromise,
+  linking,
+  routeNode,
+  containerRef,
+  ref,
+  ...rest
+}: Omit<NavigationContainerProps, 'initialState'> & {
+  initialState: NavigationState | undefined | PromiseLike<NavigationState | undefined>;
+  linking: LinkingOptions<ParamListBase> | undefined;
+  routeNode: RouteNode | undefined;
+  containerRef: React.RefObject<NavigationContainerRef<ParamListBase> | null>;
+  ref?: React.Ref<NavigationContainerRef<ParamListBase> | null>;
+}) {
+  const initialState = isThenable(initialStateOrPromise)
+    ? React.use(initialStateOrPromise)
+    : initialStateOrPromise;
+  // Set here, not in the parent, so the ref is set once the container mounts after waiting.
+  React.useImperativeHandle(ref, () => containerRef.current!);
   // Add additional linking related info to the ref
   // This will be used by the devtools
   React.useEffect(() => {
-    if (refContainer.current) {
-      REACT_NAVIGATION_DEVTOOLS.set(refContainer.current, {
+    if (containerRef.current) {
+      REACT_NAVIGATION_DEVTOOLS.set(containerRef.current, {
         get linking() {
           return {
             ...linking,
-            enabled: isLinkingEnabled,
             prefixes: linking?.prefixes ?? [],
             getStateFromPath: linking?.getStateFromPath ?? getStateFromPath,
             getPathFromState: linking?.getPathFromState ?? getPathFromState,
-            getActionFromState: linking?.getActionFromState ?? getActionFromState,
           };
         },
       });
     }
   });
-
-  const [isResolved, initialState] = useThenable(getInitialState);
-
-  React.useImperativeHandle(ref, () => refContainer.current);
-
-  const linkingContext = React.useMemo(() => ({ options: linking }), [linking]);
-
-  const isReady = rest.initialState != null || !isLinkingEnabled || isResolved;
-
-  const onReadyRef = React.useRef(onReady);
-
-  React.useEffect(() => {
-    onReadyRef.current = onReady;
-  });
-
-  React.useEffect(() => {
-    if (isReady) {
-      onReadyRef.current?.();
-    }
-  }, [isReady]);
-
-  if (!isReady) {
-    // This is temporary until we have Suspense for data-fetching
-    // Then the fallback will be handled by a parent `Suspense` component
-    return fallback as React.ReactElement;
+  if (initialState === undefined) {
+    throw new Error(
+      'Linking did not produce an initial navigation state. Expo Router always seeds a complete initial state before rendering the navigation container, so this is most likely a bug in expo-router. Please report it at https://github.com/expo/expo/issues.'
+    );
   }
 
   return (
-    <LinkingContext.Provider value={linkingContext}>
-      <ThemeProvider value={theme}>
-        <BaseNavigationContainer
-          {...rest}
-          initialState={rest.initialState == null ? initialState : rest.initialState}
-          ref={refContainer}
-        />
-      </ThemeProvider>
-    </LinkingContext.Provider>
+    <BaseNavigationContainer
+      {...rest}
+      initialState={initialState}
+      UNSTABLE_routeNode={routeNode}
+      ref={containerRef}
+    />
   );
 }
 
-const NavigationContainer = React.forwardRef(NavigationContainerInner) as <
+function isThenable<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'then' in value &&
+    typeof value.then === 'function'
+  );
+}
+
+// The implementation uses the base param list, while callers retain their concrete route types.
+export const NavigationContainer = NavigationContainerInner as <
   RootParamList extends object = ReactNavigation.RootParamList,
 >(
   props: Props<RootParamList> & {
     ref?: React.Ref<NavigationContainerRef<RootParamList>>;
   }
 ) => React.ReactElement;
-
-export default NavigationContainer;

@@ -6,6 +6,8 @@ public enum FileSystemPermissionFlags {
   case write
 }
 
+let validSchemas = ["assets-library", "http", "https", "ph"]
+
 public struct FileSystemUtilities {
   @discardableResult
   public static func ensureDirExists(at url: URL?) -> Bool {
@@ -38,7 +40,6 @@ public struct FileSystemUtilities {
     guard let scheme = uri.scheme else {
       return [.none]
     }
-    let validSchemas = ["assets-library", "http", "https", "ph"]
 
     if validSchemas.contains(scheme) {
       return [.read]
@@ -51,27 +52,45 @@ public struct FileSystemUtilities {
     return [.none]
   }
 
+  public static func isReadableFile(_ appContext: AppContext?, _ uri: URL) -> Bool {
+    if(!permissions(appContext, for: uri).contains(.read)) {
+      return false
+    }
+
+    let validSchemas = ["assets-library", "http", "https", "ph"]
+
+    guard let scheme = uri.scheme else {
+      return false
+    }
+
+    if validSchemas.contains(scheme) {
+      return true
+    }
+
+    return FileManager.default.isReadableFile(atPath: uri.path)
+  }
+
   private static func getPathPermissions(_ appContext: AppContext?, for path: URL) -> [FileSystemPermissionFlags] {
     let permissionForInternalDirs = getInternalPathPermissions(appContext, for: path)
     if !permissionForInternalDirs.contains(.none) {
       return permissionForInternalDirs
     }
-    return getExternalPathPermissions(path)
+    return getExternalPathPermissions(path, appContext)
   }
 
-  private static func getInternalPathPermissions(_ appContext: AppContext?, for url: URL) -> [FileSystemPermissionFlags] {
+  public static func getInternalPathPermissions(_ appContext: AppContext?, for url: URL) -> [FileSystemPermissionFlags] {
     guard let appContext else {
       return [.none]
     }
 
-    let scopedDirs = [appContext.config.cacheDirectory, appContext.config.documentDirectory]
+    let scopedDirs = [appContext.config.cacheDirectory, appContext.config.documentDirectory] + appContext.config.appGroupSharedDirectories
     let standardizedPath = url.standardized.path
 
     for dir in scopedDirs {
       guard let dir else {
         continue
       }
-      if standardizedPath.hasPrefix(dir.appendingPathComponent("/").absoluteString) || standardizedPath == dir.absoluteString {
+      if standardizedPath.hasPrefix(dir.appendingPathComponent("/").path) || standardizedPath == dir.path {
         return [.read, .write]
       }
     }
@@ -84,17 +103,23 @@ public struct FileSystemUtilities {
     return [.none]
   }
 
-  private static func getExternalPathPermissions(_ url: URL) -> [FileSystemPermissionFlags] {
-    var filePermissions: [FileSystemPermissionFlags] = []
-
-    if FileManager.default.isReadableFile(atPath: url.path) {
-      filePermissions.append(.read)
+  private static func getExternalPathPermissions(_ url: URL, _ appContext: AppContext?) -> [FileSystemPermissionFlags] {
+    if appContext?.config.scoped ?? false && url.path.contains("ExponentExperienceData") {
+      return []
     }
 
-    if FileManager.default.isWritableFile(atPath: url.path) {
-      filePermissions.append(.write)
-    }
+    // Defer permission checks for external paths to the underlying system at the time of file operations
+    return [.read, .write]
+  }
 
-    return filePermissions
+  private static func getAppGroupSharedDirectories(_ appContext: AppContext) -> [String] {
+    let appGroups = appContext.appCodeSignEntitlements.appGroups ?? []
+    var appGroupSharedDirectories: [String] = []
+    for appGroup in appGroups {
+      if let directory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) {
+        appGroupSharedDirectories.append(directory.standardized.path)
+      }
+    }
+    return appGroups
   }
 }

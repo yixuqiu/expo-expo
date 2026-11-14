@@ -1,69 +1,19 @@
-import ComponentListScreen from './ComponentListScreen';
+import { memo } from 'react';
+
 import ExpoAPIIcon from '../components/ExpoAPIIcon';
+import { SearchToolbar } from '../navigation/StackConfig';
+import ComponentListScreen, { type ListElement } from './ComponentListScreen';
 
-const screens = [
-  'ActivityIndicator',
-  'BarCodeScanner',
-  'BlurView',
-  'Button',
-  'Camera',
-  'Camera (legacy)',
-  'Camera (barcode)',
-  'Camera (barcode from URL)',
-  'Checkbox',
-  'ClipboardPasteButton',
-  'DateTimePicker',
-  'DrawerLayoutAndroid',
-  'ExpoMaps',
-  'FlashList',
-  'GL',
-  'GestureHandlerList',
-  'GestureHandlerPinch',
-  'GestureHandlerSwipeable',
-  'Gif',
-  'HTML',
-  'Image',
-  'LinearGradient',
-  'Lottie',
-  'Maps',
-  'MaskedView',
-  'Modal',
-  'Picker',
-  'Pressable',
-  'QRCode',
-  'Reanimated',
-  'Skia',
-  'SVG',
-  'Screens',
-  'ScrollView',
-  'SegmentedControl',
-  'Slider',
-  'Switch',
-  'Symbols',
-  'Text',
-  'TextInput',
-  'TouchableBounce',
-  'Touchables',
-  'Video (expo-av)',
-  'Video (expo-video)',
-  'PagerView',
-  'WebView',
-];
-
-export const ScreenItems = screens.map((name) => ({
-  name,
-  route: `/components/${name.toLowerCase()}`,
-  // isAvailable: !!Screens[name],
-  isAvailable: true,
-}));
-
-export default function ExpoComponentsScreen() {
+export default memo(function ExpoComponentsScreen({ apis }: { apis: ListElement[] }) {
   return (
-    <ComponentListScreen
-      renderItemRight={({ name }: { name: string }) => (
-        <ExpoAPIIcon name={name} style={{ marginRight: 10, marginLeft: 6 }} />
-      )}
-      apis={ScreenItems}
-    />
+    <>
+      <SearchToolbar />
+      <ComponentListScreen
+        renderItemRight={({ name }: { name: string }) => (
+          <ExpoAPIIcon name={name} style={{ marginRight: 10, marginLeft: 6 }} />
+        )}
+        apis={apis}
+      />
+    </>
   );
-}
+});

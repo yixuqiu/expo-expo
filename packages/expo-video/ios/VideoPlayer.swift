@@ -5,21 +5,59 @@ import MediaPlayer
 import ExpoModulesCore
 
 internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObserverDelegate {
+  let videoSourceLoader = VideoSourceLoader()
   lazy var contentKeyManager = ContentKeyManager()
-  let observer: VideoPlayerObserver
+  var observer: VideoPlayerObserver?
+  lazy var subtitles: VideoPlayerSubtitles = VideoPlayerSubtitles(owner: self)
+  private var dangerousPropertiesStore = DangerousPropertiesStore()
+  lazy var audioTracks: VideoPlayerAudioTracks = VideoPlayerAudioTracks(owner: self)
+  lazy var seeker: VideoPlayerSeeker = VideoPlayerSeeker(player: self)
+  private var tracksLoadingTask: Task<(), Never>?
+  private let didRelease = Mutex(false)
 
   var loop = false
+  var audioMixingMode: AudioMixingMode = .auto {
+    didSet {
+      if oldValue != audioMixingMode {
+        VideoManager.shared.setAppropriateAudioSessionOrWarn()
+      }
+    }
+  }
   private(set) var isPlaying = false
   private(set) var status: PlayerStatus = .idle
+
   var playbackRate: Float = 1.0 {
     didSet {
       if oldValue != playbackRate {
-        safeEmit(event: "playbackRateChange", arguments: playbackRate, oldValue)
+        let payload = PlaybackRateChangedEventPayload(playbackRate: playbackRate, oldPlaybackRate: oldValue)
+        safeEmit(event: "playbackRateChange", payload: payload)
       }
-      if #available(iOS 16.0, *) {
-        pointer.defaultRate = playbackRate
+      if #available(iOS 16.0, tvOS 16.0, *) {
+        ref.defaultRate = playbackRate
       }
-      pointer.rate = playbackRate
+      if ref.rate != 0 {
+        ref.rate = playbackRate
+      }
+    }
+  }
+
+  var currentTime: Double {
+    get {
+      let currentTime = ref.currentTime().seconds
+      return currentTime.isNaN ? 0 : currentTime
+    }
+    set {
+      // Only clamp the lower limit, AVPlayer automatically clamps the upper limit.
+      let clampedTime = max(0, newValue)
+      let timeToSeek = CMTimeMakeWithSeconds(clampedTime, preferredTimescale: .max)
+
+      // AVPlayer can't apply the currentTime while the resource is loading. We will re-apply it after loading
+      if dangerousPropertiesStore.ownerIsReplacing {
+        dangerousPropertiesStore.currentTime = clampedTime
+        return
+      }
+
+      seeker.seek(to: timeToSeek)
     }
   }
 
@@ -33,31 +71,27 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
 
   var preservesPitch = true {
     didSet {
-      pointer.currentItem?.audioTimePitchAlgorithm = preservesPitch ? .spectral : .varispeed
+      ref.currentItem?.audioTimePitchAlgorithm = preservesPitch ? .spectral : .varispeed
     }
   }
 
   var volume: Float = 1.0 {
     didSet {
       if oldValue != volume {
-        let oldVolumeEvent = VolumeEvent(volume: oldValue, isMuted: isMuted)
-        let newVolumeEvent = VolumeEvent(volume: volume, isMuted: isMuted)
-
-        safeEmit(event: "volumeChange", arguments: newVolumeEvent, oldVolumeEvent)
+        let payload = VolumeChangedEventPayload(volume: volume, oldVolume: oldValue)
+        safeEmit(event: "volumeChange", payload: payload)
       }
-      pointer.volume = volume
+      ref.volume = volume
     }
   }
 
   var isMuted: Bool = false {
     didSet {
       if oldValue != isMuted {
-        let oldVolumeEvent = VolumeEvent(volume: volume, isMuted: oldValue)
-        let newVolumeEvent = VolumeEvent(volume: volume, isMuted: isMuted)
-
-        safeEmit(event: "volumeChange", arguments: newVolumeEvent, oldVolumeEvent)
+        let payload = MutedChangedEventPayload(muted: isMuted, oldMuted: oldValue)
+        safeEmit(event: "mutedChange", payload: payload)
       }
-      pointer.isMuted = isMuted
+      ref.isMuted = isMuted
       VideoManager.shared.setAppropriateAudioSessionOrWarn()
     }
   }
@@ -75,75 +109,321 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
     }
   }
 
-  override init(_ pointer: AVPlayer) {
-    observer = VideoPlayerObserver(player: pointer)
-    super.init(pointer)
-    observer.registerDelegate(delegate: self)
+  // TODO: @behenate - Once the Player instance is available in OnStartObserving we can automatically start/stop the interval.
+  var timeUpdateEventInterval: Double = 0 {
+    didSet {
+      if timeUpdateEventInterval <= 0 {
+        observer?.stopTimeUpdates()
+        return
+      }
+      observer?.startOrUpdateTimeUpdates(forInterval: timeUpdateEventInterval)
+    }
+  }
+
+  var currentLiveTimestamp: Double? {
+    guard let currentDate = ref.currentItem?.currentDate() else {
+      return nil
+    }
+    let timeIntervalSince = currentDate.timeIntervalSince1970
+    return Double(timeIntervalSince * 1000)
+  }
+
+  var currentOffsetFromLive: Double? {
+    guard let currentDate = ref.currentItem?.currentDate() else {
+      return nil
+    }
+    let timeIntervalSince = currentDate.timeIntervalSince1970
+    let unixTime = Date().timeIntervalSince1970
+    return unixTime - timeIntervalSince
+  }
+
+  var bufferOptions = BufferOptions() {
+    didSet {
+      ref.currentItem?.preferredForwardBufferDuration = bufferOptions.preferredForwardBufferDuration
+      ref.automaticallyWaitsToMinimizeStalling = bufferOptions.waitsToMinimizeStalling
+    }
+  }
+
+  var maxResolution: VideoSize? {
+    didSet {
+      let resolution = maxResolution?.toCGSize() ?? .zero
+      if resolution == .zero && maxResolution != nil {
+        appContext?.jsLogger.warn("[expo-video] Ignoring invalid `maxResolution`: `width` and `height` must both be greater than zero. Clearing the resolution limit.")
+        maxResolution = nil
+      }
+      ref.currentItem?.preferredMaximumResolution = resolution
+    }
+  }
+
+  var bufferedPosition: Double {
+    return getBufferedPosition()
+  }
+
+  private(set) var availableVideoTracks: [VideoTrack] = []
+  private(set) var currentVideoTrack: VideoTrack? {
+    didSet {
+      let payload = VideoTrackChangedEventPayload(videoTrack: currentVideoTrack, oldVideoTrack: oldValue)
+      safeEmit(event: "videoTrackChange", payload: payload)
+    }
+  }
+
+  convenience init(_ ref: AVPlayer, initialSource: VideoSource?, useSynchronousReplace: Bool = false) throws {
+    self.init(ref)
+
+    // While the replace task below is being created, the properties from the JS constructor will start getting applied
+    // Therefore we have to set the state as `loading` before the task is created to ensure that we don't lose any dangerous properties
+    dangerousPropertiesStore.ownerIsReplacing = initialSource != nil
+
+    if useSynchronousReplace {
+      try replaceCurrentItem(with: initialSource)
+    } else {
+      Task {
+        try await replaceCurrentItem(with: initialSource)
+      }
+    }
+  }
+
+  private override init(_ ref: AVPlayer) {
+    super.init(ref)
+    observer = VideoPlayerObserver(owner: self, videoSourceLoader: videoSourceLoader)
+    observer?.registerDelegate(delegate: self)
     VideoManager.shared.register(videoPlayer: self)
+
+    // Disable automatic subtitle selection
+    let selectionCriteria = AVPlayerMediaSelectionCriteria(preferredLanguages: [], preferredMediaCharacteristics: [.legible])
+    ref.setMediaSelectionCriteria(selectionCriteria, forMediaCharacteristic: .legible)
   }
 
   deinit {
-    NowPlayingManager.shared.unregisterPlayer(self)
-    VideoManager.shared.unregister(videoPlayer: self)
-    observer.unregisterDelegate(delegate: self)
-    pointer.replaceCurrentItem(with: nil)
+    releasePlayer()
+  }
+
+  override func sharedObjectWillRelease() {
+    // Strong self capture is intentional: it keeps the player alive until the teardown
+    // has run on the main thread, so `deinit` can never race with it.
+    runOnMainThread {
+      self.releasePlayer()
+    }
   }
 
   func replaceCurrentItem(with videoSource: VideoSource?) throws {
+    dangerousPropertiesStore.ownerIsReplacing = true
+    do {
+      try replaceCurrentItemSynchronously(with: videoSource)
+    } catch {
+      endFailedReplace()
+      throw error
+    }
+  }
+
+  private func replaceCurrentItemSynchronously(with videoSource: VideoSource?) throws {
+    videoSourceLoader.cancelCurrentTask()
     guard
       let videoSource = videoSource,
-      let url = videoSource.uri
+      let playerItem = VideoPlayerItem(videoSource: videoSource)
     else {
-      pointer.replaceCurrentItem(with: nil)
+      clearCurrentItem()
       return
     }
 
-    let asset = AVURLAsset(url: url)
-    let playerItem = VideoPlayerItem(asset: asset, videoSource: videoSource)
+    // TODO: @behenate (SDK 55) completely remove support for synchronous `replaceCurrentItem` - it's not practical in any circumstance
+    if let url = videoSource.uri, url.isPHAssetUrl {
+      throw PlayerItemLoadException("The provided uri \(url) is a local PHAsset URL. This kind of URL can only be loaded asynchronously. Use `VideoPlayer.replaceAsync` in order to load this item")
+    }
 
     if let drm = videoSource.drm {
       try drm.type.assertIsSupported()
-      contentKeyManager.addContentKeyRequest(videoSource: videoSource, asset: asset)
+      contentKeyManager.addContentKeyRequest(videoSource: videoSource, asset: playerItem.urlAsset)
     }
 
     playerItem.audioTimePitchAlgorithm = preservesPitch ? .spectral : .varispeed
-    pointer.replaceCurrentItem(with: playerItem)
+    playerItem.preferredForwardBufferDuration = bufferOptions.preferredForwardBufferDuration
+
+    // The current item has to be replaced from the main thread. When replacing from other queues
+    // sometimes the KVOs will try to deliver updates after the item has been changed or player deallocated,
+    // which causes crashes.
+    DispatchQueue.main.async { [weak self] in
+      guard let self, !self.hasBeenReleased else {
+        return
+      }
+      self.ref.replaceCurrentItem(with: playerItem)
+      self.dangerousPropertiesStore.ownerIsReplacing = false
+      self.dangerousPropertiesStore.applyProperties(to: self)
+    }
   }
 
   /**
-   * iOS automatically pauses videos when the app enters the background. Only way to avoid this is to detach the player from the playerLayer.
-   * Typical way of doing this for `AVPlayerViewController` is setting `playerViewController.player = nil`, but that makes the
-   * video invisible for around a second after foregrounding, disabling the tracks requires more code, but works a lot faster.
+   * Replaces the current item, while loading the AVAsset on a different thread. The synchronous version can lock the main thread for extended periods of time.
    */
-  func setTracksEnabled(_ enabled: Bool) {
-    pointer.currentItem?.tracks.forEach({ track in
-      guard let assetTrack = track.assetTrack else {
+  func replaceCurrentItem(with videoSource: VideoSource?) async throws {
+    guard let videoSource, videoSource.uri != nil else {
+      clearCurrentItem()
+      return
+    }
+
+    dangerousPropertiesStore.ownerIsReplacing = true
+    do {
+      try await loadAndReplaceCurrentItem(with: videoSource)
+    } catch {
+      endFailedReplace()
+      throw error
+    }
+  }
+
+  private func loadAndReplaceCurrentItem(with videoSource: VideoSource) async throws {
+    guard let playerItem = try await videoSourceLoader.load(videoSource: videoSource) else {
+      // Resolve the promise without applying the source. The loading task has been cancelled.
+      // The caller that cancelled this task should handle dangerousPropertiesStore
+      return
+    }
+
+    if videoSource.drm != nil {
+      self.contentKeyManager.addContentKeyRequest(videoSource: videoSource, asset: playerItem.urlAsset)
+    }
+
+    playerItem.audioTimePitchAlgorithm = self.preservesPitch ? .spectral : .varispeed
+    playerItem.preferredForwardBufferDuration = self.bufferOptions.preferredForwardBufferDuration
+
+    // The current item has to be replaced from the main thread. When replacing from other queues
+    // sometimes the KVOs will try to deliver updates after the item has been changed or player deallocated,
+    // which causes crashes.
+    DispatchQueue.main.async { [weak self] in
+      guard let self, !self.hasBeenReleased else {
+        return
+      }
+      self.ref.replaceCurrentItem(with: playerItem)
+      dangerousPropertiesStore.ownerIsReplacing = false
+      dangerousPropertiesStore.applyProperties(to: self)
+    }
+  }
+
+  // Not dispatched to the main queue like the success path: JS can set `currentTime` as soon as the replace rejects.
+  // The flag is cleared first, so a value set in between is applied instead of being stored.
+  private func endFailedReplace() {
+    dangerousPropertiesStore.ownerIsReplacing = false
+    dangerousPropertiesStore.reset()
+  }
+
+  /**
+   * Reloads the current source on the existing `AVPlayer`, preserving the playhead and play state.
+   */
+  func reloadCurrentSource() {
+    guard let videoSource = (ref.currentItem as? VideoPlayerItem)?.videoSource else {
+      return
+    }
+
+    let resumeTime = currentTime
+    let wasPlaying = isPlaying
+
+    Task { [weak self] in
+      guard let self else {
         return
       }
 
-      if assetTrack.hasMediaCharacteristic(AVMediaCharacteristic.visual) {
-        track.isEnabled = enabled
+      if resumeTime > 0 {
+        self.dangerousPropertiesStore.currentTime = resumeTime
       }
-    })
+
+      do {
+        try await self.replaceCurrentItem(with: videoSource)
+      } catch {
+        log.warn("[expo-video] Failed to reload the video source while recovering a failed player: \(error.localizedDescription)")
+        return
+      }
+
+      if wasPlaying {
+        await MainActor.run {
+          self.ref.play()
+        }
+      }
+    }
+  }
+
+  func reloadIfFailed() {
+    if ref.status == .failed || ref.currentItem?.status == .failed {
+      reloadCurrentSource()
+    }
+  }
+
+  private func clearCurrentItem() {
+    videoSourceLoader.cancelCurrentTask()
+
+    DispatchQueue.main.async { [ref, dangerousPropertiesStore] in
+      ref.replaceCurrentItem(with: nil)
+      dangerousPropertiesStore.reset()
+      dangerousPropertiesStore.ownerIsReplacing = false
+    }
+    return
+  }
+
+  private func releasePlayer() {
+    let alreadyReleased = didRelease.withLock { didRelease in
+      defer {
+        didRelease = true
+      }
+      return didRelease
+    }
+    guard !alreadyReleased else {
+      return
+    }
+
+    observer?.notifyPlayerDeinit(player: self)
+    observer?.cleanup()
+    observer = nil
+    NowPlayingManager.shared.unregisterPlayer(self)
+    VideoManager.shared.unregister(videoPlayer: self)
+
+    videoSourceLoader.close()
+    tracksLoadingTask?.cancel()
+
+    // We have to replace from the main thread because of KVOs (see comment in VideoSourceLoader).
+    // Moreover, in this case we have to keep a strong reference to AVPlayer and remove its item
+    // If we don't do this AVPlayer doesn't get deallocated
+    runOnMainThread { [ref] in
+      ref.pause()
+      ref.replaceCurrentItem(with: nil)
+    }
+  }
+
+  private var hasBeenReleased: Bool {
+    return didRelease.withLock { $0 }
+  }
+
+  private func getBufferedPosition() -> Double {
+    guard let currentItem = ref.currentItem else {
+      return -1
+    }
+    let currentTime = ref.currentTime().seconds
+
+    for timeRange in currentItem.loadedTimeRanges {
+      let start = CMTimeGetSeconds(timeRange.timeRangeValue.start)
+      let end = CMTimeGetSeconds(timeRange.timeRangeValue.end)
+      if start <= currentTime && end >= currentTime {
+        return end
+      }
+    }
+    return 0
   }
 
   // MARK: - VideoPlayerObserverDelegate
 
   func onStatusChanged(player: AVPlayer, oldStatus: PlayerStatus?, newStatus: PlayerStatus, error: Exception?) {
-    let errorRecord = error != nil ? PlaybackError(message: error?.localizedDescription) : nil
-    safeEmit(event: "statusChange", arguments: newStatus.rawValue, oldStatus?.rawValue, errorRecord)
+    let errorRecord = error != nil ? PlaybackError(message: error?.description) : nil
+    let payload = StatusChangedEventPayload(status: newStatus, oldStatus: oldStatus, error: errorRecord)
+    safeEmit(event: "statusChange", payload: payload)
     status = newStatus
   }
 
   func onIsPlayingChanged(player: AVPlayer, oldIsPlaying: Bool?, newIsPlaying: Bool) {
-    safeEmit(event: "playingChange", arguments: newIsPlaying, oldIsPlaying)
+    let payload = IsPlayingEventPayload(isPlaying: newIsPlaying, oldIsPlaying: oldIsPlaying)
+    safeEmit(event: "playingChange", payload: payload)
     isPlaying = newIsPlaying
 
     VideoManager.shared.setAppropriateAudioSessionOrWarn()
   }
 
   func onRateChanged(player: AVPlayer, oldRate: Float?, newRate: Float) {
-    if #available(iOS 16.0, *) {
+    if #available(iOS 16.0, tvOS 16.0, *) {
       if player.defaultRate != playbackRate {
         // User changed the playback speed in the native controls. Update the desiredRate variable
         playbackRate = player.defaultRate
@@ -151,7 +431,7 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
     } else if newRate != 0 && newRate != playbackRate {
       // On iOS < 16 play() method always returns the rate to 1.0, we have to keep resetting it back to desiredRate
       // iOS < 16 uses an older player UI, so we don't have to worry about changes to the rate that come from the player UI
-      pointer.rate = playbackRate
+      ref.rate = playbackRate
     }
   }
 
@@ -166,18 +446,86 @@ internal final class VideoPlayer: SharedRef<AVPlayer>, Hashable, VideoPlayerObse
   func onPlayedToEnd(player: AVPlayer) {
     safeEmit(event: "playToEnd")
     if loop {
-      self.pointer.seek(to: .zero)
-      self.pointer.play()
+      seeker.seek(to: .zero)
+      self.ref.play()
     }
   }
 
   func onItemChanged(player: AVPlayer, oldVideoPlayerItem: VideoPlayerItem?, newVideoPlayerItem: VideoPlayerItem?) {
-    safeEmit(event: "sourceChange", arguments: newVideoPlayerItem?.videoSource, oldVideoPlayerItem?.videoSource)
+    let payload = SourceChangedEventPayload(
+      source: newVideoPlayerItem?.videoSource,
+      oldSource: oldVideoPlayerItem?.videoSource
+    )
+    safeEmit(event: "sourceChange", payload: payload)
+    newVideoPlayerItem?.preferredForwardBufferDuration = bufferOptions.preferredForwardBufferDuration
+    newVideoPlayerItem?.preferredMaximumResolution = maxResolution?.toCGSize() ?? .zero
   }
 
-  func safeEmit<each A: AnyArgument>(event: String, arguments: repeat each A) {
+  func onTimeUpdate(player: AVPlayer, timeUpdate: TimeUpdate) {
+    safeEmit(event: "timeUpdate", payload: timeUpdate)
+  }
+
+  func onLoadedPlayerItem(player: AVPlayer, playerItem: AVPlayerItem?) {
+    guard !hasBeenReleased else {
+      return
+    }
+    // Loading tracks requires doing some long tasks, this callback can be called from the main thread
+    // Which could cause hangs
+    tracksLoadingTask?.cancel()
+    tracksLoadingTask = Task {
+      let audioPayload = await self.audioTracks.onNewPlayerItemLoaded(playerItem: playerItem)
+      let subtitlesChangePayload = await self.subtitles.onNewPlayerItemLoaded(playerItem: playerItem)
+      let videoPlayerItem: VideoPlayerItem? = playerItem as? VideoPlayerItem
+
+      availableVideoTracks = await videoPlayerItem?.videoTracks ?? []
+
+      guard !Task.isCancelled else {
+        return
+      }
+
+      let videoSourceLoadedPayload = VideoSourceLoadedEventPayload(
+        videoSource: videoPlayerItem?.videoSource,
+        duration: playerItem?.duration.seconds,
+        availableVideoTracks: availableVideoTracks,
+        availableSubtitleTracks: subtitles.availableSubtitleTracks,
+        availableAudioTracks: audioTracks.availableAudioTracks
+      )
+
+      safeEmit(event: "sourceLoad", payload: videoSourceLoadedPayload)
+      safeEmit(event: "availableSubtitleTracksChange", payload: subtitlesChangePayload)
+      safeEmit(event: "availableAudioTracksChange", payload: audioPayload)
+    }
+  }
+
+  func onSubtitleSelectionChanged(player: AVPlayer, playerItem: AVPlayerItem?, subtitleTrack: SubtitleTrack?) {
+    let oldTrack = subtitles.currentSubtitleTrack
+    subtitles.onNewSubtitleTrackSelected(subtitleTrack: subtitleTrack)
+    let payload = SubtitleTrackChangedEventPayload(subtitleTrack: subtitles.currentSubtitleTrack, oldSubtitleTrack: oldTrack)
+    safeEmit(event: "subtitleTrackChange", payload: payload)
+  }
+
+  func onAudioTrackSelectionChanged(player: AVPlayer, playerItem: AVPlayerItem?, audioTrack: AudioTrack?) {
+    let oldTrack = audioTracks.currentAudioTrack
+    audioTracks.onNewAudioTrackSelected(audioTrack: audioTrack)
+    let payload = AudioTrackChangedEventPayload(audioTrack: audioTracks.currentAudioTrack, oldAudioTrack: oldTrack)
+    safeEmit(event: "audioTrackChange", payload: payload)
+  }
+
+  func onVideoTrackChanged(player: AVPlayer, oldVideoTrack: VideoTrack?, newVideoTrack: VideoTrack?) {
+    currentVideoTrack = newVideoTrack
+  }
+
+  func onIsExternalPlaybackActiveChanged(player: AVPlayer, oldIsExternalPlaybackActive: Bool?, newIsExternalPlaybackActive: Bool) {
+    let payload = IsExternalPlaybackActiveEventPayload(
+      isExternalPlaybackActive: newIsExternalPlaybackActive,
+      oldIsExternalPlaybackActive: oldIsExternalPlaybackActive
+    )
+    safeEmit(event: "isExternalPlaybackActiveChange", payload: payload)
+  }
+
+  func safeEmit(event: String, payload: Record? = nil) {
     if self.appContext != nil {
-      self.emit(event: event, arguments: repeat each arguments)
+      self.emit(event: event, payload: payload?.toDictionary(appContext: appContext))
     }
   }
 

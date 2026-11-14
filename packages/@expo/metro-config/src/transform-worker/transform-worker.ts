@@ -5,79 +5,252 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
-import countLines from 'metro/src/lib/countLines';
-import type {
-  JsTransformerConfig,
-  JsTransformOptions,
-  TransformResponse,
-} from 'metro-transform-worker';
 
+import type { JsTransformOptions } from '@expo/metro/metro-transform-worker';
+import countLines from '@expo/metro/metro/lib/countLines';
+import { relative, dirname } from 'node:path';
+
+import type { ExpoJsOutput } from '../serializer/jsOutput';
+import { toPosixPath } from '../utils/filePath';
+import { getBrowserslistTargets } from './browserslist';
+import type { Dependency } from './collect-dependencies';
 import { wrapDevelopmentCSS } from './css';
-import { matchCssModule, transformCssModuleWeb } from './css-modules';
+import {
+  collectCssImports,
+  matchCssModule,
+  printCssWarnings,
+  transformCssModuleWeb,
+} from './css-modules';
+import { parseEnvFile } from './dot-env-development';
+import { event, debugEvent } from './events';
 import * as worker from './metro-transform-worker';
 import { transformPostCssModule } from './postcss';
 import { compileSass, matchSass } from './sass';
-import { ExpoJsOutput, JsOutput } from '../serializer/jsOutput';
+import { transformShim } from './transformShim';
+import type { ExpoCustomTransformOptions, ExpoJsTransformerConfig } from './types';
+
+export interface TransformResponse {
+  readonly dependencies: readonly Dependency[];
+  readonly output: readonly ExpoJsOutput[];
+}
+
+function getStringArray(value: any): string[] | undefined {
+  if (!value) return undefined;
+  if (typeof value === 'string') {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    throw new Error('Expected an array of strings for the `clientBoundaries` option.');
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  throw new Error('Expected an array of strings for the `clientBoundaries` option.');
+}
 
 export async function transform(
-  config: JsTransformerConfig,
+  config: ExpoJsTransformerConfig,
   projectRoot: string,
   filename: string,
   data: Buffer,
   options: JsTransformOptions
 ): Promise<TransformResponse> {
-  const isCss = options.type !== 'asset' && /\.(s?css|sass)$/.test(filename);
-  // If the file is not CSS, then use the default behavior.
-  if (!isCss) {
+  const done = debugEvent.span();
+  try {
+    const result = await transformImpl(config, projectRoot, filename, data, options);
+    const customTransformOptions = options.customTransformOptions as
+      | ExpoCustomTransformOptions
+      | undefined;
+    if (customTransformOptions?.prewarm === '1') {
+      for (const output of result.output) {
+        (output as ExpoJsOutput).data.skipCache = true;
+      }
+    }
+    done('file', {
+      file: toPosixPath(filename),
+      platform: options.platform ?? null,
+      environment: customTransformOptions?.environment ?? null,
+      type: options.type,
+      deps: result.dependencies.length,
+      cached: false,
+    });
+    return result;
+  } catch (error) {
+    event('failed', { file: toPosixPath(filename), error: event.error(error as Error) });
+    throw error;
+  }
+}
+
+async function transformImpl(
+  config: ExpoJsTransformerConfig,
+  projectRoot: string,
+  filename: string,
+  data: Buffer,
+  options: JsTransformOptions
+): Promise<TransformResponse> {
+  const posixFilename = toPosixPath(filename);
+  if (
+    typeof options.customTransformOptions?.dom === 'string' &&
+    posixFilename.match(/expo\/dom\/entry\.js/)
+  ) {
+    // TODO: Find some method to do this without invalidating the cache between different DOM components.
+    // Inject source for DOM component entry.
+    const relativeDomComponentEntry = JSON.stringify(decodeURI(options.customTransformOptions.dom));
+    const src = `require('expo/dom/internal').registerDOMComponent(require(${relativeDomComponentEntry}).default);`;
+    return worker.transform(config, projectRoot, filename, Buffer.from(src), options);
+  }
+  if (posixFilename.match(/(^|\/)expo\/virtual\/rsc\.js/)) {
     const environment = options.customTransformOptions?.environment;
-    const isClientEnvironment = environment !== 'node' && environment !== 'react-server';
-    if (
-      isClientEnvironment &&
-      // TODO: Ensure this works with windows.
-      (filename.match(new RegExp(`^app/\\+html(\\.${options.platform})?\\.([tj]sx?|[cm]js)?$`)) ||
-        // Strip +api files.
-        filename.match(/\+api(\.(native|ios|android|web))?\.[tj]sx?$/))
-    ) {
-      // Remove the server-only +html file and API Routes from the bundle when bundling for a client environment.
-      return worker.transform(
-        config,
-        projectRoot,
-        filename,
-        !options.minify
-          ? Buffer.from(
-              // Use a string so this notice is visible in the bundle if the user is
-              // looking for it.
-              '"> The server-only file was removed from the client JS bundle by Expo CLI."'
-            )
-          : Buffer.from(''),
-        options
-      );
-    }
+    const isServer = environment === 'node' || environment === 'react-server';
 
-    if (
-      isClientEnvironment &&
-      !filename.match(/\/node_modules\//) &&
-      filename.match(/\+api(\.(native|ios|android|web))?\.[tj]sx?$/)
-    ) {
-      // Clear the contents of +api files when bundling for the client.
-      // This ensures that the client doesn't accidentally use the server-only +api files.
-      return worker.transform(config, projectRoot, filename, Buffer.from(''), options);
-    }
+    if (!isServer) {
+      const clientBoundaries = getStringArray(options.customTransformOptions?.clientBoundaries);
+      // Inject client boundaries into the root client bundle for production bundling.
+      if (clientBoundaries) {
+        debugEvent('client_boundaries:parsed', { boundaries: clientBoundaries });
 
-    return worker.transform(config, projectRoot, filename, data, options);
+        // Inject source
+        const src =
+          'module.exports = {\n' +
+          clientBoundaries
+            .map((boundary: string) => {
+              const serializedBoundary = JSON.stringify(boundary);
+              return `[\`$\{require.resolveWeak(${serializedBoundary})}\`]: /* ${boundary} */ () => import(${serializedBoundary}),`;
+            })
+            .join('\n') +
+          '\n};';
+
+        return worker.transform(
+          config,
+          projectRoot,
+          filename,
+          Buffer.from('/* RSC client boundaries */\n' + src),
+          options
+        );
+      }
+    }
   }
 
-  // If the platform is not web, then return an empty module.
-  if (options.platform !== 'web') {
-    const code = matchCssModule(filename) ? 'module.exports={ unstable_styles: {} };' : '';
+  if (options.type !== 'asset' && /\.(s?css|sass)$/.test(filename)) {
+    return transformCss(config, projectRoot, filename, data, options);
+  }
+
+  // If the file is not CSS, then use the default behavior.
+  const environment = options.customTransformOptions?.environment;
+  const isClientEnvironment = environment !== 'node' && environment !== 'react-server';
+  if (
+    isClientEnvironment &&
+    // TODO: Ensure this works with windows.
+    (filename.match(new RegExp(`^app/\\+html(\\.${options.platform})?\\.([tj]sx?|[cm]js)?$`)) ||
+      // Strip +api files.
+      filename.match(/\+api(\.(native|ios|android|web))?\.[tj]sx?$/) ||
+      // Strip +middleware files.
+      filename.match(/\+middleware\.[tj]sx?$/))
+  ) {
+    // Remove the server-only +html file and API Routes from the bundle when bundling for a client environment.
     return worker.transform(
       config,
       projectRoot,
       filename,
-      // TODO: Native CSS Modules
-      Buffer.from(code),
+      !options.minify
+        ? Buffer.from(
+            // Use a string so this notice is visible in the bundle if the user is
+            // looking for it.
+            '"> The server-only file was removed from the client JS bundle by Expo CLI."'
+          )
+        : Buffer.from(''),
       options
     );
+  }
+
+  if (
+    isClientEnvironment &&
+    !filename.match(/\/node_modules\//) &&
+    filename.match(/\+api(\.(native|ios|android|web))?\.[tj]sx?$/)
+  ) {
+    // Clear the contents of +api files when bundling for the client.
+    // This ensures that the client doesn't accidentally use the server-only +api files.
+    return worker.transform(config, projectRoot, filename, Buffer.from(''), options);
+  }
+
+  // Add support for parsing env files to JavaScript objects. Stripping the non-public variables in client environments.
+  if (filename.match(/(^|\/)\.env(\.(local|(development|production)(\.local)?))?$/)) {
+    const envFileParsed = parseEnvFile(data.toString('utf-8'), isClientEnvironment);
+    return worker.transform(
+      config,
+      projectRoot,
+      filename,
+      Buffer.from(`export default ${JSON.stringify(envFileParsed)};`),
+      options
+    );
+  }
+
+  if (
+    // Noop the streams polyfill in the server environment.
+    !isClientEnvironment &&
+    filename.match(/\/expo\/virtual\/streams\.js$/)
+  ) {
+    return worker.transform(config, projectRoot, filename, Buffer.from(''), options);
+  }
+  if (
+    // Parsing the virtual env is client-only, on the server we use `process.env` directly.
+    isClientEnvironment &&
+    // Finally match the virtual env file.
+    filename.match(/\/expo\/virtual\/env\.js$/)
+  ) {
+    if (
+      // Variables should be inlined in production. We only use this JS object to ensure HMR in development.
+      options.dev
+    ) {
+      const relativePath = relative(dirname(filename), projectRoot);
+      const posixPath = toPosixPath(relativePath);
+
+      // This virtual module uses a context module to conditionally observe and load all of the possible .env files in development.
+      // We then merge them in the expected order.
+      // This module still depends on the `process.env` polyfill in the serializer to include EXPO_PUBLIC_ variables that are
+      // defined in the script or bash, essentially all places where HMR is not possible.
+      // Finally, we export with `env` to align with the babel plugin that transforms static process.env usage to the virtual module.
+      // The .env regex depends `watcher.additionalExts` being set correctly (`'env', 'local', 'development'`) so that .env files aren't resolved as platform extensions.
+      const contents = `const dotEnvModules = require.context(${JSON.stringify(posixPath)},false,/^\\.\\/\\.env/);
+
+    export const env = !dotEnvModules.keys().length ? process.env : { ...process.env, ...['.env', '.env.development', '.env.local', '.env.development.local'].reduce((acc, file) => {
+      return { ...acc, ...(dotEnvModules(file)?.default ?? {}) };
+    }, {}) };`;
+      return worker.transform(config, projectRoot, filename, Buffer.from(contents), options);
+    } else {
+      // Add a fallback in production for sanity and better errors if something goes wrong or the user manually imports the virtual module somehow.
+
+      // Create a proxy module where a helpful error is thrown whenever a key from `process.env` is accessed.
+      const contents = `
+        export const env = new Proxy({}, {
+          get(target, key) {
+            throw new Error(\`Attempting to access internal environment variable "\${key}" is not supported in production bundles. Environment variables should be inlined in production by Babel.\`);
+          },
+       });`;
+      return worker.transform(config, projectRoot, filename, Buffer.from(contents), options);
+    }
+  }
+
+  return worker.transform(config, projectRoot, filename, data, options);
+}
+
+function isReactServerEnvironment(options: JsTransformOptions): boolean {
+  return options.customTransformOptions?.environment === 'react-server';
+}
+
+async function transformCss(
+  config: ExpoJsTransformerConfig,
+  projectRoot: string,
+  filename: string,
+  data: Buffer,
+  options: JsTransformOptions
+): Promise<TransformResponse> {
+  // If the platform is not web, then return an empty module.
+  if (options.platform !== 'web') {
+    const code = matchCssModule(filename) ? 'module.exports={ unstable_styles: {} };' : '';
+    // TODO: Native CSS Modules
+    return transformShim(config, filename, code);
   }
 
   let code = data.toString('utf8');
@@ -102,9 +275,12 @@ export async function transform(
   // in development and a static CSS file in production.
   if (matchCssModule(filename)) {
     const results = await transformCssModuleWeb({
-      filename,
+      // NOTE(cedric): use POSIX-formatted filename for consistent CSS module class names.
+      // This affects the content hashes, which should be stable across platforms.
+      filename: toPosixPath(filename),
       src: code,
       options: {
+        reactServer: isReactServerEnvironment(options),
         projectRoot,
         dev: options.dev,
         minify: options.minify,
@@ -112,20 +288,15 @@ export async function transform(
       },
     });
 
-    const jsModuleResults = await worker.transform(
-      config,
-      projectRoot,
-      filename,
-      Buffer.from(results.output),
-      options
-    );
+    const jsModuleResults = transformShim(config, filename, results.output);
 
     const cssCode = results.css.toString();
-    const output: JsOutput[] = [
+    const output: ExpoJsOutput[] = [
       {
         type: 'js/module',
         data: {
-          ...jsModuleResults.output[0]?.data,
+          ...jsModuleResults.output[0]!.data,
+          skipCache: !!postcssResults.hasPostcss || undefined,
 
           // Append additional css metadata for static extraction.
           css: {
@@ -133,13 +304,17 @@ export async function transform(
             lineCount: countLines(cssCode),
             map: [],
             functionMap: null,
+            // Disable caching for CSS files when postcss is enabled and has been run on the file.
+            // This ensures that things like tailwind can update on every change.
+            skipCache: postcssResults.hasPostcss,
+            externalImports: results.externalImports,
           },
         },
       },
     ];
 
     return {
-      dependencies: jsModuleResults.dependencies,
+      dependencies: jsModuleResults.dependencies.concat(results.dependencies),
       output,
     };
   }
@@ -148,33 +323,51 @@ export async function transform(
 
   const { transform } = require('lightningcss') as typeof import('lightningcss');
 
-  // TODO: Add bundling to resolve imports
-  // https://lightningcss.dev/bundling.html#bundling-order
-
+  // Here we delegate bundling to lightningcss to resolve all CSS imports together.
+  // TODO: Add full CSS bundling support to Metro.
   const cssResults = transform({
     filename,
     code: Buffer.from(code),
+    errorRecovery: true,
     sourceMap: false,
     cssModules: false,
     projectRoot,
     minify: options.minify,
+    analyzeDependencies: true,
+    targets: await getBrowserslistTargets(projectRoot),
+    // targets: pkg?.browserslist,
+    // @ts-expect-error: Added for testing against virtual file system.
+    resolver: options._test_resolveCss,
+    // https://lightningcss.dev/transpilation.html
+    include: 1, // Nesting
   });
 
-  // TODO: Warnings:
-  // cssResults.warnings.forEach((warning) => {
-  // });
+  printCssWarnings(filename, code, cssResults.warnings);
+
+  const cssImports = collectCssImports(filename, code, cssResults.code.toString(), cssResults);
+  const cssCode = cssImports.code;
+
+  // Append additional css metadata for static extraction.
+  const cssOutput: Required<ExpoJsOutput['data']['css']> = {
+    code: cssCode,
+    lineCount: countLines(cssCode),
+    map: [],
+    functionMap: null,
+    // Disable caching for CSS files when postcss is enabled and has been run on the file.
+    // This ensures that things like tailwind can update on every change.
+    skipCache: postcssResults.hasPostcss,
+    externalImports: cssImports.externalImports,
+  };
+
+  const reactServer = isReactServerEnvironment(options);
 
   // Create a mock JS module that exports an empty object,
   // this ensures Metro dependency graph is correct.
-  const jsModuleResults = await worker.transform(
+  const jsModuleResults = transformShim(
     config,
-    projectRoot,
     filename,
-    options.dev ? Buffer.from(wrapDevelopmentCSS({ src: code, filename })) : Buffer.from(''),
-    options
+    options.dev ? wrapDevelopmentCSS({ src: cssCode, filename, reactServer }) : ''
   );
-
-  const cssCode = cssResults.code.toString();
 
   // In production, we export the CSS as a string and use a special type to prevent
   // it from being included in the JS bundle. We'll extract the CSS like an asset later
@@ -184,23 +377,14 @@ export async function transform(
       type: 'js/module',
       data: {
         ...(jsModuleResults.output[0] as ExpoJsOutput).data,
-
-        // Append additional css metadata for static extraction.
-        css: {
-          code: cssCode,
-          lineCount: countLines(cssCode),
-          map: [],
-          functionMap: null,
-          // Disable caching for CSS files when postcss is enabled and has been run on the file.
-          // This ensures that things like tailwind can update on every change.
-          skipCache: postcssResults.hasPostcss,
-        },
+        css: cssOutput,
+        skipCache: !!postcssResults.hasPostcss || undefined,
       },
     },
   ];
 
   return {
-    dependencies: jsModuleResults.dependencies,
+    dependencies: jsModuleResults.dependencies.concat(cssImports.dependencies),
     output,
   };
 }

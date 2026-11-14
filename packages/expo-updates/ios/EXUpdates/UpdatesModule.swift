@@ -1,7 +1,5 @@
 // Copyright 2019 650 Industries. All rights reserved.
 
-// swiftlint:disable closure_body_length
-
 import ExpoModulesCore
 
 /**
@@ -13,7 +11,7 @@ import ExpoModulesCore
  * Expo Go and legacy standalone apps) via EXUpdatesService, an internal module which is overridden
  * by EXUpdatesBinding, a scoped module, in Expo Go.
  */
-public final class UpdatesModule: Module {
+public final class UpdatesModule: Module, UpdatesEventManagerObserver {
   public func definition() -> ModuleDefinition {
     Name("ExpoUpdates")
 
@@ -22,62 +20,23 @@ public final class UpdatesModule: Module {
     )
 
     Constants {
-      let constantsForModule = AppController.sharedInstance.getConstantsForModule()
-
-      let channel = constantsForModule.requestHeaders["expo-channel-name"] ?? ""
-      let runtimeVersion = constantsForModule.runtimeVersion ?? ""
-      let checkAutomatically = constantsForModule.checkOnLaunch.asString
-
-      guard AppController.sharedInstance.isStarted,
-        let launchedUpdate = constantsForModule.launchedUpdate else {
-        return [
-          "isEnabled": false,
-          "isEmbeddedLaunch": false,
-          "isEmergencyLaunch": constantsForModule.emergencyLaunchException != nil,
-          "emergencyLaunchReason": constantsForModule.emergencyLaunchException?.localizedDescription,
-          "runtimeVersion": runtimeVersion,
-          "checkAutomatically": checkAutomatically,
-          "channel": channel,
-          "shouldDeferToNativeForAPIMethodAvailabilityInDevelopment":
-            constantsForModule.shouldDeferToNativeForAPIMethodAvailabilityInDevelopment || UpdatesUtils.isNativeDebuggingEnabled()
-        ]
-      }
-
-      let embeddedUpdate = constantsForModule.embeddedUpdate
-      let isEmbeddedLaunch = embeddedUpdate != nil && embeddedUpdate?.updateId == launchedUpdate.updateId
-
-      let commitTime = UInt64(floor(launchedUpdate.commitTime.timeIntervalSince1970 * 1000))
-      return [
-        "isEnabled": true,
-        "isEmbeddedLaunch": isEmbeddedLaunch,
-        "isUsingEmbeddedAssets": constantsForModule.isUsingEmbeddedAssets,
-        "updateId": launchedUpdate.updateId.uuidString,
-        "manifest": launchedUpdate.manifest.rawManifestJSON(),
-        "localAssets": constantsForModule.assetFilesMap,
-        "isEmergencyLaunch": constantsForModule.emergencyLaunchException != nil,
-        "emergencyLaunchReason": constantsForModule.emergencyLaunchException?.localizedDescription,
-        "runtimeVersion": runtimeVersion,
-        "checkAutomatically": checkAutomatically,
-        "channel": channel,
-        "commitTime": commitTime,
-        "shouldDeferToNativeForAPIMethodAvailabilityInDevelopment":
-          constantsForModule.shouldDeferToNativeForAPIMethodAvailabilityInDevelopment || UpdatesUtils.isNativeDebuggingEnabled()
-      ]
+      AppController.sharedInstance.getConstantsForModule().toModuleConstantsMap()
     }
 
-    OnCreate {
-      AppController.bindAppContext(self.appContext)
+    OnStartObserving(EXUpdatesStateChangeEventName) {
+      AppController.setUpdatesEventManagerObserver(self)
     }
 
-    OnStartObserving {
-      AppController.shouldEmitJsEvents = true
+    OnStopObserving(EXUpdatesStateChangeEventName) {
+      AppController.removeUpdatesEventManagerObserver()
     }
 
-    OnStopObserving {
-      AppController.shouldEmitJsEvents = false
+    OnDestroy {
+      AppController.removeUpdatesEventManagerObserver()
     }
 
-    AsyncFunction("reload") { (promise: Promise) in
+    AsyncFunction("reload") { (options: ReloadScreenOptions?, promise: Promise) in
+      AppController.sharedInstance.reloadScreenManager?.setConfiguration(options)
       AppController.sharedInstance.requestRelaunch {
         promise.resolve(nil)
       } error: { error in
@@ -92,7 +51,7 @@ public final class UpdatesModule: Module {
           promise.resolve([
             "isAvailable": false,
             "isRollBackToEmbedded": false,
-            "reason": reason
+            "reason": reason.rawValue
           ])
           return
         case .updateAvailable(let manifest):
@@ -109,7 +68,7 @@ public final class UpdatesModule: Module {
           ])
           return
         case .error(let error):
-          promise.reject("ERR_UPDATES_CHECK", error.localizedDescription)
+          promise.reject(CheckForUpdateException(error))
           return
         }
       } error: { error in
@@ -136,19 +95,19 @@ public final class UpdatesModule: Module {
     AsyncFunction("readLogEntriesAsync") { (maxAge: Int) -> [[String: Any]] in
       // maxAge is in milliseconds, convert to seconds
       do {
-        return try UpdatesLogReader().getLogEntries(newerThan: Date(timeIntervalSinceNow: TimeInterval(-1 * (maxAge / 1000))))
+        return try UpdatesLogReader().getLogEntries(newerThan: Date(timeIntervalSinceNow: -TimeInterval(maxAge) / 1000))
       } catch {
-        throw Exception(name: "ERR_UPDATES_READ_LOGS", description: error.localizedDescription)
+        throw ReadLogEntriesException(error)
       }
     }
 
     AsyncFunction("clearLogEntriesAsync") { (promise: Promise) in
-      UpdatesLogReader().purgeLogEntries(olderThan: Date()) { error in
+      UpdatesLogReader().clearLogEntries { error in
         guard let error = error else {
           promise.resolve(nil)
           return
         }
-        promise.reject("ERR_UPDATES_READ_LOGS", error.localizedDescription)
+        promise.reject(ClearLogEntriesException(error))
       }
     }
 
@@ -175,7 +134,7 @@ public final class UpdatesModule: Module {
           ])
           return
         case .error(let error):
-          promise.reject("ERR_UPDATES_FETCH", error.localizedDescription)
+          promise.reject(FetchUpdateException(error))
           return
         }
       } error: { error in
@@ -183,16 +142,47 @@ public final class UpdatesModule: Module {
       }
     }
 
-    // Getter used internally by useUpdates()
-    // to initialize its state
-    AsyncFunction("getNativeStateMachineContextAsync") { (promise: Promise) in
-      AppController.sharedInstance.getNativeStateMachineContext { stateMachineContext in
-        promise.resolve(stateMachineContext.json)
-      } error: { error in
-        promise.reject(error)
+    Function("setUpdateURLAndRequestHeadersOverride") { (configOverride: UpdatesConfigOverrideParam?) in
+      try AppController.sharedInstance.setUpdateURLAndRequestHeadersOverride(configOverride?.toUpdatesConfigOverride())
+    }
+
+    Function("setUpdateRequestHeadersOverride") { (requestHeaders: [String: String]?) in
+      try AppController.sharedInstance.setUpdateRequestHeadersOverride(requestHeaders)
+    }
+
+    AsyncFunction("showReloadScreen") { (options: ReloadScreenOptions?) in
+#if DEBUG
+      if let reloadScreenManager = AppController.sharedInstance.reloadScreenManager {
+        reloadScreenManager.setConfiguration(options)
+        reloadScreenManager.show()
       }
+#endif
+    }.runOnQueue(.main)
+
+    AsyncFunction("hideReloadScreen") {
+#if DEBUG
+      if let reloadScreenManager = AppController.sharedInstance.reloadScreenManager {
+        reloadScreenManager.hide()
+      }
+#endif
+    }.runOnQueue(.main)
+  }
+
+  public func onStateMachineContextEvent(context: UpdatesStateContext) {
+    sendEvent(EXUpdatesStateChangeEventName, [
+      "context": context.json
+    ])
+  }
+
+  internal struct UpdatesConfigOverrideParam: Record {
+    @Field var updateUrl: URL?
+    @Field var requestHeaders: [String: String]
+
+    func toUpdatesConfigOverride() -> UpdatesConfigOverride {
+      return UpdatesConfigOverride(
+        updateUrl: updateUrl,
+        requestHeaders: requestHeaders
+      )
     }
   }
 }
-
-// swiftlint:enable closure_body_length

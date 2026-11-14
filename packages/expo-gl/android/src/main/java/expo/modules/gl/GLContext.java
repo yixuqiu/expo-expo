@@ -29,7 +29,6 @@ import javax.microedition.khronos.egl.EGLSurface;
 
 import expo.modules.core.ModuleRegistry;
 import expo.modules.core.interfaces.JavaScriptContextProvider;
-import expo.modules.core.interfaces.RuntimeEnvironmentInterface;
 import expo.modules.core.interfaces.services.UIManager;
 import expo.modules.gl.utils.FileSystemUtils;
 import expo.modules.kotlin.Promise;
@@ -40,7 +39,7 @@ import static expo.modules.gl.cpp.EXGL.*;
 public class GLContext {
   private int mEXGLCtxId = -1;
 
-  private final GLObjectManagerModule mManager;
+  private final GLModule mManager;
   private GLThread mGLThread;
   private EGLDisplay mEGLDisplay;
   private EGLSurface mEGLSurface;
@@ -50,7 +49,7 @@ public class GLContext {
 
   private BlockingQueue<Runnable> mEventQueue = new LinkedBlockingQueue<>();
 
-  public GLContext(GLObjectManagerModule manager) {
+  public GLContext(GLModule manager) {
     super();
     mManager = manager;
   }
@@ -87,8 +86,6 @@ public class GLContext {
     ModuleRegistry moduleRegistry = mManager.getAppContext().getLegacyModuleRegistry();
     final UIManager uiManager = moduleRegistry.getModule(UIManager.class);
     final JavaScriptContextProvider jsContextProvider = moduleRegistry.getModule(JavaScriptContextProvider.class);
-    final RuntimeEnvironmentInterface environment = moduleRegistry.getModule(RuntimeEnvironmentInterface.class);
-
     uiManager.runOnClientCodeQueueThread(new Runnable() {
       @Override
       public void run() {

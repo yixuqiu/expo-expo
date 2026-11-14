@@ -1,14 +1,56 @@
 # Changelog
 
-## Unpublished
+## 58.0.1
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
 
 ### 🛠 Breaking changes
 
-### 🎉 New features
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
 
-### 🐛 Bug fixes
+## 55.0.2 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
 
 ### 💡 Others
+
+- Remove iOS test files from the published package content. ([#39547](https://github.com/expo/expo/pull/39547) by [@Simek](https://github.com/Simek))
+
+## 5.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- Add support for macOS. ([#37629](https://github.com/expo/expo/pull/37629) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 4.1.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+
+## 4.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
 
 ## 3.8.0 — 2024-04-18
 

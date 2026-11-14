@@ -1,0 +1,139 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+import { render } from '@testing-library/react-native';
+import { use } from 'react';
+import { Text } from 'react-native';
+
+import {
+  ObserveRouterIntegrationContext,
+  ObserveRouterIntegrationProvider,
+} from '../ObserveRouterIntegrationProvider';
+import * as initModule from '../init';
+
+jest.mock('expo-app-metrics', () => ({
+  __esModule: true,
+  default: {
+    markInteractive: jest.fn(),
+    getMainSession: jest.fn(() => ({
+      id: 'session-1',
+      type: 'main',
+      startDate: '2026-01-01T00:00:00.000Z',
+      addMetric: jest.fn(),
+    })),
+  },
+}));
+
+jest.mock('../init', () => {
+  const initListenersCleanup = jest.fn();
+  return {
+    __esModule: true,
+    isInitialized: jest.fn(() => true),
+    initListeners: jest.fn(() => initListenersCleanup),
+    initRouterIntegration: jest.fn(),
+    __initListenersCleanup: initListenersCleanup,
+  };
+});
+
+jest.mock('../router', () => ({
+  optionalRouter: {
+    unstable_enablePerformanceIntegration: jest.fn(),
+    unstable_PerformanceObserver: 'PerformanceObserver',
+  },
+  isRouterInstalled: true,
+}));
+
+const mockIsInitialized = initModule.isInitialized as jest.Mock;
+const mockInitListeners = initModule.initListeners as jest.Mock;
+const mockInitListenersCleanup = (initModule as unknown as { __initListenersCleanup: jest.Mock })
+  .__initListenersCleanup;
+
+function StorageProbe({ onRead }: { onRead: (storage: unknown) => void }) {
+  const storage = use(ObserveRouterIntegrationContext);
+  onRead(storage);
+  return <Text>probe</Text>;
+}
+
+beforeEach(() => {
+  mockIsInitialized.mockReturnValue(true);
+  mockIsInitialized.mockClear();
+  mockInitListeners.mockClear();
+  mockInitListenersCleanup.mockClear();
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+describe('ObserveRouterIntegrationProvider', () => {
+  it('exposes a non-null storage on first render when isInitialized() is true at mount', async () => {
+    const reads: unknown[] = [];
+    await render(
+      <ObserveRouterIntegrationProvider>
+        <StorageProbe onRead={(s) => reads.push(s)} />
+      </ObserveRouterIntegrationProvider>
+    );
+    expect(reads[0]).toBeTruthy();
+    expect(
+      (reads[0] as { interactiveScreensIds: Set<string> }).interactiveScreensIds
+    ).toBeInstanceOf(Set);
+  });
+
+  it('keeps storage null and does not attach listeners when isInitialized() is false at mount', async () => {
+    mockIsInitialized.mockReturnValue(false);
+    const reads: unknown[] = [];
+    await render(
+      <ObserveRouterIntegrationProvider>
+        <StorageProbe onRead={(s) => reads.push(s)} />
+      </ObserveRouterIntegrationProvider>
+    );
+    expect(reads[0]).toBeNull();
+    expect(mockInitListeners).not.toHaveBeenCalled();
+  });
+
+  it('calls initListeners with storage in useEffect and runs cleanup on unmount', async () => {
+    const { unmount } = await render(
+      <ObserveRouterIntegrationProvider>
+        <Text>child</Text>
+      </ObserveRouterIntegrationProvider>
+    );
+    expect(mockInitListeners).toHaveBeenCalledTimes(1);
+    const [storageArg, PerformanceObserverArg] = mockInitListeners.mock.calls[0];
+    expect(PerformanceObserverArg).toBe('PerformanceObserver');
+    expect(
+      (storageArg as { interactiveScreensIds: Set<string> }).interactiveScreensIds
+    ).toBeInstanceOf(Set);
+
+    expect(mockInitListenersCleanup).not.toHaveBeenCalled();
+    await unmount();
+    expect(mockInitListenersCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws when isInitialized() flips during the provider lifetime', async () => {
+    mockIsInitialized.mockReturnValue(false);
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { rerender } = await render(
+      <ObserveRouterIntegrationProvider>
+        <Text>child</Text>
+      </ObserveRouterIntegrationProvider>
+    );
+
+    mockIsInitialized.mockReturnValue(true);
+    await expect(
+      async () =>
+        await rerender(
+          <ObserveRouterIntegrationProvider>
+            <Text>child</Text>
+          </ObserveRouterIntegrationProvider>
+        )
+    ).rejects.toThrow(
+      '[expo-observe] Router integration was enabled after application mounted. Call Observe.configure() before mounting AppMetricsRoot.'
+    );
+  });
+
+  it('renders children when storage is null (router not installed scenario)', async () => {
+    mockIsInitialized.mockReturnValue(false);
+    const { getByText } = await render(
+      <ObserveRouterIntegrationProvider>
+        <Text>visible</Text>
+      </ObserveRouterIntegrationProvider>
+    );
+    expect(getByText('visible')).toBeTruthy();
+  });
+});

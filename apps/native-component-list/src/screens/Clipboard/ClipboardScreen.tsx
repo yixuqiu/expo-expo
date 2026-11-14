@@ -1,13 +1,14 @@
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import React from 'react';
-import { Text, ScrollView, StyleSheet, Alert } from 'react-native';
+import { ScrollView, StyleSheet, Alert } from 'react-native';
 
-import ClipboardListenerDemo from './ClipboardListenerDemo';
-import ImagePreview from './ImagePreview';
+import { BodyText } from '../../components/BodyText';
 import FunctionDemo, { FunctionDescription } from '../../components/FunctionDemo';
 import { ActionFunction, Platform } from '../../components/FunctionDemo/index.types';
 import { isCurrentPlatformSupported } from '../../components/FunctionDemo/utils';
+import ClipboardListenerDemo from './ClipboardListenerDemo';
+import ImagePreview from './ImagePreview';
 
 const withSupportedPlatforms = (platforms: Platform[], action: ActionFunction): ActionFunction =>
   isCurrentPlatformSupported(platforms)
@@ -57,11 +58,26 @@ const SET_STRING_ASYNC_CONFIG: FunctionDescription = {
             { name: 'StringFormat.HTML', value: Clipboard.StringFormat.HTML },
           ],
         },
+        {
+          name: 'android',
+          type: 'object',
+          platforms: ['android'],
+          properties: [
+            {
+              name: 'isSensitive',
+              type: 'boolean',
+              platforms: ['android'],
+              initial: false,
+            },
+          ],
+        },
       ],
     },
   ],
-  actions: (value: string, options: { inputFormat: Clipboard.StringFormat }) =>
-    Clipboard.setStringAsync(value, options),
+  actions: (
+    value: string,
+    options: { inputFormat: Clipboard.StringFormat; android?: { isSensitive?: boolean } }
+  ) => Clipboard.setStringAsync(value, options),
 };
 
 const GET_STRING_ASYNC_CONFIG: FunctionDescription = {
@@ -96,18 +112,49 @@ const SET_IMAGE_ASYNC_CONFIG: FunctionDescription = {
       type: 'constant',
       value: '[selected from image picker]',
     },
+    {
+      name: 'options',
+      type: 'object',
+      properties: [
+        {
+          name: 'android',
+          type: 'object',
+          platforms: ['android'],
+          properties: [
+            {
+              name: 'isSensitive',
+              type: 'boolean',
+              platforms: ['android'],
+              initial: false,
+            },
+          ],
+        },
+      ],
+    },
   ],
-  actions: async () => {
+  additionalParameters: [
+    {
+      name: 'quality',
+      type: 'enum',
+      values: [
+        { name: 'RAW', value: 1.0 },
+        { name: '0.5', value: 0.5 },
+        { name: '0', value: 0 },
+      ],
+    },
+  ],
+  actions: async (_, options: { android?: { isSensitive?: boolean } }, quality) => {
     const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (granted) {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         base64: true,
+        quality,
       });
       if (!result.canceled) {
         const [asset] = result.assets;
         if (asset.base64) {
-          await Clipboard.setImageAsync(asset.base64);
+          await Clipboard.setImageAsync(asset.base64, options);
           return 'Image copied to clipboard';
         }
       }
@@ -181,9 +228,9 @@ const FUNCTIONS_DESCRIPTIONS = [
 function ClipboardScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text>
+      <BodyText>
         Hint: Try copying/pasting between this screen and other apps: e.g. Web browser and Notes app
-      </Text>
+      </BodyText>
       {FUNCTIONS_DESCRIPTIONS.map((props, idx) => (
         <FunctionDemo
           key={idx}

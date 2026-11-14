@@ -1,116 +1,54 @@
-import type { LogBoxLog } from '@expo/metro-runtime/symbolicate';
-import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
-import React from 'react';
-import { StyleSheet, Text, View, Platform, ScrollView } from 'react-native';
+'use client';
+
+import { use } from 'react';
+import { StyleSheet, Text, View, Platform, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Pressable } from './Pressable';
-import { ErrorBoundaryProps } from './Try';
 import { Link } from '../link/Link';
+import { BottomTabBarHeightContext } from '../react-navigation/bottom-tabs';
+import { ReactServerError } from '../rsc/router/errors';
+import { Pressable } from './Pressable';
+import type { ErrorBoundaryProps } from './Try';
 
-let useMetroSymbolication: (error: Error) => LogBoxLog | null;
-
-if (process.env.NODE_ENV === 'development') {
-  const { LogBoxLog, parseErrorStack } =
-    require('@expo/metro-runtime/symbolicate') as typeof import('@expo/metro-runtime/symbolicate');
-  useMetroSymbolication = function (error: Error) {
-    const [logBoxLog, setLogBoxLog] = React.useState<LogBoxLog | null>(null);
-
-    React.useEffect(() => {
-      let isMounted = true;
-      const stack = parseErrorStack(error.stack);
-
-      const log = new LogBoxLog({
-        level: 'error',
-        message: {
-          content: error.message,
-          substitutions: [],
-        },
-        isComponentError: false,
-        stack,
-        category: error.message,
-        componentStack: [],
-      });
-
-      log.symbolicate('stack', (symbolicatedLog) => {
-        if (isMounted) {
-          setLogBoxLog(log);
-        }
-      });
-
-      return () => {
-        isMounted = false;
-      };
-    }, [error]);
-
-    return logBoxLog;
-  };
-} else {
-  useMetroSymbolication = function () {
-    return null;
-  };
-}
-
-let StackTrace: React.ComponentType<{ logData: LogBoxLog | null }>;
-
-if (process.env.NODE_ENV === 'development') {
-  const { LogContext } = require('@expo/metro-runtime/build/error-overlay/Data/LogContext');
-  const {
-    LogBoxInspectorStackFrames,
-  } = require('@expo/metro-runtime/build/error-overlay/overlay/LogBoxInspectorStackFrames');
-
-  StackTrace = function ({ logData }: { logData: LogBoxLog | null }) {
-    if (!logData?.symbolicated?.stack?.stack) {
-      return null;
-    }
-    return (
-      <ScrollView style={{ flex: 1 }}>
-        <LogContext.Provider
-          value={{
-            isDisabled: false,
-            logs: [logData],
-            selectedLogIndex: 0,
-          }}>
-          <LogBoxInspectorStackFrames onRetry={function () {}} type="stack" />
-        </LogContext.Provider>
-      </ScrollView>
-    );
-  };
-} else {
-  StackTrace = function () {
-    return <View style={{ flex: 1 }} />;
-  };
+function StandardErrorView({ error }: { error: Error }) {
+  return (
+    <View
+      style={{
+        marginBottom: 12,
+        gap: 4,
+        flexWrap: process.env.EXPO_OS === 'web' ? 'wrap' : 'nowrap',
+      }}>
+      <Text role="heading" aria-level={1} style={styles.title}>
+        Something went wrong
+      </Text>
+      <Text testID="router_error_message" role="heading" aria-level={2} style={styles.errorMessage}>
+        Error: {error.message}
+      </Text>
+    </View>
+  );
 }
 
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
-  const logBoxLog = useMetroSymbolication(error);
-  const inTabBar = React.useContext(BottomTabBarHeightContext);
+  const inTabBar = use(BottomTabBarHeightContext);
   const Wrapper = inTabBar ? View : SafeAreaView;
 
+  const isServerError = error instanceof ReactServerError;
   return (
     <View style={styles.container}>
       <Wrapper style={{ flex: 1, gap: 8, maxWidth: 720, marginHorizontal: 'auto' }}>
-        <View
-          style={{
-            marginBottom: 12,
-            gap: 4,
-            flexWrap: 'wrap',
-          }}>
-          <Text role="heading" aria-level={1} style={styles.title}>
-            Something went wrong
-          </Text>
-          <Text role="heading" aria-level={2} style={styles.errorMessage}>
-            Error: {error.message}
-          </Text>
-        </View>
+        {isServerError ? (
+          <ReactServerErrorView error={error} />
+        ) : (
+          <StandardErrorView error={error} />
+        )}
+        <View style={{ flex: 1 }} />
 
-        <StackTrace logData={logBoxLog} />
         {process.env.NODE_ENV === 'development' && (
-          <Link href="/_sitemap" style={styles.link}>
+          <Link testID="router_error_sitemap" href="/_sitemap" style={styles.link}>
             Sitemap
           </Link>
         )}
-        <Pressable onPress={retry}>
+        <Pressable testID="router_error_retry" onPress={retry}>
           {({ hovered, pressed }) => (
             <View
               style={[styles.buttonInner, (hovered || pressed) && { backgroundColor: 'white' }]}>
@@ -127,6 +65,111 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
           )}
         </Pressable>
       </Wrapper>
+    </View>
+  );
+}
+
+const COMMON_ERROR_STATUS: Record<number, string | undefined> = {
+  404: 'NOT_FOUND',
+  500: 'INTERNAL_SERVER_ERROR',
+  503: 'SERVICE_UNAVAILABLE',
+  504: 'GATEWAY_TIMEOUT',
+};
+
+// TODO: This should probably be replaced by a DOM component that loads server errors in the future.
+function ReactServerErrorView({ error }: { error: ReactServerError }) {
+  let title = String(error.statusCode);
+  title += ': ' + (COMMON_ERROR_STATUS[error.statusCode] ?? 'Server Error');
+
+  const errorId = error.headers.get('cf-ray');
+
+  const date = error.headers.get('Date');
+
+  return (
+    <View
+      style={{
+        padding: 12,
+        gap: 8,
+      }}>
+      <Text
+        selectable
+        allowFontScaling
+        style={{
+          fontSize: Platform.select({ web: 24, default: 16 }),
+          fontWeight: 'bold',
+          marginBottom: 4,
+          color: 'white',
+        }}>
+        {title}
+      </Text>
+
+      {process.env.EXPO_OS === 'web' ? (
+        <ScrollView
+          style={{
+            borderColor: 'rgba(255,255,255,0.5)',
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            maxHeight: 150,
+          }}
+          contentContainerStyle={{ paddingVertical: 4 }}>
+          <Text
+            testID="router_error_message"
+            selectable
+            allowFontScaling
+            style={{
+              color: 'white',
+            }}>
+            {error.message}
+          </Text>
+        </ScrollView>
+      ) : (
+        <TextInput
+          testID="router_error_message"
+          scrollEnabled
+          multiline
+          editable={false}
+          allowFontScaling
+          value={error.message}
+          style={{
+            borderColor: 'rgba(255,255,255,0.5)',
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            paddingVertical: 4,
+            maxHeight: 150,
+            color: 'white',
+          }}
+        />
+      )}
+
+      <InfoRow title="Code" right={error.statusCode} />
+      {errorId && <InfoRow title="ID" right={errorId} />}
+      {date && <InfoRow title="Date" right={date} />}
+
+      {error.url && (
+        <Text selectable allowFontScaling style={{ fontSize: 14, opacity: 0.5, color: 'white' }}>
+          {error.url}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function InfoRow({ title, right }: { title: string; right?: any }) {
+  const style = {
+    fontSize: 16,
+    color: 'white',
+  };
+
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+      <Text selectable allowFontScaling style={style}>
+        {title}
+      </Text>
+      {right && (
+        <Text selectable allowFontScaling style={[style, styles.code]}>
+          {right}
+        </Text>
+      )}
     </View>
   );
 }
@@ -184,7 +227,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     marginBottom: 12,
-    // textAlign: "center",
   },
   link: {
     color: 'rgba(255,255,255,0.4)',

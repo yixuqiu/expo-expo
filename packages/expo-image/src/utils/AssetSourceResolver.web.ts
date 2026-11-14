@@ -1,6 +1,6 @@
-import { PackagerAsset } from '@react-native/assets-registry/registry';
-import { Platform } from 'expo-modules-core';
+import { Platform } from 'expo';
 import { PixelRatio } from 'react-native';
+import type { PackagerAsset } from 'react-native';
 
 export type ResolvedAssetSource = {
   __packager_asset: boolean;
@@ -11,7 +11,7 @@ export type ResolvedAssetSource = {
 };
 
 // Returns the Metro dev server-specific asset location.
-function getScaledAssetPath(asset): string {
+function getScaledAssetPath(asset: PackagerAsset): string {
   const scale = AssetSourceResolver.pickScale(asset.scales, PixelRatio.get());
   const scaleSuffix = scale === 1 ? '' : '@' + scale + 'x';
   const type = !asset.type ? '' : `.${asset.type}`;
@@ -78,9 +78,9 @@ export default class AssetSourceResolver {
   }
 
   static pickScale(scales: number[], deviceScale: number): number {
-    for (let i = 0; i < scales.length; i++) {
-      if (scales[i] >= deviceScale) {
-        return scales[i];
+    for (const scale of scales) {
+      if (scale >= deviceScale) {
+        return scale;
       }
     }
     return scales[scales.length - 1] || 1;

@@ -1,19 +1,58 @@
 package expo.modules.kotlin.defaultmodules
 
+import android.content.Context
+import android.net.Uri
 import com.facebook.react.ReactActivity
-import com.facebook.react.ReactDelegate
-import com.facebook.react.bridge.UiThreadUtil
-import com.facebook.react.config.ReactFeatureFlags
-import com.facebook.react.devsupport.DisabledDevSupportManager
+import expo.modules.BuildConfig
+import expo.modules.core.utilities.VRUtilities
 import expo.modules.kotlin.events.normalizeEventName
+import expo.modules.kotlin.exception.Exceptions
+import expo.modules.kotlin.jni.JavaScriptObject
+import expo.modules.kotlin.jni.WorkletRuntimeInstaller
+import expo.modules.kotlin.jni.WorkletsSoLoader
+import expo.modules.kotlin.modules.DEFAULT_MODULE_VIEW
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.uuidv5.InvalidNamespaceException
 import expo.modules.kotlin.uuidv5.uuidv5
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 class CoreModule : Module() {
+  private val context: Context
+    get() = appContext.reactContext ?: throw Exceptions.AppContextLost()
+
   override fun definition() = ModuleDefinition {
+    Property("expoModulesCoreVersion") {
+      val version = BuildConfig.EXPO_MODULES_CORE_VERSION
+      val (major, minor, patch) = version
+        .split("-")
+        .first()
+        .split(".")
+        .map { it.toInt() }
+
+      return@Property mapOf(
+        "version" to version,
+        "major" to major,
+        "minor" to minor,
+        "patch" to patch
+      )
+    }
+
+    Property("cacheDir") {
+      return@Property Uri.fromFile(context.cacheDir).toString() + "/"
+    }
+
+    Property("documentsDir") {
+      return@Property Uri.fromFile(context.filesDir).toString() + "/"
+    }
+
+    Property("isRunningOnQuest") {
+      return@Property VRUtilities.isQuest()
+    }
+
     // Expose some common classes and maybe even the `modules` host object in the future.
     Function("uuidv4") {
       return@Function UUID.randomUUID().toString()
@@ -22,17 +61,19 @@ class CoreModule : Module() {
     Function("uuidv5") { name: String, namespace: String ->
       val namespaceUUID = try {
         UUID.fromString(namespace)
-      } catch (e: IllegalArgumentException) {
+      } catch (_: IllegalArgumentException) {
         throw InvalidNamespaceException(namespace)
       }
       return@Function uuidv5(namespaceUUID, name).toString()
     }
 
-    Function("getViewConfig") { viewName: String ->
-      val holder = appContext.registry.getModuleHolder(viewName)
+    Function("getViewConfig") { moduleName: String, viewName: String? ->
+      val holder = appContext.registry.getModuleHolder(moduleName)
         ?: return@Function null
 
-      val viewManagerDefinition = holder.definition.viewManagerDefinition
+      val viewManagerDefinition = holder
+        .definition
+        .viewManagerDefinitions[viewName ?: DEFAULT_MODULE_VIEW]
         ?: return@Function null
 
       val validAttributes = viewManagerDefinition
@@ -57,28 +98,32 @@ class CoreModule : Module() {
     }
 
     AsyncFunction("reloadAppAsync") { _: String ->
-      val reactActivity = appContext.currentActivity as? ReactActivity ?: return@AsyncFunction
+      val reactActivity = appContext.throwingActivity as? ReactActivity ?: return@AsyncFunction
+      val reactDelegate = reactActivity.reactDelegate ?: return@AsyncFunction
+      reactDelegate.reload()
+    }
 
-      // TODO(kudo): Use ReactActivity.getReactDelegate() after react-native 0.74.1
-      // reactActivity.getReactDelegate()
-      val reactActivityDelegateField = ReactActivity::class.java.getDeclaredField("mDelegate")
-        .apply { isAccessible = true }
-      val reactActivityDelegate = reactActivityDelegateField[reactActivity]
-      val getReactDelegateMethod = reactActivityDelegate.javaClass.getDeclaredMethod("getReactDelegate")
-        .apply { isAccessible = true }
-      val reactDelegate = getReactDelegateMethod.invoke(reactActivityDelegate) as? ReactDelegate
-        ?: return@AsyncFunction
-      if (!ReactFeatureFlags.enableBridgelessArchitecture) {
-        val reactInstanceManager = reactDelegate.reactInstanceManager
-        if (reactInstanceManager.devSupportManager is DisabledDevSupportManager) {
-          UiThreadUtil.runOnUiThread {
-            reactInstanceManager.recreateReactContextInBackground()
-          }
-          return@AsyncFunction
-        }
+    Function("installOnUIRuntime") { uiRuntimeHolder: JavaScriptObject ->
+      if (!WorkletsSoLoader.isAvailable) {
+        throw IllegalStateException(
+          "Couldn't install Expo Modules on the worklets UI runtime because the worklets " +
+            "integration isn't available. Make sure `react-native-worklets` is installed and rebuild the app."
+        )
       }
 
-      reactDelegate.reload()
+      val runtimePointer = WorkletRuntimeInstaller.resolveUIRuntimePointer(uiRuntimeHolder)
+      if (runtimePointer == 0L) {
+        throw IllegalStateException(
+          "Couldn't resolve the worklets UI runtime from the provided holder. " +
+            "Make sure `react-native-worklets` is installed and rebuild the app."
+        )
+      }
+
+      runBlocking {
+        withContext(Dispatchers.Main) {
+          appContext.uiRuntime.install(runtimePointer)
+        }
+      }
     }
   }
 }

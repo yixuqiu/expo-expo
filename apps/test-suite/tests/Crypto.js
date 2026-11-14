@@ -54,7 +54,15 @@ function supportedAlgorithm(algorithm) {
 
 export async function test({ describe, it, expect }) {
   describe('Crypto', () => {
-    describe('digestStringAsync()', async () => {
+    describe('digestStringAsync()', () => {
+      it(`hashes the whole string when it contains a NUL character`, async () => {
+        const digest = await Crypto.digestStringAsync(
+          CryptoDigestAlgorithm.SHA256,
+          `a${String.fromCharCode(0)}b`
+        );
+        expect(digest).toBe('59b271ae1bbcb1d31d41929817f4b16fb439eb4f31520b5ad1d5ce98920a7138');
+      });
+
       it(`Invalid CryptoEncoding throws an error`, async () => {
         let error = null;
         try {
@@ -92,7 +100,7 @@ export async function test({ describe, it, expect }) {
       }
     });
 
-    describe('digest()', async () => {
+    describe('digest()', () => {
       for (const entry of Object.entries(CryptoDigestAlgorithm)) {
         const [key, algorithm] = entry;
         it(`CryptoDigestAlgorithm.${key}`, async () => {

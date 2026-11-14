@@ -2,10 +2,10 @@ import { resolve } from 'path';
 
 import rnFixture from '../../plugins/__tests__/fixtures/react-native-project';
 import * as XML from '../../utils/XML';
+import type { AndroidManifest } from '../Manifest';
 import {
   addMetaDataItemToMainApplication,
   addUsesLibraryItemToMainApplication,
-  AndroidManifest,
   ensureToolsAvailable,
   findMetaDataItem,
   findUsesLibraryItem,
@@ -46,6 +46,14 @@ describe(getRunnableActivity, () => {
     const activity = getRunnableActivity(manifest)!;
     expect(activity.$).toBeDefined();
     expect(activity.$['android:name']).toBe('.CustomNamed');
+    expect(Array.isArray(activity['intent-filter'])).toBe(true);
+  });
+  it(`supports aliases`, async () => {
+    const sampleManifestPath = resolve(__dirname, 'fixtures/icon-aliases-AndroidManifest.xml');
+    const manifest = await readAndroidManifestAsync(sampleManifestPath);
+    const activity = getRunnableActivity(manifest)!;
+    expect(activity.$).toBeDefined();
+    expect(activity.$['android:name']).toBe('.MainActivity');
     expect(Array.isArray(activity['intent-filter'])).toBe(true);
   });
 });
@@ -99,7 +107,6 @@ describe(prefixAndroidKeys, () => {
 describe(ensureToolsAvailable, () => {
   it(`ensures tools are available`, async () => {
     const manifest = await getFixtureManifestAsync();
-    expect(XML.format(manifest)).not.toMatch(/xmlns:tools="http:\/\/schemas\.android\.com\/tools"/);
 
     const firstFewLines = XML.format(ensureToolsAvailable(manifest))
       .split('\n')

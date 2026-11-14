@@ -1,52 +1,48 @@
 package versioned.host.exp.exponent
 
-import expo.modules.application.ApplicationModule
 import expo.modules.asset.AssetModule
-import expo.modules.av.AVModule
-import expo.modules.av.AVPackage
-import expo.modules.av.video.VideoViewModule
+import expo.modules.audio.AudioModule
 import expo.modules.backgroundfetch.BackgroundFetchModule
-import expo.modules.barcodescanner.BarCodeScannerModule
-import expo.modules.barcodescanner.BarCodeScannerPackage
-import expo.modules.battery.BatteryModule
+import expo.modules.backgroundtask.BackgroundTaskModule
+import expo.modules.blob.BlobModule
 import expo.modules.blur.BlurModule
 import expo.modules.brightness.BrightnessModule
 import expo.modules.calendar.CalendarModule
 import expo.modules.camera.CameraViewModule
-import expo.modules.camera.legacy.CameraViewLegacyModule
 import expo.modules.cellular.CellularModule
-import expo.modules.clipboard.ClipboardModule
 import expo.modules.constants.ConstantsModule
-import expo.modules.constants.ConstantsPackage
+import expo.modules.constants.ConstantsService
 import expo.modules.contacts.ContactsModule
+import expo.modules.contacts.next.ContactsNextModule
 import expo.modules.core.interfaces.Package
-import expo.modules.crypto.CryptoModule
-import expo.modules.device.DeviceModule
+import expo.modules.crypto.aes.AesCryptoModule
 import expo.modules.documentpicker.DocumentPickerModule
 import expo.modules.easclient.EASClientModule
-import expo.modules.facedetector.FaceDetectorModule
-import expo.modules.facedetector.FaceDetectorPackage
+import expo.modules.fetch.ExpoFetchModule
 import expo.modules.filesystem.FileSystemModule
-import expo.modules.filesystem.FileSystemPackage
-import expo.modules.gl.GLObjectManagerModule
-import expo.modules.gl.GLViewModule
-import expo.modules.haptics.HapticsModule
+import expo.modules.filesystem.legacy.FileSystemLegacyModule
+import expo.modules.gl.GLModule
 import expo.modules.image.ExpoImageModule
-import expo.modules.imageloader.ImageLoaderPackage
+import expo.modules.imageloader.ImageLoaderService
 import expo.modules.imagemanipulator.ImageManipulatorModule
 import expo.modules.imagepicker.ImagePickerModule
 import expo.modules.intentlauncher.IntentLauncherModule
-import expo.modules.keepawake.KeepAwakeModule
-import expo.modules.keepawake.KeepAwakePackage
 import expo.modules.kotlin.ModulesProvider
 import expo.modules.kotlin.modules.Module
+import expo.modules.kotlin.services.Service
 import expo.modules.lineargradient.LinearGradientModule
+import expo.modules.linking.ExpoLinkingModule
+import expo.modules.linking.ExpoLinkingPackage
 import expo.modules.localauthentication.LocalAuthenticationModule
 import expo.modules.localization.LocalizationModule
 import expo.modules.location.LocationModule
 import expo.modules.mailcomposer.MailComposerModule
 import expo.modules.manifests.core.Manifest
+import expo.modules.maps.GoogleMapsModule
+import expo.modules.maps.MapsModule
+import expo.modules.maps.StreetViewModule
 import expo.modules.medialibrary.MediaLibraryModule
+import expo.modules.medialibrary.next.MediaLibraryNextModule
 import expo.modules.navigationbar.NavigationBarModule
 import expo.modules.navigationbar.NavigationBarPackage
 import expo.modules.network.NetworkModule
@@ -57,11 +53,9 @@ import expo.modules.notifications.notifications.channels.NotificationChannelGrou
 import expo.modules.notifications.notifications.channels.NotificationChannelManagerModule
 import expo.modules.notifications.permissions.NotificationPermissionsModule
 import expo.modules.notifications.tokens.PushTokenModule
-import expo.modules.print.PrintModule
-import expo.modules.random.RandomModule
+import expo.modules.router.ExpoRouterModule
 import expo.modules.screencapture.ScreenCaptureModule
 import expo.modules.screenorientation.ScreenOrientationModule
-import expo.modules.sensors.SensorsPackage
 import expo.modules.sensors.modules.AccelerometerModule
 import expo.modules.sensors.modules.BarometerModule
 import expo.modules.sensors.modules.DeviceMotionModule
@@ -73,32 +67,26 @@ import expo.modules.sensors.modules.PedometerModule
 import expo.modules.sharing.SharingModule
 import expo.modules.sms.SMSModule
 import expo.modules.speech.SpeechModule
-import expo.modules.splashscreen.SplashScreenModule
-import expo.modules.splashscreen.SplashScreenPackage
-import expo.modules.sqlite.SQLiteModule
-import expo.modules.sqlite.SQLiteModuleNext
 import expo.modules.storereview.StoreReviewModule
 import expo.modules.systemui.SystemUIModule
 import expo.modules.systemui.SystemUIPackage
-import expo.modules.taskManager.TaskManagerModule
-import expo.modules.taskManager.TaskManagerPackage
+import expo.modules.taskmanager.TaskManagerModule
+import expo.modules.taskmanager.TaskManagerPackage
 import expo.modules.trackingtransparency.TrackingTransparencyModule
+import expo.modules.ui.ExpoUIModule
 import expo.modules.updates.UpdatesPackage
+import expo.modules.video.VideoModule
 import expo.modules.videothumbnails.VideoThumbnailsModule
 import expo.modules.webbrowser.WebBrowserModule
+import expo.modules.webview.DomWebViewModule
+import host.exp.exponent.experience.splashscreen.legacy.SplashScreenModule
+import host.exp.exponent.experience.splashscreen.legacy.SplashScreenPackage
 
 object ExperiencePackagePicker : ModulesProvider {
   private val EXPO_MODULES_PACKAGES = listOf(
-    AVPackage(),
-    BarCodeScannerPackage(),
-    ConstantsPackage(),
-    FaceDetectorPackage(),
-    FileSystemPackage(),
-    ImageLoaderPackage(),
-    KeepAwakePackage(),
+    ExpoLinkingPackage(),
     NavigationBarPackage(),
     NotificationsPackage(),
-    SensorsPackage(),
     SplashScreenPackage(),
     SystemUIPackage(),
     TaskManagerPackage(),
@@ -120,80 +108,86 @@ object ExperiencePackagePicker : ModulesProvider {
     return EXPO_MODULES_PACKAGES
   }
 
-  override fun getModulesList(): List<Class<out Module>> = listOf(
-    AVModule::class.java,
-    ApplicationModule::class.java,
+  override fun getModulesMap(): Map<Class<out Module>, String?> = mapOf(
+    AudioModule::class.java to null,
     // Sensors
-    AccelerometerModule::class.java,
-    AssetModule::class.java,
-    BarometerModule::class.java,
-    GyroscopeModule::class.java,
-    LightSensorModule::class.java,
-    DeviceMotionModule::class.java,
-    MagnetometerModule::class.java,
-    MagnetometerUncalibratedModule::class.java,
-    PedometerModule::class.java,
+    AccelerometerModule::class.java to null,
+    AssetModule::class.java to null,
+    BarometerModule::class.java to null,
+    GyroscopeModule::class.java to null,
+    LightSensorModule::class.java to null,
+    DeviceMotionModule::class.java to null,
+    MagnetometerModule::class.java to null,
+    MagnetometerUncalibratedModule::class.java to null,
+    PedometerModule::class.java to null,
     // End of Sensors
     // Notifications
-    BadgeModule::class.java,
-    PushTokenModule::class.java,
-    NotificationPermissionsModule::class.java,
-    NotificationChannelManagerModule::class.java,
-    NotificationChannelGroupManagerModule::class.java,
-    ExpoBackgroundNotificationTasksModule::class.java,
+    BadgeModule::class.java to null,
+    PushTokenModule::class.java to null,
+    NotificationPermissionsModule::class.java to null,
+    NotificationChannelManagerModule::class.java to null,
+    NotificationChannelGroupManagerModule::class.java to null,
+    ExpoBackgroundNotificationTasksModule::class.java to null,
     // End of Notifications
-    BatteryModule::class.java,
-    BackgroundFetchModule::class.java,
-    BarCodeScannerModule::class.java,
-    BlurModule::class.java,
-    CalendarModule::class.java,
-    CameraViewModule::class.java,
-    CameraViewLegacyModule::class.java,
-    CellularModule::class.java,
-    ClipboardModule::class.java,
-    CryptoModule::class.java,
-    ConstantsModule::class.java,
-    ContactsModule::class.java,
-    DeviceModule::class.java,
-    DocumentPickerModule::class.java,
-    EASClientModule::class.java,
-    FileSystemModule::class.java,
-    FaceDetectorModule::class.java,
-    PrintModule::class.java,
-    GLViewModule::class.java,
-    GLObjectManagerModule::class.java,
-    HapticsModule::class.java,
-    ImagePickerModule::class.java,
-    ImageManipulatorModule::class.java,
-    ExpoImageModule::class.java,
-    IntentLauncherModule::class.java,
-    KeepAwakeModule::class.java,
-    LinearGradientModule::class.java,
-    LocalAuthenticationModule::class.java,
-    LocalizationModule::class.java,
-    LocationModule::class.java,
-    MailComposerModule::class.java,
-    MediaLibraryModule::class.java,
-    NavigationBarModule::class.java,
-    NetworkModule::class.java,
-    RandomModule::class.java,
-    ScreenCaptureModule::class.java,
-    ScreenOrientationModule::class.java,
+    AesCryptoModule::class.java to null,
+    BackgroundFetchModule::class.java to null,
+    BackgroundTaskModule::class.java to null,
+    BlobModule::class.java to null,
+    BlurModule::class.java to null,
+    CalendarModule::class.java to null,
+    CameraViewModule::class.java to null,
+    CellularModule::class.java to null,
+    ConstantsModule::class.java to null,
+    ContactsModule::class.java to null,
+    ContactsNextModule::class.java to null,
+    DocumentPickerModule::class.java to null,
+    DomWebViewModule::class.java to null,
+    EASClientModule::class.java to null,
+    ExpoFetchModule::class.java to null,
+    ExpoLinkingModule::class.java to null,
+    ExpoRouterModule::class.java to null,
+    ExpoUIModule::class.java to null,
+    FileSystemModule::class.java to null,
+    FileSystemLegacyModule::class.java to null,
+    GLModule::class.java to null,
+    ImagePickerModule::class.java to null,
+    ImageManipulatorModule::class.java to null,
+    ExpoImageModule::class.java to null,
+    IntentLauncherModule::class.java to null,
+    LinearGradientModule::class.java to null,
+    LocalAuthenticationModule::class.java to null,
+    LocalizationModule::class.java to null,
+    LocationModule::class.java to null,
+    MailComposerModule::class.java to null,
+    MapsModule::class.java to null,
+    GoogleMapsModule::class.java to null,
+    StreetViewModule::class.java to null,
+    MediaLibraryModule::class.java to null,
+    MediaLibraryNextModule::class.java to null,
+    NavigationBarModule::class.java to null,
+    NetworkModule::class.java to null,
+    ScreenCaptureModule::class.java to null,
+    ScreenOrientationModule::class.java to null,
     // SecureStoreModule is not added here, instead it is added in ExpoModuleRegistryAdapter.kt,
     // because it needs access to scopedContext for Expo Go support
-    SMSModule::class.java,
-    SharingModule::class.java,
-    SpeechModule::class.java,
-    SplashScreenModule::class.java,
-    StoreReviewModule::class.java,
-    SQLiteModule::class.java,
-    SQLiteModuleNext::class.java,
-    SystemUIModule::class.java,
-    TaskManagerModule::class.java,
-    TrackingTransparencyModule::class.java,
-    VideoThumbnailsModule::class.java,
-    VideoViewModule::class.java,
-    WebBrowserModule::class.java,
-    BrightnessModule::class.java
+    SMSModule::class.java to null,
+    SharingModule::class.java to null,
+    SpeechModule::class.java to null,
+    SplashScreenModule::class.java to null,
+    StoreReviewModule::class.java to null,
+    SystemUIModule::class.java to null,
+    TaskManagerModule::class.java to null,
+    TrackingTransparencyModule::class.java to null,
+    VideoThumbnailsModule::class.java to null,
+    VideoModule::class.java to null,
+    WebBrowserModule::class.java to null,
+    BrightnessModule::class.java to null
   )
+
+  override fun getServices(): List<Class<out Service>> {
+    return listOf(
+      ConstantsService::class.java,
+      ImageLoaderService::class.java
+    )
+  }
 }

@@ -1,7 +1,12 @@
-import { Subscription } from 'expo-modules-core';
+import type { EventSubscription } from 'expo';
 
 import ExpoLocation from './ExpoLocation';
-import { LocationCallback, LocationHeadingCallback } from './Location.types';
+import type {
+  LocationCallback,
+  LocationErrorCallback,
+  LocationHeadingCallback,
+  MotionActivityCallback,
+} from './Location.types';
 import { LocationEventEmitter } from './LocationEventEmitter';
 
 type EventObject = {
@@ -11,11 +16,17 @@ type EventObject = {
 
 let nextWatchId = 0;
 
-class Subscriber<CallbackType extends LocationCallback | LocationHeadingCallback> {
+class Subscriber<
+  CallbackType extends
+    | LocationCallback
+    | LocationHeadingCallback
+    | LocationErrorCallback
+    | MotionActivityCallback,
+> {
   private eventName: string;
   private eventDataField: string;
   private callbacks: { [id: string]: CallbackType } = {};
-  private eventSubscription: Subscription | null = null;
+  private eventSubscription: EventSubscription | null = null;
 
   constructor(eventName: string, eventDataField: string) {
     this.eventName = eventName;
@@ -43,6 +54,18 @@ class Subscriber<CallbackType extends LocationCallback | LocationHeadingCallback
   }
 
   /**
+   * Registers given callback under an existing id. This can be used to
+   * create a subscriber for the error event on the same id as the location
+   * event is subscribed to.
+   */
+  registerCallbackForId(watchId: number, callback: CallbackType): number {
+    this.maybeInitializeSubscription();
+    const id = watchId;
+    this.callbacks[id] = callback;
+    return id;
+  }
+
+  /**
    * Unregisters a callback with given id and revokes the subscription if possible.
    */
   unregisterCallback(id: number): void {
@@ -55,7 +78,24 @@ class Subscriber<CallbackType extends LocationCallback | LocationHeadingCallback
     ExpoLocation.removeWatchAsync(id);
 
     if (Object.keys(this.callbacks).length === 0 && this.eventSubscription) {
-      LocationEventEmitter.removeSubscription(this.eventSubscription);
+      this.eventSubscription.remove();
+      this.eventSubscription = null;
+    }
+  }
+
+  /**
+   * Removes a callback locally without calling native removeWatchAsync.
+   * Use when another subscriber will handle the native teardown for the same id.
+   */
+  forgetCallback(id: number): void {
+    if (!this.callbacks[id]) {
+      return;
+    }
+
+    delete this.callbacks[id];
+
+    if (Object.keys(this.callbacks).length === 0 && this.eventSubscription) {
+      this.eventSubscription.remove();
       this.eventSubscription = null;
     }
   }
@@ -79,6 +119,16 @@ export const LocationSubscriber = new Subscriber<LocationCallback>(
 export const HeadingSubscriber = new Subscriber<LocationHeadingCallback>(
   'Expo.headingChanged',
   'heading'
+);
+
+export const LocationErrorSubscriber = new Subscriber<LocationErrorCallback>(
+  'Expo.locationError',
+  'reason'
+);
+
+export const MotionActivitySubscriber = new Subscriber<MotionActivityCallback>(
+  'Expo.motionActivityChanged',
+  'activity'
 );
 
 /**

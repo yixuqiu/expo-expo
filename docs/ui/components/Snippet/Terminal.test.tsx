@@ -1,5 +1,8 @@
+import { jest } from '@jest/globals';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+
+import { axe } from '~/common/test-utilities';
 
 import { Terminal } from '.';
 
@@ -18,7 +21,7 @@ describe(Terminal, () => {
     await user.click(screen.getByRole('textbox'));
     await user.paste();
 
-    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+    expect(screen.getByRole<HTMLTextAreaElement>('textbox').value).toBe(
       'expo install expo-updates'
     );
   });
@@ -44,7 +47,7 @@ describe(Terminal, () => {
     await user.click(screen.getByRole('textbox'));
     await user.paste();
 
-    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+    expect(screen.getByRole<HTMLTextAreaElement>('textbox').value).toBe(
       'expo install expo-dev-client'
     );
   });
@@ -57,5 +60,150 @@ describe(Terminal, () => {
   it('do not generate copyCmd if there is more than one command', () => {
     render(<Terminal cmd={['$ npx create-expo-app init test', '$ cd test']} />);
     expect(screen.queryByText('Copy')).toBe(null);
+  });
+
+  it('renders every package manager command so CSS can pick one before hydration', () => {
+    render(
+      <Terminal
+        cmd={{
+          npm: ['$ npm install expo'],
+          yarn: ['$ yarn add expo'],
+          pnpm: ['$ pnpm add expo'],
+          bun: ['$ bun add expo'],
+        }}
+      />
+    );
+
+    const blocks = screen.getAllByRole('generic').filter(element => element.dataset.pmBlock);
+    expect(blocks.map(block => block.dataset.pmBlock)).toEqual(['npm', 'yarn', 'pnpm', 'bun']);
+    expect(blocks.map(block => block.textContent)).toEqual([
+      expect.stringContaining('npm install expo'),
+      expect.stringContaining('yarn add expo'),
+      expect.stringContaining('pnpm add expo'),
+      expect.stringContaining('bun add expo'),
+    ]);
+  });
+
+  it('renders both package manager controls so CSS can pick one before hydration', () => {
+    render(
+      <Terminal
+        cmd={{
+          npm: ['$ npm install expo'],
+          yarn: ['$ yarn add expo'],
+        }}
+      />
+    );
+
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    expect(screen.getByLabelText('Select package manager')).toBeInTheDocument();
+  });
+
+  it('points managers the snippet does not offer at the fallback command', () => {
+    render(
+      <Terminal
+        cmd={{
+          npm: ['$ npm install expo'],
+          yarn: ['$ yarn add expo'],
+        }}
+      />
+    );
+
+    const blocks = screen.getAllByRole('generic').filter(element => element.dataset.pmBlock);
+    expect(blocks.map(block => block.dataset.pmBlock)).toEqual(['npm pnpm bun', 'yarn']);
+    expect(screen.getAllByRole('tab').map(tab => tab.dataset.pmTab)).toEqual([
+      'npm pnpm bun',
+      'yarn',
+    ]);
+  });
+
+  it('stamps the chosen manager on the document element and follows it when copying', async () => {
+    render(
+      <>
+        <Terminal
+          cmd={{
+            npm: ['$ npm install expo'],
+            yarn: ['$ yarn add expo'],
+            pnpm: ['$ pnpm add expo'],
+            bun: ['$ bun add expo'],
+          }}
+        />
+        <textarea />
+      </>
+    );
+
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('tab', { name: /^yarn$/i }));
+    expect(document.documentElement.classList.contains('pm-yarn')).toBe(true);
+    expect(document.documentElement.classList.contains('pm-npm')).toBe(false);
+    expect(screen.getByRole('tab', { name: /^yarn$/i })).toHaveAttribute('aria-selected', 'true');
+
+    await user.click(screen.getByText('Copy'));
+    await user.click(screen.getByRole('textbox'));
+    await user.paste();
+
+    expect(screen.getByRole<HTMLTextAreaElement>('textbox').value).toBe('yarn add expo');
+  });
+
+  it('adds data-md-commands for both command maps and plain command arrays', () => {
+    render(
+      <>
+        <Terminal
+          cmd={{
+            npm: ['$ npm install expo'],
+            bun: ['$ bun add expo'],
+          }}
+        />
+        <Terminal cmd={['$ npx expo start']} />
+      </>
+    );
+
+    const terminals = screen.getAllByRole('generic').filter(el => el.dataset.md === 'terminal');
+    expect(terminals.length).toBe(2);
+    expect(terminals[0].getAttribute('data-md-commands')).toBe(
+      '{"npm":["$ npm install expo"],"bun":["$ bun add expo"]}'
+    );
+    expect(terminals[1].getAttribute('data-md-commands')).toBe('["$ npx expo start"]');
+  });
+
+  it('renders browser action when provided', async () => {
+    const originalWindowOpen = window.open;
+    const openMock = jest.fn();
+    window.open = openMock as unknown as typeof window.open;
+
+    render(
+      <Terminal
+        cmd={['$ expo login']}
+        browserAction={{ href: 'https://expo.dev/login', label: 'Open in expo.dev' }}
+      />
+    );
+
+    expect(screen.getByText('Open in expo.dev')).toBeVisible();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Open in expo.dev'));
+
+    expect(openMock).toHaveBeenCalledWith(
+      'https://expo.dev/login',
+      '_blank',
+      'noopener,noreferrer'
+    );
+
+    window.open = originalWindowOpen;
+  });
+
+  it('has no axe violations', async () => {
+    const { container } = render(
+      <>
+        <Terminal cmd={['$ expo install expo-updates']} />
+        <Terminal
+          cmd={{
+            npm: ['$ npm install expo'],
+            yarn: ['$ yarn add expo'],
+          }}
+        />
+      </>
+    );
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

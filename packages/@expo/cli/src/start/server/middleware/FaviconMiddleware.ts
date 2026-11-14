@@ -1,8 +1,7 @@
-import { ExpoMiddleware } from './ExpoMiddleware';
-import { ServerNext, ServerRequest, ServerResponse } from './server.types';
 import { getFaviconFromExpoConfigAsync } from '../../../export/favicon';
-
-const debug = require('debug')('expo:start:server:middleware:favicon') as typeof console.log;
+import { ExpoMiddleware } from './ExpoMiddleware';
+import { event } from './events';
+import type { ServerNext, ServerRequest, ServerResponse } from './server.types';
 
 /**
  * Middleware for generating a favicon.ico file for the current project if one doesn't exist.
@@ -28,13 +27,15 @@ export class FaviconMiddleware extends ExpoMiddleware {
     try {
       const data = await getFaviconFromExpoConfigAsync(this.projectRoot, { force: true });
       if (!data) {
-        debug('No favicon defined in the Expo Config, skipping generation.');
         return next();
       }
       faviconImageData = data.source;
-      debug('✅ Generated favicon successfully.');
     } catch (error: any) {
-      debug('Failed to generate favicon from Expo config:', error);
+      // Pass through on ENOENT errors
+      event('favicon:generate_failed', { error: event.error(error as Error) });
+      if (error.code === 'ENOENT') {
+        return next();
+      }
       return next(error);
     }
     // Respond with the generated favicon file

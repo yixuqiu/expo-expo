@@ -1,59 +1,52 @@
 ---
-title: Install expo-updates in a bare React Native project
+title: Install expo-updates in an existing React Native project
 sidebar_title: Install expo-updates
-description: Learn how to install and configure expo-updates in bare React Native projects.
+description: Learn how to install and configure expo-updates in your existing React Native project.
 ---
 
-import { Terminal } from '~/ui/components/Snippet';
-import { DiffBlock } from '~/ui/components/Snippet';
 import { Collapsible } from '~/ui/components/Collapsible';
-import { Tabs, Tab } from '~/ui/components/Tabs';
+import { Prerequisites, Requirement } from '~/ui/components/Prerequisites';
+import { Terminal, DiffBlock } from '~/ui/components/Snippet';
 
-The `expo-updates` library fetches and manages updates to an app's JavaScript and assets that are received from a remote server. It supports [EAS Update](/eas-update/introduction), a hosted service that serves updates and provides a variety of tools for managing them. It can also be configured to work with a [custom server](/eas-update/custom-updates-server/). This guide explains how to set it up for use with EAS Update.
-
-<Collapsible summary="Do you need to create a new project?">
-
-If you are creating a new project, we recommend using the following command:
-
-<Tabs>
-
-<Tab label="npm">
-
-<Terminal cmd={['$ npx create-expo-app --template bare-minimum']} />
-
-</Tab>
-
-<Tab label="yarn">
-
-<Terminal cmd={['$ yarn create expo-app --template bare-minimum']} />
-
-</Tab>
-
-</Tabs>
-
-Running this command will create a new project from the `bare-minimum` template that will handle configuring the `expo-updates` [config plugin](/config-plugins/introduction/) and the installation steps described in the following sections of this guide.
-
-</Collapsible>
+`expo-updates` is a library that enables your app to manage remote updates to your application code. It communicates with the configured remote update service to get information about available updates. This guide explains how to set up an existing React Native project for use with [Expo Update](/eas-update/introduction), a hosted remote update service that includes tools to simplify installation and configuration of the `expo-updates` library.
 
 <Collapsible summary="Do you use Continuous Native Generation (CNG) in your project?">
 
-You may be reading the wrong guide then. To use `expo-updates` in a project that uses [CNG](/workflow/continuous-native-generation/), see [EAS Update "Get started"](/eas-update/getting-started/).
+You may be reading the wrong guide. To use `expo-updates` in a project that uses [CNG](/workflow/continuous-native-generation/), see [Expo Update "Get started"](/eas-update/getting-started/).
 
 </Collapsible>
 
-## Prerequisites
-
-**The `expo` package must be installed and configured.** If you created your project with `npx react-native init` and do not have any other Expo libraries installed, you will need to [install Expo modules](/bare/installing-expo-modules) before proceeding.
+<Prerequisites>
+  <Requirement title="Install and configure the expo package">
+    If you created your project with `npx @react-native-community/cli@latest init` and do not have
+    any other Expo libraries installed, you will need to [install Expo
+    modules](/bare/installing-expo-modules) before proceeding.
+  </Requirement>
+</Prerequisites>
 
 ## Installation
 
 To get started, install `expo-updates`:
 
-<Terminal cmd={['$ npx expo install expo-updates']} />
+<Terminal
+  cmd={{
+    npm: ['$ npx expo install expo-updates'],
+    yarn: ['$ yarn expo install expo-updates'],
+    pnpm: ['$ pnpm expo install expo-updates'],
+    bun: ['$ bun expo install expo-updates'],
+  }}
+/>
 
 Then, install pods for iOS:
 
-<Terminal cmd={['$ npx pod-install']} />
+<Terminal
+  cmd={{
+    npm: ['$ npx pod-install'],
+    yarn: ['$ yarn dlx pod-install'],
+    pnpm: ['$ pnpm dlx pod-install'],
+    bun: ['$ bunx pod-install'],
+  }}
+/>
 
 ## Configuring expo-updates library
 
@@ -61,117 +54,53 @@ Apply the changes from the diffs from the following sections to configure `expo-
 
 ### JavaScript and JSON
 
-Modify the `expo` section of **app.json**. (If you created your project using `npx react-native init`, you will need to add this section.)
-
-The changes below add the [`updates` URL](/versions/latest/config/app/#url) to the Expo configuration.
-
-> The example `updates` URL and `projectId` shown below are used with EAS Update. The EAS CLI sets this URL correctly for the EAS Update service when running `eas update:configure`.
-
-```diff app.json
- {
-   "name": "MyApp",
--  "displayName": "MyApp"
-+  "displayName": "MyApp",
-+  "expo": {
-+    "name": "MyApp",
-+    "slug": "MyApp",
-+    "ios": {
-+      "bundleIdentifier": "com.MyApp"
-+    },
-+    "android": {
-+      "package": "com.MyApp"
-+    },
-+    "runtimeVersion": "1.0.0",
-+    "updates": {
-+      "url": "https://u.expo.dev/[your-project-id]"
-+    },
-+    "extra": {
-+      "eas": {
-+        "projectId": "[your-project-id]"
-+      }
-+    }
-+  }
- }
-```
-
 Run `eas update:configure` to set the `updates` URL and `projectId` in **app.json**.
 
 <Terminal cmd={['$ eas update:configure']} />
 
-If you want to set up a [custom server](/eas-update/custom-updates-server) instead, add your URL to `updates.url` in **app.json**.
+Modify the `expo` section of **app.json**. If you created your project using `npx @react-native-community/cli@latest init`, you will need to add the following changes including the [`updates` URL](/versions/latest/config/app/#url).
 
-```diff app.json
- {
-   "name": "MyApp",
-   "displayName": "MyApp",
+> The example `updates` URL and `projectId` shown below are used with Expo Update. The EAS CLI sets this URL correctly for the Expo Update service when running `eas update:configure`.
+
+<DiffBlock source="/static/diffs/expo-updates-app-json.diff" />
+
+If you want to set up a [custom `expo-updates` server](https://github.com/expo/custom-expo-updates-server) instead, add your URL to `updates.url` in **app.json**.
+
+<DiffBlock
+  raw={`diff --git a/app.json b/app.json
+index 0000000..1111111 100644
+--- a/app.json
++++ b/app.json
+@@ -1,7 +1,7 @@
    "expo": {
      "name": "MyApp",
-      ...
-     "updates": {
+-    "updates": {
 -      "url": "https://u.expo.dev/[your-project-id]"
+-    }
++    "updates": {
 +      "url": "http://localhost:3000/api/manifest"
-     }
++    }
    }
- }
-```
+ }`}
+/>
 
 ### Android
 
 Modify **android/app/build.gradle** to check for the JS engine configuration (JSC or Hermes) in Expo files:
 
-```diff android/app/build.gradle
---- a/android/app/build.gradle
-+++ b/android/app/build.gradle
-@@ -52,6 +52,11 @@ react {
-     // hermesFlags = ["-O", "-output-source-map"]
- }
-
-+// Override `hermesEnabled` by `expo.jsEngine`
-+ext {
-+  hermesEnabled = (findProperty('expo.jsEngine') ?: "hermes") == "hermes"
-+}
-+
- /**
-  * Set this to true to create four separate APKs instead of one,
-  * one for each native architecture. This is useful if you don't
-```
+<DiffBlock source="/static/diffs/expo-updates-android-build-gradle.diff" />
 
 Modify **android/app/src/main/AndroidManifest.xml** to add the `expo-updates` configuration XML so that it matches the contents of **app.json**:
 
-```diff android/app/src/main/AndroidManifest.xml
---- a/android/app/src/main/AndroidManifest.xml
-+++ b/android/app/src/main/AndroidManifest.xml
-@@ -9,6 +9,11 @@
-       android:roundIcon="@mipmap/ic_launcher_round"
-       android:allowBackup="false"
-       android:theme="@style/AppTheme">
-+      <meta-data android:name="expo.modules.updates.ENABLED" android:value="true"/>
-+      <meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION" android:value="@string/expo_runtime_version"/>
-+      <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
-+      <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
-+      <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="http://localhost:3000/api/manifest"/>
-       <activity
-         android:name=".MainActivity"
-         android:label="@string/app_name"
-```
+<DiffBlock source="/static/diffs/expo-updates-android-manifest.diff" />
 
-If using the updates server URL shown above (a custom non-HTTPS update server running on the same machine), you will need to modify **android/app/src/main/AndroidManifest.xml** as shown below:
+If using the updates server URL (a custom non-HTTPS update server running on the same machine), you will need to modify **android/app/src/main/AndroidManifest.xml** to add the update server URL and enable `usesCleartextTraffic`:
 
-```diff android/app/src/main/AndroidManifest.xml
- <application
-  android:name=".MainApplication"
-  android:label="@string/app_name"
-  android:icon="@mipmap/ic_launcher"
-  android:roundIcon="@mipmap/ic_launcher_round"
-  android:allowBackup="false"
-  android:theme="@style/AppTheme"
-+ android:usesCleartextTraffic="true"
- >
-```
+<DiffBlock source="/static/diffs/expo-updates-android-manifest-cleartext.diff" />
 
 Add the Expo runtime version string key to **android/app/src/main/res/values/strings.xml**:
 
-<DiffBlock source="/static/diffs/expo-update-strings-xml.diff" />
+<DiffBlock source="/static/diffs/expo-updates-strings-xml.diff" />
 
 ### iOS
 
@@ -185,32 +114,9 @@ Add the file **Podfile.properties.json** to the **ios** directory:
 
 Modify **ios/Podfile** to check for the JS engine configuration (JSC or Hermes) in Expo files:
 
-```diff ios/Podfile
---- a/ios/Podfile
-+++ b/ios/Podfile
-@@ -2,6 +2,9 @@ require File.join(File.dirname(`node --print "require.resolve('expo/package.json
- require_relative '../node_modules/react-native/scripts/react_native_pods'
- require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
+<DiffBlock source="/static/diffs/expo-updates-ios-podfile.diff" />
 
-+require 'json'
-+podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
-+
- platform :ios, '13.0'
- prepare_react_native_project!
-
-@@ -41,7 +44,7 @@ target 'MyApp' do
-     # Hermes is now enabled by default. Disable by setting this flag to false.
-     # Upcoming versions of React Native may rely on get_default_flags(), but
-     # we make it explicit here to aid in the React Native upgrade process.
--    :hermes_enabled => flags[:hermes_enabled],
-+    :hermes_enabled => podfile_properties['expo.jsEngine'] == nil || podfile_properties['expo.jsEngine'] == 'hermes',
-     :fabric_enabled => flags[:fabric_enabled],
-     # Enables Flipper.
-     #
-
-```
-
-Add the **Supporting** directory containing **Expo.plist** to your project in Xcode with the following content, to match the content in **app.json**:
+Using Xcode, add **Expo.plist** file to **ios/your-project/Supporting** with the following content to match the contents of **app.json**:
 
 ```xml Expo.plist
 <?xml version="1.0" encoding="UTF-8"?>
@@ -231,9 +137,39 @@ Add the **Supporting** directory containing **Expo.plist** to your project in Xc
 </plist>
 ```
 
+## Configuring the update channel at build time
+
+The `channel` property on a build allows you to point updates at specific types of builds. For example, it allows you to publish updates to a preview build without impacting your production deployment.
+
+This property is also ultimately set in the **AndroidManifest.xml** and **Expo.plist** files you modified above. It is usually set right before build, so you can switch between production and non-production builds. If you build your project with Expo Build, the `channel` is set in the **eas.json** build profile. Expo Build then applies it to these files right before the native build step.
+
+When you build locally or with another service, you need to set the channel yourself in these files:
+
+### Android
+
+In **android/app/src/main/AndroidManifest.xml**, add the request headers `meta-data` entry inside the `<application>` element:
+
+```xml android/app/src/main/AndroidManifest.xml
+<meta-data android:name="expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY" android:value="{&quot;expo-channel-name&quot;:&quot;your-channel-name&quot;}"/>
+```
+
+### iOS
+
+In **Expo.plist**, add the `EXUpdatesRequestHeaders` dictionary inside the existing `<dict>` element:
+
+```xml ios/project-name/Supporting/Expo.plist
+<key>EXUpdatesRequestHeaders</key>
+<dict>
+  <key>expo-channel-name</key>
+  <string>your-channel-name</string>
+</dict>
+```
+
+> **info** If you later adopt CNG, you can configure the channel with [`updates.requestHeaders`](/versions/latest/config/app/#requestheaders) in **app.json** instead. Running `npx expo prebuild` in your pipeline then writes the channel into these files. See [Configure update channels in app.json](/eas-update/getting-started/#configure-update-channels-in-appjson).
+
 ## Next steps
 
-- To start using EAS Update with EAS Build, see the EAS Update [Get started](/eas-update/getting-started/).
+- To start using Expo Update with Expo Build, see the Expo Update [Get started](/eas-update/getting-started/).
 - See [`expo-updates` API reference](/versions/latest/sdk/updates/) for more information on how to use the library.
-- See how to use [EAS Update with a local build directly](/eas-update/build-locally/).
+- See how to use [Expo Update with a local build directly](/eas-update/standalone-service/).
 - It is also possible to use `expo-updates` with a custom server that implements the [Expo Updates protocol](/technical-specs/expo-updates-1/). See [`custom-expo-updates-server` README](https://github.com/expo/custom-expo-updates-server#readme).

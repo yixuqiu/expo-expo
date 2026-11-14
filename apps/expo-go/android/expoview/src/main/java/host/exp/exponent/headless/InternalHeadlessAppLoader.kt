@@ -3,9 +3,10 @@ package host.exp.exponent.headless
 import android.app.Application
 import android.content.Context
 import android.net.Uri
-import android.util.SparseArray
+import com.facebook.react.ReactHost
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.UiThreadUtil
+import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 import expo.modules.apploader.AppLoaderProvider
 import expo.modules.core.interfaces.Package
@@ -17,6 +18,9 @@ import host.exp.exponent.ExpoUpdatesAppLoader.AppLoaderCallback
 import host.exp.exponent.ExpoUpdatesAppLoader.AppLoaderStatus
 import host.exp.exponent.ExponentManifest
 import host.exp.exponent.RNObject
+import host.exp.exponent.experience.ExpoGoReactNativeHost
+import host.exp.exponent.factories.ExpoGoDevSupportManager
+import host.exp.exponent.factories.ReactHostFactory
 import host.exp.exponent.kernel.ExponentUrls
 import host.exp.exponent.kernel.KernelConstants
 import host.exp.exponent.storage.ExponentDB
@@ -35,6 +39,7 @@ import org.json.JSONObject
 import versioned.host.exp.exponent.ExponentPackage
 import versioned.host.exp.exponent.ExponentPackageDelegate
 import versioned.host.exp.exponent.modules.universal.ExpoModuleRegistryAdapter
+import javax.inject.Inject
 
 // @tsapeta: Most parts of this class was just copied from ReactNativeActivity and ExperienceActivity,
 // however it allows launching apps in the background, without the activity.
@@ -50,13 +55,16 @@ class InternalHeadlessAppLoader(private val context: Context) :
   private var manifestUrl: String? = null
   private var sdkVersion: String? = null
   private var detachSdkVersion: String? = null
-  private var reactInstanceManager: RNObject? = RNObject("com.facebook.react.ReactInstanceManager")
+  private var reactHost: ReactHost? = null
   private val intentUri: String? = null
   private var isReadyForBundle = false
   private var jsBundlePath: String? = null
   private var appRecord: HeadlessAppRecord? = null
   private var callback: AppLoaderProvider.Callback? = null
   private var activityId = 0
+
+  @Inject
+  lateinit var exponentManifest: ExponentManifest
 
   override fun loadApp(
     appUrl: String,
@@ -75,8 +83,7 @@ class InternalHeadlessAppLoader(private val context: Context) :
         override fun onManifestCompleted(manifest: Manifest) {
           Exponent.instance.runOnUiThread {
             try {
-              val bundleUrl = ExponentUrls.toHttp(manifest.getBundleURL())
-              activityIdToBundleUrl.put(activityId, bundleUrl)
+              val bundleUrl = ExponentUrls.bundleUrlFromManifest(manifest, manifestUrl!!)
               setManifest(manifestUrl!!, manifest, bundleUrl)
             } catch (e: JSONException) {
               this@InternalHeadlessAppLoader.callback!!.onComplete(false, Exception(e.message))
@@ -89,7 +96,7 @@ class InternalHeadlessAppLoader(private val context: Context) :
         }
 
         override fun emitEvent(params: JSONObject) {}
-        override fun updateStatus(status: AppLoaderStatus) {}
+        override fun updateStatus(status: AppLoaderStatus?) {}
         override fun onError(e: Exception) {
           Exponent.instance.runOnUiThread { this@InternalHeadlessAppLoader.callback!!.onComplete(false, Exception(e.message)) }
         }
@@ -110,20 +117,14 @@ class InternalHeadlessAppLoader(private val context: Context) :
 
     // Sometime we want to release a new version without adding a new .aar. Use TEMPORARY_SDK_VERSION
     // to point to the unversioned code in ReactAndroid.
-    if (Constants.TEMPORARY_SDK_VERSION == sdkVersion) {
+    if (Constants.SDK_VERSION == sdkVersion) {
       sdkVersion = RNObject.UNVERSIONED
     }
 
     detachSdkVersion = sdkVersion
 
     if (RNObject.UNVERSIONED != sdkVersion) {
-      var isValidVersion = false
-      for (version in Constants.SDK_VERSIONS_LIST) {
-        if (version == sdkVersion) {
-          isValidVersion = true
-          break
-        }
-      }
+      val isValidVersion = sdkVersion == Constants.SDK_VERSION
       if (!isValidVersion) {
         callback!!.onComplete(false, Exception("$sdkVersion is not a valid SDK version."))
         return
@@ -133,10 +134,7 @@ class InternalHeadlessAppLoader(private val context: Context) :
     soLoaderInit()
 
     UiThreadUtil.runOnUiThread {
-      if (reactInstanceManager!!.isNotNull) {
-        reactInstanceManager!!.onHostDestroy()
-        reactInstanceManager!!.assign(null)
-      }
+      reactHost?.onHostDestroy()
       if (isDebugModeEnabled) {
         jsBundlePath = ""
         startReactInstance()
@@ -171,7 +169,7 @@ class InternalHeadlessAppLoader(private val context: Context) :
 
   private fun soLoaderInit() {
     if (detachSdkVersion != null) {
-      SoLoader.init(context, false)
+      SoLoader.init(context, OpenSourceMergedSoMapping)
     }
   }
 
@@ -197,14 +195,12 @@ class InternalHeadlessAppLoader(private val context: Context) :
   private fun startReactInstance() {
     Exponent.instance.testPackagerStatus(
       isDebugModeEnabled,
-      manifest!!,
+      ExponentUrls.bundleUrlFromManifest(manifest!!, manifestUrl!!),
       object : Exponent.PackagerStatusCallback {
         override fun onSuccess() {
-          reactInstanceManager = startReactInstance(
+          reactHost = startReactInstance(
             this@InternalHeadlessAppLoader,
             intentUri,
-            detachSdkVersion,
-            reactPackages(),
             expoPackages()
           )
         }
@@ -219,10 +215,8 @@ class InternalHeadlessAppLoader(private val context: Context) :
   private fun startReactInstance(
     delegate: StartReactInstanceDelegate,
     mIntentUri: String?,
-    mSDKVersion: String?,
-    extraNativeModules: List<ReactPackage?>?,
     extraExpoPackages: List<Package>?
-  ): RNObject? {
+  ): ReactHost {
     val experienceProperties = mapOf(
       KernelConstants.MANIFEST_URL_KEY to manifestUrl,
       KernelConstants.LINKING_URI_KEY to linkingUri,
@@ -238,47 +232,31 @@ class InternalHeadlessAppLoader(private val context: Context) :
       singletonModules = ExponentPackage.getOrCreateSingletonModules(context, manifest, extraExpoPackages)
     )
 
-    val versionedUtils = RNObject("host.exp.exponent.VersionedUtils").loadVersion(mSDKVersion!!)
-    val builder = versionedUtils.callRecursive(
-      "getReactInstanceManagerBuilder",
+    val host = ExpoGoReactNativeHost(
+      context,
       instanceManagerBuilderProperties
-    )!!
-
-    // Since there is no activity to be attached, we cannot set ReactInstanceManager state to RESUMED, so we opt to BEFORE_RESUME
-    builder.call(
-      "setInitialLifecycleState",
-      RNObject.versionedEnum(
-        mSDKVersion,
-        "com.facebook.react.common.LifecycleState",
-        "BEFORE_RESUME"
-      )
     )
 
-    if (extraNativeModules != null) {
-      for (nativeModule in extraNativeModules) {
-        builder.call("addPackage", nativeModule)
-      }
-    }
-
     if (delegate.isDebugModeEnabled) {
-      val debuggerHost = manifest!!.getDebuggerHost()
-      val mainModuleName = manifest!!.getMainModuleName()
-      Exponent.enableDeveloperSupport(debuggerHost, mainModuleName, builder)
+      Exponent.enableDeveloperSupport(manifest!!.getMainModuleName(), host)
     }
 
-    val reactInstanceManager = builder.callRecursive("build")
-    val devSupportManager = reactInstanceManager!!.callRecursive("getDevSupportManager")
-    if (devSupportManager != null) {
-      val devSettings = devSupportManager.callRecursive("getDevSettings")
-      devSettings?.setField("exponentActivityId", activityId)
-    }
-    reactInstanceManager?.call("createReactContextInBackground")
+    val reactHost = ReactHostFactory.getDefaultReactHost(
+      context = context,
+      packageList = host.getPackages(),
+      jsMainModulePath = host.getJSMainModuleName(),
+      jsBundleFilePath = host.getJSBundleFile(),
+      useDevSupport = host.getUseDeveloperSupport(),
+      devServerBundleUrl = ExponentUrls.bundleUrlFromManifest(manifest!!, manifestUrl!!)
+    )
+
+    (reactHost.devSupportManager as? ExpoGoDevSupportManager)?.exponentActivityId = activityId
 
     // keep a reference in app record, so it can be invalidated through AppRecord.invalidate()
-    appRecord!!.setReactInstanceManager(reactInstanceManager)
+    appRecord!!.setReactHost(reactHost)
     callback!!.onComplete(true, null)
 
-    return reactInstanceManager
+    return reactHost
   }
 
   // deprecated in favor of Expo.Linking.makeUrl
@@ -319,15 +297,5 @@ class InternalHeadlessAppLoader(private val context: Context) :
 
   companion object {
     private const val READY_FOR_BUNDLE = "headlessAppReadyForBundle"
-
-    private val activityIdToBundleUrl = SparseArray<String>()
-
-    fun hasBundleUrlForActivityId(activityId: Int): Boolean {
-      return activityId < -1 && activityIdToBundleUrl[activityId] != null
-    }
-
-    fun getBundleUrlForActivityId(activityId: Int): String? {
-      return activityIdToBundleUrl[activityId]
-    }
   }
 }

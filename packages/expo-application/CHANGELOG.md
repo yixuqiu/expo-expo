@@ -1,14 +1,227 @@
 # Changelog
 
-## Unpublished
+## 58.1.2
 
-### 🛠 Breaking changes
+### Patch Changes
+
+- [Android] Fix async functions rejecting with `NoSuchMethodError` on `expo-modules-core` 58.0.18 and later. The prebuilt Android library is now built against Expo Modules v2 runtime 0.2.5. ([#51693](https://github.com/expo/expo/pull/51693) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.1.1
+
+### Patch Changes
+
+- [Internal] Bump precompiled artifacts due to ABI breakage in expo-modules-jsi, which makes `JavaScriptValue` a non-copyable struct. ([#51368](https://github.com/expo/expo/pull/51368) by [@tsapeta](https://github.com/tsapeta))
+- [iOS] Remove the module class declarations from `expo-module.config.json`. Autolinking now detects the `@ExpoModule`-annotated classes. ([#49784](https://github.com/expo/expo/pull/49784) by [@tsapeta](https://github.com/tsapeta))
+
+## 58.1.0
+
+### Minor Changes
+
+- [iOS] Add `getAppleStoreEnvironmentAsync()`, which returns StoreKit's App Store environment for the running build (`'production'`, `'sandbox'` or `'xcode'`), so apps can tell TestFlight, App Review and development builds apart from App Store releases. ([#51209](https://github.com/expo/expo/pull/51209) by [@huntie](https://github.com/huntie))
+
+## 58.0.4
+
+### Patch Changes
+
+- [Android] Migrate to the Expo Modules API 2.0. ([#51077](https://github.com/expo/expo/pull/51077) by [@lukmccall](https://github.com/lukmccall))
+
+## 58.0.3
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.2
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.1 — 2026-09-14
+
+### 💡 Others
+
+- [iOS] Rename the `EXApplication` pod to `ExpoApplication`. ([#50059](https://github.com/expo/expo/pull/50059) by [@tsapeta](https://github.com/tsapeta))
+- [iOS] Migrate to the Expo Modules API 2.0 macros. ([#50059](https://github.com/expo/expo/pull/50059) by [@tsapeta](https://github.com/tsapeta))
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 — 2026-07-17
 
 ### 🎉 New features
 
+- [iOS] Expose the embedded provisioning profile's `expirationDate`. ([#47190](https://github.com/expo/expo/pull/47190) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 57.0.1 — 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 — 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.14 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-11
+
 ### 🐛 Bug fixes
 
+- [Android] Fix `PromiseAlreadySettledException` crash in `getInstallReferrerAsync` when `onInstallReferrerServiceDisconnected` gets called after promise settlement. ([#43419](https://github.com/expo/expo/pull/43419) by [@nishan](https://github.com/intergalacticspacehighway)) ([#43419](https://github.com/expo/expo/pull/43419) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.6 — 2025-09-02
+
 ### 💡 Others
+
+- Change Constants to Constant/Property. ([#38926](https://github.com/expo/expo/pull/38926) by [@jakex7](https://github.com/jakex7))
+
+## 7.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 6.1.5 - 2025-07-01
+
+### 💡 Others
+
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+
+## 6.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 6.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 6.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 6.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 6.1.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35288](https://github.com/expo/expo/pull/35288) by [@behenate](https://github.com/behenate))
+
+## 6.0.2 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.1 — 2024-10-22
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
 
 ## 5.9.1 — 2024-04-23
 

@@ -5,7 +5,7 @@ import android.content.Context
 import androidx.annotation.UiThread
 import androidx.annotation.WorkerThread
 import com.facebook.react.ReactActivity
-import com.facebook.react.ReactNativeHost
+import com.facebook.react.ReactHost
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.devsupport.interfaces.DevSupportManager
 import expo.modules.core.interfaces.ApplicationLifecycleListener
@@ -16,27 +16,39 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.lang.ref.WeakReference
 
 /**
  * Defines the internal and exported modules for expo-updates, as well as the auto-setup behavior in
  * applicable environments.
  */
 class UpdatesPackage : Package {
-  private val useNativeDebug = BuildConfig.EX_UPDATES_NATIVE_DEBUG
 
   override fun createReactNativeHostHandlers(context: Context): List<ReactNativeHostHandler> {
     val handler: ReactNativeHostHandler = object : ReactNativeHostHandler {
 
       override fun getJSBundleFile(useDeveloperSupport: Boolean): String? {
-        return if (UpdatesController.instance.isActiveController) UpdatesController.instance.launchAssetFile else null
+        return if (UpdatesController.instance.isActiveController) {
+          UpdatesController.instance.launchAssetFile
+        } else {
+          null
+        }
       }
 
       override fun getBundleAssetName(useDeveloperSupport: Boolean): String? {
-        return if (UpdatesController.instance.isActiveController) UpdatesController.instance.bundleAssetName else null
+        return if (UpdatesController.instance.isActiveController) {
+          UpdatesController.instance.bundleAssetName
+        } else {
+          null
+        }
       }
 
       override fun onWillCreateReactInstance(useDeveloperSupport: Boolean) {
-        UpdatesController.initialize(context)
+        UpdatesController.initialize(context, useDeveloperSupport)
+      }
+
+      override fun onDidCreateReactHost(context: Context, reactNativeHost: ReactHost) {
+        UpdatesController.instance.reactHost = WeakReference(reactNativeHost)
       }
 
       override fun onDidCreateDevSupportManager(devSupportManager: DevSupportManager) {
@@ -56,16 +68,16 @@ class UpdatesPackage : Package {
 
   override fun createReactActivityHandlers(activityContext: Context): List<ReactActivityHandler> {
     val handler = object : ReactActivityHandler {
-      override fun getDelayLoadAppHandler(activity: ReactActivity, reactNativeHost: ReactNativeHost): ReactActivityHandler.DelayLoadAppHandler? {
-        if (!BuildConfig.EX_UPDATES_ANDROID_DELAY_LOAD_APP) {
+      override fun getDelayLoadAppHandler(activity: ReactActivity, reactHost: ReactHost): ReactActivityHandler.DelayLoadAppHandler? {
+        if (!BuildConfig.EX_UPDATES_ANDROID_DELAY_LOAD_APP || isUsingCustomInit) {
           return null
         }
         val context = activity.applicationContext
-        val useDeveloperSupport = reactNativeHost.useDeveloperSupport
-        if (!useDeveloperSupport || BuildConfig.EX_UPDATES_NATIVE_DEBUG) {
+        val useDeveloperSupport = reactHost.devSupportManager?.devSupportEnabled ?: false
+        if (!useDeveloperSupport || isUsingNativeDebug) {
           return ReactActivityHandler.DelayLoadAppHandler { whenReadyRunnable ->
             CoroutineScope(Dispatchers.IO).launch {
-              startUpdatesController(context)
+              startUpdatesController(context, useDeveloperSupport)
               invokeReadyRunnable(whenReadyRunnable)
             }
           }
@@ -74,11 +86,13 @@ class UpdatesPackage : Package {
       }
 
       @WorkerThread
-      private suspend fun startUpdatesController(context: Context) {
+      private suspend fun startUpdatesController(context: Context, useDeveloperSupport: Boolean) {
         withContext(Dispatchers.IO) {
-          UpdatesController.initialize(context)
-          // Call the synchronous `launchAssetFile()` function to wait for updates ready
-          UpdatesController.instance.launchAssetFile
+          if (!UpdatesPackage.isUsingCustomInit) {
+            UpdatesController.initialize(context, useDeveloperSupport)
+            // Call the synchronous `launchAssetFile()` function to wait for updates ready
+            UpdatesController.instance.launchAssetFile
+          }
         }
       }
 
@@ -119,5 +133,7 @@ class UpdatesPackage : Package {
 
   companion object {
     private val TAG = UpdatesPackage::class.java.simpleName
+    val isUsingNativeDebug = BuildConfig.EX_UPDATES_NATIVE_DEBUG
+    internal val isUsingCustomInit = BuildConfig.EX_UPDATES_CUSTOM_INIT
   }
 }

@@ -37,8 +37,11 @@ struct ImageSource: Record {
     return isPhotoLibraryAssetUrl(uri)
   }
 
-  var isCachingAllowed: Bool {
-    // TODO: Don't cache other non-network requests (e.g. data URIs, local files)
+  var isSFSymbol: Bool {
+    return uri?.scheme == "sf"
+  }
+
+  var cacheOriginalImage: Bool {
     return !isPhotoLibraryAsset
   }
 }

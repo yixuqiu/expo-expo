@@ -2,28 +2,22 @@
 
 #pragma once
 
+#include "ExpoHeader.pch"
 #include "JNIDeallocator.h"
+#include "JSharedObject.h"
+#include "ArrayBuffer.h"
+#include "JavaScriptArrayBuffer.h"
+#include "NativeArrayBuffer.h"
 
-#include <jsi/jsi.h>
-#include <fbjni/fbjni.h>
-#include <folly/dynamic.h>
-#include <variant>
-
-#include <react/jni/WritableNativeArray.h>
-#include <react/jni/WritableNativeMap.h>
 #include <fbjni/detail/CoreClasses.h>
 #include <ReactCommon/CallInvoker.h>
-#include <ReactCommon/LongLivedObject.h>
+#include <react/bridging/LongLivedObject.h>
 
 namespace jni = facebook::jni;
 namespace react = facebook::react;
 namespace jsi = facebook::jsi;
 
 namespace expo {
-
-struct SharedRef : public jni::JavaClass<SharedRef> {
-  static constexpr const char *kJavaDescriptor = "Lexpo/modules/kotlin/sharedobjects/SharedRef;";
-};
 
 class JSIContext;
 
@@ -39,13 +33,18 @@ public:
       jsi::Runtime &rt,
       std::weak_ptr<react::CallInvoker> jsCallInvokerHolder,
       std::optional<jsi::Function> resolveHolder,
-      std::optional<jsi::Function> rejectHolder
+      std::optional<jsi::Function> rejectHolder,
+      std::vector<jsi::Value> retainedValues = {}
     );
 
     jsi::Runtime &rt;
     std::weak_ptr<react::CallInvoker> jsCallInvokerHolder;
     std::optional<jsi::Function> resolveHolder;
     std::optional<jsi::Function> rejectHolder;
+    /**
+     * JS values that have to stay alive until the promise is settled.
+     */
+    std::vector<jsi::Value> retainedValues;
 
     void invalidate();
   };
@@ -76,24 +75,32 @@ private:
 
   void invokeString(jni::alias_ref<jstring> result);
 
-  void invokeArray(jni::alias_ref<react::WritableNativeArray::javaobject> result);
+  void invokeWritableArray(jni::alias_ref<react::WritableNativeArray::javaobject> result);
 
-  void invokeMap(jni::alias_ref<react::WritableNativeMap::javaobject> result);
+  void invokeWritableMap(jni::alias_ref<react::WritableNativeMap::javaobject> result);
 
-  void invokeSharedRef(jni::alias_ref<SharedRef::javaobject> result);
+  void invokeCollection(jni::alias_ref<jni::JCollection<jobject>> result);
+
+  void invokeMap(jni::alias_ref<jni::JMap<jstring, jobject>> result);
+
+  void invokeSharedObject(jni::alias_ref<JSharedObject::javaobject> result);
+
+  void invokeArrayBuffer(jni::alias_ref<ArrayBuffer::javaobject> result);
+
+  void invokeJavaScriptArrayBuffer(jni::alias_ref<JavaScriptArrayBuffer::javaobject> result);
+
+  void invokeNativeArrayBuffer(jni::alias_ref<NativeArrayBuffer::javaobject> result);
 
   void invokeError(jni::alias_ref<jstring> code, jni::alias_ref<jstring> errorMessage);
 
-  template<class T>
-  using ArgsConverter = std::function<void(jsi::Runtime &rt, jsi::Function &jsFunction, T arg)>;
+  void invokeIntArray(jni::alias_ref<jni::JArrayInt> result);
+  void invokeLongArray(jni::alias_ref<jni::JArrayLong> result);
+  void invokeDoubleArray(jni::alias_ref<jni::JArrayDouble> result);
+  void invokeFloatArray(jni::alias_ref<jni::JArrayFloat> result);
+
+  void invokeWithResolver(std::function<void(jsi::Runtime &rt, jsi::Function &jsFunction)> resolver);
 
   template<class T>
-  inline void invokeJSFunction(
-    ArgsConverter<T> argsConverter,
-    T arg
-  );
-
-  template<class T>
-  inline void invokeJSFunction(T arg);
+  void invokeJSFunctionForArray(T &arg);
 };
 } // namespace expo

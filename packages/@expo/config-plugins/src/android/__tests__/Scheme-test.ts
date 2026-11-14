@@ -2,7 +2,8 @@ import { resolve } from 'path';
 
 import rnFixture from '../../plugins/__tests__/fixtures/react-native-project';
 import * as XML from '../../utils/XML';
-import { AndroidManifest, getMainActivity, readAndroidManifestAsync } from '../Manifest';
+import type { AndroidManifest } from '../Manifest';
+import { getMainActivity, readAndroidManifestAsync } from '../Manifest';
 import {
   appendScheme,
   ensureManifestHasValidIntentFilter,
@@ -58,11 +59,9 @@ describe('scheme', () => {
       {
         scheme: 'myapp',
         android: {
-          // @ts-ignore
           scheme: ['android-only'],
           package: 'com.demo.value',
         },
-        ios: { scheme: 'ios-only' },
       },
       androidManifestJson
     );
@@ -83,13 +82,13 @@ describe('scheme', () => {
       }
     }
 
-    expect(schemeIntent).toStrictEqual(['myapp', 'android-only', 'com.demo.value']);
+    expect(schemeIntent).toStrictEqual(['myapp', 'android-only']);
   });
 });
 
-function removeSingleTaskFromActivities(manifest) {
-  for (const application of manifest.manifest.application) {
-    for (const activity of application.activity) {
+function removeSingleTaskFromActivities(manifest: AndroidManifest) {
+  for (const application of manifest.manifest.application ?? []) {
+    for (const activity of application.activity ?? []) {
       if (activity.$['android:launchMode'] === 'singleTask') {
         delete activity.$['android:launchMode'];
       }

@@ -1,0 +1,31 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.agerange'
+version = '58.0.2'
+
+expoModule {
+  v2 true
+}
+
+android {
+  namespace 'expo.modules.agerange'
+  defaultConfig {
+    versionCode 1
+    versionName "58.0.2"
+  }
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+  implementation 'com.google.android.play:age-signals:0.0.4'
+
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.robolectric:robolectric:4.16'
+}

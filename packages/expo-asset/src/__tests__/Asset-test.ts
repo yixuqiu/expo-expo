@@ -2,15 +2,10 @@ const { Platform } = jest.requireActual('expo-modules-core');
 
 jest.mock('../PlatformUtils', () => ({
   ...jest.requireActual('../PlatformUtils'),
-  getLocalAssets: () => {
-    return {
-      test1: 'file:///Expo.app/asset_test1.png',
-    };
-  },
-}));
-
-jest.mock('@react-native/assets-registry/registry', () => ({
-  getAssetByID: jest.fn(),
+  getLocalAssets: jest.fn(() => ({
+    test1: 'file:///Expo.app/asset_test1.png',
+    androidResTest1: 'file:///android_res/drawable/test.png',
+  })),
 }));
 
 jest.mock('react-native/Libraries/Image/resolveAssetSource', () => {
@@ -132,21 +127,33 @@ if (Platform.OS !== 'web') {
   it(`creates assets from virtual modules`, () => {
     const { Asset } = require('../index');
 
-    const { getAssetByID } = require('@react-native/assets-registry/registry');
-    getAssetByID.mockReturnValueOnce(mockImageMetadata);
+    const { AssetRegistry } = require('react-native');
+    jest.spyOn(AssetRegistry, 'getAssetByID').mockReturnValueOnce(mockImageMetadata);
 
     const asset = Asset.fromModule(1);
     expect(asset.hash).toBe('cafecafecafecafecafecafecafecafe');
   });
 }
 
+it(`can parse object asset`, () => {
+  const { Asset } = require('../index');
+
+  expect(
+    Asset.fromModule({
+      uri: 'https://example.com/icon.png',
+      width: 1,
+      height: 1,
+    })
+  ).toBeDefined();
+});
+
 it(`throws when creating an asset from a missing module`, () => {
   const { Asset } = require('../index');
 
-  const { getAssetByID } = require('@react-native/assets-registry/registry');
-  getAssetByID.mockReturnValueOnce(undefined);
+  const { AssetRegistry } = require('react-native');
+  jest.spyOn(AssetRegistry, 'getAssetByID').mockReturnValueOnce(undefined);
 
-  expect(() => Asset.fromModule(2)).toThrowError();
+  expect(() => Asset.fromModule(2)).toThrow();
 });
 
 it(`downloads uncached assets`, async () => {
@@ -175,6 +182,31 @@ it(`uses the local file system's cache directory for downloads`, async () => {
   await asset.downloadAsync();
   expect(asset.downloaded).toBe(true);
 });
+
+if (Platform.OS === 'android') {
+  it('should support file:///android_res/drawable/test.png', async () => {
+    const { Asset } = require('../index');
+
+    const asset = Asset.fromMetadata({
+      name: 'androidResTest1',
+      type: 'png',
+      scales: [1],
+      httpServerLocation: '/assets',
+      hash: 'androidResTest1',
+      fileHashes: ['androidResTest1'],
+    });
+    // We treat file:///android_res/ assets as not downloaded
+    expect(asset.localUri).toBe(null);
+    expect(asset.downloaded).toBeFalsy();
+    expect(asset.uri).toBe('file:///android_res/drawable/test.png');
+
+    await asset.downloadAsync();
+    const ExpoAsset = jest.requireMock('../ExpoAsset');
+    expect(ExpoAsset.downloadAsync).toHaveBeenCalledTimes(1);
+    expect(asset.downloaded).toBe(true);
+    expect(asset.localUri).toBeTruthy();
+  });
+}
 
 if (Platform.OS !== 'web') {
   it(`coalesces downloads`, async () => {

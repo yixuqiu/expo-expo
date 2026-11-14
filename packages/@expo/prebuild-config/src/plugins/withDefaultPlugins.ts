@@ -1,30 +1,23 @@
 /**
  * These are the versioned first-party plugins with some of the future third-party plugins mixed in for legacy support.
  */
-import {
-  AndroidConfig,
-  ConfigPlugin,
-  IOSConfig,
-  StaticPlugin,
-  withPlugins,
-  withStaticPlugin,
-} from '@expo/config-plugins';
-import { ExpoConfig } from '@expo/config-types';
+import type { ConfigPlugin, StaticPlugin } from '@expo/config-plugins';
+import { AndroidConfig, IOSConfig, withPlugins, withStaticPlugin } from '@expo/config-plugins';
+import type { ExpoConfig } from '@expo/config-types';
 import Debug from 'debug';
 
+import { shouldSkipAutoPlugin } from '../getAutolinkedPackages';
 import { withAndroidIcons } from './icons/withAndroidIcons';
 import { withIosIcons } from './icons/withIosIcons';
-import withAdMob from './unversioned/expo-ads-admob/expo-ads-admob';
+import withEdgeToEdge from './unversioned/edge-to-edge/withEdgeToEdge';
 import withAppleAuthentication from './unversioned/expo-apple-authentication';
 import withContacts from './unversioned/expo-contacts';
 import withDocumentPicker from './unversioned/expo-document-picker';
-import withNavigationBar from './unversioned/expo-navigation-bar/expo-navigation-bar';
+import withInlineModules from './unversioned/expo-inline-modules/withInlineModules';
 import withNotifications from './unversioned/expo-notifications/expo-notifications';
-import withSplashScreen from './unversioned/expo-splash-screen/expo-splash-screen';
 import withSystemUI from './unversioned/expo-system-ui/expo-system-ui';
 import withUpdates from './unversioned/expo-updates';
 import withMaps from './unversioned/react-native-maps';
-import { shouldSkipAutoPlugin } from '../getAutolinkedPackages';
 
 const debug = Debug('expo:prebuild-config');
 
@@ -41,25 +34,27 @@ export const withIosExpoPlugins: ConfigPlugin<{
 
   return withPlugins(config, [
     [IOSConfig.BundleIdentifier.withBundleIdentifier, { bundleIdentifier }],
-    IOSConfig.Swift.withSwiftBridgingHeader,
-    IOSConfig.Swift.withNoopSwiftFile,
     IOSConfig.Google.withGoogle,
     IOSConfig.Name.withDisplayName,
     IOSConfig.Name.withProductName,
     IOSConfig.Orientation.withOrientation,
     IOSConfig.RequiresFullScreen.withRequiresFullScreen,
     IOSConfig.Scheme.withScheme,
+    IOSConfig.DevServer.withMetroPort,
     IOSConfig.UsesNonExemptEncryption.withUsesNonExemptEncryption,
     IOSConfig.Version.withBuildNumber,
     IOSConfig.Version.withVersion,
     IOSConfig.Google.withGoogleServicesFile,
-    IOSConfig.BuildProperties.withJsEnginePodfileProps,
+    // Deployment Target
+    IOSConfig.DeploymentTarget.withDeploymentTarget,
+    IOSConfig.DeploymentTarget.withDeploymentTargetPodfileProps,
     // Entitlements
     IOSConfig.Entitlements.withAssociatedDomains,
     // XcodeProject
     IOSConfig.DeviceFamily.withDeviceFamily,
     IOSConfig.Bitcode.withBitcode,
     IOSConfig.Locales.withLocales,
+    IOSConfig.DevelopmentTeam.withDevelopmentTeam,
     // Dangerous
     withIosIcons,
     IOSConfig.PrivacyInfo.withPrivacyInfo,
@@ -72,15 +67,12 @@ export const withIosExpoPlugins: ConfigPlugin<{
  */
 export const withAndroidExpoPlugins: ConfigPlugin<{
   package: string;
+  projectRoot: string;
 }> = (config, props) => {
   // Set the package name ahead of time.
   if (!config.android) config.android = {};
   config.android.package = props.package;
-
   return withPlugins(config, [
-    // gradle.properties
-    AndroidConfig.BuildProperties.withJsEngineGradleProps,
-
     // settings.gradle
     AndroidConfig.Name.withNameSettingsGradle,
 
@@ -95,6 +87,7 @@ export const withAndroidExpoPlugins: ConfigPlugin<{
     // AndroidManifest.xml
     AndroidConfig.AllowBackup.withAllowBackup,
     AndroidConfig.WindowSoftInputMode.withWindowSoftInputMode,
+    AndroidConfig.PredictiveBackGesture.withPredictiveBackGesture,
     // Note: The withAndroidIntentFilters plugin must appear before the withScheme
     // plugin or withScheme will override the output of withAndroidIntentFilters.
     AndroidConfig.IntentFilters.withAndroidIntentFilters,
@@ -105,13 +98,15 @@ export const withAndroidExpoPlugins: ConfigPlugin<{
 
     // strings.xml
     AndroidConfig.Name.withName,
+    AndroidConfig.Locales.withLocales,
 
     // Dangerous -- these plugins run in reverse order.
     AndroidConfig.GoogleServices.withGoogleServicesFile,
 
     // Modify colors.xml and styles.xml
-    AndroidConfig.StatusBar.withStatusBar,
+    AndroidConfig.SystemBars.withSystemBars,
     AndroidConfig.PrimaryColor.withPrimaryColor,
+    withEdgeToEdge,
 
     withAndroidIcons,
     // If we renamed the package, we should also move it around and rename it in source files
@@ -130,24 +125,20 @@ const versionedExpoSDKPackages: string[] = [
   'expo-updates',
   'expo-navigation-bar',
   'expo-document-picker',
-  'expo-splash-screen',
   'expo-system-ui',
+  'expo-inline-modules',
 ];
 
 export const withVersionedExpoSDKPlugins: ConfigPlugin = (config) => {
   return withPlugins(config, [
     withMaps,
-    withAdMob,
     withAppleAuthentication,
     withContacts,
     withNotifications,
     withUpdates,
     withDocumentPicker,
-    // System UI must come before splash screen as they overlap
-    // and splash screen will warn about conflicting rules.
     withSystemUI,
-    withSplashScreen,
-    withNavigationBar,
+    withInlineModules,
   ]);
 };
 
@@ -165,7 +156,6 @@ const legacyExpoPlugins = [
   'expo-app-auth',
   'expo-av',
   'expo-background-fetch',
-  'expo-barcode-scanner',
   'expo-brightness',
   'expo-calendar',
   'expo-camera',

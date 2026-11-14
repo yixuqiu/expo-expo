@@ -1,5 +1,5 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
+import Ionicons from '@react-native-vector-icons/ionicons';
+import { useNavigation } from 'expo-router';
 import React from 'react';
 import {
   Dimensions,
@@ -139,7 +139,7 @@ export default function SearchBar({
           <Text
             style={{
               fontSize: 17,
-              color: tintColor || '#007AFF',
+              color: tintColor,
             }}>
             {cancelButtonText || 'Cancel'}
           </Text>

@@ -1,26 +1,42 @@
 // This file configures the runtime environment to increase compatibility with WinterCG.
 // https://wintercg.org/
-import { polyfillGlobal as installGlobal } from 'react-native/Libraries/Utilities/PolyfillFunctions';
 
-// Add a well-known shared symbol that doesn't show up in iteration or inspection
-// this can be used to detect if the global object abides by the Expo team's documented
-// built-in requirements.
-const BUILTIN_SYMBOL = Symbol.for('expo.builtin');
+// WARN(@kitten): We must ensure that the core react-native globals are initialized before ours
+// Otherwise we're relying on `getModulesRunBeforeMainModule` which is unstable or can be missing
+import './setupReactNativeEnvironment';
+import '../../types';
+import { installFormDataPatch } from './FormData';
+import { installGlobal as install } from './installGlobal';
 
-function addBuiltinSymbol(obj: object) {
-  Object.defineProperty(obj, BUILTIN_SYMBOL, {
-    value: true,
-    enumerable: false,
-    configurable: false,
-  });
-  return obj;
-}
-
-function install(name: string, getValue: () => any) {
-  installGlobal(name, () => addBuiltinSymbol(getValue()));
-}
-
+// https://encoding.spec.whatwg.org/#interface-textdecoderstream
+install('TextDecoderStream', () => require('./TextDecoderStream').TextDecoderStream);
+// https://encoding.spec.whatwg.org/#interface-textencoderstream
+install('TextEncoderStream', () => require('./TextDecoderStream').TextEncoderStream);
 // https://url.spec.whatwg.org/#url
 install('URL', () => require('./url').URL);
 // https://url.spec.whatwg.org/#urlsearchparams
 install('URLSearchParams', () => require('./url').URLSearchParams);
+// https://streams.spec.whatwg.org/#rs
+// ReadableStream is injected by Metro as a global
+
+install('__ExpoImportMetaRegistry', () => require('./ImportMetaRegistry').ImportMetaRegistry);
+
+installFormDataPatch(FormData);
+
+// Polyfill async iterator symbol for Hermes.
+// @ts-expect-error: readonly property only applies when the engine supports it
+Symbol.asyncIterator ??= Symbol.for('Symbol.asyncIterator');
+
+const useRnFetch =
+  process.env.EXPO_PUBLIC_USE_RN_FETCH === '1' || process.env.EXPO_PUBLIC_USE_RN_FETCH === 'true';
+
+if (!useRnFetch) {
+  // Reading `Headers` triggers RN's polyfill chain, which also installs
+  // `Request` and `Response`. Must run before we replace `fetch` below.
+  if (!globalThis.Headers) {
+    throw new Error(
+      "expo/fetch expected `globalThis.Headers` to be installed by React Native's fetch polyfill."
+    );
+  }
+  install('fetch', () => require('./fetch').fetch);
+}

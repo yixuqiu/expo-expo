@@ -8,6 +8,7 @@ private let EVENT_BAROMETER_DID_UPDATE = "barometerDidUpdate"
 public final class BarometerModule: Module {
   private lazy var altimeter = CMAltimeter()
   private lazy var operationQueue = OperationQueue()
+  private var isObserving = false
 
   public func definition() -> ModuleDefinition {
     Name("ExpoBarometer")
@@ -24,9 +25,14 @@ public final class BarometerModule: Module {
 
     OnStartObserving {
       if CMAltimeter.authorizationStatus() == .notDetermined {
-        CMSensorRecorder().recordAccelerometer(forDuration: 0.1)
+        if #available(iOS 17.4, *) {
+          // There's a bug in iOS 17.4 where the motion permissions popup won't display
+          // even when the NSMotionUsageDescription is in the plist while using the altimeter.
+          CMSensorRecorder().recordAccelerometer(forDuration: 0.1)
+        }
       }
 
+      isObserving = true
       altimeter.startRelativeAltitudeUpdates(to: operationQueue) { [weak self] data, _ in
         guard let data else {
           return
@@ -34,16 +40,21 @@ public final class BarometerModule: Module {
         self?.sendEvent(EVENT_BAROMETER_DID_UPDATE, [
           // Given pressure needs to be converted from kPa to hPa
           "pressure": data.pressure.doubleValue * 10.0,
-          "relativeAltitude": data.relativeAltitude.doubleValue
+          "relativeAltitude": data.relativeAltitude.doubleValue,
+          "timestamp": data.timestamp
         ])
       }
     }
 
     OnStopObserving {
+      guard isObserving else { return }
+      isObserving = false
       altimeter.stopRelativeAltitudeUpdates()
     }
 
     OnDestroy {
+      guard isObserving else { return }
+      isObserving = false
       altimeter.stopRelativeAltitudeUpdates()
     }
   }

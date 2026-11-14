@@ -1,17 +1,18 @@
 ---
-title: Use private npm packages
-description: Learn how to configure EAS Build to use private npm packages.
+title: Using private npm packages
+sidebar_label: Private npm packages
+description: Learn how to configure Expo Build to use private npm packages.
 ---
 
-import ImageSpotlight from '~/components/plugins/ImageSpotlight';
+import { ContentSpotlight } from '~/ui/components/ContentSpotlight';
 
-EAS Build has full support for using private npm packages in your project. These can either be published to npm (if you have [the Pro/Teams plan](https://www.npmjs.com/products)) or to a private registry (for example, using self-hosted [Verdaccio](https://verdaccio.org/)).
+Expo Build has full support for using private npm packages in your project. These can either be published to npm (if you have [the Pro/Teams plan](https://www.npmjs.com/products)) or to a private registry (for example, using self-hosted [Verdaccio](https://verdaccio.org/)).
 
-Before starting the build, you will need to configure your project to provide EAS Build with your npm token.
+Before starting the build, you will need to configure your project to provide Expo Build with your npm token.
 
 ## Default npm configuration
 
-By default, EAS Build uses a self-hosted npm cache that speeds up installing dependencies for all builds. Every EAS Build builder is configured with a **.npmrc** file for each platform:
+By default, Expo Build uses a self-hosted npm cache that speeds up installing dependencies for all builds. Every Expo Build builder is configured with a **.npmrc** file for each platform:
 
 ### Android
 
@@ -27,18 +28,18 @@ registry=http://10.254.24.8:4873
 
 ## Private packages published to npm
 
-If your project is using private packages published to npm, you need to provide EAS Build with [a read-only npm token](https://docs.npmjs.com/about-access-tokens) so that it can install your dependencies successfully.
+If your project is using private packages published to npm, you need to provide Expo Build with [a read-only npm token](https://docs.npmjs.com/about-access-tokens) so that it can install your dependencies successfully.
 
 The recommended way is to add the `NPM_TOKEN` secret to your account or project's secrets:
 
-<ImageSpotlight
+<ContentSpotlight
   alt="Secret creation UI filled."
   src="/static/images/eas-build/environment-secrets/secrets-create-filled.png"
 />
 
-For more information on how to do that, see [secret environment variables](/build-reference/variables/#secrets-on-the-expo-website).
+For more information on how to do that, see [secret environment variables](/eas/environment-variables/manage/#create-variables-in-the-dashboard).
 
-When EAS detects that the `NPM_TOKEN` environment variable is available during a build, it automatically creates the following **.npmrc**:
+When Expo Build detects that the `NPM_TOKEN` environment variable is available during a build, it automatically creates the following **.npmrc**:
 
 ```ini .npmrc
 //registry.npmjs.org/:_authToken=${NPM_TOKEN}
@@ -49,7 +50,7 @@ However, this only happens when **.npmrc** is not in your project's root directo
 
 You can verify if it worked by viewing build logs and looking for the **Prepare project** build phase:
 
-<ImageSpotlight
+<ContentSpotlight
   alt=".npmrc created and shown in the build logs."
   src="/static/images/eas-build/npmrc.png"
 />

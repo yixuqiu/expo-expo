@@ -1,111 +1,96 @@
 /* eslint-env jest */
 import { ExpoConfig, getConfig, PackageJSONConfig } from '@expo/config';
 import JsonFile from '@expo/json-file';
-import mockedSpawnAsync, { SpawnOptions, SpawnResult } from '@expo/spawn-async';
-import assert from 'assert';
-import execa from 'execa';
-import findProcess from 'find-process';
-import fs from 'fs';
 import * as htmlParser from 'node-html-parser';
-import os from 'os';
-import path from 'path';
-import treeKill from 'tree-kill';
-import { promisify } from 'util';
+import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
 
 import { copySync } from '../../src/utils/dir';
+import { toPosixPath } from '../../src/utils/filePath';
+import { executePnpmAsync } from '../utils/expo';
+import { createVerboseLogger } from '../utils/log';
+import { createPackageLink } from '../utils/package';
+import { getTemporaryPath, TEMP_DIR } from '../utils/path';
+import { executeAsync } from '../utils/process';
 
-export const bin = require.resolve('../../build/bin/cli');
+export { getTemporaryPath } from '../utils/path';
+
+export const bin = require.resolve('../../bin/cli');
+
+// Set this to true to enable caching and prevent rerunning pnpm installs
+const testingLocally = !process.env.CI;
 
 export const projectRoot = getTemporaryPath();
 
-export function getTemporaryPath() {
-  return path.join(os.tmpdir(), Math.random().toString(36).substring(2));
-}
-
-export function execute(...args: string[]) {
-  return execa('node', [bin, ...args], { cwd: projectRoot });
-}
-
+/** Get the directory relative to the default project root. */
 export function getRoot(...args: string[]) {
   return path.join(projectRoot, ...args);
 }
 
-export async function abortingSpawnAsync(
-  cmd: string,
-  args: string[],
-  options?: SpawnOptions
-): Promise<SpawnResult> {
-  const spawnAsync = jest.requireActual('@expo/spawn-async') as typeof mockedSpawnAsync;
-
-  const promise = spawnAsync(cmd, args, options);
-  promise.child.stdout?.pipe(process.stdout);
-  promise.child.stderr?.pipe(process.stderr);
-
-  // TODO: Not sure how to do this yet...
-  // const unsub = addJestInterruptedListener(() => {
-  //   promise.child.kill('SIGINT');
-  // });
-  try {
-    return await promise;
-  } catch (e) {
-    const error = e as Error;
-    if (isSpawnResult(error)) {
-      const spawnError = error as SpawnResult;
-      if (spawnError.stdout) error.message += `\n------\nSTDOUT:\n${spawnError.stdout}`;
-      if (spawnError.stderr) error.message += `\n------\nSTDERR:\n${spawnError.stderr}`;
-    }
-    throw error;
-  } finally {
-    // unsub();
-  }
-}
-
-function isSpawnResult(errorOrResult: Error): errorOrResult is Error & SpawnResult {
-  return 'pid' in errorOrResult && 'stdout' in errorOrResult && 'stderr' in errorOrResult;
-}
-
-export async function installAsync(projectRoot: string, pkgs: string[] = []) {
-  return abortingSpawnAsync('bun', ['install', ...pkgs], {
-    cwd: projectRoot,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-}
-
 /**
  * @param parentDir Directory to create the project folder in, i.e. os temp directory
- * @param props.dirName Name of the project folder, used to prevent recreating the project locally
- * @param props.reuseExisting Should reuse the existing project if possible, good for testing locally
- * @param props.fixtureName Name of the fixture folder to use, this must map to the directories in the `expo/e2e/fixtures/` folder
- * @param props.config Optional extra values to add inside the app.json `expo` object
- * @param props.pkg Optional extra values to add to the fixture package.json file before installing
+ * @param verbose
+ * @param dirName Name of the project folder, used to prevent recreating the project locally
+ * @param reuseExisting Should reuse the existing project if possible, good for testing locally
+ * @param fixtureName Name of the fixture folder to use, this must map to the directories in the `expo/e2e/fixtures/` folder
+ * @param config Optional extra values to add inside the app.json `expo` object
+ * @param pkg Optional extra values to add to the fixture package.json file before installing
+ * @param linkExpoPackages Note, this is linked by installing the workspace folder as dependency directly.
+ * This may cause other side effects, like resolving monorepo dependencies instead of the test project.
+ * @param linkExpoPackagesDev Note, this is linked by installing the workspace folder as dependency directly.
+ * This may cause other side effects, like resolving monorepo dependencies instead of the test project.
  * @returns The project root that can be tested inside of
  */
 export async function createFromFixtureAsync(
   parentDir: string,
   {
+    verbose,
     dirName,
     reuseExisting,
     fixtureName,
     config,
     pkg,
+    linkExpoPackages = ['expo'],
+    linkExpoPackagesDev = [],
   }: {
+    verbose?: boolean;
     dirName: string;
     reuseExisting?: boolean;
     fixtureName: string;
     config?: Partial<ExpoConfig>;
     pkg?: Partial<PackageJSONConfig>;
+    linkExpoPackages?: string[];
+    linkExpoPackagesDev?: string[];
   }
 ): Promise<string> {
   const projectRoot = path.join(parentDir, dirName);
+  const log = createVerboseLogger({ verbose, prefix: 'project' });
+
+  log('Creating fixture:', {
+    parentDir,
+    dirName,
+    reuseExisting,
+    fixtureName,
+    config,
+    pkg,
+    linkExpoPackages,
+    linkExpoPackagesDev,
+  });
 
   if (fs.existsSync(projectRoot)) {
     if (reuseExisting) {
-      console.log('[setup] Reusing existing fixture project:', projectRoot);
+      log('Reusing existing fixture project:', projectRoot);
+      log.exit();
+
       // bail out early, this is good for local testing.
       return projectRoot;
     } else {
-      console.log('[setup] Clearing existing fixture project:', projectRoot);
-      await fs.promises.rm(projectRoot, { recursive: true, force: true });
+      log('Clearing existing fixture project:', projectRoot);
+      // NOTE(@kitten): Rename first to quickly move project out of the way
+      const tempName = getTemporaryPath();
+      await fs.promises.rename(projectRoot, tempName);
+      await fs.promises.rm(tempName, { recursive: true, force: true });
     }
   }
 
@@ -118,32 +103,57 @@ export async function createFromFixtureAsync(
 
     // Create the project root
     fs.mkdirSync(projectRoot, { recursive: true });
-    console.log('[setup] Created fixture project:', projectRoot);
+    log('Created fixture project:', projectRoot);
 
     // Copy all files recursively into the temporary directory
-    await copySync(fixturePath, projectRoot);
+    copySync(fixturePath, projectRoot);
 
     // Add additional modifications to the package.json
-    if (pkg) {
+    pkg ??= {};
+    if (pkg || linkExpoPackages || linkExpoPackagesDev) {
       const pkgPath = path.join(projectRoot, 'package.json');
       const fixturePkg = (await JsonFile.readAsync(pkgPath)) as PackageJSONConfig;
+
+      const dependencies = Object.assign({}, fixturePkg.dependencies, pkg.dependencies);
+      const devDependencies = Object.assign({}, fixturePkg.devDependencies, pkg.devDependencies);
+      const overrides = Object.assign({}, fixturePkg.resolutions, pkg.resolutions);
+
+      if (dependencies['expo']) linkExpoPackages.push('expo');
+      if (dependencies['expo-router']) linkExpoPackages.push('expo-router');
+
+      for (const pkg of linkExpoPackages) {
+        const link = createPackageLink(projectRoot, `packages/${pkg}`);
+        log('Linked into dependencies', pkg);
+        dependencies[pkg] = '*';
+        overrides[pkg] = link;
+      }
+
+      for (const pkg of linkExpoPackagesDev) {
+        const link = createPackageLink(projectRoot, `packages/${pkg}`);
+        log('Linked into devDependencies', pkg);
+        devDependencies[pkg] = '*';
+        overrides[pkg] = link;
+      }
 
       await JsonFile.writeAsync(pkgPath, {
         ...pkg,
         ...fixturePkg,
-        dependencies: {
-          ...(fixturePkg.dependencies || {}),
-          ...(pkg.dependencies || {}),
-        },
-        devDependencies: {
-          ...(fixturePkg.devDependencies || {}),
-          ...(pkg.devDependencies || {}),
-        },
-        scripts: {
-          ...(fixturePkg.scripts || {}),
-          ...(pkg.scripts || {}),
-        },
+        dependencies,
+        devDependencies,
+        resolutions: undefined,
+        scripts: Object.assign({}, fixturePkg.scripts, pkg.scripts),
       });
+
+      const minimumReleaseAgeExclude = ['@react-native/*', 'react-native'];
+      let workspaceConfig = `\nminimumReleaseAgeExclude:\n${minimumReleaseAgeExclude
+        .map((name) => `  - ${JSON.stringify(name)}`)
+        .join('\n')}\n`;
+      if (Object.keys(overrides).length > 0) {
+        workspaceConfig += `\noverrides:\n${Object.entries(overrides)
+          .map(([name, version]) => `  ${JSON.stringify(name)}: ${JSON.stringify(version)}`)
+          .join('\n')}\n`;
+      }
+      await fs.promises.appendFile(path.join(projectRoot, 'pnpm-workspace.yaml'), workspaceConfig);
     }
 
     // Add additional modifications to the Expo config
@@ -165,67 +175,60 @@ export async function createFromFixtureAsync(
       await JsonFile.writeAsync(staticConfigPath, modifiedConfig as any);
     }
 
-    // Install the packages for e2e experience.
-    await installAsync(projectRoot);
+    // Prefer offline artifacts to speed up repeated installs
+    await executePnpmAsync(projectRoot, ['install', '--prefer-offline'], {
+      env: {
+        NODE_ENV: 'development',
+      },
+    });
   } catch (error) {
-    // clean up if something failed.
-    // await fs.remove(projectRoot).catch(() => null);
+    log.error(error);
     throw error;
+  } finally {
+    log.exit();
   }
 
   return projectRoot;
 }
 
-// Set this to true to enable caching and prevent rerunning yarn installs
-const testingLocally = !process.env.CI;
-
-export async function setupTestProjectAsync(
+export async function setupTestProjectWithOptionsAsync(
   name: string,
   fixtureName: string,
-  sdkVersion: string = '49.0.0'
+  {
+    reuseExisting = testingLocally,
+    linkExpoPackages,
+    linkExpoPackagesDev,
+  }: {
+    reuseExisting?: boolean;
+    linkExpoPackages?: string[];
+    linkExpoPackagesDev?: string[];
+  } = {}
 ): Promise<string> {
   // If you're testing this locally, you can set the projectRoot to a local project (you created with expo init) to save time.
-  const projectRoot = await createFromFixtureAsync(os.tmpdir(), {
+  const projectRoot = await createFromFixtureAsync(TEMP_DIR, {
     dirName: name,
-    reuseExisting: testingLocally,
+    reuseExisting,
     fixtureName,
+    linkExpoPackages,
+    linkExpoPackagesDev,
   });
-
-  // Many of the factors in this test are based on the expected SDK version that we're testing against.
-  const { exp } = getConfig(projectRoot, { skipPlugins: true });
-  expect(exp.sdkVersion).toBe(sdkVersion);
   return projectRoot;
 }
 
-/** Returns a list of loaded modules relative to the repo root. Useful for preventing lazy loading from breaking unexpectedly.   */
+/** Returns a list of loaded modules relative to the repo root. Useful for preventing lazy loading from breaking unexpectedly. */
 export async function getLoadedModulesAsync(statement: string): Promise<string[]> {
   const repoRoot = path.join(__dirname, '../../../../');
-  const results = await execa(
+  const results = await executeAsync(__dirname, [
     'node',
-    [
-      '-e',
-      [statement, `console.log(JSON.stringify(Object.keys(require('module')._cache)));`].join('\n'),
-    ],
-    { cwd: __dirname }
-  );
-  const loadedModules = JSON.parse(results.stdout.trim());
-  return loadedModules.map((value: string) => path.relative(repoRoot, value)).sort();
-}
-
-const pTreeKill = promisify(treeKill);
-
-export async function ensurePortFreeAsync(port: number) {
-  const [portProcess] = await findProcess('port', port);
-  if (!portProcess) {
-    return;
-  }
-  console.log(`Killing process ${portProcess.name} on port ${port}...`);
-  try {
-    await pTreeKill(portProcess.pid);
-    console.log(`Killed process ${portProcess.name} on port ${port}`);
-  } catch (error: any) {
-    console.log(`Failed to kill process ${portProcess.name} on port ${port}: ${error.message}`);
-  }
+    '-e',
+    [statement, `console.log(JSON.stringify(Object.keys(require('module')._cache)));`].join(';'),
+  ]);
+  const loadedModules = JSON.parse(results.stdout.trim()) as string[];
+  return loadedModules
+    .map((value) => toPosixPath(path.relative(repoRoot, value)))
+    .filter((value) => !value.includes('/ms-vscode.js-debug/')) // Ignore injected vscode debugger scripts
+    .filter((value) => !value.includes('/.pnpm/')) // Ignore injected vscode debugger scripts
+    .sort();
 }
 
 export async function getPage(output: string, route: string): Promise<string> {
@@ -236,26 +239,33 @@ export async function getPageHtml(output: string, route: string) {
   return htmlParser.parse(await getPage(output, route));
 }
 
+export function getHtml(html: string) {
+  return htmlParser.parse(html);
+}
+
 export function getRouterE2ERoot(): string {
-  const root = path.join(__dirname, '../../../../../apps/router-e2e');
-  return root;
+  return path.join(__dirname, '../../../../../apps/router-e2e');
 }
 
 export function getHtmlHelpers(outputDir: string) {
   async function getScriptTagsAsync(name: string) {
-    const tags = (await getPageHtml(outputDir, name)).querySelectorAll('script').map((script) => {
-      expect(fs.existsSync(path.join(outputDir, script.attributes.src))).toBe(true);
+    const tags = (await getPageHtml(outputDir, name))
+      .querySelectorAll('script')
+      // Remove scripts without a src attribute
+      .filter((script) => !!script.attributes.src)
+      .map((script) => {
+        expect(fs.existsSync(path.join(outputDir, script.attributes.src ?? ''))).toBe(true);
 
-      return script.attributes.src;
-    });
+        return script.attributes.src;
+      });
 
     ensureEntryChunk(tags[0]);
 
     return tags;
   }
 
-  function ensureEntryChunk(relativePath: string) {
-    expect(fs.readFileSync(path.join(outputDir, relativePath), 'utf8')).toMatch(
+  function ensureEntryChunk(relativePath: string | undefined) {
+    expect(fs.readFileSync(path.join(outputDir, relativePath ?? ''), 'utf8')).toMatch(
       /__BUNDLE_START_TIME__/
     );
   }
@@ -268,7 +278,65 @@ export function getHtmlHelpers(outputDir: string) {
 export function expectChunkPathMatching(name: string) {
   return expect.stringMatching(
     new RegExp(
-      `_expo\\/static\\/js\\/web\\/${name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}-.*\\.js`
+      `_expo\\/static\\/js\\/web\\/${name.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}-.*\\.js`
     )
   );
+}
+
+/**
+ * Find all project files in the given project root.
+ * This returns all paths in POSIX format, sorted alphabetically, and relative to the project root without any prefix.
+ */
+export function findProjectFiles(projectRoot: string) {
+  const baseDir = path.resolve(projectRoot);
+  const results: string[] = [];
+  function list(dir: string = '') {
+    const target = path.resolve(baseDir, dir);
+    const entries = fs.readdirSync(target, { withFileTypes: true });
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const name = dir ? path.join(dir, entry.name) : entry.name;
+      if (entry.isFile()) {
+        results.push(toPosixPath(name));
+      } else if (entry.isDirectory() && entry.name !== 'node_modules') {
+        list(name);
+      }
+    }
+  }
+  list();
+  return results.sort();
+}
+
+export function stripWhitespace(str: string): string {
+  return str.replace(/\s+/g, '').trim();
+}
+
+/**
+ * Gets the data from a page and its associated loader.
+ *
+ * @remarks We retrieve the loader first to check for a module ID collision between the main and
+ * loader bundles. See https://github.com/expo/expo/pull/42245
+ */
+export function getPageAndLoaderData(url: string, addIndexSuffixToLoaderPath?: boolean) {
+  let effectiveLoaderPath = url === '/' ? '/index' : url;
+  if (addIndexSuffixToLoaderPath) {
+    effectiveLoaderPath += '/index';
+  }
+  return [
+    {
+      name: 'loader endpoint',
+      url: `/_expo/loaders${effectiveLoaderPath}`,
+      getData: (response: Response) => {
+        return response.json();
+      },
+    },
+    {
+      name: 'page',
+      url: `${url}`,
+      getData: async (response: Response) => {
+        const html = getHtml(await response.text());
+        return JSON.parse(html.querySelector('[data-testid="loader-result"]')!.textContent);
+      },
+    },
+  ];
 }

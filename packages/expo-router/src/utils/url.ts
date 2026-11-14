@@ -3,7 +3,7 @@
  * NOTE: Additional strictness added to ensure URLs sent in query parameters for in-app navigation are not matched.
  */
 export function hasUrlProtocolPrefix(href: string): boolean {
-  return /^[\w\d_+.-]+:\/\//.test(href);
+  return /^([\w\d_+.-]+:)?\/\//.test(href);
 }
 
 export function isWellKnownUri(href: string): boolean {
@@ -15,5 +15,24 @@ export function isWellKnownUri(href: string): boolean {
 
 export function shouldLinkExternally(href: string): boolean {
   // Cheap check first to avoid regex if the href is not a path fragment.
-  return !/^[./]/.test(href) && (hasUrlProtocolPrefix(href) || isWellKnownUri(href));
+  return !href.startsWith('.') && (hasUrlProtocolPrefix(href) || isWellKnownUri(href));
+}
+
+export function parseUrlUsingCustomBase(href: string): URL {
+  // NOTE(@kitten): This used to use a dummy base URL for parsing (phony [.] example)
+  // However, this seems to get flagged since it's preserved 1:1 in the output bytecode by certain scanners
+  // Instead, we use an empty `file:` URL. This will still perform `pathname` normalization, search parameter parsing
+  // encoding, and all other logic, except the logic that applies to hostnames and protocols, and also not leave a
+  // dummy URL in the output bytecode
+  return new URL(href, 'file:');
+}
+
+// Malformed percent-encoding (e.g. `%GG`) would otherwise throw and drop the value.
+export function safeDecodeURIComponent(value: any) {
+  try {
+    return typeof value === 'string' ? decodeURIComponent(value) : value;
+  } catch {
+    // If the value is not a valid URI component, return it as is
+    return value;
+  }
 }

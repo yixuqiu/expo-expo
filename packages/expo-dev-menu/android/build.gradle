@@ -1,80 +1,68 @@
+buildscript {
+  repositories {
+    mavenCentral()
+  }
+  dependencies {
+    classpath("org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:${kotlinVersion}")
+  }
+}
+
 apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 group = 'host.exp.exponent'
-version = '5.0.13'
+version = '58.0.11'
 
-def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
-apply from: expoModulesCorePlugin
-applyKotlinExpoModulesCorePlugin()
-useCoreDependencies()
-useDefaultAndroidSdkVersions()
+def hasDevLauncher = findProject(":expo-dev-launcher") != null
+def configureInRelease = findProperty("expo.devmenu.configureInRelease") == "true"
+if (configureInRelease) {
+  println("expo-dev-menu will be enabled in release")
+}
 
-buildscript {
-  // Simple helper that allows the root project to override versions declared by this library.
-  ext.safeExtGet = { prop, fallback ->
-    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
-  }
+expoModule {
+  canBePublished false
 }
 
 android {
   namespace "expo.modules.devmenu"
+
   defaultConfig {
     versionCode 10
-    versionName '5.0.13'
+    versionName '58.0.11'
   }
 
   buildTypes {
-    releaseWithDevMenu {
-      initWith release
-      matchingFallbacks = ['release', 'debug']
+    create("debugOptimized") {
+      initWith(buildTypes.debug)
+      matchingFallbacks += ["release"]
+    }
+
+    buildTypes.each {
+      it.buildConfigField 'boolean', 'AUTO_INITIALIZATION', "${!hasDevLauncher}"
     }
   }
 
   sourceSets {
-    def rnVersion = getRNVersion()
-    main {
-      java {
-        if (rnVersion >= versionToNumber(0, 74, 0)) {
-          srcDirs += "src/react-native-74/main"
-        }
-      }
-    }
-    debug {
-      java {
-        srcDirs += ['../vendored/react-native-gesture-handler/android/']
-        srcDirs += ['../vendored/react-native-safe-area-context/android/']
-
-      }
-    }
-
-    releaseWithDevMenu {
+    debugOptimized {
       setRoot 'src/debug'
     }
+
+    release {
+      if (configureInRelease) {
+        java.srcDir 'src/debug/java'
+        res.srcDir 'src/debug/res'
+      } else {
+        java.srcDir 'src/disableInRelease/java'
+        res.srcDir 'src/disableInRelease/res'
+      }
+    }
   }
+
   buildFeatures {
+    compose true
     buildConfig true
   }
-}
-
-task clenupAssets(type: Delete) {
-  // In the past, assets were placed in the `main` directory.
-  // However, this is no longer the case. To ensure a smooth transition,
-  // we’re also removing assets from the old location.
-  delete files("src/main/assets")
-}
-
-task copyAssets(type: Copy) {
-  dependsOn(clenupAssets)
-
-  from('../assets') {
-    exclude "*.ios.*"
-  }
-  into 'src/debug/assets'
-}
-
-project.afterEvaluate {
-  packageDebugAssets.dependsOn copyAssets
-  packageReleaseWithDevMenuAssets.dependsOn copyAssets
 }
 
 repositories {
@@ -91,61 +79,66 @@ repositories {
 }
 
 dependencies {
-  implementation project(":expo-manifests")
+  def debugOnly = { notation ->
+    //noinspection DependencyNotationArgument
+    debugImplementation notation
+    //noinspection DependencyNotationArgument
+    debugOptimizedImplementation notation
 
-  implementation 'androidx.coordinatorlayout:coordinatorlayout:1.2.0'
-  implementation 'com.google.android.material:material:1.2.1'
+    if (configureInRelease) {
+      //noinspection DependencyNotationArgument
+      releaseImplementation notation
+    }
+  }
 
-  implementation project(":expo-dev-menu-interface")
+  def debugOnlyApi = { notation ->
+    //noinspection DependencyNotationArgument
+    debugApi notation
+    //noinspection DependencyNotationArgument
+    debugOptimizedApi notation
 
-  implementation 'com.squareup.okhttp3:okhttp:3.14.9'
-  implementation 'com.google.code.gson:gson:2.8.6'
+    if (configureInRelease) {
+      //noinspection DependencyNotationArgument
+      releaseApi notation
+    }
+  }
 
-  implementation 'com.facebook.react:react-android'
-  implementation 'com.facebook.soloader:soloader:0.11.0'
-  implementation "androidx.transition:transition:1.1.0" // use by react-native-reanimated
+  debugOnly project(":expo-manifests")
 
-  // Fixes
-  // Cannot access 'androidx....' which is a supertype of 'expo.modules.devmenu.DevMenuActivity'.
-  // Check your module classpath for missing or conflicting dependencies
-  api "androidx.appcompat:appcompat:1.1.0"
-  api "androidx.lifecycle:lifecycle-extensions:2.2.0"
+  debugOnly project(":expo-dev-menu-interface")
 
-  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.3.7'
-  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.5'
+  debugOnly 'com.squareup.okhttp3:okhttp:4.9.2'
 
-  // Needed by gesture handler
-  implementation "androidx.core:core-ktx:1.6.0"
+  debugOnly 'com.facebook.react:react-android'
 
-  api "androidx.browser:browser:1.6.0"
+  debugOnlyApi "androidx.appcompat:appcompat:1.7.1"
+  debugOnlyApi "androidx.lifecycle:lifecycle-extensions:2.2.0"
 
-  testImplementation "com.google.truth:truth:1.1.2"
-  testImplementation "org.robolectric:robolectric:4.10"
-  testImplementation 'com.squareup.okhttp3:mockwebserver:4.3.1'
-  testImplementation 'androidx.test:core:1.4.0'
-}
+  def fragmentVersion = "1.8.9"
 
-def versionToNumber(major, minor, patch) {
-  return patch * 100 + minor * 10000 + major * 1000000
-}
+  debugOnly "androidx.fragment:fragment:$fragmentVersion"
+  debugOnly "androidx.fragment:fragment-ktx:$fragmentVersion"
 
-def getNodeModulesPackageVersion(packageName, overridePropName) {
-  def nodeModulesVersion = providers.exec {
-    workingDir(projectDir)
-    commandLine("node", "-e", "console.log(require('$packageName/package.json').version);")
-  }.standardOutput.asText.get().trim()
-  def version = safeExtGet(overridePropName, nodeModulesVersion)
+  debugOnly 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
+  debugOnly 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
 
-  def coreVersion = version.split("-")[0]
-  def (major, minor, patch) = coreVersion.tokenize('.').collect { it.toInteger() }
+  def composeVersion = "1.9.0"
 
-  return versionToNumber(
-      major,
-      minor,
-      patch
-  )
-}
+  // it's needed by the compose compiler plugin, but it won't leak to the app module
+  releaseCompileOnly "androidx.compose.foundation:foundation-android:$composeVersion"
+  debugOnly "androidx.compose.foundation:foundation-android:$composeVersion"
 
-def getRNVersion() {
-  return getNodeModulesPackageVersion("react-native", "reactNativeVersion")
+  debugOnly "androidx.compose.ui:ui:$composeVersion"
+  debugOnly "androidx.compose.ui:ui-tooling:$composeVersion"
+
+  debugOnly("com.composables:core:1.49.9")
+
+  debugOnlyApi 'io.github.lukmccall:radix-ui-colors:1.0.1'
+
+  debugOnlyApi "androidx.browser:browser:1.9.0"
+
+  testImplementation 'androidx.test:core:1.7.0'
+  testImplementation "com.google.truth:truth:1.4.5"
+  testImplementation 'io.mockk:mockk:1.12.3'
+  testImplementation "org.robolectric:robolectric:4.16"
 }

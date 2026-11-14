@@ -49,7 +49,7 @@ public class ImagePickerModule: Module, OnMediaPickingResultHandler {
       self.handlePermissionRequest(requesterClass: self.getMediaLibraryPermissionRequester(writeOnly), operationType: .ask, promise: promise)
     })
 
-    AsyncFunction("launchCameraAsync", { (options: ImagePickerOptions, promise: Promise) -> Void in
+    AsyncFunction("launchCameraAsync", { (options: ImagePickerOptions, promise: Promise) in
       guard let permissions = self.appContext?.permissions else {
         return promise.reject(PermissionsModuleNotFoundException())
       }
@@ -75,8 +75,8 @@ public class ImagePickerModule: Module, OnMediaPickingResultHandler {
       return promise.reject(PermissionsModuleNotFoundException())
     }
     switch operationType {
-    case .get: permissions.getPermissionUsingRequesterClass(requesterClass, resolve: promise.resolver, reject: promise.legacyRejecter)
-    case .ask: permissions.askForPermission(usingRequesterClass: requesterClass, resolve: promise.resolver, reject: promise.legacyRejecter)
+    case .get: permissions.getPermissionUsingRequesterClass(requesterClass, resolve: promise.legacyResolver, reject: promise.legacyRejecter)
+    case .ask: permissions.askForPermission(usingRequesterClass: requesterClass, resolve: promise.legacyResolver, reject: promise.legacyRejecter)
     }
   }
 
@@ -91,7 +91,7 @@ public class ImagePickerModule: Module, OnMediaPickingResultHandler {
                                         options: options,
                                         imagePickerHandler: imagePickerDelegate)
 
-    if #available(iOS 14, *), !options.allowsEditing && sourceType != .camera {
+    if !options.allowsEditing && sourceType != .camera {
       self.launchMultiSelectPicker(pickingContext: pickingContext)
     } else {
       self.launchLegacyImagePicker(sourceType: sourceType, pickingContext: pickingContext)
@@ -102,22 +102,34 @@ public class ImagePickerModule: Module, OnMediaPickingResultHandler {
     let options = pickingContext.options
 
     let picker = UIImagePickerController()
-    picker.fixCannotMoveEditingBox()
+
+    // Only the camera flow's edit screen needs this workaround. The library
+    // picker hosts its editor in a separate system process via `_UISceneHostingView`,
+    // so the fix is not applicable.
+    if sourceType == .camera && options.allowsEditing {
+      picker.fixCannotMoveEditingBox()
+    }
 
     if sourceType == .camera {
-#if targetEnvironment(simulator)
-      return pickingContext.promise.reject(CameraUnavailableOnSimulatorException())
-#else
       picker.sourceType = .camera
       picker.cameraDevice = options.cameraType == .front ? .front : .rear
-#endif
     }
 
     if sourceType == .photoLibrary {
       picker.sourceType = .photoLibrary
     }
 
-    picker.mediaTypes = options.mediaTypes.toArray()
+    picker.mediaTypes = options.toMediaTypesArray()
+
+    if options.requiresMicrophonePermission() && sourceType == .camera {
+      do {
+        try checkMicrophonePermissions()
+      } catch {
+        pickingContext.promise.reject(error)
+        return
+      }
+    }
+
     picker.videoExportPreset = options.videoExportPreset.toAVAssetExportPreset()
     picker.videoQuality = options.videoQuality.toQualityType()
     picker.videoMaximumDuration = options.videoMaxDuration
@@ -135,20 +147,21 @@ public class ImagePickerModule: Module, OnMediaPickingResultHandler {
     presentPickerUI(picker, pickingContext: pickingContext)
   }
 
-  @available(iOS 14, *)
+  private func checkMicrophonePermissions() throws {
+    guard Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") != nil else {
+      throw MissingMicrophonePermissionException()
+    }
+  }
+
   private func launchMultiSelectPicker(pickingContext: PickingContext) {
     var configuration = PHPickerConfiguration(photoLibrary: PHPhotoLibrary.shared())
     let options = pickingContext.options
 
     // selection limit = 1 --> single selection, reflects the old picker behavior
     configuration.selectionLimit = options.allowsMultipleSelection ? options.selectionLimit : SINGLE_SELECTION
-    configuration.filter = options.mediaTypes.toPickerFilter()
-    if #available(iOS 14, *) {
-      configuration.preferredAssetRepresentationMode = options.preferredAssetRepresentationMode.toAssetRepresentationMode()
-    }
-    if #available(iOS 15, *) {
-      configuration.selection = options.orderedSelection ? .ordered : .default
-    }
+    configuration.filter = options.toPickerFilter()
+    configuration.preferredAssetRepresentationMode = options.preferredAssetRepresentationMode.toAssetRepresentationMode()
+    configuration.selection = options.orderedSelection ? .ordered : .default
 
     let picker = PHPickerViewController(configuration: configuration)
 
@@ -161,6 +174,9 @@ public class ImagePickerModule: Module, OnMediaPickingResultHandler {
     }
 
     picker.modalPresentationStyle = context.options.presentationStyle.toPresentationStyle()
+
+    SceneGeometry.anchorPopover(of: picker, to: currentViewController.view)
+
     picker.setResultHandler(context.imagePickerHandler)
 
     // Store picking context as we're navigating to the different view controller (starting asynchronous flow)
@@ -175,7 +191,6 @@ public class ImagePickerModule: Module, OnMediaPickingResultHandler {
     self.currentPickingContext = nil
   }
 
-  @available(iOS 14, *)
   func didPickMultipleMedia(selection: [PHPickerResult]) {
     guard let options = self.currentPickingContext?.options,
           let promise = self.currentPickingContext?.promise else {
@@ -192,10 +207,12 @@ public class ImagePickerModule: Module, OnMediaPickingResultHandler {
     // Clean up the currently stored picking context
     self.currentPickingContext = nil
 
-    mediaHandler.handleMultipleMedia(selection) { result -> Void in
-      switch result {
-      case .failure(let error): return promise.reject(error)
-      case .success(let response): return promise.resolve(response)
+    Task {
+      do {
+        let assets = try await mediaHandler.handleMultipleMedia(selection)
+        promise.resolve(ImagePickerResponse(assets: assets, canceled: false))
+      } catch {
+        promise.reject(error)
       }
     }
   }
@@ -215,10 +232,12 @@ public class ImagePickerModule: Module, OnMediaPickingResultHandler {
 
     let mediaHandler = MediaHandler(fileSystem: fileSystem,
                                     options: options)
-    mediaHandler.handleMedia(mediaInfo) { result -> Void in
-      switch result {
-      case .failure(let error): return promise.reject(error)
-      case .success(let response): return promise.resolve(response)
+    Task {
+      do {
+        let asset = try await mediaHandler.handleMedia(mediaInfo)
+        promise.resolve(ImagePickerResponse(assets: [asset], canceled: false))
+      } catch {
+        promise.reject(error)
       }
     }
   }

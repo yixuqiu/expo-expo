@@ -30,14 +30,13 @@ public:
   int sqlite3_step();
 
   // helpers
+  std::string getLastErrorMessage();
   int bindStatementParam(int index, jni::alias_ref<jni::JObject> param);
   jni::local_ref<jni::JArrayList<jni::JString>> getColumnNames();
   jni::local_ref<jni::JArrayList<jni::JObject>> getColumnValues();
 
 private:
-  explicit NativeStatementBinding(
-      jni::alias_ref<NativeStatementBinding::jhybridobject> jThis)
-      : javaPart_(jni::make_global(jThis)) {}
+  explicit NativeStatementBinding(jni::alias_ref<NativeStatementBinding::jhybridobject> jThis) {}
 
   jni::local_ref<jni::JObject> getColumnValue(int index);
 
@@ -49,36 +48,9 @@ private:
   friend HybridBase;
   friend NativeDatabaseBinding;
 
-  jni::global_ref<NativeStatementBinding::javaobject> javaPart_;
-  sqlite3_stmt *stmt;
-};
-
-/**
- * A convenient wrapper for the Kotlin CodedException.
- * TODO: Add prefabPublishing from expo-modules-core and remove the duplicated
- * definition.
- */
-class CodedException : public jni::JavaClass<CodedException, jni::JThrowable> {
-public:
-  static auto constexpr kJavaDescriptor =
-      "Lexpo/modules/kotlin/exception/CodedException;";
-
-  static jni::local_ref<CodedException> create(const std::string &message);
-};
-
-/**
- * A convenient wrapper for the Kotlin InvalidConvertibleException.
- */
-class InvalidConvertibleException
-    : public jni::JavaClass<InvalidConvertibleException, CodedException> {
-public:
-  static auto constexpr kJavaDescriptor =
-      "Lexpo/modules/sqlite/InvalidConvertibleException;";
-
-  static jni::local_ref<InvalidConvertibleException>
-  create(const std::string &message) {
-    return InvalidConvertibleException::newInstance(jni::make_jstring(message));
-  }
+  sqlite3 *db = nullptr;
+  exsqlite3_stmt *stmt = nullptr;
+  std::string lastErrorMessage;
 };
 
 } // namespace expo

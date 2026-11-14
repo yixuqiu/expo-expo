@@ -1,33 +1,31 @@
-import JsonFile from '@expo/json-file';
-import fs from 'fs/promises';
-import { glob } from 'glob';
+import fs from 'node:fs';
 import path from 'node:path';
 
-import { runAsync } from './Processes';
-
-let cachedPackages: Package[] | null = null;
+import { runAsync } from './Processes.js';
 
 const EXCLUDE_PACKAGES = [
   '@expo/fingerprint',
   'create-expo',
   'eslint-config-universe',
-  'expo-barcode-scanner',
-  'expo-dev-client-components',
   'expo-doctor',
   'expo-env-info',
-  'expo-face-detector',
-  'expo-module-scripts',
+  '@expo/internal-scripts',
   'expo-module-template',
-  'expo-module-template-local',
   'expo-test-runner',
   'install-expo-modules',
   'pod-install',
   'uri-scheme',
+  'patch-project',
+  'create-expo-module',
+  'create-expo-nightly',
+  '@react-native-community/cli-platform-android', // mock modules inside expo-modules-autolinkin
+  'react', // canary react inside @expo/cli
+  'react-dom', // canary react inside @expo/cli
+  'sqlite-inspector-webui', // prebuilt bundle from expo-sqlite
 ];
 
 export const REACT_NATIVE_TRANSITIVE_DEPENDENCIES = [
   // These packages are transitive dependencies from some expo packages, we should also override their versions.
-  '@react-native/assets-registry',
   '@react-native/dev-middleware',
   '@react-native/babel-preset',
   'react-native',
@@ -35,28 +33,7 @@ export const REACT_NATIVE_TRANSITIVE_DEPENDENCIES = [
 
 interface Package {
   name: string;
-  version: string;
   path: string;
-}
-
-/**
- * Register linkable package in the expo repo for bun linking.
- */
-export async function registerPackageLinkingAsync(expoRepoPath: string, pkg: Package) {
-  await runAsync('bun', ['link'], { cwd: pkg.path });
-}
-
-/**
- * Add given linkable packages to the project.
- */
-export async function addLinkablePackagesToAppAsync(projectRoot: string, packages: Package[]) {
-  const packageJson = await JsonFile.readAsync(path.join(projectRoot, 'package.json'));
-  const dependencies: Record<string, string> =
-    (packageJson.dependencies as Record<string, string>) ?? {};
-  for (const pkg of packages) {
-    dependencies[pkg.name] = `link:${pkg.name}`;
-  }
-  await JsonFile.mergeAsync(path.join(projectRoot, 'package.json'), { dependencies });
 }
 
 /**
@@ -64,50 +41,12 @@ export async function addLinkablePackagesToAppAsync(projectRoot: string, package
  */
 export async function reinstallPackagesAsync(projectRoot: string) {
   await Promise.all([
-    fs.rm(path.join(projectRoot, 'node_modules'), { recursive: true, force: true }),
-    fs.rm(path.join(projectRoot, 'bun.lockb'), { force: true }),
-    fs.rm(path.join(projectRoot, 'yarn.lock'), { force: true }),
+    fs.promises.rm(path.join(projectRoot, 'node_modules'), { recursive: true, force: true }),
+    fs.promises.rm(path.join(projectRoot, 'bun.lock'), { force: true }),
+    fs.promises.rm(path.join(projectRoot, 'bun.lockb'), { force: true }),
+    fs.promises.rm(path.join(projectRoot, 'yarn.lock'), { force: true }),
   ]);
-  await runAsync('bun', ['install'], { cwd: projectRoot });
-}
-
-/**
- * Get a list of all expo packages in the expo repo.
- */
-export async function getExpoPackagesAsync(expoRepoPath: string): Promise<Package[]> {
-  if (cachedPackages != null) {
-    return cachedPackages;
-  }
-
-  const paths = await glob('**/package.json', {
-    cwd: path.join(expoRepoPath, 'packages'),
-    ignore: [
-      '**/example/**',
-      '**/node_modules/**',
-      '**/__tests__/**',
-      '**/__mocks__/**',
-      '**/__fixtures__/**',
-      '**/e2e/**',
-    ],
-  });
-  const packages = await Promise.all(
-    paths
-      .filter((pkgPath) => {
-        for (const exclude of EXCLUDE_PACKAGES) {
-          if (pkgPath.startsWith(exclude)) {
-            return false;
-          }
-        }
-        return true;
-      })
-      .flatMap(async (packageJsonName) => {
-        const packageRoot = path.join(expoRepoPath, 'packages', path.dirname(packageJsonName));
-        return await createPackageAsync(packageRoot);
-      })
-  );
-
-  cachedPackages = packages.sort((a, b) => a.name.localeCompare(b.name));
-  return cachedPackages;
+  await runAsync('pnpm', ['install', '--ignore-scripts'], { cwd: projectRoot });
 }
 
 /**
@@ -119,21 +58,28 @@ export async function getReactNativeTransitivePackagesAsync(
   const packages = await Promise.all(
     REACT_NATIVE_TRANSITIVE_DEPENDENCIES.map((name) => {
       const packageRoot = path.join(expoRepoPath, 'node_modules', name);
-      return createPackageAsync(packageRoot);
+      return Promise.resolve({ name, path: packageRoot });
     })
   );
   return packages;
 }
 
-async function createPackageAsync(packageRoot: string): Promise<Package> {
-  const packageJsonPath = path.join(packageRoot, 'package.json');
-  const packagePath = path.dirname(packageJsonPath);
-  const packageJson = await JsonFile.readAsync(packageJsonPath);
-  const name = packageJson.name as string;
-  const version = packageJson.version as string;
-  return {
-    name,
-    path: packagePath,
-    version,
-  };
+/**
+ * Get the names of every Expo package in the expo repo that can be linked from
+ * local source, i.e. every workspace package under `packages/` minus the
+ * excluded ones.
+ */
+export async function getExpoPackageNamesAsync(expoRepoPath: string): Promise<Set<string>> {
+  const { stdout } = await runAsync('pnpm', ['list', '--depth=-1', '--recursive', '--json'], {
+    cwd: expoRepoPath,
+  });
+
+  const workspaces = JSON.parse(stdout) as Package[];
+  const packagesRoot = path.join(expoRepoPath, 'packages') + path.sep;
+
+  const names = workspaces
+    .filter(({ name, path }) => path.startsWith(packagesRoot) && !EXCLUDE_PACKAGES.includes(name))
+    .map(({ name }) => name);
+
+  return new Set(names);
 }

@@ -8,28 +8,26 @@ import {
   validateSelfSignedCertificate,
   signBufferRSASHA256AndVerify,
 } from '@expo/code-signing-certificates';
-import { ExpoConfig } from '@expo/config';
-import { getExpoHomeDirectory } from '@expo/config/build/getUserState';
-import JsonFile, { JSONObject } from '@expo/json-file';
-import { CombinedError } from '@urql/core';
+import type { ExpoConfig } from '@expo/config';
+import type { JSONObject } from '@expo/json-file';
+import JsonFile from '@expo/json-file';
 import { promises as fs } from 'fs';
-import { GraphQLError } from 'graphql';
-import { pki as PKI } from 'node-forge';
+import type { pki as PKI } from 'node-forge';
 import path from 'path';
-import { Dictionary, parseDictionary } from 'structured-headers';
+import type { Dictionary } from 'structured-headers';
+import { parseDictionary } from 'structured-headers';
 
-import { env } from './env';
-import { CommandError } from './errors';
 import { getExpoGoIntermediateCertificateAsync } from '../api/getExpoGoIntermediateCertificate';
 import { getProjectDevelopmentCertificateAsync } from '../api/getProjectDevelopmentCertificate';
-import { AppQuery } from '../api/graphql/queries/AppQuery';
-import { ensureLoggedInAsync } from '../api/user/actions';
-import { Actor } from '../api/user/user';
-import { AppByIdQuery, Permission } from '../graphql/generated';
+import { UnexpectedServerError, UnexpectedServerData } from '../api/graphql/client';
+import { AppQuery, type App } from '../api/graphql/queries/AppQuery';
+import { getExpoHomeDirectory } from '../api/user/UserSettings';
+import { tryGetUserAsync } from '../api/user/actions';
+import type { Actor } from '../api/user/user';
 import * as Log from '../log';
-import { learnMore } from '../utils/link';
-
-const debug = require('debug')('expo:codesigning') as typeof console.log;
+import { debugEvent } from '../run/events';
+import { env } from './env';
+import { CommandError } from './errors';
 
 export type CodeSigningInfo = {
   keyId: string;
@@ -63,8 +61,15 @@ export function getDevelopmentCodeSigningDirectory(): string {
   return path.join(getExpoHomeDirectory(), 'codesigning');
 }
 
+function assertBasenameValue(input: string): void {
+  if (!input || input === '.' || input === '..' || input !== path.basename(input)) {
+    throw new CommandError('Invalid EAS project ID for development code signing cache');
+  }
+}
+
 function getProjectDevelopmentCodeSigningInfoFile<T extends JSONObject>(defaults: T) {
   function getFile(easProjectId: string): JsonFile<T> {
+    assertBasenameValue(easProjectId);
     const filePath = path.join(
       getDevelopmentCodeSigningDirectory(),
       easProjectId,
@@ -186,11 +191,7 @@ async function getExpoRootDevelopmentCodeSigningInfoAsync(
   // can't check for scope key validity since scope key is derived on the server from projectId and we may be offline.
   // we rely upon the client certificate check to validate the scope key
   if (!easProjectId) {
-    debug(
-      `WARN: Expo Application Services (EAS) is not configured for your project. Configuring EAS enables a more secure development experience amongst many other benefits. ${learnMore(
-        'https://docs.expo.dev/eas/'
-      )}`
-    );
+    debugEvent('codesigning:eas_not_configured', {});
     return null;
   }
 
@@ -205,7 +206,20 @@ async function getExpoRootDevelopmentCodeSigningInfoAsync(
   //    (overwriting existing dev cert in case projectId changed or it has expired)
   if (!env.EXPO_OFFLINE) {
     try {
-      return await fetchAndCacheNewDevelopmentCodeSigningInfoAsync(easProjectId);
+      const newCodeSigningInfo =
+        await fetchAndCacheNewDevelopmentCodeSigningInfoAsync(easProjectId);
+
+      if (newCodeSigningInfo) {
+        return newCodeSigningInfo;
+        // fall back to cached certificate if we couldn't fetch a new one
+      } else if (validatedCodeSigningInfo) {
+        Log.warn(
+          'Could not fetch new Expo development certificate, falling back to cached certificate'
+        );
+        return validatedCodeSigningInfo;
+      } else {
+        return null;
+      }
     } catch (e: any) {
       if (validatedCodeSigningInfo) {
         Log.warn(
@@ -240,6 +254,11 @@ async function getProjectCodeSigningCertificateAsync(
 ): Promise<CodeSigningInfo | null> {
   const codeSigningCertificatePath = exp.updates?.codeSigningCertificate;
   if (!codeSigningCertificatePath) {
+    if (privateKeyPath) {
+      throw new CommandError(
+        '--private-key-path was specified, but updates.codeSigningCertificate is not set in the resolved app config. Code signing requires both the certificate in app config and the private key. Ensure codeSigningCertificate (and codeSigningMetadata) are present, or omit --private-key-path if you do not intend to sign.\nLearn more: https://docs.expo.dev/eas-update/code-signing/'
+      );
+    }
     return null;
   }
 
@@ -339,7 +358,7 @@ function validateStoredDevelopmentExpoRootCertificateCodeSigningInfo(
     certificateChain: certificatePEMs,
     scopeKey,
   } = codeSigningInfo;
-  if (!privateKeyPEM || !certificatePEMs) {
+  if (!privateKeyPEM || !certificatePEMs?.length) {
     return null;
   }
 
@@ -362,35 +381,32 @@ function validateStoredDevelopmentExpoRootCertificateCodeSigningInfo(
   return {
     keyId: 'expo-go',
     certificateChainForResponse: certificatePEMs,
-    certificateForPrivateKey: certificatePEMs[0],
+    certificateForPrivateKey: certificatePEMs[0]!,
     privateKey: privateKeyPEM,
     scopeKey,
   };
 }
 
-function actorCanGetProjectDevelopmentCertificate(actor: Actor, app: AppByIdQuery['app']['byId']) {
-  const owningAccountId = app.ownerAccount.id;
-
-  const owningAccountIsActorPrimaryAccount =
-    actor.__typename === 'User' || actor.__typename === 'SSOUser'
-      ? actor.primaryAccount.id === owningAccountId
-      : false;
-  const userHasPublishPermissionForOwningAccount = !!actor.accounts
-    .find((account) => account.id === owningAccountId)
-    ?.users?.find((userPermission) => userPermission.actor.id === actor.id)
-    ?.permissions?.includes(Permission.Publish);
-  return owningAccountIsActorPrimaryAccount || userHasPublishPermissionForOwningAccount;
+function actorCanGetProjectDevelopmentCertificate(actor: Actor, app: App) {
+  return !!actor.accounts
+    .find((account) => account.id === app.ownerAccount.id)
+    ?.viewerUserPermission2.effectivePermissions.includes('RUN');
 }
 
 async function fetchAndCacheNewDevelopmentCodeSigningInfoAsync(
   easProjectId: string
 ): Promise<CodeSigningInfo | null> {
-  const actor = await ensureLoggedInAsync();
-  let app: AppByIdQuery['app']['byId'];
+  const actor = await tryGetUserAsync();
+
+  if (!actor) {
+    return null;
+  }
+
+  let app: App;
   try {
     app = await AppQuery.byIdAsync(easProjectId);
   } catch (e) {
-    if (e instanceof GraphQLError || e instanceof CombinedError) {
+    if (e instanceof UnexpectedServerError || e instanceof UnexpectedServerData) {
       return null;
     }
     throw e;

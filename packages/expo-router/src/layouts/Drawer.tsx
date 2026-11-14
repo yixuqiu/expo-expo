@@ -1,19 +1,34 @@
-import {
-  createDrawerNavigator,
-  DrawerNavigationOptions,
+import Drawer from './DrawerClient';
+
+export type { DrawerNavigatorProps } from './DrawerClient';
+
+// Re-export the drawer building blocks (content components, items, types, etc.) from the
+// vendored react-navigation so apps can build custom `drawerContent` without depending on
+// `@react-navigation/drawer` directly. See https://github.com/expo/expo/issues/46161
+// `createDrawerNavigator` is intentionally omitted — use the `Drawer` layout instead.
+// The `DrawerStatusContext`/`DrawerProgressContext` contexts are also omitted — use the
+// `useDrawerStatus`/`useDrawerProgress` hooks instead.
+export {
+  DrawerContent,
+  DrawerContentScrollView,
+  DrawerItem,
+  DrawerItemList,
+  DrawerToggleButton,
+  DrawerView,
+  getDrawerStatusFromState,
+  useDrawerStatus,
+  useDrawerProgress,
+} from '../react-navigation/drawer';
+export type {
+  DrawerContentComponentProps,
+  DrawerHeaderProps,
   DrawerNavigationEventMap,
-} from '@react-navigation/drawer';
-import { DrawerNavigationState, ParamListBase } from '@react-navigation/native';
-
-import { withLayoutContext } from './withLayoutContext';
-
-const DrawerNavigator = createDrawerNavigator().Navigator;
-
-export const Drawer = withLayoutContext<
   DrawerNavigationOptions,
-  typeof DrawerNavigator,
-  DrawerNavigationState<ParamListBase>,
-  DrawerNavigationEventMap
->(DrawerNavigator);
+  DrawerNavigationProp,
+  DrawerOptionsArgs,
+  DrawerScreenProps,
+} from '../react-navigation/drawer';
+
+export { Drawer };
 
 export default Drawer;

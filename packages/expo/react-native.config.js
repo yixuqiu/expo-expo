@@ -1,8 +1,8 @@
-const findProjectRoot = require('@react-native-community/cli-tools').findProjectRoot;
+const findProjectRootSync = require('expo-modules-autolinking/exports').findProjectRootSync;
 const fs = require('fs');
 const path = require('path');
 
-const projectRoot = findProjectRoot();
+const projectRoot = findProjectRootSync();
 
 function isMatchedInFile(filePath, regexp) {
   const contents = fs.readFileSync(filePath, 'utf8');
@@ -46,5 +46,12 @@ module.exports = {
       macos: null,
       windows: null,
     },
+  },
+  // React Native SwiftPM autolinking plugin (preview). Discovered transitively by
+  // `react-native spm` when `expo` is an autolinked dependency; contributes Expo's
+  // native modules (precompiled xcframeworks + source packages) and the generated
+  // ExpoModulesProvider into the SwiftPM autolinking graph.
+  spm: {
+    autolinkingPlugin: './scripts/spm/plugin.js',
   },
 };

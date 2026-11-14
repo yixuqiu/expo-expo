@@ -14,17 +14,26 @@ jest.mock('../resolveDevice', () => ({
   })),
 }));
 
+const fixture = {
+  ...rnFixture,
+  'package.json': JSON.stringify({}),
+  'node_modules/expo/package.json': JSON.stringify({
+    version: '53.0.0',
+  }),
+};
+
 describe(resolveOptionsAsync, () => {
   afterEach(() => vol.reset());
 
   it(`resolves default options`, async () => {
-    vol.fromJSON(rnFixture, '/');
+    vol.fromJSON(fixture, '/');
 
     expect(await resolveOptionsAsync('/', {})).toEqual({
       buildCache: true,
       configuration: 'Debug',
       device: { name: 'mock', udid: '123' },
       isSimulator: true,
+      osType: 'iOS',
       port: 8081,
       projectRoot: '/',
       scheme: 'ReactNativeProject',
@@ -34,7 +43,7 @@ describe(resolveOptionsAsync, () => {
     });
   });
   it(`resolves complex options`, async () => {
-    vol.fromJSON(rnFixture, '/');
+    vol.fromJSON(fixture, '/');
 
     jest.mocked(isSimulatorDevice).mockImplementationOnce(() => false);
 
@@ -53,6 +62,7 @@ describe(resolveOptionsAsync, () => {
       configuration: 'Release',
       device: { name: 'mock', udid: '123' },
       isSimulator: false,
+      osType: 'iOS',
       port: 8081,
       projectRoot: '/',
       scheme: 'MyScheme',

@@ -1,43 +1,18 @@
 import React from 'react';
+// TODO(@kitten): We shouldn't be importing all of react-native-web or rely on it for a web module in this way optimally
 import { View } from 'react-native-web';
 
-import { ImageNativeProps, ImageSource, ImageLoadEventData } from './Image.types';
-import AnimationManager, { AnimationManagerNode } from './web/AnimationManager';
+import type { ImageNativeProps, ImageSource, ImageLoadEventData, ImageRef } from './Image.types';
+import type { AnimationManagerNode } from './web/AnimationManager';
+import AnimationManager from './web/AnimationManager';
 import ImageWrapper from './web/ImageWrapper';
 import loadStyle from './web/imageStyles';
 import useSourceSelection from './web/useSourceSelection';
 
 loadStyle();
 
-export const ExpoImageModule = {
-  async prefetch(urls: string | string[], _, __): Promise<boolean> {
-    const urlsArray = Array.isArray(urls) ? urls : [urls];
-
-    return new Promise<boolean>((resolve) => {
-      let imagesLoaded = 0;
-
-      urlsArray.forEach((url) => {
-        const img = new Image();
-        img.src = url;
-        img.onload = () => {
-          imagesLoaded++;
-
-          if (imagesLoaded === urlsArray.length) {
-            resolve(true);
-          }
-        };
-        img.onerror = () => resolve(false);
-      });
-    });
-  },
-
-  async clearMemoryCache(): Promise<boolean> {
-    return false;
-  },
-
-  async clearDiskCache(): Promise<boolean> {
-    return false;
-  },
+type ExpoImageWebProps = ImageNativeProps & {
+  dataSet?: Record<string, string | undefined>;
 };
 
 function onLoadAdapter(onLoad?: (event: ImageLoadEventData) => void) {
@@ -78,6 +53,14 @@ function isFlipTransition(transition: ImageNativeProps['transition']) {
   );
 }
 
+function getAnimationKey(
+  source: ImageSource | ImageRef | undefined,
+  recyclingKey?: string | null
+): string {
+  const uri = (source && 'uri' in source && source.uri) || '';
+  return recyclingKey ? [recyclingKey, uri].join('-') : uri;
+}
+
 export default function ExpoImage({
   source,
   placeholder,
@@ -90,37 +73,49 @@ export default function ExpoImage({
   onError,
   responsivePolicy,
   onLoadEnd,
+  onDisplay,
   priority,
+  loading,
   blurRadius,
   recyclingKey,
   style,
   nativeViewRef,
+  accessibilityLabel,
+  alt,
+  tintColor,
+  containerViewRef,
+  draggable,
+  dataSet,
+  // Destructured so it isn't forwarded to the DOM. SVG variables are a native-only feature.
+  svgVariables,
   ...props
-}: ImageNativeProps) {
+}: ExpoImageWebProps) {
   const imagePlaceholderContentFit = placeholderContentFit || 'scale-down';
   const imageHashStyle = {
     objectFit: placeholderContentFit || contentFit,
   };
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const resolvedLoading =
+    loading ?? (responsivePolicy == null || responsivePolicy === 'static' ? 'lazy' : undefined);
+
   const selectedSource = useSourceSelection(
     source,
     responsivePolicy,
-    containerRef,
+    // TODO(@vonovak): this cast is a workaround
+    containerViewRef as React.RefObject<HTMLDivElement | null>,
     isFlipTransition(transition) ? setCssVariablesForFlipTransitions : null
   );
 
-  const initialNodeAnimationKey =
-    (recyclingKey ? `${recyclingKey}-${placeholder?.[0]?.uri}` : placeholder?.[0]?.uri) ?? '';
-
-  const initialNode: AnimationManagerNode | null = placeholder?.[0]?.uri
+  // TODO(@kitten): This should narrow before accessing `placeholder?.[0]`
+  const firstPlaceholder = (placeholder as (typeof placeholder & ImageSource[]) | undefined)?.[0];
+  const initialNodeAnimationKey = getAnimationKey(firstPlaceholder, recyclingKey);
+  const initialNode: AnimationManagerNode | null = firstPlaceholder?.uri
     ? [
         initialNodeAnimationKey,
         ({ onAnimationFinished }) =>
           (className, style) => (
             <ImageWrapper
-              {...props}
               ref={nativeViewRef as React.Ref<HTMLImageElement> | undefined}
-              source={placeholder?.[0]}
+              source={firstPlaceholder}
               style={{
                 objectFit: imagePlaceholderContentFit,
                 ...(blurRadius ? { filter: `blur(${blurRadius}px)` } : {}),
@@ -133,29 +128,33 @@ export default function ExpoImage({
               contentPosition={{ left: '50%', top: '50%' }}
               hashPlaceholderContentPosition={contentPosition}
               hashPlaceholderStyle={imageHashStyle}
+              accessibilityLabel={accessibilityLabel ?? alt}
+              cachePolicy={cachePolicy}
+              priority={priority}
+              loading={resolvedLoading}
+              tintColor={tintColor}
+              draggable={draggable}
             />
           ),
       ]
     : null;
 
-  const currentNodeAnimationKey =
-    (recyclingKey
-      ? `${recyclingKey}-${selectedSource?.uri ?? placeholder?.[0]?.uri}`
-      : selectedSource?.uri ?? placeholder?.[0]?.uri) ?? '';
-
+  // @ts-expect-error: TODO(@kitten): This was implicitly cast to `any`, but with correct types this is now a mismatch
+  const currentNodeAnimationKey = getAnimationKey(selectedSource ?? firstPlaceholder, recyclingKey);
   const currentNode: AnimationManagerNode = [
     currentNodeAnimationKey,
     ({ onAnimationFinished, onReady, onMount, onError: onErrorInner }) =>
       (className, style) => (
         <ImageWrapper
-          {...props}
           ref={nativeViewRef as React.Ref<HTMLImageElement> | undefined}
-          source={selectedSource || placeholder?.[0]}
+          // @ts-expect-error: TODO(@kitten): This was implicitly cast to `any`, but with correct types this is now a mismatch
+          source={selectedSource || firstPlaceholder}
           events={{
             onError: [onErrorAdapter(onError), onLoadEnd, onErrorInner],
             onLoad: [onLoadAdapter(onLoad), onLoadEnd, onReady],
             onMount: [onMount],
             onTransitionEnd: [onAnimationFinished],
+            onDisplay: [onDisplay],
           }}
           style={{
             objectFit: selectedSource ? contentFit : imagePlaceholderContentFit,
@@ -165,15 +164,23 @@ export default function ExpoImage({
           className={className}
           cachePolicy={cachePolicy}
           priority={priority}
+          loading={resolvedLoading}
           contentPosition={selectedSource ? contentPosition : { top: '50%', left: '50%' }}
           hashPlaceholderContentPosition={contentPosition}
           hashPlaceholderStyle={imageHashStyle}
-          accessibilityLabel={props.accessibilityLabel}
+          accessibilityLabel={accessibilityLabel}
+          tintColor={tintColor}
+          draggable={draggable}
         />
       ),
   ];
   return (
-    <View ref={containerRef} dataSet={{ expoimage: true }} style={[{ overflow: 'hidden' }, style]}>
+    <View
+      ref={containerViewRef}
+      // @ts-expect-error: TODO(@kitten): This is related to react-native-web presumably
+      dataSet={{ ...dataSet, expoimage: 'true' }}
+      style={[{ overflow: 'hidden' }, style]}
+      {...props}>
       <AnimationManager transition={transition} recyclingKey={recyclingKey} initial={initialNode}>
         {currentNode}
       </AnimationManager>

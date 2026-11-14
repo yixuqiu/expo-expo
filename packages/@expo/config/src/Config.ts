@@ -1,13 +1,15 @@
-import { ModConfig } from '@expo/config-plugins';
-import JsonFile, { JSONObject } from '@expo/json-file';
+import type { ModConfig } from '@expo/config-plugins';
+import type { JSONObject } from '@expo/json-file';
+import JsonFile from '@expo/json-file';
+import { OUT_OF_TREE_PLATFORMS, getReactNativeHostPackage } from '@expo/platforms';
+import { resolveFrom } from '@expo/require-utils';
 import fs from 'fs';
-import { sync as globSync } from 'glob';
 import path from 'path';
-import resolveFrom from 'resolve-from';
 import semver from 'semver';
 import slugify from 'slugify';
+import { isDeepStrictEqual } from 'util';
 
-import {
+import type {
   AppJSONConfig,
   ConfigFilePaths,
   ExpoConfig,
@@ -20,11 +22,12 @@ import {
 } from './Config.types';
 import { getDynamicConfig, getStaticConfig } from './getConfig';
 import { getExpoSDKVersion } from './getExpoSDKVersion';
+import { mergeConfig } from './mergeConfig';
 import { withConfigPlugins } from './plugins/withConfigPlugins';
 import { withInternal } from './plugins/withInternal';
 import { getRootPackageJsonPath } from './resolvePackageJson';
 
-type SplitConfigs = { expo: ExpoConfig; mods: ModConfig };
+type SplitConfigs = { expo?: ExpoConfig; mods?: ModConfig };
 
 let hasWarnedAboutRootConfig = false;
 
@@ -34,8 +37,8 @@ let hasWarnedAboutRootConfig = false;
  *
  * @param config Input config object to reduce
  */
-function reduceExpoObject(config?: any): SplitConfigs {
-  if (!config) return config === undefined ? null : config;
+function reduceExpoObject(config?: any): SplitConfigs | null {
+  if (!config) return config || null;
 
   if (config.expo && !hasWarnedAboutRootConfig) {
     const keys = Object.keys(config).filter((key) => key !== 'expo');
@@ -71,13 +74,38 @@ function reduceExpoObject(config?: any): SplitConfigs {
  * @param projectRoot
  * @param exp
  */
-function getSupportedPlatforms(projectRoot: string): Platform[] {
+function getSupportedPlatforms(projectRoot: string, exp: Partial<ExpoConfig>): Platform[] {
   const platforms: Platform[] = [];
-  if (resolveFrom.silent(projectRoot, 'react-native')) {
+  if (resolveFrom(projectRoot, 'react-native/package.json')) {
     platforms.push('ios', 'android');
   }
-  if (resolveFrom.silent(projectRoot, 'react-native-web')) {
+  if (resolveFrom(projectRoot, 'react-dom/package.json')) {
     platforms.push('web');
+  }
+  if (exp.experiments?.outOfTreePlatforms) {
+    for (const platform of OUT_OF_TREE_PLATFORMS) {
+      if (resolveFrom(projectRoot, `${getReactNativeHostPackage(platform)}/package.json`)) {
+        platforms.push(platform);
+      }
+    }
+  }
+  return platforms;
+}
+
+/**
+ * Resolves the platforms a project targets, as configured or detected.
+ *
+ * @param projectRoot
+ * @param exp
+ */
+export function getPlatformsFromConfig(projectRoot: string, exp: Partial<ExpoConfig>): Platform[] {
+  let platforms =
+    (exp?.platforms as Platform[] | undefined) ?? getSupportedPlatforms(projectRoot, exp);
+  // TODO(@kitten): Update when XDL schema is modified
+  if (!exp.experiments?.outOfTreePlatforms) {
+    platforms = platforms.filter(
+      (platform) => platform === 'android' || platform === 'ios' || platform === 'web'
+    );
   }
   return platforms;
 }
@@ -127,7 +155,7 @@ export function getConfig(projectRoot: string, options: GetConfigOptions = {}): 
     const configWithDefaultValues = {
       ...ensureConfigHasDefaultValues({
         projectRoot,
-        exp: config.expo,
+        exp: config.expo || {},
         pkg: packageJson,
         skipSDKVersionRequirement: options.skipSDKVersionRequirement,
         paths,
@@ -159,7 +187,7 @@ export function getConfig(projectRoot: string, options: GetConfigOptions = {}): 
     }
 
     if (options.isPublicConfig) {
-      // TODD(EvanBacon): Drop plugins array after it's been resolved.
+      // TODO(EvanBacon): Drop plugins array after it's been resolved.
 
       // Remove internal values with references to user's file paths from the public config.
       delete configWithDefaultValues.exp._internal;
@@ -186,7 +214,7 @@ export function getConfig(projectRoot: string, options: GetConfigOptions = {}): 
   function getContextConfig(config: SplitConfigs) {
     return ensureConfigHasDefaultValues({
       projectRoot,
-      exp: config.expo,
+      exp: config.expo || {},
       pkg: packageJson,
       skipSDKVersionRequirement: true,
       paths,
@@ -238,24 +266,14 @@ export function getConfigFilePaths(projectRoot: string): ConfigFilePaths {
   };
 }
 
+const DYNAMIC_CONFIG_EXTS = ['.ts', '.mts', '.cts', '.mjs', '.cjs', '.js'];
+
 function getDynamicConfigFilePath(projectRoot: string): string | null {
-  for (const fileName of ['app.config.ts', 'app.config.js']) {
-    const configPath = path.join(projectRoot, fileName);
-    if (fs.existsSync(configPath)) {
-      return configPath;
-    }
-  }
-  return null;
+  return resolveFrom(projectRoot, './app.config', { extensions: DYNAMIC_CONFIG_EXTS });
 }
 
 function getStaticConfigFilePath(projectRoot: string): string | null {
-  for (const fileName of ['app.config.json', 'app.json']) {
-    const configPath = path.join(projectRoot, fileName);
-    if (fs.existsSync(configPath)) {
-      return configPath;
-    }
-  }
-  return null;
+  return resolveFrom(projectRoot, './app.config.json') ?? resolveFrom(projectRoot, './app.json');
 }
 
 /**
@@ -277,51 +295,228 @@ export async function modifyConfigAsync(
 ): Promise<{
   type: 'success' | 'warn' | 'fail';
   message?: string;
-  config: AppJSONConfig | null;
+  config: ExpoConfig | null;
 }> {
   const config = getConfig(projectRoot, readOptions);
-  if (config.dynamicConfigPath) {
-    // We cannot automatically write to a dynamic config.
-    /* Currently we should just use the safest approach possible, informing the user that they'll need to manually modify their dynamic config.
+  const isDryRun = writeOptions.dryRun;
 
-    if (config.staticConfigPath) {
-      // Both a dynamic and a static config exist.
-      if (config.dynamicConfigObjectType === 'function') {
-        // The dynamic config exports a function, this means it possibly extends the static config.
-      } else {
-        // Dynamic config ignores the static config, there isn't a reason to automatically write to it.
-        // Instead we should warn the user to add values to their dynamic config.
-      }
+  // Create or modify the static config, when not using dynamic config
+  if (!config.dynamicConfigPath) {
+    const outputConfig = mergeConfigModifications(config, modifications);
+
+    if (!isDryRun) {
+      const configPath = config.staticConfigPath ?? path.join(projectRoot, 'app.json');
+      await JsonFile.writeAsync(configPath, outputConfig, { json5: false });
     }
-    */
-    return {
-      type: 'warn',
-      message: `Cannot automatically write to dynamic config at: ${path.relative(
-        projectRoot,
-        config.dynamicConfigPath
-      )}`,
-      config: null,
-    };
-  } else if (config.staticConfigPath) {
-    // Static with no dynamic config, this means we can append to the config automatically.
-    let outputConfig: AppJSONConfig;
-    // If the config has an expo object (app.json) then append the options to that object.
-    if (config.rootConfig.expo) {
-      outputConfig = {
-        ...config.rootConfig,
-        expo: { ...config.rootConfig.expo, ...modifications },
-      };
-    } else {
-      // Otherwise (app.config.json) just add the config modification to the top most level.
-      outputConfig = { ...config.rootConfig, ...modifications };
-    }
-    if (!writeOptions.dryRun) {
-      await JsonFile.writeAsync(config.staticConfigPath, outputConfig, { json5: false });
-    }
-    return { type: 'success', config: outputConfig };
+
+    return { type: 'success', config: outputConfig.expo ?? outputConfig };
   }
 
-  return { type: 'fail', message: 'No config exists', config: null };
+  // Attempt to write to a function-like dynamic config, when used with a static config
+  if (
+    config.staticConfigPath &&
+    config.dynamicConfigObjectType === 'function' &&
+    !Object.hasOwn(modifications, 'plugins') // We don't know what plugins are in dynamic configs
+  ) {
+    const outputConfig = mergeConfigModifications(config, modifications);
+
+    if (isDryRun) {
+      return {
+        type: 'warn',
+        message: `Cannot verify config modifications in dry-run mode for config at: ${path.relative(projectRoot, config.dynamicConfigPath)}`,
+        config: null,
+      };
+    }
+
+    // Attempt to write the static config with the config modifications
+    await JsonFile.writeAsync(config.staticConfigPath, outputConfig, { json5: false });
+
+    // Verify that the dynamic config is using the static config
+    const newConfig = getConfig(projectRoot, readOptions);
+    const newConfighasModifications = hasConfigModifications(modifications, newConfig.exp);
+    if (newConfighasModifications) {
+      return {
+        type: 'success',
+        config: newConfig.exp,
+      };
+    }
+
+    // Rollback the changes when the reloaded config did not include the modifications
+    await JsonFile.writeAsync(config.staticConfigPath, config.rootConfig, { json5: false });
+  }
+
+  // We cannot automatically write to a dynamic config
+  return {
+    type: 'warn',
+    message: `Cannot automatically write to dynamic config at: ${path.relative(
+      projectRoot,
+      config.dynamicConfigPath
+    )}`,
+    config: null,
+  };
+}
+
+/**
+ * Append the source items to the target array, then remove duplicate entries, keeping the first
+ * occurrence. Used only for `updates`, whose arrays are sets: `eas update:configure` sends the
+ * existing `updates` object back with a new `url`, and the default merge would write each existing
+ * entry twice. Other arrays keep the default merge, because plugins can depend on it.
+ */
+function mergeArraysWithoutDuplicates(target: unknown[], source: unknown[]): unknown[] {
+  const result: unknown[] = [];
+  for (const item of [...target, ...source]) {
+    if (!result.some((existing) => isDeepStrictEqual(existing, item))) {
+      result.push(item);
+    }
+  }
+  return result;
+}
+
+/**
+ * Merge the config modifications, using an optional possible top-level `expo` object.
+ * Note, changes in the plugins are merged differently to avoid duplicate entries.
+ */
+function mergeConfigModifications(
+  config: ProjectConfig,
+  { plugins, ...modifications }: Partial<ExpoConfig>
+): AppJSONConfig {
+  const baseConfig: Partial<ExpoConfig> = config.rootConfig.expo || config.rootConfig;
+  const modifiedExpoConfig = mergeConfig<ExpoConfig>(baseConfig, modifications);
+  if (isPlainObject(modifications.updates)) {
+    modifiedExpoConfig.updates = mergeConfig(
+      isPlainObject(baseConfig.updates) ? baseConfig.updates : {},
+      modifications.updates,
+      mergeArraysWithoutDuplicates
+    );
+  }
+
+  if (plugins?.length) {
+    // When adding plugins, ensure the config has a plugin list
+    if (!modifiedExpoConfig.plugins) {
+      modifiedExpoConfig.plugins = [];
+    }
+
+    // Create a plugin lookup map
+    const existingPlugins: Record<string, any> = Object.fromEntries(
+      modifiedExpoConfig.plugins.map((definition) =>
+        typeof definition === 'string' ? [definition, undefined] : definition
+      )
+    );
+
+    for (const plugin of plugins) {
+      // Unpack the plugin definition, using either the short (string) or normal (array) notation
+      const [pluginName, pluginProps] = Array.isArray(plugin) ? plugin : [plugin];
+      // Abort if the plugin definition is empty
+      if (!pluginName) continue;
+
+      // Add the plugin if it doesn't exist yet, including its properties
+      if (!Object.hasOwn(existingPlugins, pluginName)) {
+        modifiedExpoConfig.plugins.push(plugin);
+        continue;
+      }
+
+      // If the plugin has properties, and it exists, merge the properties
+      if (pluginProps) {
+        modifiedExpoConfig.plugins = modifiedExpoConfig.plugins.map((existingPlugin) => {
+          const [existingPluginName] = Array.isArray(existingPlugin)
+            ? existingPlugin
+            : [existingPlugin];
+
+          // Do not modify other plugins
+          if (existingPluginName !== pluginName) {
+            return existingPlugin;
+          }
+
+          // Add the props to the existing plugin entry
+          if (typeof existingPlugin === 'string') {
+            return [existingPlugin, pluginProps];
+          }
+
+          // Merge the props to the existing plugin properties
+          if (Array.isArray(existingPlugin) && existingPlugin[0]) {
+            return [existingPlugin[0], mergeConfig(existingPlugin[1] ?? {}, pluginProps)];
+          }
+
+          return existingPlugin;
+        });
+        continue;
+      }
+
+      // If the same plugin exists with properties, and the modification does not contain properties, ignore
+    }
+  }
+
+  const finalizedConfig = !config.rootConfig.expo
+    ? modifiedExpoConfig
+    : { ...config.rootConfig, expo: modifiedExpoConfig };
+
+  return finalizedConfig as AppJSONConfig;
+}
+
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * `updates` arrays are merged as sets (see `mergeArraysWithoutDuplicates`), so they are compared
+ * as sets. Arrays everywhere else are compared item by item, in order.
+ */
+function hasConfigModifications(modifications: Partial<ExpoConfig>, config: ExpoConfig): boolean {
+  const { updates, ...otherModifications } = modifications;
+  if (!isMatchingObject(otherModifications, config)) {
+    return false;
+  }
+  if (!('updates' in modifications)) {
+    return true;
+  }
+  if (!isPlainObject(updates)) {
+    return isMatchingObject<Record<string, any>>({ updates }, config);
+  }
+  return isPlainObject(config.updates) && isMatchingObject(updates, config.updates, true);
+}
+
+function isMatchingObject<T extends Record<string, any>>(
+  expectedValues: T,
+  actualValues: T,
+  matchArraysAsSets = false
+): boolean {
+  for (const key in expectedValues) {
+    if (!Object.hasOwn(expectedValues, key)) {
+      continue;
+    }
+
+    if (matchArraysAsSets && Array.isArray(expectedValues[key])) {
+      if (!isMatchingArray(expectedValues[key], actualValues[key])) {
+        return false;
+      }
+    } else if (typeof expectedValues[key] === 'object' && actualValues[key] !== null) {
+      if (!isMatchingObject(expectedValues[key], actualValues[key], matchArraysAsSets)) {
+        return false;
+      }
+    } else {
+      if (expectedValues[key] !== actualValues[key]) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/**
+ * An expected array matches when each of its items is in the actual array, regardless of order or
+ * repeated items.
+ */
+function isMatchingArray(expectedItems: unknown[], actualItems: unknown): boolean {
+  if (!Array.isArray(actualItems)) {
+    return false;
+  }
+  return expectedItems.every((expected) =>
+    actualItems.some((actual) =>
+      typeof expected === 'object' && expected !== null
+        ? typeof actual === 'object' && actual !== null && isMatchingObject(expected, actual, true)
+        : expected === actual
+    )
+  );
 }
 
 function ensureConfigHasDefaultValues({
@@ -371,10 +566,10 @@ function ensureConfigHasDefaultValues({
     if (!skipSDKVersionRequirement) throw error;
   }
 
-  let platforms = exp.platforms;
-  if (!platforms) {
-    platforms = getSupportedPlatforms(projectRoot);
-  }
+  // TODO(@kitten): Remove once platforms are updated in XDL schema
+  const platforms = getPlatformsFromConfig(projectRoot, exp) as NonNullable<
+    ExpoConfig['platforms']
+  >;
 
   return {
     exp: { ...expWithDefaults, sdkVersion, platforms },
@@ -431,21 +626,28 @@ function isBareWorkflowProject(projectRoot: string): boolean {
     return false;
   }
 
-  const xcodeprojFiles = globSync('ios/**/*.xcodeproj', {
-    absolute: true,
-    cwd: projectRoot,
-  });
-  if (xcodeprojFiles.length) {
-    return true;
-  }
-  const gradleFiles = globSync('android/**/*.gradle', {
-    absolute: true,
-    cwd: projectRoot,
-  });
-  if (gradleFiles.length) {
-    return true;
-  }
+  return (
+    hasNativeProjectFile(path.join(projectRoot, 'ios'), '.xcodeproj') ||
+    hasNativeProjectFile(path.join(projectRoot, 'android'), '.gradle')
+  );
+}
 
+function hasNativeProjectFile(parentPath: string, extension: string): boolean {
+  const queue = [parentPath];
+  let targetPath: string | undefined;
+  while ((targetPath = queue.shift()) != null) {
+    try {
+      const entries = fs.readdirSync(targetPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        if (entry.name.endsWith(extension)) return true;
+        if (entry.isDirectory()) queue.push(path.join(targetPath, entry.name));
+      }
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
+    }
+  }
   return false;
 }
 

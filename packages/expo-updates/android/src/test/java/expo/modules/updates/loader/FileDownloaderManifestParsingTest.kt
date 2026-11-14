@@ -1,0 +1,798 @@
+package expo.modules.updates.loader
+
+import android.net.Uri
+import expo.modules.core.logging.localizedMessageWithCauseLocalizedMessage
+import expo.modules.updates.UpdatesConfiguration
+import expo.modules.updates.codesigning.CODE_SIGNING_METADATA_KEY_ID_KEY
+import expo.modules.updates.codesigning.CodeSigningConfiguration
+import expo.modules.updates.codesigning.ExpoProjectInformation
+import expo.modules.updates.codesigning.SignatureValidationResult
+import expo.modules.updates.codesigning.ValidationResult
+import expo.modules.updates.codesigning.CertificateFixtures
+import expo.modules.updates.codesigning.TestCertificateType
+import expo.modules.updates.codesigning.TestUtils.asJSONResponse
+import expo.modules.updates.codesigning.TestUtils.asResponse
+import expo.modules.updates.codesigning.getTestCertificate
+import expo.modules.updates.logging.LoggedException
+import expo.modules.updates.logging.UpdatesLogReader
+import expo.modules.updates.logging.UpdatesLogger
+import expo.modules.updates.db.UpdatesDatabase
+import expo.modules.updates.manifest.Update
+import expo.modules.updatesinterface.UpdatesLogMessage
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.spyk
+import kotlinx.coroutines.test.runTest
+import okhttp3.Headers.Companion.toHeaders
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import org.junit.Assert
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.junit.Before
+import org.robolectric.RobolectricTestRunner
+import java.util.Date
+
+@RunWith(RobolectricTestRunner::class)
+class FileDownloaderManifestParsingTest {
+  @get:Rule
+  val temporaryFolder = TemporaryFolder()
+  private lateinit var database: UpdatesDatabase
+
+  @Before
+  fun setup() {
+    database = mockk(relaxed = true)
+  }
+
+  @Test
+  fun testManifestParsing_JSONBody() = runTest {
+    val response = CertificateFixtures.testExpoUpdatesManifestBody.asJSONResponse(mapOf("expo-protocol-version" to "0").toHeaders())
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test")
+      )
+    )
+
+    val fileDownloader = createFileDownloader(configuration)
+    val updateResponse = fileDownloader.parseRemoteUpdateResponse(response)
+    val resultUpdate = updateResponse.manifestUpdateResponsePart?.update
+
+    Assert.assertNotNull(resultUpdate)
+    Assert.assertFalse(resultUpdate!!.manifest.isVerified())
+  }
+
+  @Test
+  fun testManifestParsing_RelativeUrlsAgainstBaseWithoutPath() = runTest {
+    // A development server URL typed without a trailing slash has an empty path. Resolving a
+    // path-relative asset URL against it must still insert the `/` separator, otherwise the first
+    // path segment is spliced onto the port and the resulting authority fails to parse.
+    val manifestBody = """
+      {
+        "id": "0754dad0-d200-d634-113c-ef1f26106028",
+        "createdAt": "2021-11-23T00:57:14.437Z",
+        "runtimeVersion": "1",
+        "assets": [{
+          "hash": "cb65fafb5ed456fc3ed8a726cf4087d37b875184eba96f33f6d99104e6e2266d",
+          "key": "489ea2f19fa850b65653ab445637a181.jpg",
+          "contentType": "image/jpeg",
+          "url": "assets/node_modules/expo-asset/image.jpg?platform=android",
+          "fileExtension": ".jpg"
+        }],
+        "launchAsset": {
+          "hash": "323ddd1968ee76d4ddbb16b04fb2c3f1b6d1ab9b637d819699fecd6fa0ffb1a8",
+          "key": "696a70cf7035664c20ea86f67dae822b.bundle",
+          "contentType": "application/javascript",
+          "url": "apps/testproject/node_modules/expo-router/entry.bundle?platform=android",
+          "fileExtension": ".bundle"
+        },
+        "extra": { "scopeKey": "@test/app" }
+      }
+    """.trimIndent()
+    val response = manifestBody.asJSONResponse(mapOf("expo-protocol-version" to "0").toHeaders())
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("http://192.168.1.2:8081")
+      )
+    )
+    val fileDownloader = createFileDownloader(configuration)
+    val updateResponse = fileDownloader.parseRemoteUpdateResponse(response)
+    val resultUpdate = updateResponse.manifestUpdateResponsePart?.update
+    Assert.assertNotNull(resultUpdate)
+    val launchAsset = resultUpdate!!.assetEntityList.first { it.isLaunchAsset }
+    Assert.assertEquals(
+      "http://192.168.1.2:8081/apps/testproject/node_modules/expo-router/entry.bundle?platform=android",
+      launchAsset.url.toString()
+    )
+    // The authority must stay parseable: a spliced path segment yields port -1 instead of 8081.
+    Assert.assertEquals("192.168.1.2", launchAsset.url!!.host)
+    Assert.assertEquals(8081, launchAsset.url!!.port)
+    val imageAsset = resultUpdate.assetEntityList.first { !it.isLaunchAsset }
+    Assert.assertEquals(
+      "http://192.168.1.2:8081/assets/node_modules/expo-asset/image.jpg?platform=android",
+      imageAsset.url.toString()
+    )
+  }
+
+  @Test
+  fun testManifestParsing_RejectsAssetKeyEscapingUpdatesDirectory() = runTest {
+    val manifestBody = manifestBodyWithAsset(key = "../../shared_prefs/pwned", fileExtension = ".xml")
+    val response = manifestBody.asJSONResponse(mapOf("expo-protocol-version" to "0").toHeaders())
+    val fileDownloader = createFileDownloader(configurationWithUpdateUrl())
+
+    val exception = Assert.assertThrows(Exception::class.java) {
+      fileDownloader.parseRemoteUpdateResponse(response)
+    }
+    Assert.assertTrue(
+      exception.localizedMessageWithCauseLocalizedMessage().contains("../../shared_prefs/pwned")
+    )
+  }
+
+  @Test
+  fun testManifestParsing_RejectsFileExtensionEscapingUpdatesDirectory() = runTest {
+    val manifestBody = manifestBodyWithAsset(key = "image", fileExtension = ".png/../../pwned")
+    val response = manifestBody.asJSONResponse(mapOf("expo-protocol-version" to "0").toHeaders())
+    val fileDownloader = createFileDownloader(configurationWithUpdateUrl())
+
+    Assert.assertThrows(Exception::class.java) {
+      fileDownloader.parseRemoteUpdateResponse(response)
+    }
+  }
+
+  @Test
+  fun testManifestParsing_AcceptsAssetKeyWithLeadingDots() = runTest {
+    // Only path separators and the `..` component are dangerous. A key may still start with a dot.
+    val manifestBody = manifestBodyWithAsset(key = "..hidden", fileExtension = ".png")
+    val response = manifestBody.asJSONResponse(mapOf("expo-protocol-version" to "0").toHeaders())
+    val fileDownloader = createFileDownloader(configurationWithUpdateUrl())
+
+    val resultUpdate = fileDownloader.parseRemoteUpdateResponse(response).manifestUpdateResponsePart?.update
+    Assert.assertNotNull(resultUpdate)
+    Assert.assertEquals("..hidden", resultUpdate!!.assetEntityList.first { !it.isLaunchAsset }.key)
+  }
+
+  private fun configurationWithUpdateUrl() = UpdatesConfiguration(
+    null,
+    mapOf(
+      UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test")
+    )
+  )
+
+  private fun manifestBodyWithAsset(key: String, fileExtension: String) = """
+    {
+      "id": "0754dad0-d200-d634-113c-ef1f26106028",
+      "createdAt": "2021-11-23T00:57:14.437Z",
+      "runtimeVersion": "1",
+      "assets": [{
+        "hash": "cb65fafb5ed456fc3ed8a726cf4087d37b875184eba96f33f6d99104e6e2266d",
+        "key": "$key",
+        "contentType": "image/png",
+        "url": "https://url.to/asset",
+        "fileExtension": "$fileExtension"
+      }],
+      "launchAsset": {
+        "hash": "323ddd1968ee76d4ddbb16b04fb2c3f1b6d1ab9b637d819699fecd6fa0ffb1a8",
+        "key": "696a70cf7035664c20ea86f67dae822b.bundle",
+        "contentType": "application/javascript",
+        "url": "https://url.to/bundle",
+        "fileExtension": ".bundle"
+      },
+      "extra": { "scopeKey": "@test/app" }
+    }
+  """.trimIndent()
+
+  @Test
+  fun testManifestParsing_RelativeUrlsAgainstNonHttpBase() = runTest {
+    // Normalizing the base must not narrow which schemes resolve: `exp://` URLs still reach here.
+    val manifestBody = """
+      {
+        "id": "0754dad0-d200-d634-113c-ef1f26106028",
+        "createdAt": "2021-11-23T00:57:14.437Z",
+        "runtimeVersion": "1",
+        "assets": [],
+        "launchAsset": {
+          "hash": "323ddd1968ee76d4ddbb16b04fb2c3f1b6d1ab9b637d819699fecd6fa0ffb1a8",
+          "key": "696a70cf7035664c20ea86f67dae822b.bundle",
+          "contentType": "application/javascript",
+          "url": "apps/testproject/node_modules/expo-router/entry.bundle?platform=android",
+          "fileExtension": ".bundle"
+        },
+        "extra": { "scopeKey": "@test/app" }
+      }
+    """.trimIndent()
+    val response = manifestBody.asJSONResponse(mapOf("expo-protocol-version" to "0").toHeaders())
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("exp://192.168.1.2:8081")
+      )
+    )
+    val fileDownloader = createFileDownloader(configuration)
+    val updateResponse = fileDownloader.parseRemoteUpdateResponse(response)
+    val resultUpdate = updateResponse.manifestUpdateResponsePart?.update
+    Assert.assertNotNull(resultUpdate)
+    val launchAsset = resultUpdate!!.assetEntityList.first { it.isLaunchAsset }
+    Assert.assertEquals(
+      "exp://192.168.1.2:8081/apps/testproject/node_modules/expo-router/entry.bundle?platform=android",
+      launchAsset.url.toString()
+    )
+  }
+
+  @Test
+  fun testManifestParsing_MultipartBody() = runTest {
+    val filesDirectory = temporaryFolder.newFolder()
+    val logDirectory = temporaryFolder.newFolder()
+    val boundary = "blah"
+
+    val extensions = "{}"
+    val directive = CertificateFixtures.testDirectiveNoUpdateAvailable
+
+    val response = MultipartBody.Builder(boundary)
+      .setType(MultipartBody.MIXED)
+      .addFormDataPart("extraneous", "hello1", "hello".toRequestBody("text/plain; charset=utf-8".toMediaTypeOrNull()))
+      .addFormDataPart("manifest", "hello2", CertificateFixtures.testExpoUpdatesManifestBody.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+      .addFormDataPart("extensions", "hello3", extensions.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+      .addFormDataPart("directive", "hello3", directive.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+      .build()
+      .asResponse(mapOf("expo-protocol-version" to "0").toHeaders())
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test")
+      )
+    )
+
+    val resultUpdateResponse = FileDownloader(filesDirectory, "", configuration, UpdatesLogger(logDirectory), database).parseRemoteUpdateResponse(response)
+
+    Assert.assertNotNull(resultUpdateResponse)
+    Assert.assertNotNull(resultUpdateResponse.manifestUpdateResponsePart)
+    Assert.assertFalse(resultUpdateResponse.manifestUpdateResponsePart!!.update.manifest.isVerified())
+
+    Assert.assertNotNull(resultUpdateResponse.directiveUpdateResponsePart)
+    Assert.assertTrue(resultUpdateResponse.directiveUpdateResponsePart!!.updateDirective is UpdateDirective.NoUpdateAvailableUpdateDirective)
+  }
+
+  @Test
+  fun testManifestParsing_MultipartBodyOnlyDirective() = runTest {
+    val boundary = "blah"
+
+    val directive = CertificateFixtures.testDirectiveNoUpdateAvailable
+
+    val response = MultipartBody.Builder(boundary)
+      .setType(MultipartBody.MIXED)
+      .addFormDataPart("directive", "hello3", directive.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+      .build()
+      .asResponse()
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test")
+      )
+    )
+
+    val fileDownloader = createFileDownloader(configuration)
+    val resultUpdateResponse = fileDownloader.parseRemoteUpdateResponse(response)
+
+    Assert.assertNotNull(resultUpdateResponse)
+    Assert.assertNull(resultUpdateResponse.manifestUpdateResponsePart)
+
+    Assert.assertNotNull(resultUpdateResponse.directiveUpdateResponsePart)
+    Assert.assertTrue(resultUpdateResponse.directiveUpdateResponsePart!!.updateDirective is UpdateDirective.NoUpdateAvailableUpdateDirective)
+  }
+
+  @Test
+  fun testManifestParsing_MultipartBodyOnlyDirective_v0CompatibilityMode() = runTest {
+    val boundary = "blah"
+    val directive = CertificateFixtures.testDirectiveNoUpdateAvailable
+
+    val response = MultipartBody.Builder(boundary)
+      .setType(MultipartBody.MIXED)
+      .addFormDataPart("directive", "hello3", directive.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+      .build()
+      .asResponse()
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test"),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_ENABLE_EXPO_UPDATES_PROTOCOL_V0_COMPATIBILITY_MODE to true
+      )
+    )
+
+    try {
+      val fileDownloader = createFileDownloader(configuration)
+      fileDownloader.parseRemoteUpdateResponse(response)
+    } catch (e: Exception) {
+      Assert.assertEquals("Invalid update response: Multipart response missing manifest part. Manifest is required in version 0 of the expo-updates protocol. This may be due to the response being for a different protocol version.", e.localizedMessageWithCauseLocalizedMessage())
+    }
+  }
+
+  @Test
+  fun testManifestParsing_MultipartBodyNoRelevantParts() = runTest {
+    val boundary = "blah"
+
+    val response = MultipartBody.Builder(boundary)
+      .setType(MultipartBody.MIXED)
+      .addFormDataPart("fake", " filename", "".toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+      .build()
+      .asResponse()
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test")
+      )
+    )
+
+    val fileDownloader = createFileDownloader(configuration)
+    val resultUpdateResponse = fileDownloader.parseRemoteUpdateResponse(response)
+
+    Assert.assertNotNull(resultUpdateResponse)
+    Assert.assertNull(resultUpdateResponse.manifestUpdateResponsePart)
+    Assert.assertNull(resultUpdateResponse.directiveUpdateResponsePart)
+  }
+
+  @Test
+  fun testManifestParsing_MultipartBodyEmpty() = runTest {
+    val boundary = "blah"
+
+    val response = Response.Builder()
+      .request(Request.Builder().url("http://wat.com").build())
+      .protocol(Protocol.HTTP_2)
+      .message("")
+      .code(200)
+      .body("".toResponseBody("${MultipartBody.MIXED}; boundary=$boundary".toMediaType()))
+      .build()
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test")
+      )
+    )
+
+    val fileDownloader = createFileDownloader(configuration)
+    val resultUpdateResponse = fileDownloader.parseRemoteUpdateResponse(response)
+
+    Assert.assertNotNull(resultUpdateResponse)
+    Assert.assertNull(resultUpdateResponse.manifestUpdateResponsePart)
+    Assert.assertNull(resultUpdateResponse.directiveUpdateResponsePart)
+  }
+
+  @Test
+  fun testManifestParsing_NullBodyResponseProtocol1() = runTest {
+    val response = Response.Builder()
+      .request(Request.Builder().url("http://wat.com").build())
+      .protocol(Protocol.HTTP_2)
+      .message("")
+      .code(200)
+      .header("expo-protocol-version", "1")
+      .body(null)
+      .build()
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test")
+      )
+    )
+
+    val fileDownloader = createFileDownloader(configuration)
+    val resultUpdateResponse = fileDownloader.parseRemoteUpdateResponse(response)
+
+    Assert.assertNotNull(resultUpdateResponse)
+    Assert.assertNull(resultUpdateResponse.manifestUpdateResponsePart)
+    Assert.assertNull(resultUpdateResponse.directiveUpdateResponsePart)
+  }
+
+  @Test
+  fun testManifestParsing_204ResponseProtocol1() = runTest {
+    val response = Response.Builder()
+      .request(Request.Builder().url("http://wat.com").build())
+      .protocol(Protocol.HTTP_2)
+      .message("")
+      .code(204)
+      .header("expo-protocol-version", "1")
+      .body(null)
+      .build()
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test")
+      )
+    )
+
+    val fileDownloader = createFileDownloader(configuration)
+    val resultUpdateResponse = fileDownloader.parseRemoteUpdateResponse(response)
+
+    Assert.assertNotNull(resultUpdateResponse)
+    Assert.assertNull(resultUpdateResponse.manifestUpdateResponsePart)
+    Assert.assertNull(resultUpdateResponse.directiveUpdateResponsePart)
+  }
+
+  @Test
+  fun testManifestParsing_204ResponseNoProtocol() = runTest {
+    val response = Response.Builder()
+      .request(Request.Builder().url("http://wat.com").build())
+      .protocol(Protocol.HTTP_2)
+      .message("")
+      .code(204)
+      .body(null)
+      .build()
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test")
+      )
+    )
+
+    try {
+      val fileDownloader = createFileDownloader(configuration)
+      fileDownloader.parseRemoteUpdateResponse(response)
+      Assert.fail("Expected exception to be thrown")
+    } catch (e: Exception) {
+      Assert.assertEquals("Invalid update response: Empty body", e.localizedMessageWithCauseLocalizedMessage())
+    }
+  }
+
+  @Test
+  fun testManifestParsing_JSONBodySigned() = runTest {
+    val headersMap = mapOf(
+      "expo-protocol-version" to "0",
+      "expo-sfv-version" to "0",
+      "expo-signature" to CertificateFixtures.testExpoUpdatesManifestBodySignature
+    )
+
+    val response = CertificateFixtures.testExpoUpdatesManifestBody.asJSONResponse(headersMap.toHeaders())
+
+    val testCertificate = getTestCertificate(TestCertificateType.VALID)
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test"),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_CERTIFICATE to testCertificate,
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_METADATA to mapOf<String, String>()
+      )
+    )
+
+    val fileDownloader = createFileDownloader(configuration)
+    val updateResponse = fileDownloader.parseRemoteUpdateResponse(response)
+    val resultUpdate = updateResponse.manifestUpdateResponsePart?.update
+
+    Assert.assertNotNull(resultUpdate)
+    Assert.assertTrue(resultUpdate!!.manifest.isVerified())
+  }
+
+  @Test
+  fun testManifestParsing_MultipartBodySigned() = runTest {
+    val boundary = "blah"
+
+    val headersMap = mapOf(
+      "expo-protocol-version" to "0",
+      "expo-sfv-version" to "0"
+    )
+
+    val extensions = "{}"
+    val directive = CertificateFixtures.testDirectiveNoUpdateAvailable
+
+    val response = MultipartBody.Builder(boundary)
+      .setType(MultipartBody.MIXED)
+      .addFormDataPart("extraneous", "hello1", "hello".toRequestBody("text/plain; charset=utf-8".toMediaTypeOrNull()))
+      .addPart(
+        mapOf(
+          "Content-Disposition" to "form-data; name=\"manifest\"; filename=\"hello2\"",
+          "expo-signature" to CertificateFixtures.testExpoUpdatesManifestBodySignature
+        )
+          .toHeaders(),
+        CertificateFixtures.testExpoUpdatesManifestBody.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+      )
+      .addFormDataPart("extensions", "hello3", extensions.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+      .addPart(
+        mapOf(
+          "Content-Disposition" to "form-data; name=\"directive\"; filename=\"hello3\"",
+          "expo-signature" to CertificateFixtures.testDirectiveNoUpdateAvailableSignature
+        )
+          .toHeaders(),
+        directive.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+      )
+      .build()
+      .asResponse(headersMap.toHeaders())
+
+    val testCertificate = getTestCertificate(TestCertificateType.VALID)
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test"),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_CERTIFICATE to testCertificate,
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_METADATA to mapOf<String, String>()
+      )
+    )
+
+    val fileDownloader = createFileDownloader(configuration)
+    val resultUpdateResponse = fileDownloader.parseRemoteUpdateResponse(response)
+
+    Assert.assertNotNull(resultUpdateResponse)
+    Assert.assertTrue(resultUpdateResponse.manifestUpdateResponsePart!!.update.manifest.isVerified())
+
+    Assert.assertNotNull(resultUpdateResponse.directiveUpdateResponsePart)
+    Assert.assertTrue(resultUpdateResponse.directiveUpdateResponsePart!!.updateDirective is UpdateDirective.NoUpdateAvailableUpdateDirective)
+  }
+
+  @Test
+  fun testManifestParsing_JSONBodySigned_UnsignedRequest() = runTest {
+    val headersMap = mapOf(
+      "expo-protocol-version" to "0",
+      "expo-sfv-version" to "0"
+    )
+
+    val response = CertificateFixtures.testExpoUpdatesManifestBody.asJSONResponse(headersMap.toHeaders())
+
+    val testCertificate = getTestCertificate(TestCertificateType.VALID)
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test"),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_CERTIFICATE to testCertificate,
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_METADATA to mapOf<String, String>()
+      )
+    )
+
+    try {
+      val fileDownloader = createFileDownloader(configuration)
+      fileDownloader.parseRemoteUpdateResponse(response)
+    } catch (e: Exception) {
+      Assert.assertEquals("Code signing verification failed for manifest: No expo-signature header specified", e.localizedMessageWithCauseLocalizedMessage())
+    }
+  }
+
+  @Test
+  fun testManifestParsing_MultipartBodySignedCertificateParticularExperience() = runTest {
+    val boundary = "blah"
+
+    val headersMap = mapOf(
+      "expo-protocol-version" to "0",
+      "expo-sfv-version" to "0"
+    )
+
+    val extensions = "{}"
+    val directive = CertificateFixtures.testDirectiveNoUpdateAvailable
+
+    val leafCert = getTestCertificate(TestCertificateType.CHAIN_LEAF)
+    val intermediateCert = getTestCertificate(TestCertificateType.CHAIN_INTERMEDIATE)
+    val rootCert = getTestCertificate(TestCertificateType.CHAIN_ROOT)
+
+    val response = MultipartBody.Builder(boundary)
+      .setType(MultipartBody.MIXED)
+      .addFormDataPart("extraneous", "hello1", "hello".toRequestBody("text/plain; charset=utf-8".toMediaTypeOrNull()))
+      .addPart(
+        mapOf(
+          "Content-Disposition" to "form-data; name=\"manifest\"; filename=\"hello2\"",
+          "expo-signature" to CertificateFixtures.testExpoUpdatesManifestBodyValidChainLeafSignature
+        )
+          .toHeaders(),
+        CertificateFixtures.testExpoUpdatesManifestBody.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+      )
+      .addFormDataPart("extensions", "hello3", extensions.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+      .addFormDataPart("certificate_chain", "toHeaders", (leafCert + intermediateCert).toRequestBody("application/x-pem-file; charset=utf-8".toMediaTypeOrNull()))
+      .addPart(
+        mapOf(
+          "Content-Disposition" to "form-data; name=\"directive\"; filename=\"hello3\"",
+          "expo-signature" to CertificateFixtures.testDirectiveNoUpdateAvailableValidChainLeafSignature
+        )
+          .toHeaders(),
+        directive.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+      )
+      .build()
+      .asResponse(headersMap.toHeaders())
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test"),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_CERTIFICATE to rootCert,
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_METADATA to mapOf(
+          CODE_SIGNING_METADATA_KEY_ID_KEY to "ca-root"
+        ),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_INCLUDE_MANIFEST_RESPONSE_CERTIFICATE_CHAIN to true
+      )
+    )
+
+    val fileDownloader = createFileDownloader(configuration)
+    val resultUpdateResponse = fileDownloader.parseRemoteUpdateResponse(response)
+
+    Assert.assertNotNull(resultUpdateResponse.manifestUpdateResponsePart?.update)
+    Assert.assertTrue(resultUpdateResponse.manifestUpdateResponsePart?.update!!.manifest.isVerified())
+
+    Assert.assertNotNull(resultUpdateResponse.directiveUpdateResponsePart)
+    Assert.assertTrue(resultUpdateResponse.directiveUpdateResponsePart!!.updateDirective is UpdateDirective.NoUpdateAvailableUpdateDirective)
+  }
+
+  @Test
+  fun testManifestParsing_MultipartBodySignedCertificateParticularExperience_IncorrectExperienceInManifest() = runTest {
+    val boundary = "blah"
+    val contentType = "multipart/mixed; boundary=$boundary"
+
+    val headersMap = mapOf(
+      "expo-protocol-version" to "0",
+      "expo-sfv-version" to "0",
+      "content-type" to contentType
+    )
+
+    val extensions = "{}"
+
+    val leafCert = getTestCertificate(TestCertificateType.CHAIN_LEAF)
+    val intermediateCert = getTestCertificate(TestCertificateType.CHAIN_INTERMEDIATE)
+    val rootCert = getTestCertificate(TestCertificateType.CHAIN_ROOT)
+
+    val response = MultipartBody.Builder(boundary)
+      .setType(MultipartBody.MIXED)
+      .addFormDataPart("extraneous", "hello1", "hello".toRequestBody("text/plain; charset=utf-8".toMediaTypeOrNull()))
+      .addPart(
+        mapOf(
+          "Content-Disposition" to "form-data; name=\"manifest\"; filename=\"hello2\"",
+          "expo-signature" to CertificateFixtures.testExpoUpdatesManifestBodyValidChainLeafSignatureIncorrectProjectId
+        )
+          .toHeaders(),
+        CertificateFixtures.testExpoUpdatesManifestBodyIncorrectProjectId.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+      )
+      .addFormDataPart("extensions", "hello3", extensions.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+      .addFormDataPart("certificate_chain", "toHeaders", (leafCert + intermediateCert).toRequestBody("application/x-pem-file; charset=utf-8".toMediaTypeOrNull()))
+      .build()
+      .asResponse(headersMap.toHeaders())
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test"),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_CERTIFICATE to rootCert,
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_METADATA to mapOf(
+          CODE_SIGNING_METADATA_KEY_ID_KEY to "ca-root"
+        ),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_INCLUDE_MANIFEST_RESPONSE_CERTIFICATE_CHAIN to true
+      )
+    )
+
+    try {
+      val fileDownloader = createFileDownloader(configuration)
+      fileDownloader.parseRemoteUpdateResponse(
+        response
+      )
+    } catch (e: Exception) {
+      Assert.assertEquals("Code signing verification failed for manifest: Code signing certificate project ID or scope key does not match project ID or scope key in response", e.localizedMessageWithCauseLocalizedMessage())
+    }
+  }
+
+  @Test
+  fun testManifestParsing_MultipartBodySignedCertificateParticularExperience_IncorrectExperienceInDirective() = runTest {
+    val boundary = "blah"
+
+    val headersMap = mapOf(
+      "expo-protocol-version" to "0",
+      "expo-sfv-version" to "0"
+    )
+
+    val directive = CertificateFixtures.testDirectiveNoUpdateAvailableIncorrectProjectId
+
+    val leafCert = getTestCertificate(TestCertificateType.CHAIN_LEAF)
+    val intermediateCert = getTestCertificate(TestCertificateType.CHAIN_INTERMEDIATE)
+    val rootCert = getTestCertificate(TestCertificateType.CHAIN_ROOT)
+
+    val response = MultipartBody.Builder(boundary)
+      .setType(MultipartBody.MIXED)
+      .addFormDataPart("extraneous", "hello1", "hello".toRequestBody("text/plain; charset=utf-8".toMediaTypeOrNull()))
+      .addFormDataPart("certificate_chain", "toHeaders", (leafCert + intermediateCert).toRequestBody("application/x-pem-file; charset=utf-8".toMediaTypeOrNull()))
+      .addPart(
+        mapOf(
+          "Content-Disposition" to "form-data; name=\"directive\"; filename=\"hello3\"",
+          "expo-signature" to CertificateFixtures.testDirectiveNoUpdateAvailableValidChainLeafSignatureIncorrectProjectId
+        )
+          .toHeaders(),
+        directive.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+      )
+      .build()
+      .asResponse(headersMap.toHeaders())
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test"),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_CERTIFICATE to rootCert,
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_METADATA to mapOf(
+          CODE_SIGNING_METADATA_KEY_ID_KEY to "ca-root"
+        ),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_INCLUDE_MANIFEST_RESPONSE_CERTIFICATE_CHAIN to true
+      )
+    )
+
+    try {
+      val fileDownloader = createFileDownloader(configuration)
+      fileDownloader.parseRemoteUpdateResponse(response)
+    } catch (e: Exception) {
+      Assert.assertEquals("Code signing verification failed for directive: Code signing certificate project ID or scope key does not match project ID or scope key in response part", e.localizedMessageWithCauseLocalizedMessage())
+    }
+  }
+
+  @Test
+  fun testManifestParsing_JSONBodySigned_UnsignedRequest_ManifestSignatureOptional() = runTest {
+    val headersMap = mapOf(
+      "expo-protocol-version" to "0",
+      "expo-sfv-version" to "0"
+    )
+    val response = CertificateFixtures.testExpoUpdatesManifestBody.asJSONResponse(headersMap.toHeaders())
+
+    val configuration = UpdatesConfiguration(
+      null,
+      mapOf(
+        UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://exp.host/@test/test"),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_CERTIFICATE to getTestCertificate(TestCertificateType.VALID),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_METADATA to mapOf<String, String>(),
+        UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_ALLOW_UNSIGNED_MANIFESTS to true
+      )
+    )
+
+    var resultUpdate: Update? = null
+
+    val fileDownloader = createFileDownloader(configuration)
+    val updateResponse = fileDownloader.parseRemoteUpdateResponse(
+      response
+    )
+    resultUpdate = updateResponse.manifestUpdateResponsePart?.update
+    Assert.assertNotNull(resultUpdate)
+  }
+
+  @Test
+  fun testManifestParsing_MalformedSignedManifestIsNotACodeSigningFailure() = runTest {
+    val malformedManifestBody = "{\"id\":\"0754dad0-d200-d634-113c-ef1f26106028\"}"
+    val response = malformedManifestBody.asJSONResponse(mapOf("expo-protocol-version" to "1").toHeaders())
+
+    val codeSigningConfiguration = mockk<CodeSigningConfiguration>()
+    every { codeSigningConfiguration.validateSignature(any(), any(), any(), any()) } returns
+      SignatureValidationResult(ValidationResult.VALID, ExpoProjectInformation("project-id", "scope-key"))
+    val configuration = spyk(configurationWithUpdateUrl())
+    every { configuration.codeSigningConfiguration } returns codeSigningConfiguration
+
+    val loggerDirectory = temporaryFolder.newFolder()
+    val since = Date(Date().time - 5000)
+    val fileDownloader = FileDownloader(
+      temporaryFolder.newFolder(),
+      easClientID = "test-eas-client-id",
+      configuration = configuration,
+      logger = UpdatesLogger(loggerDirectory),
+      database = database
+    )
+
+    val error = runCatching { fileDownloader.parseRemoteUpdateResponse(response) }.exceptionOrNull()
+
+    Assert.assertNotNull(error)
+    Assert.assertFalse(generateSequence(error) { it.cause }.any { it is LoggedException })
+    Thread.sleep(500)
+    val logs = UpdatesLogReader(loggerDirectory).getLogEntries(since)
+    Assert.assertFalse(logs.any { it.contains(UpdatesLogMessage.SystemCodeSigningVerificationFailed.key) })
+  }
+
+  private fun createFileDownloader(config: UpdatesConfiguration): FileDownloader {
+    val filesDirectory = temporaryFolder.newFolder()
+    val loggerDirectory = temporaryFolder.newFolder()
+    return FileDownloader(
+      filesDirectory,
+      easClientID = "test-eas-client-id",
+      configuration = config,
+      logger = UpdatesLogger(loggerDirectory),
+      database = database
+    )
+  }
+}

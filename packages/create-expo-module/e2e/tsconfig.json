@@ -1,0 +1,9 @@
+{
+  "extends": "@expo/internal-scripts/tsconfig.node",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "types": ["node", "jest"]
+  },
+  "include": ["./__tests__"]
+}

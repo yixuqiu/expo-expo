@@ -8,15 +8,8 @@ class ModuleNotFoundException(moduleClass: KClass<*>) :
 
 class NotificationWasAlreadyHandledException(val id: String) : CodedException("Failed to handle notification $id, it has already been handled.")
 
-fun expo.modules.kotlin.Promise.toLegacyPromise(): expo.modules.core.Promise {
-  val newPromise = this
-  return object : expo.modules.core.Promise {
-    override fun resolve(value: Any?) {
-      newPromise.resolve(value)
-    }
-
-    override fun reject(c: String?, m: String?, e: Throwable?) {
-      newPromise.reject(c ?: "unknown", m, e)
-    }
-  }
-}
+class ExactAlarmPermissionNotDeclaredException :
+  CodedException(
+    "Cannot request the exact alarm permission because the app does not declare android.permission.SCHEDULE_EXACT_ALARM. " +
+      "Add it to `android.permissions` in your app config and rebuild the app."
+  )

@@ -61,69 +61,73 @@ jest.mock('../../../../start/platforms/ios/AppleDeviceManager', () => ({
 }));
 
 describe(resolveDeviceAsync, () => {
+  it(`returns null for "generic" device (build-only workflow)`, async () => {
+    const result = await resolveDeviceAsync('generic', {
+      osType: 'iOS',
+      configuration: 'Release',
+      scheme: 'my-app',
+      xcodeProject: { isWorkspace: true, name: 'my-app.xcworkspace' },
+    });
+
+    expect(result).toBeNull();
+    // Should not call any device resolution APIs
+    expect(AppleDeviceManager.assertSystemRequirementsAsync).not.toHaveBeenCalled();
+  });
   it(`resolves a default device`, async () => {
     expect(
-      (
-        await resolveDeviceAsync(undefined, {
-          osType: undefined,
-          configuration: 'Debug',
-          scheme: '123',
-          xcodeProject: { isWorkspace: true, name: '123 ' },
-        })
-      ).name
+      (await resolveDeviceAsync(undefined, {
+        osType: undefined,
+        configuration: 'Debug',
+        scheme: '123',
+        xcodeProject: { isWorkspace: true, name: '123 ' },
+      }))!.name
     ).toEqual('iPhone 8');
-    expect(AppleDeviceManager.assertSystemRequirementsAsync).toBeCalled();
+    expect(AppleDeviceManager.assertSystemRequirementsAsync).toHaveBeenCalled();
   });
   it(`prompts the user to select a device`, async () => {
     expect(
-      (
-        await resolveDeviceAsync(true, {
-          osType: undefined,
-          configuration: 'Debug',
-          scheme: '123',
-          xcodeProject: { isWorkspace: true, name: '123 ' },
-        })
-      ).name
+      (await resolveDeviceAsync(true, {
+        osType: undefined,
+        configuration: 'Debug',
+        scheme: '123',
+        xcodeProject: { isWorkspace: true, name: '123 ' },
+      }))!.name
     ).toEqual(`Evan's phone`);
 
-    expect(promptDeviceAsync).toBeCalledWith([expect.anything(), expect.anything()]);
+    expect(promptDeviceAsync).toHaveBeenCalledWith([expect.anything(), expect.anything()]);
 
-    expect(AppleDeviceManager.assertSystemRequirementsAsync).toBeCalled();
-    expect(sortDefaultDeviceToBeginningAsync).toBeCalled();
+    expect(AppleDeviceManager.assertSystemRequirementsAsync).toHaveBeenCalled();
+    expect(sortDefaultDeviceToBeginningAsync).toHaveBeenCalled();
   });
   it(`searches for the provided device by name`, async () => {
     expect(
-      (
-        await resolveDeviceAsync(`Evan's phone`, {
-          osType: undefined,
-          configuration: 'Debug',
-          scheme: '123',
-          xcodeProject: { isWorkspace: true, name: '123 ' },
-        })
-      ).name
+      (await resolveDeviceAsync(`Evan's phone`, {
+        osType: undefined,
+        configuration: 'Debug',
+        scheme: '123',
+        xcodeProject: { isWorkspace: true, name: '123 ' },
+      }))!.name
     ).toEqual(`Evan's phone`);
 
-    expect(promptDeviceAsync).not.toBeCalled();
+    expect(promptDeviceAsync).not.toHaveBeenCalled();
 
-    expect(AppleDeviceManager.assertSystemRequirementsAsync).toBeCalled();
-    expect(sortDefaultDeviceToBeginningAsync).toBeCalled();
+    expect(AppleDeviceManager.assertSystemRequirementsAsync).toHaveBeenCalled();
+    expect(sortDefaultDeviceToBeginningAsync).toHaveBeenCalled();
   });
   it(`searches for the provided device by id`, async () => {
     expect(
-      (
-        await resolveDeviceAsync(`00008101-001964A22629003A`, {
-          osType: undefined,
-          configuration: 'Debug',
-          scheme: '123',
-          xcodeProject: { isWorkspace: true, name: '123 ' },
-        })
-      ).udid
+      (await resolveDeviceAsync(`00008101-001964A22629003A`, {
+        osType: undefined,
+        configuration: 'Debug',
+        scheme: '123',
+        xcodeProject: { isWorkspace: true, name: '123 ' },
+      }))!.udid
     ).toEqual(`00008101-001964A22629003A`);
 
-    expect(promptDeviceAsync).not.toBeCalled();
+    expect(promptDeviceAsync).not.toHaveBeenCalled();
 
-    expect(AppleDeviceManager.assertSystemRequirementsAsync).toBeCalled();
-    expect(sortDefaultDeviceToBeginningAsync).toBeCalled();
+    expect(AppleDeviceManager.assertSystemRequirementsAsync).toHaveBeenCalled();
+    expect(sortDefaultDeviceToBeginningAsync).toHaveBeenCalled();
   });
   it(`asserts the requested device could not be found`, async () => {
     await expect(
@@ -133,11 +137,11 @@ describe(resolveDeviceAsync, () => {
         scheme: '123',
         xcodeProject: { isWorkspace: true, name: '123 ' },
       })
-    ).rejects.toThrowError(/No device UDID or name matching "foobar"/);
+    ).rejects.toThrow(/No device UDID or name matching "foobar"/);
 
-    expect(promptDeviceAsync).not.toBeCalled();
+    expect(promptDeviceAsync).not.toHaveBeenCalled();
 
-    expect(AppleDeviceManager.assertSystemRequirementsAsync).toBeCalled();
-    expect(sortDefaultDeviceToBeginningAsync).toBeCalled();
+    expect(AppleDeviceManager.assertSystemRequirementsAsync).toHaveBeenCalled();
+    expect(sortDefaultDeviceToBeginningAsync).toHaveBeenCalled();
   });
 });

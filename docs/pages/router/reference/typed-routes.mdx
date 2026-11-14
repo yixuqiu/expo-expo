@@ -3,19 +3,17 @@ title: Typed routes
 description: Learn how to use statically typed links and routes in Expo Router.
 ---
 
-import { Terminal } from '~/ui/components/Snippet';
-import { Tabs, Tab } from '~/ui/components/Tabs';
 import { FileTree } from '~/ui/components/FileTree';
 
-> Available from Expo SDK 49 and Expo Router v2 when using TypeScript. Expo Router supports standard TypeScript out of the box. See the [TypeScript](/guides/typescript/) guide for more information on how to set it up.
+> Available when using TypeScript in your project. Expo Router supports standard TypeScript out of the box. See the [TypeScript](/guides/typescript/) guide for more information on how to set it up.
 
-Expo Router supports generating TypeScript types automatically with Expo CLI. This enables `<Link>`, and the [hooks API](/router/reference/hooks) to be statically typed. This feature is currently in beta and is not enabled by default.
+Expo Router supports generating TypeScript types automatically with Expo CLI. This enables `<Link>`, and the [hooks API](/versions/latest/sdk/router/#hooks) to be statically typed. This feature is currently in beta and is not enabled by default.
 
 ## Get started
 
 ### Quick start
 
-If you created your project using the [Expo Router quick start guide](/router/installation/#quick-start) then your project is already configured to use typed routes. The Expo CLI will generate the required type file the first time you run `npx expo start`. Then, you can use autocomplete for `href` props whenever you use an Expo Router `<Link>` component in a **.tsx** file.
+If you created your project using the [Expo Router quick start guide](/router/introduction/#quick-start) then your project is already configured to use typed routes. The Expo CLI will generate the required type file the first time you run `npx expo start`. Then, you can use autocomplete for `href` props whenever you use an Expo Router `<Link>` component in a **.tsx** file.
 
 ### Manual configuration
 
@@ -54,6 +52,8 @@ Components and functions that use `Href<T>` will now be statically typed and hav
 ❌ <Link href="/usser/1" />
 ```
 
+> **Note**: A [`Route` type](/versions/latest/sdk/router/#route) is also made available by `expo-router`, which matches all valid routes in a project automatically.
+
 For dynamic routes, Href's need to be objects and their parameters are strictly typed:
 
 ```tsx
@@ -81,12 +81,12 @@ You can leverage the `useSegments()` hooks from `expo-router` to create complex 
 
 <FileTree
   files={[
-    'app/(feed)/_layout.tsx',
-    'app/(feed)/feed.tsx',
-    'app/(feed)/search.tsx',
-    'app/(feed)/profile.tsx',
-    'app/(search)/profile.tsx',
-    'components/button.tsx',
+    'src/app/(feed)/_layout.tsx',
+    'src/app/(feed)/feed.tsx',
+    'src/app/(feed)/search.tsx',
+    'src/app/(feed)/profile.tsx',
+    'src/app/(search)/profile.tsx',
+    'src/components/button.tsx',
   ]}
 />
 
@@ -105,7 +105,19 @@ export function Button() {
 }
 ```
 
-Now, you can leverage `<Button />` from both **app/(feed)/feed.tsx** and **app/(search)/search.tsx** to push `./profile` while preserving the current tab.
+Now, you can leverage `<Button />` from both **src/app/(feed)/feed.tsx** and **src/app/(search)/search.tsx** to push `./profile` while preserving the current tab.
+
+If you require the segments for a specific use, you can pass the full route to `useSegments`:
+
+```tsx button.tsx
+import { Link, useSegments } from 'expo-router';
+
+export function useMySegments() {
+  const segments = useSegments<'/(search)/profile'>();
+  //    ^? segments = ['(search)', 'profile']
+  return segments;
+}
+```
 
 ## Imperative navigation
 
@@ -131,17 +143,60 @@ function Page() {
 }
 ```
 
+## Route parameters
+
+For strongly typed route parameters, you can pass a full href to the `useLocalSearchParams` and `useGlobalSearchParams` hooks. For example:
+
+```tsx src/app/search.tsx
+import { Text } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
+
+export default function Page() {
+  /* @info Profile a route for strongly typed hooks */
+  const {
+    profile, // string
+    search, // string[]
+  } = useLocalSearchParams<'/(search)/[profile]/[...search]'>();
+  /* @end */
+
+  return (
+    <>
+      <Text>Profile: {profile}</Text>
+      <Text>Search: {search.join(',')}</Text>
+    </>
+  );
+}
+```
+
 ## Query parameters
 
 Most query parameters will not be represented in the file system and therefore cannot be typed automatically. You can type query parameters manually by passing a generic to the `useLocalSearchParams` and `useGlobalSearchParams` hooks. For example:
 
-```tsx app/search.tsx
+```tsx src/app/search.tsx
 import { Text } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 
 export default function Page() {
   /* @info Manually typed additional query parameters */
   const { query } = useLocalSearchParams<{ query?: string }>();
+  /* @end */
+
+  return <Text>Search: {query ?? 'unset'}</Text>;
+}
+```
+
+If you need a combination of route and query parameters, pass the route as the first generic and then the query parameters:
+
+```tsx src/app/search.tsx
+import { Text } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
+
+export default function Page() {
+  /* @info Provide both a route and search parameters */
+  const { query, profile, search } = useLocalSearchParams<
+    '/[profile]/[...search]',
+    { query?: string }
+  >();
   /* @end */
 
   return <Text>Search: {query ?? 'unset'}</Text>;

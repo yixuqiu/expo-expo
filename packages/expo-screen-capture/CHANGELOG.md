@@ -1,14 +1,252 @@
 # Changelog
 
-## Unpublished
+## 58.0.6
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- [iOS] Fix the app switcher blur from `enableAppSwitcherProtectionAsync` being drawn behind the app when the app uses native tabs. The blur is now added to the key window. ([#51915](https://github.com/expo/expo/pull/51915) by [@doudejans](https://github.com/doudejans))
+
+## 58.0.5
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.4
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.3 — 2026-09-25
 
 ### 🐛 Bug fixes
 
+- [iOS] Sized the screenshot and recording blockers from the window they protect rather than the device's main screen, so they still cover the content on a two-display device such as iPhone Duo. ([#50570](https://github.com/expo/expo/pull/50570) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.2 — 2026-09-23
+
+### 🐛 Bug fixes
+
+- [iOS] Fix `OnDestroy` removing the app-switcher privacy overlay off the main thread on reload. ([#49562](https://github.com/expo/expo/pull/49562) by [@vonovak](https://github.com/vonovak))
+
+## 58.0.1 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed the screen-recording overlay staying attached (permanent black screen) after `allowScreenCaptureAsync` is called while a recording is active. ([#48000](https://github.com/expo/expo/pull/48000) by [@bluespore](https://github.com/bluespore))
+- [iOS] Fixed screenshot prevention and the recording overlay attaching to a window in a background scene rather than the one on screen. ([#48372](https://github.com/expo/expo/pull/48372) by [@alanjhughes](https://github.com/alanjhughes))
+- [iOS] Fixed a repeated `preventScreenCaptureAsync` call with a new key corrupting the layer hierarchy and permanently black-screening the app, and made `preventScreenCaptureAsync` reject instead of silently leaving the app unprotected when the secure canvas cannot attach. ([#49372](https://github.com/expo/expo/pull/49372) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-13
+
 ### 💡 Others
+
+- Updated permission hooks and permission type imports to be imported from `expo` instead of `expo-modules-core` ([#45565](https://github.com/expo/expo/pull/45565) by [@Wenszel](https://github.com/Wenszel))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+### 💡 Others
+
+- mark `removeScreenshotListener` call as deprecated ([#42098](https://github.com/expo/expo/pull/42098) by [@vonovak](https://github.com/vonovak))
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🐛 Bug fixes
+
+- [iOS] Fix main thread violation warnings on app startup. ([#42204](https://github.com/expo/expo/pull/42204) by [@lukmccall](https://github.com/lukmccall))
+
+### 💡 Others
+
+- Remove warning about iOS screenshot limitations. ([#40115](https://github.com/expo/expo/pull/40115) by [@hryhoriiK97](https://github.com/hryhoriiK97))
+
+## 8.0.9 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.8 — 2025-09-13
+
+### 🐛 Bug fixes
+
+- Prevent multiple blur views from being added during rapid app state changes. ([#39633](https://github.com/expo/expo/pull/39633) by [@hryhoriiK97](https://github.com/hryhoriiK97))
+
+## 8.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.1 — 2025-08-15
+
+### 🐛 Bug fixes
+
+- [Android] Prevent hard crash when we cannot access the event emitter. ([#38869](https://github.com/expo/expo/pull/38869) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 8.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- Implemented `useScreenshotListener` hook. ([#37411](https://github.com/expo/expo/pull/37411) by [@hryhoriiK97](https://github.com/hryhoriiK97))
+- Implemented screenshot prevention on iOS. ([#37874](https://github.com/expo/expo/pull/37874) by [@hryhoriiK97](https://github.com/hryhoriiK97))
+- Implement App Switcher protection on iOS. ([#38192](https://github.com/expo/expo/pull/38192) by [@hryhoriiK97](https://github.com/hryhoriiK97))
+
+### 🐛 Bug fixes
+
+- [Android] Fix permissions on Android 13.
+- [iOS] Fix issue with header flickering on screenshot prevention. ([#38384](https://github.com/expo/expo/pull/38384) by [@hryhoriiK97](https://github.com/hryhoriiK97))
+
+### 💡 Others
+
+- [iOS] Replaced deprecated keyWindow usage. ([#38207](https://github.com/expo/expo/pull/38207) by [@hryhoriiK97](https://github.com/hryhoriiK97))
+
+## 7.1.5 - 2025-07-01
+
+### 💡 Others
+
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+
+## 7.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+- Standardize platform key ordering in `expo-module.config.json`. ([#35003](https://github.com/expo/expo/pull/35003) by [@reichhartd](https://github.com/reichhartd))
+
+## 7.0.1 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Make permissions auto-grant on Android 14+. ([#31865](https://github.com/expo/expo/pull/31865) by [@aleqsio](https://github.com/aleqsio))
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- [Android] Fix `ScreenCaptureModule` was crashing in the dev-client when going back to the home screen. ([#29694](https://github.com/expo/expo/pull/29694) by [@lukmccall](https://github.com/lukmccall))
+- Add missing `react` peer dependencies for isolated modules. ([#30480](https://github.com/expo/expo/pull/30480) by [@byCedric](https://github.com/byCedric))
+- [Android] Fix Screen capture callback was not called on Android 14 when API methods was not being called. ([#31702](https://github.com/expo/expo/pull/31702) by [@chrfalch](https://github.com/chrfalch))
+
+### 💡 Others
+
+- Removed redundant usage of `EventEmitter` instance. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
+- Updated hook from `useScreenCapturePermissions` to `usePermissions` in the example. ([#30076](https://github.com/expo/expo/pull/30076) by [@mrakesh0608](https://github.com/mrakesh0608))
+- Standardized Babel configuration to use `expo-module-scripts`. ([#31915](https://github.com/expo/expo/pull/31915) by [@reichhartd](https://github.com/reichhartd))
 
 ## 6.0.1 — 2024-04-23
 
@@ -27,6 +265,7 @@ _This version does not introduce any user-facing changes._
 - drop unused web `name` property. ([#27437](https://github.com/expo/expo/pull/27437) by [@EvanBacon](https://github.com/EvanBacon))
 - Native module on iOS is now written in Swift using the Sweet API. ([#26103](https://github.com/expo/expo/pull/26103) by [@fobos531](https://github.com/fobos531))
 - Removed deprecated backward compatible Gradle settings. ([#28083](https://github.com/expo/expo/pull/28083) by [@kudo](https://github.com/kudo))
+- Replaced `@testing-library/react-hooks` with `@testing-library/react-native`. ([#30742](https://github.com/expo/expo/pull/30742) by [@byCedric](https://github.com/byCedric))
 
 ## 5.8.1 - 2024-01-23
 

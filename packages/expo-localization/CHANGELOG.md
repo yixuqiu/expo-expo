@@ -1,14 +1,264 @@
 # Changelog
 
-## Unpublished
+## 58.0.5
+
+### Patch Changes
+
+- Keep runtime `I18nManager.allowRTL` / `forceRTL` values when the config plugin does not set `supportsRTL` / `forcesRTL`. ([#51800](https://github.com/expo/expo/pull/51800) by [@zoontek](https://github.com/zoontek))
+
+## 58.0.4
+
+### Patch Changes
+
+- Fix Android resource qualifiers for Hebrew, Indonesian and Yiddish locales, which Android only resolves under their legacy codes (`iw`, `in`, `ji`), and keep the `zh-rCN`, `zh-rTW` and `zh-rHK` library translations when `supportedLocales` lists `zh-Hans` or `zh-Hant`. ([`0bf5424`](https://github.com/expo/expo/commit/0bf54244ba22f2953bd6e187e39b8d7206f10eb4) by [@expo-bot](https://github.com/expo-bot))
+- [iOS] Fix `uses24hourClock` reporting a 24-hour clock for locales whose 12-hour time pattern marks the period with `B` instead of `a`, such as `zh-Hant-TW` and `hi-IN`. ([#51244](https://github.com/expo/expo/pull/51244) by [@MoogyG](https://github.com/MoogyG))
+
+## 58.0.3
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.2
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.1 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
 
 ### 🛠 Breaking changes
 
+- [iOS] RTL layout is no longer force-enabled from the current device locale when `supportsRTL` is `true`. RTL now follows React Native's `I18nManager`. ([#48086](https://github.com/expo/expo/pull/48086) by [@zoontek](https://github.com/zoontek))
+
 ### 🎉 New features
+
+- Set `android:supportsRtl` in the `AndroidManifest.xml` from the `supportsRTL` config plugin prop. ([#48080](https://github.com/expo/expo/pull/48080) by [@zoontek](https://github.com/zoontek))
 
 ### 🐛 Bug fixes
 
+- Prevent the `supportedLocales` config plugin from duplicating `resourceConfigurations` in `app/build.gradle` on repeated `expo prebuild --no-clean` runs. ([#48092](https://github.com/expo/expo/pull/48092) by [@zoontek](https://github.com/zoontek))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.5 — 2026-05-19
+
+### 🐛 Bug fixes
+
+- Prevalidate locale strings in config-plugin ([#45888](https://github.com/expo/expo/pull/45888) by [@kitten](https://github.com/kitten))
+
+## 56.0.4 — 2026-05-13
+
 ### 💡 Others
+
+- Use ReactI18nUtil dependency for enabling RTL support. ([#40575](https://github.com/expo/expo/pull/40575) by [@nishan](https://github.com/intergalacticspacehighway))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+### 🐛 Bug fixes
+
+- [android] fix: convert BCP-47 locales to Android resource qualifiers ([#40901](https://github.com/expo/expo/pull/40901) by [@kosmydel](https://github.com/kosmydel))
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🛠 Breaking changes
+
+- [Android] Default allowDynamicLocaleChangesAndroid to true when supportedLocales is configured ([#41813](https://github.com/expo/expo/pull/41813) by [@Ubax](https://github.com/Ubax))
+
+### 🐛 Bug fixes
+
+- Correct types for getCalendars and getLocales ([#39703](https://github.com/expo/expo/pull/39703) by [@kadikraman](https://github.com/kadikraman))
+
+### 💡 Others
+
+- mark `removeSubscription` calls as deprecated ([#42098](https://github.com/expo/expo/pull/42098) by [@vonovak](https://github.com/vonovak))
+- [Web] Add `getTextInfo()` fallback for deprecated `textInfo` in `getLocales()` ([#39255](https://github.com/expo/expo/pull/39255) by [@desii101](https://github.com/desii101))
+
+## 17.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- Add `supportedLocales` option to set app language from settings ([#37232](https://github.com/expo/expo/pull/37232) by [@alextoudic](https://github.com/alextoudic))
+
+## 16.1.6 - 2025-07-01
+
+_This version does not introduce any user-facing changes._
+
+## 16.1.5 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 16.1.4 — 2025-04-30
+
+### 🐛 Bug fixes
+
+- [iOS] Fix issue where `useLocales` and `useCalendars` hooks would not re-render when the timezone changed. ([#36382](https://github.com/expo/expo/pull/36382) by [@ouwargui](https://github.com/ouwargui))
+
+## 16.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 16.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 16.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 16.1.0 — 2025-04-04
+
+### 🎉 New features
+
+- Add languageScriptCode ([#34984](https://github.com/expo/expo/pull/34984) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Fix expo-localization typo ([#35543](https://github.com/expo/expo/pull/35543) by [@aleqsio](https://github.com/aleqsio))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35428](https://github.com/expo/expo/pull/35428) by [@behenate](https://github.com/behenate))
+
+## 16.0.1 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Fix invalid `regionCode` response on iOS. ([#32081](https://github.com/expo/expo/pull/32081) by [@aleqsio](https://github.com/aleqsio))
+- Add missing `react` peer dependencies for isolated modules. ([#30474](https://github.com/expo/expo/pull/30474) by [@byCedric](https://github.com/byCedric))
+- Only import from `expo/config` to follow proper dependency chains. ([#30501](https://github.com/expo/expo/pull/30501) by [@byCedric](https://github.com/byCedric))
+- Only import from `expo/config-plugins` to follow proper dependency chains. ([#30499](https://github.com/expo/expo/pull/30499) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Removed redundant usage of `EventEmitter` instance. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
 
 ## 15.0.3 — 2024-05-06
 
@@ -30,6 +280,7 @@ _This version does not introduce any user-facing changes._
 
 - [iOS] Add privacy manifest describing required reason API usage. ([#27770](https://github.com/expo/expo/pull/27770) by [@aleqsio](https://github.com/aleqsio))
 - [Android] Fix es-419 locale returning empty list. ([#27250](https://github.com/expo/expo/pull/27250) by [@aleqsio](https://github.com/aleqsio))
+- [Web] Gracefully handle unsupported language tags. ([#27403](https://github.com/expo/expo/pull/27403) by [@mary-ext](https://github.com/mary-ext))
 
 ### 💡 Others
 

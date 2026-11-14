@@ -1,4 +1,6 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`extractExpoPathFromURL Bare parses "/?url=https://expo.dev" 1`] = `"?url=https://expo.dev"`;
 
 exports[`extractExpoPathFromURL Bare parses "app.bacon.expo://expo-development-client" 1`] = `""`;
 
@@ -11,6 +13,16 @@ exports[`extractExpoPathFromURL Bare parses "custom:///?shouldBeEscaped=x%252By%
 exports[`extractExpoPathFromURL Bare parses "custom:///test/path?foo=bar" 1`] = `"test/path?foo=bar"`;
 
 exports[`extractExpoPathFromURL Bare parses "custom://?hello=bar" 1`] = `"?hello=bar"`;
+
+exports[`extractExpoPathFromURL Bare parses "exp+custom-scheme://expo-development-client/?url=https://u.expo.dev/66251e1b-0290-4ef8-87a4-e533cac914dd/branch/e52d7d41-3b5f-4e77-bcc8-11f95462d53c" 1`] = `""`;
+
+exports[`extractExpoPathFromURL Bare parses "exp+custom-scheme://expo-development-client/?url=https://u.expo.dev/66251e1b-0290-4ef8-87a4-e533cac914dd/channel/e52d7d41-3b5f-4e77-bcc8-11f95462d53c" 1`] = `""`;
+
+exports[`extractExpoPathFromURL Bare parses "exp+custom-scheme://expo-development-client/?url=https://u.expo.dev/66251e1b-0290-4ef8-87a4-e533cac914dd/group/e52d7d41-3b5f-4e77-bcc8-11f95462d53c" 1`] = `""`;
+
+exports[`extractExpoPathFromURL Bare parses "exp+custom-scheme://expo-development-client/?url=https://u.expo.dev/66251e1b-0290-4ef8-87a4-e533cac914dd/update/e52d7d41-3b5f-4e77-bcc8-11f95462d53c" 1`] = `""`;
+
+exports[`extractExpoPathFromURL Bare parses "exp+custom-scheme://expo-development-client/?url=https://u.expo.dev/update/e52d7d41-3b5f-4e77-bcc8-11f95462d53c" 1`] = `""`;
 
 exports[`extractExpoPathFromURL Bare parses "exp://127.0.0.1:19000/" 1`] = `"127.0.0.1:19000/"`;
 
@@ -64,6 +76,12 @@ exports[`extractExpoPathFromURL Bare parses "scheme://expo-development-client/?u
 
 exports[`extractExpoPathFromURL Bare parses "scheme://expo-development-client/?url=http://acme.com/foo/bar?query=param" 1`] = `"foo/bar?query=param"`;
 
+exports[`extractExpoPathFromURL Bare parses "scheme_with|unusual%characters:///" 1`] = `""`;
+
+exports[`extractExpoPathFromURL Bare parses "scheme_with|unusual%characters://expo.host/?hello-bar" 1`] = `"expo.host/?hello-bar"`;
+
+exports[`extractExpoPathFromURL Expo Go parses "/?url=https://expo.dev" 1`] = `"?url=https://expo.dev"`;
+
 exports[`extractExpoPathFromURL Expo Go parses "app.bacon.expo://expo-development-client" 1`] = `""`;
 
 exports[`extractExpoPathFromURL Expo Go parses "custom://" 1`] = `""`;
@@ -75,6 +93,16 @@ exports[`extractExpoPathFromURL Expo Go parses "custom:///?shouldBeEscaped=x%252
 exports[`extractExpoPathFromURL Expo Go parses "custom:///test/path?foo=bar" 1`] = `"test/path?foo=bar"`;
 
 exports[`extractExpoPathFromURL Expo Go parses "custom://?hello=bar" 1`] = `"?hello=bar"`;
+
+exports[`extractExpoPathFromURL Expo Go parses "exp+custom-scheme://expo-development-client/?url=https://u.expo.dev/66251e1b-0290-4ef8-87a4-e533cac914dd/branch/e52d7d41-3b5f-4e77-bcc8-11f95462d53c" 1`] = `""`;
+
+exports[`extractExpoPathFromURL Expo Go parses "exp+custom-scheme://expo-development-client/?url=https://u.expo.dev/66251e1b-0290-4ef8-87a4-e533cac914dd/channel/e52d7d41-3b5f-4e77-bcc8-11f95462d53c" 1`] = `""`;
+
+exports[`extractExpoPathFromURL Expo Go parses "exp+custom-scheme://expo-development-client/?url=https://u.expo.dev/66251e1b-0290-4ef8-87a4-e533cac914dd/group/e52d7d41-3b5f-4e77-bcc8-11f95462d53c" 1`] = `""`;
+
+exports[`extractExpoPathFromURL Expo Go parses "exp+custom-scheme://expo-development-client/?url=https://u.expo.dev/66251e1b-0290-4ef8-87a4-e533cac914dd/update/e52d7d41-3b5f-4e77-bcc8-11f95462d53c" 1`] = `""`;
+
+exports[`extractExpoPathFromURL Expo Go parses "exp+custom-scheme://expo-development-client/?url=https://u.expo.dev/update/e52d7d41-3b5f-4e77-bcc8-11f95462d53c" 1`] = `""`;
 
 exports[`extractExpoPathFromURL Expo Go parses "exp://127.0.0.1:19000/" 1`] = `""`;
 
@@ -127,6 +155,10 @@ exports[`extractExpoPathFromURL Expo Go parses "scheme://expo-development-client
 exports[`extractExpoPathFromURL Expo Go parses "scheme://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081%2Fexample%2Fpath" 1`] = `"example/path"`;
 
 exports[`extractExpoPathFromURL Expo Go parses "scheme://expo-development-client/?url=http://acme.com/foo/bar?query=param" 1`] = `"foo/bar?query=param"`;
+
+exports[`extractExpoPathFromURL Expo Go parses "scheme_with|unusual%characters:///" 1`] = `""`;
+
+exports[`extractExpoPathFromURL Expo Go parses "scheme_with|unusual%characters://expo.host/?hello-bar" 1`] = `"expo.host/?hello-bar"`;
 
 exports[`parsePathFromExpoGoLink parses "exp://127.0.0.1:19000/--/test/path?query=param" 1`] = `"test/path?query=param"`;
 

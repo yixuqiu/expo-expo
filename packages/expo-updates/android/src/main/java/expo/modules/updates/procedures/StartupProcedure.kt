@@ -1,40 +1,46 @@
 package expo.modules.updates.procedures
 
 import android.content.Context
-import android.os.Handler
-import android.os.HandlerThread
 import com.facebook.react.devsupport.interfaces.DevSupportManager
+import expo.modules.core.logging.localizedMessageWithCauseLocalizedMessage
 import expo.modules.updates.UpdatesConfiguration
-import expo.modules.updates.db.DatabaseHolder
+import expo.modules.updates.db.BuildData
+import expo.modules.updates.db.UpdatesDatabase
 import expo.modules.updates.db.entity.AssetEntity
 import expo.modules.updates.db.entity.UpdateEntity
 import expo.modules.updates.errorrecovery.ErrorRecovery
 import expo.modules.updates.errorrecovery.ErrorRecoveryDelegate
 import expo.modules.updates.launcher.Launcher
 import expo.modules.updates.launcher.NoDatabaseLauncher
+import expo.modules.updates.loader.AssetsFailedToLoadException
 import expo.modules.updates.loader.FileDownloader
 import expo.modules.updates.loader.Loader
 import expo.modules.updates.loader.LoaderTask
 import expo.modules.updates.loader.RemoteLoader
 import expo.modules.updates.loader.UpdateDirective
-import expo.modules.updates.loader.UpdateResponse
 import expo.modules.updates.logging.UpdatesErrorCode
 import expo.modules.updates.logging.UpdatesLogger
+import expo.modules.updatesinterface.UpdatesLogMessage
 import expo.modules.updates.manifest.Update
 import expo.modules.updates.selectionpolicy.SelectionPolicy
 import expo.modules.updates.statemachine.UpdatesStateEvent
 import expo.modules.updates.statemachine.UpdatesStateValue
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 
 class StartupProcedure(
   private val context: Context,
   private val updatesConfiguration: UpdatesConfiguration,
-  private val databaseHolder: DatabaseHolder,
+  private val database: UpdatesDatabase,
   private val updatesDirectory: File,
   private val fileDownloader: FileDownloader,
   private val selectionPolicy: SelectionPolicy,
   private val logger: UpdatesLogger,
-  private val callback: StartupProcedureCallback
+  private val callback: StartupProcedureCallback,
+  private val procedureScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) : StateMachineProcedure() {
   override val loggerTimerLabel = "timer-startup"
 
@@ -64,29 +70,21 @@ class StartupProcedure(
 
   var emergencyLaunchException: Exception? = null
     private set
-  private val errorRecovery = ErrorRecovery(context)
+  private val errorRecovery = ErrorRecovery(logger)
   private var remoteLoadStatus = ErrorRecoveryDelegate.RemoteLoadStatus.IDLE
 
-  // TODO: move away from DatabaseHolder pattern to Handler thread
-  private val databaseHandlerThread = HandlerThread("expo-updates-database")
-  private lateinit var databaseHandler: Handler
-  private fun initializeDatabaseHandler() {
-    if (!::databaseHandler.isInitialized) {
-      databaseHandlerThread.start()
-      databaseHandler = Handler(databaseHandlerThread.looper)
-    }
-  }
-
   private val loaderTask = LoaderTask(
+    context,
     updatesConfiguration,
-    databaseHolder,
+    database,
     updatesDirectory,
     fileDownloader,
     selectionPolicy,
+    logger,
     object : LoaderTask.LoaderTaskCallback {
       override fun onFailure(e: Exception) {
-        logger.error("UpdatesController loaderTask onFailure: ${e.localizedMessage}", UpdatesErrorCode.None)
-        launcher = NoDatabaseLauncher(context, e)
+        logger.error(UpdatesLogMessage.ErrorRecoveryStartupFailed, e, mapOf("error" to e.localizedMessageWithCauseLocalizedMessage()))
+        launcher = NoDatabaseLauncher(context, logger, e, procedureScope)
         emergencyLaunchException = e
         notifyController()
       }
@@ -100,6 +98,7 @@ class StartupProcedure(
       }
 
       override fun onFinishedAllLoading() {
+        procedureContext.processStateEvent(UpdatesStateEvent.EndStartup())
         procedureContext.onComplete()
       }
 
@@ -145,6 +144,10 @@ class StartupProcedure(
         logger.info("AppController appLoaderTask didLoadAsset: $body", UpdatesErrorCode.None, null, asset.expectedHash)
       }
 
+      override fun onRemoteUpdateProgressChanged(progress: Double) {
+        procedureContext.processStateEvent(UpdatesStateEvent.DownloadProgress(progress))
+      }
+
       override fun onRemoteUpdateFinished(
         status: LoaderTask.RemoteUpdateStatus,
         update: UpdateEntity?,
@@ -155,7 +158,12 @@ class StartupProcedure(
             if (exception == null) {
               throw AssertionError("Background update with error status must have a nonnull exception object")
             }
-            logger.error("UpdatesController onBackgroundUpdateFinished: Error: ${exception.localizedMessage}", UpdatesErrorCode.Unknown, exception)
+            logger.errorForLoadFailure(
+              UpdatesLogMessage.StartupRemoteLoadFailed,
+              UpdatesLogMessage.StartupRemoteLoadUnreachable,
+              exception,
+              AssetsFailedToLoadException.failureGroups(exception)
+            )
             remoteLoadStatus = ErrorRecoveryDelegate.RemoteLoadStatus.IDLE
 
             // Since errors can happen through a number of paths, we do these checks
@@ -164,18 +172,21 @@ class StartupProcedure(
               UpdatesStateValue.Idle -> {
                 procedureContext.processStateEvent(UpdatesStateEvent.Download())
                 procedureContext.processStateEvent(
-                  UpdatesStateEvent.DownloadError(exception.message ?: "")
+                  UpdatesStateEvent.DownloadError(exception.localizedMessageWithCauseLocalizedMessage())
                 )
               }
               UpdatesStateValue.Checking -> {
                 procedureContext.processStateEvent(
-                  UpdatesStateEvent.CheckError(exception.message ?: "")
+                  UpdatesStateEvent.CheckError(exception.localizedMessageWithCauseLocalizedMessage())
                 )
               }
+              // The machine accepts no events while restarting. errorForLoadFailure above logged
+              // the failure.
+              UpdatesStateValue.Restarting -> {}
               else -> {
                 // .downloading
                 procedureContext.processStateEvent(
-                  UpdatesStateEvent.DownloadError(exception.message ?: "")
+                  UpdatesStateEvent.DownloadError(exception.localizedMessageWithCauseLocalizedMessage())
                 )
               }
             }
@@ -192,23 +203,27 @@ class StartupProcedure(
           }
           LoaderTask.RemoteUpdateStatus.NO_UPDATE_AVAILABLE -> {
             remoteLoadStatus = ErrorRecoveryDelegate.RemoteLoadStatus.IDLE
-            logger.error("UpdatesController onBackgroundUpdateFinished: No update available", UpdatesErrorCode.NoUpdatesAvailable)
+            logger.info("UpdatesController onBackgroundUpdateFinished: No update available", UpdatesErrorCode.NoUpdatesAvailable)
             // TODO: handle rollbacks properly, but this works for now
             if (procedureContext.getCurrentState() == UpdatesStateValue.Downloading) {
-              procedureContext.processStateEvent(UpdatesStateEvent.DownloadComplete())
+              procedureContext.processStateEvent(UpdatesStateEvent.DownloadCompleteUnavailable())
             }
           }
         }
         errorRecovery.notifyNewRemoteLoadStatus(remoteLoadStatus)
       }
-    }
+    },
+    procedureScope
   )
 
-  override fun run(procedureContext: ProcedureContext) {
+  override suspend fun run(procedureContext: ProcedureContext) {
     this.procedureContext = procedureContext
-    initializeDatabaseHandler()
+    procedureContext.processStateEvent(UpdatesStateEvent.StartStartup())
+    if (!updatesConfiguration.hasUpdatesOverride) {
+      BuildData.ensureBuildDataIsConsistent(updatesConfiguration, database)
+    }
     initializeErrorRecovery()
-    loaderTask.start(context)
+    loaderTask.start()
   }
 
   @Synchronized
@@ -243,15 +258,24 @@ class StartupProcedure(
           return
         }
         remoteLoadStatus = ErrorRecoveryDelegate.RemoteLoadStatus.NEW_UPDATE_LOADING
-        val remoteLoader = RemoteLoader(context, updatesConfiguration, databaseHolder.database, fileDownloader, updatesDirectory, launchedUpdate)
-        remoteLoader.start(object : Loader.LoaderCallback {
-          override fun onFailure(e: Exception) {
-            logger.error("UpdatesController loadRemoteUpdate onFailure: ${e.localizedMessage}", UpdatesErrorCode.UpdateFailedToLoad, launchedUpdate?.loggingId, null)
-            setRemoteLoadStatus(ErrorRecoveryDelegate.RemoteLoadStatus.IDLE)
-            databaseHolder.releaseDatabase()
-          }
+        val remoteLoader = RemoteLoader(context, updatesConfiguration, logger, database, fileDownloader, updatesDirectory, launchedUpdate, procedureScope)
+        procedureScope.launch {
+          try {
+            val loaderResult = remoteLoader.load { updateResponse ->
+              val updateDirective = updateResponse.directiveUpdateResponsePart?.updateDirective
+              if (updateDirective != null) {
+                return@load Loader.OnUpdateResponseLoadedResult(
+                  shouldDownloadManifestIfPresentInResponse = when (updateDirective) {
+                    is UpdateDirective.RollBackToEmbeddedUpdateDirective -> false
+                    is UpdateDirective.NoUpdateAvailableUpdateDirective -> false
+                  }
+                )
+              }
 
-          override fun onSuccess(loaderResult: Loader.LoaderResult) {
+              val update = updateResponse.manifestUpdateResponsePart?.update ?: return@load Loader.OnUpdateResponseLoadedResult(shouldDownloadManifestIfPresentInResponse = false)
+              Loader.OnUpdateResponseLoadedResult(shouldDownloadManifestIfPresentInResponse = selectionPolicy.shouldLoadNewUpdate(update.updateEntity, launchedUpdate, updateResponse.responseHeaderData?.manifestFilters))
+            }
+
             setRemoteLoadStatus(
               if (loaderResult.updateEntity != null || loaderResult.updateDirective is UpdateDirective.RollBackToEmbeddedUpdateDirective) {
                 ErrorRecoveryDelegate.RemoteLoadStatus.NEW_UPDATE_LOADED
@@ -259,26 +283,19 @@ class StartupProcedure(
                 ErrorRecoveryDelegate.RemoteLoadStatus.IDLE
               }
             )
-            databaseHolder.releaseDatabase()
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            logger.errorForLoadFailure(
+              UpdatesLogMessage.StartupErrorRecoveryLoadFailed,
+              UpdatesLogMessage.StartupErrorRecoveryLoadUnreachable,
+              e,
+              AssetsFailedToLoadException.failureGroups(e),
+              launchedUpdate?.loggingId
+            )
+            setRemoteLoadStatus(ErrorRecoveryDelegate.RemoteLoadStatus.IDLE)
           }
-
-          override fun onAssetLoaded(asset: AssetEntity, successfulAssetCount: Int, failedAssetCount: Int, totalAssetCount: Int) { }
-
-          override fun onUpdateResponseLoaded(updateResponse: UpdateResponse): Loader.OnUpdateResponseLoadedResult {
-            val updateDirective = updateResponse.directiveUpdateResponsePart?.updateDirective
-            if (updateDirective != null) {
-              return Loader.OnUpdateResponseLoadedResult(
-                shouldDownloadManifestIfPresentInResponse = when (updateDirective) {
-                  is UpdateDirective.RollBackToEmbeddedUpdateDirective -> false
-                  is UpdateDirective.NoUpdateAvailableUpdateDirective -> false
-                }
-              )
-            }
-
-            val update = updateResponse.manifestUpdateResponsePart?.update ?: return Loader.OnUpdateResponseLoadedResult(shouldDownloadManifestIfPresentInResponse = false)
-            return Loader.OnUpdateResponseLoadedResult(shouldDownloadManifestIfPresentInResponse = selectionPolicy.shouldLoadNewUpdate(update.updateEntity, launchedUpdate, updateResponse.responseHeaderData?.manifestFilters))
-          }
-        })
+        }
       }
 
       override fun relaunch(callback: Launcher.LauncherCallback) {
@@ -292,10 +309,14 @@ class StartupProcedure(
         if (emergencyLaunchException != null) {
           return
         }
-        databaseHandler.post {
-          val launchedUpdate = launchedUpdate ?: return@post
-          databaseHolder.database.updateDao().incrementFailedLaunchCount(launchedUpdate)
-          databaseHolder.releaseDatabase()
+        procedureScope.launch {
+          val launchedUpdate = launchedUpdate ?: return@launch
+          logger.warn(
+            UpdatesLogMessage.StartupMarkFailedLaunch,
+            values = mapOf("updateId" to launchedUpdate.loggingId),
+            updateId = launchedUpdate.loggingId
+          )
+          database.updateDao().incrementFailedLaunchCount(launchedUpdate)
         }
       }
 
@@ -303,10 +324,9 @@ class StartupProcedure(
         if (emergencyLaunchException != null) {
           return
         }
-        databaseHandler.post {
-          val launchedUpdate = launchedUpdate ?: return@post
-          databaseHolder.database.updateDao().incrementSuccessfulLaunchCount(launchedUpdate)
-          databaseHolder.releaseDatabase()
+        procedureScope.launch {
+          val launchedUpdate = launchedUpdate ?: return@launch
+          database.updateDao().incrementSuccessfulLaunchCount(launchedUpdate)
         }
       }
 

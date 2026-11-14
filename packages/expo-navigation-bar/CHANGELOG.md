@@ -1,14 +1,331 @@
 # Changelog
 
-## Unpublished
+## 58.0.4
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.3
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.2 — 2026-09-28
 
 ### 🐛 Bug fixes
 
+- Fix the navigation bar not restoring its style or visibility when a `NavigationBar` component unmounts. ([#50712](https://github.com/expo/expo/pull/50712) by [@zoontek](https://github.com/zoontek))
+- Add a Jest mock for the `ExpoNavigationBar` native module, so importing `expo-navigation-bar` no longer throws under the `jest-expo/android` preset. ([#50592](https://github.com/expo/expo/pull/50592) by [@expo-bot](https://github.com/expo-bot))
+
+## 58.0.1 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+### 🐛 Bug fixes
+
+- Prevent unhandled promise rejections when declarative navigation bar updates race with Android activity teardown. ([#48097](https://github.com/expo/expo/pull/48097) by [@zoontek](https://github.com/zoontek))
+
+## 57.0.2 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-30
+
+### 🐛 Bug fixes
+
+- Polyfill `enforceContrast` on Android 8 and 9. ([#47382](https://github.com/expo/expo/pull/47382) by [@zoontek](https://github.com/zoontek))
+
+## 57.0.0 - 2026-06-25
+
+### 🎉 New features
+
+- Apply `setStyle` and `setHidden` to React Native `<Modal>` windows via `ExtraWindowEventListener` on Android. ([#46491](https://github.com/expo/expo/pull/46491) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Removed `setBackgroundColorAsync`, `getBackgroundColorAsync`, `setBorderColorAsync`, `getBorderColorAsync`, `setButtonStyleAsync`, `getButtonStyleAsync`, `setPositionAsync`, `unstable_getPositionAsync`, `setBehaviorAsync`, `getBehaviorAsync` functions, `NavigationBarButtonStyle`, `NavigationBarBehavior`, `NavigationBarPosition` types, and `backgroundColor`, `borderColor`, `behavior`, `position` config plugin properties. ([#44196](https://github.com/expo/expo/pull/44196) by [@zoontek](https://github.com/zoontek))
+
+### 🎉 New features
+
+- Added `NavigationBar` component with `style` and `hidden` props, `NavigationBar.setStyle` and `NavigationBar.setHidden` imperative methods, using a stack-based merging approach similar to `StatusBar`. ([#44327](https://github.com/expo/expo/pull/44327) by [@zoontek](https://github.com/zoontek))
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+- Add `style` and `hidden` properties to config plugin, replacing `barStyle` and `visibility`. ([#43978](https://github.com/expo/expo/pull/43978) by [@zoontek](https://github.com/zoontek))
+
+### 🐛 Bug fixes
+
+- Fixed `setStyle` on Android < Q by setting an explicit navigation bar color for proper button contrast. ([#44477](https://github.com/expo/expo/pull/44477) by [@zoontek](https://github.com/zoontek))
+
 ### 💡 Others
+
+- Replaced `expo_navigation_bar_visibility` string resource with `expoNavigationBarHidden` boolean theme attribute. ([#44536](https://github.com/expo/expo/pull/44536) by [@zoontek](https://github.com/zoontek))
+- Removed `androidNavigationBar` config overwrite (for Expo Go sync). ([#44469](https://github.com/expo/expo/pull/44469) by [@zoontek](https://github.com/zoontek))
+- Deprecated `setVisibilityAsync`, `getVisibilityAsync`, `useVisibility`, `addVisibilityListener`, and top-level `setStyle` in favor of the `NavigationBar` component and its static methods. ([#44327](https://github.com/expo/expo/pull/44327) by [@zoontek](https://github.com/zoontek))
+- Removed `react-native-is-edge-to-edge` dependency. ([#44196](https://github.com/expo/expo/pull/44196) by [@zoontek](https://github.com/zoontek))
+- Deprecated `barStyle` and `visibility` config plugin properties in favor of `style` and `hidden`. ([#43978](https://github.com/expo/expo/pull/43978) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.12 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+### 🛠 Breaking changes
+
+- Remove the `legacyVisible` plugin option. ([#43276](https://github.com/expo/expo/pull/43276) by [@zoontek](https://github.com/zoontek))
+
+### 🎉 New features
+
+- Add the `enforceContrast` plugin option. Falls back to `androidNavigationBar.enforceContrast` if set. ([#43276](https://github.com/expo/expo/pull/43276) by [@zoontek](https://github.com/zoontek))
+
+### 💡 Others
+
+- Deprecated and turned into no-ops the `setBackgroundColorAsync`, `getBackgroundColorAsync`, `setBorderColorAsync`, `getBorderColorAsync`, `setBehaviorAsync`, `getBehaviorAsync`, `setPositionAsync`, `unstable_getPositionAsync`, and `getButtonStyleAsync` functions, as well as the `borderColor`, `backgroundColor`, `behavior`, and `position` plugin options. ([#43276](https://github.com/expo/expo/pull/43276) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### ⚠️ Notices
+
+- Added support for React Native 0.82.x. ([#39678](https://github.com/expo/expo/pull/39678) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Added support for React Native 0.83.x. ([#41564](https://github.com/expo/expo/pull/41564) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 5.0.10 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.9 - 2025-10-21
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.8 — 2025-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.7 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.6 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.5 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.4 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.3 — 2025-08-18
+
+### 💡 Others
+
+- Remove `react-native-edge-to-edge` dependency. ([#38769](https://github.com/expo/expo/pull/38769) by [@behenate](https://github.com/behenate))
+
+## 5.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.0 — 2025-08-13
+
+### ⚠️ Notices
+
+- Added support for React Native 0.80.x. ([#37400](https://github.com/expo/expo/pull/37400) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 4.2.7 - 2025-07-02
+
+_This version does not introduce any user-facing changes._
+
+## 4.2.6 - 2025-06-18
+
+_This version does not introduce any user-facing changes._
+
+## 4.2.5 - 2025-06-04
+
+### 🐛 Bug fixes
+
+- Fix broken OS recognition. ([#36965](https://github.com/expo/expo/pull/36965) by [@behenate](https://github.com/behenate))
+
+### 💡 Others
+
+- Fix inconsistencies with the docs. ([#36966](https://github.com/expo/expo/pull/36966) by [@behenate](https://github.com/behenate))
+
+## 4.2.4 — 2025-05-01
+
+_This version does not introduce any user-facing changes._
+
+## 4.2.3 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 4.2.2 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 4.2.1 — 2025-04-23
+
+- Make `NavigationBar` methods no-op when edge-to-edge is enabled. ([#36330](https://github.com/expo/expo/pull/36330) by [@zoontek](https://github.com/zoontek))
+
+## 4.2.0 — 2025-04-21
+
+### 🎉 New features
+
+- Use wrappers for methods from `react-native-edge-to-edge.SystemBars` when edge-to-edge is enabled. ([#36163](https://github.com/expo/expo/pull/36163) by [@behenate](https://github.com/behenate))
+
+## 4.1.3 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 4.1.2 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 4.1.1 — 2025-04-08
+
+_This version does not introduce any user-facing changes._
+
+## 4.1.0 — 2025-04-04
+
+- Warn about potential edge-to-edge interferences. ([#34478](https://github.com/expo/expo/pull/34478) by [@zoontek](https://github.com/zoontek))
+
+### 🛠 Breaking changes
+
+- upgrade RN to 0.78 ([#35050](https://github.com/expo/expo/pull/35050) by [@vonovak](https://github.com/vonovak))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+
+## 4.0.9 - 2025-03-31
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.8 - 2025-02-06
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.7 - 2025-01-10
+
+### 💡 Others
+
+- Restricted color types to string to prevent the use of illegal color types (PlatformColor) until supported. ([#34053](https://github.com/expo/expo/pull/34053) by [@chrfalch](https://github.com/chrfalch))
+
+## 4.0.6 - 2024-12-10
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.5 - 2024-11-29
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.4 — 2024-11-22
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.3 — 2024-11-14
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.2 — 2024-10-29
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.1 — 2024-10-24
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.0 — 2024-10-22
+
+### 🐛 Bug fixes
+
+- Add missing `react`/`react-native` peer dependencies. ([#30573](https://github.com/expo/expo/pull/30573) by [@byCedric](https://github.com/byCedric))
+- Replaced the config-plugins deprecated `getAppThemeLightNoActionBarGroup` method with the new `getAppThemeGroup`. ([#30797](https://github.com/expo/expo/pull/30797) by [@zoontek](https://github.com/zoontek))
+
+### 💡 Others
+
+- Removed redundant usage of `EventEmitter` instance. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
+- Standardized Babel configuration to use `expo-module-scripts`. ([#31915](https://github.com/expo/expo/pull/31915) by [@reichhartd](https://github.com/reichhartd))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.76.x. ([#31552](https://github.com/expo/expo/pull/31552) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 3.0.7 - 2024-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 3.0.6 - 2024-06-06
+
+_This version does not introduce any user-facing changes._
+
+## 3.0.5 - 2024-06-05
+
+### 💡 Others
+
+- Pin @react-native subpackage versions to 0.74.83. ([#29441](https://github.com/expo/expo/pull/29441) by [@kudo](https://github.com/kudo))
 
 ## 3.0.4 — 2024-05-02
 

@@ -1,4 +1,4 @@
-import { useTheme } from '@expo/styleguide';
+import { mergeClasses } from '@expo/styleguide';
 
 import { DotGrid } from './DotGrid';
 
@@ -9,41 +9,51 @@ type Props = {
   disableSrcSet?: boolean;
 };
 
-export const Diagram = ({ source, darkSource, disableSrcSet, alt }: Props) => {
-  const { themeName } = useTheme();
-  const isDark = themeName === 'dark';
+type PictureProps = {
+  src: string;
+  alt: string;
+  withFormats: boolean;
+  isPaired: boolean;
+  className: string;
+};
 
-  if (!source.match(/\.png$/)) {
-    return (
-      <div className="bg-default border relative border-default rounded-md overflow-hidden my-6 max-w-[750px] m-auto">
-        <DotGrid />
-        <picture className="relative">
-          {isDark && darkSource && <source srcSet={darkSource} />}
-          <img src={source} alt={alt} />
-        </picture>
-      </div>
-    );
-  }
+function DiagramPicture({ src, alt, withFormats, isPaired, className }: PictureProps) {
+  return (
+    <picture className={className}>
+      {withFormats && <source srcSet={src.replace('.png', '.avif')} type="image/avif" />}
+      {withFormats && <source srcSet={src.replace('.png', '.webp')} type="image/webp" />}
+      <img
+        src={src}
+        alt={alt}
+        loading={isPaired ? 'lazy' : undefined}
+        decoding={isPaired ? 'async' : undefined}
+      />
+    </picture>
+  );
+}
+
+export const Diagram = ({ source, darkSource, disableSrcSet, alt }: Props) => {
+  const withFormats = source.endsWith('.png') && !disableSrcSet;
 
   return (
-    <div className="bg-default border relative border-default rounded-md overflow-hidden my-6 max-w-[750px] m-auto">
+    <div className="relative m-auto my-6 max-w-187.5 overflow-hidden rounded-3xl border border-default bg-default">
       <DotGrid />
-      <picture className="relative">
-        {!isDark && !disableSrcSet && (
-          <source srcSet={source.replace('.png', '.avif')} type="image/avif" />
-        )}
-        {darkSource && isDark && !disableSrcSet && (
-          <source srcSet={darkSource.replace('.png', '.avif')} type="image/avif" />
-        )}
-        {!isDark && !disableSrcSet && (
-          <source srcSet={source.replace('.png', '.webp')} type="image/webp" />
-        )}
-        {darkSource && isDark && !disableSrcSet && (
-          <source srcSet={darkSource.replace('.png', '.webp')} type="image/webp" />
-        )}
-        {darkSource && isDark && <source srcSet={darkSource} />}
-        <img src={source} alt={alt} />
-      </picture>
+      <DiagramPicture
+        src={source}
+        alt={alt}
+        withFormats={withFormats}
+        isPaired={!!darkSource}
+        className={mergeClasses('relative', darkSource && 'dark:hidden')}
+      />
+      {darkSource && (
+        <DiagramPicture
+          src={darkSource}
+          alt={alt}
+          withFormats={withFormats}
+          isPaired
+          className="relative light:hidden"
+        />
+      )}
     </div>
   );
 };

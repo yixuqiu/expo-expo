@@ -6,19 +6,17 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.core.content.FileProvider
 import expo.modules.core.errors.InvalidArgumentException
-import expo.modules.interfaces.filesystem.Permission
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.services.FilePermissionService
 import java.io.File
 import java.net.URLConnection
 
 class SharingModule : Module() {
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-  private val currentActivity
-    get() = appContext.currentActivity ?: throw MissingCurrentActivityException()
   private var pendingPromise: Promise? = null
 
   override fun definition() = ModuleDefinition {
@@ -51,12 +49,33 @@ class SharingModule : Module() {
           context.grantUriPermission(packageName, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         pendingPromise = promise
-        currentActivity.startActivityForResult(intent, REQUEST_CODE)
+        appContext.throwingActivity.startActivityForResult(intent, REQUEST_CODE)
       } catch (e: InvalidArgumentException) {
         throw SharingInvalidArgsException(e.message, e)
       } catch (e: Exception) {
         throw SharingFailedException("Failed to share the file: ${e.message}", e)
       }
+    }
+
+    Function("getSharedPayloads") {
+      val intent = SharingSingleton.intent
+      if (intent == null) {
+        return@Function emptyList<SharePayload>()
+      }
+      return@Function SimpleShareIntentDataParser.parse(context, intent)
+    }
+
+    AsyncFunction("getResolvedSharedPayloadsAsync") {
+      val intent = SharingSingleton.intent
+      if (intent == null) {
+        return@AsyncFunction emptyList<ResolvedSharePayload>()
+      }
+      return@AsyncFunction ResolvingShareIntentDataParser.parse(context, intent)
+    }
+
+    Function("clearSharedPayloads") {
+      SharingSingleton.intent = null
+      ShareIntoFileStore(context.cacheDir).removeAll()
     }
 
     OnActivityResult { _, (requestCode) ->
@@ -86,8 +105,13 @@ class SharingModule : Module() {
 
   private fun isAllowedToRead(url: String?): Boolean {
     val permissions = appContext.filePermission
-    return permissions?.getPathPermissions(context, url)?.contains(Permission.READ)
-      ?: false
+    if (url == null) {
+      return false
+    }
+
+    return permissions
+      .getPathPermissions(context, url)
+      .contains(FilePermissionService.Permission.READ)
   }
 
   private fun createSharingIntent(uri: Uri, mimeType: String?) =

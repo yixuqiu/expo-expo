@@ -1,12 +1,8 @@
-import fs from 'fs/promises';
-import debounce from 'lodash.debounce';
-import { Server } from 'metro';
+import type Server from '@expo/metro/metro/Server';
 import path from 'path';
-import resolveFrom from 'resolve-from';
 
-import { directoryExistsAsync } from '../../../utils/dir';
 import { unsafeTemplate } from '../../../utils/template';
-import { ServerLike } from '../BundlerDevServer';
+import type { ServerLike } from '../BundlerDevServer';
 import { metroWatchTypeScriptFiles } from '../metro/metroWatchTypeScriptFiles';
 
 // /test/[...param1]/[param2]/[param3] - captures ["param1", "param2", "param3"]
@@ -33,30 +29,31 @@ export interface SetupTypedRoutesOptions {
   projectRoot: string;
   /** Absolute expo router routes directory. */
   routerDirectory: string;
+  plugin?: Record<string, any>;
 }
 
 export async function setupTypedRoutes(options: SetupTypedRoutesOptions) {
-  const typedRoutesModule = resolveFrom.silent(
-    options.projectRoot,
-    'expo-router/build/typed-routes'
-  );
-  return typedRoutesModule ? typedRoutes(typedRoutesModule, options) : legacyTypedRoutes(options);
+  // TODO(@kitten): Remove indirection here. Unclear why it's needed
+  const typedRoutesModule = require.resolve('@expo/router-server/build/typed-routes');
+  return typedRoutes(typedRoutesModule, options);
 }
 
 async function typedRoutes(
-  typedRoutesModulePath: any,
-  { server, metro, typesDirectory, projectRoot, routerDirectory }: SetupTypedRoutesOptions
+  typedRoutesModulePath: string,
+  { server, metro, typesDirectory, projectRoot, routerDirectory, plugin }: SetupTypedRoutesOptions
 ) {
-  /**
+  /*
    * Expo Router uses EXPO_ROUTER_APP_ROOT in multiple places to determine the root of the project.
    * In apps compiled by Metro, this code is compiled away. But Typed Routes run in NodeJS with no compilation
    * so we need to explicitly set it.
    */
   process.env.EXPO_ROUTER_APP_ROOT = routerDirectory;
 
-  const typedRoutesModule = require(typedRoutesModulePath);
+  const typedRoutesModule: typeof import('@expo/router-server/build/typed-routes') = require(
+    typedRoutesModulePath
+  );
 
-  /**
+  /*
    * Typed Routes can be run with out Metro or a Server, e.g. `expo customize tsconfig.json`
    */
   if (metro && server) {
@@ -70,87 +67,19 @@ async function typedRoutes(
     });
   }
 
-  typedRoutesModule.regenerateDeclarations(typesDirectory);
-}
-
-async function legacyTypedRoutes({
-  server,
-  metro,
-  typesDirectory,
-  projectRoot,
-  routerDirectory,
-}: SetupTypedRoutesOptions) {
-  const { filePathToRoute, staticRoutes, dynamicRoutes, addFilePath, isRouteFile } =
-    getTypedRoutesUtils(routerDirectory);
-
-  // Typed Routes can be run with out Metro or a Server, e.g. `expo customize tsconfig.json`
-  if (metro && server) {
-    metroWatchTypeScriptFiles({
-      projectRoot,
-      server,
-      metro,
-      eventTypes: ['add', 'delete', 'change'],
-      async callback({ filePath, type }) {
-        if (!isRouteFile(filePath)) {
-          return;
-        }
-
-        let shouldRegenerate = false;
-
-        if (type === 'delete') {
-          const route = filePathToRoute(filePath);
-          staticRoutes.delete(route);
-          dynamicRoutes.delete(route);
-          shouldRegenerate = true;
-        } else {
-          shouldRegenerate = addFilePath(filePath);
-        }
-
-        if (shouldRegenerate) {
-          regenerateRouterDotTS(
-            typesDirectory,
-            new Set([...staticRoutes.values()].flatMap((v) => Array.from(v))),
-            new Set([...dynamicRoutes.values()].flatMap((v) => Array.from(v))),
-            new Set(dynamicRoutes.keys())
-          );
-        }
-      },
-    });
+  /*
+   * In SDK 52, the `regenerateDeclarations` was changed to accept plugin options.
+   * This function has an optional parameter that we cannot override, so we need to ensure the user
+   * is using a compatible version of `expo-router`. Otherwise, we will fallback to the old method.
+   *
+   * TODO(@marklawlor): In SDK53+ we should remove this check and always use the new method.
+   */
+  if ('version' in typedRoutesModule && typedRoutesModule.version >= 52) {
+    typedRoutesModule.regenerateDeclarations(typesDirectory, plugin);
+  } else {
+    typedRoutesModule.regenerateDeclarations(typesDirectory);
   }
-
-  if (await directoryExistsAsync(routerDirectory)) {
-    // Do we need to walk the entire tree on startup?
-    // Idea: Store the list of files in the last write, then simply check Git for what files have changed
-    await walk(routerDirectory, addFilePath);
-  }
-
-  regenerateRouterDotTS(
-    typesDirectory,
-    new Set([...staticRoutes.values()].flatMap((v) => Array.from(v))),
-    new Set([...dynamicRoutes.values()].flatMap((v) => Array.from(v))),
-    new Set(dynamicRoutes.keys())
-  );
 }
-
-/**
- * Generate a router.d.ts file that contains all of the routes in the project.
- * Should be debounced as its very common for developers to make changes to multiple files at once (eg Save All)
- */
-const regenerateRouterDotTS = debounce(
-  async (
-    typesDir: string,
-    staticRoutes: Set<string>,
-    dynamicRoutes: Set<string>,
-    dynamicRouteTemplates: Set<string>
-  ) => {
-    await fs.mkdir(typesDir, { recursive: true });
-    await fs.writeFile(
-      path.resolve(typesDir, './router.d.ts'),
-      getTemplateString(staticRoutes, dynamicRoutes, dynamicRouteTemplates)
-    );
-  },
-  100
-);
 
 /*
  * This is exported for testing purposes
@@ -292,23 +221,6 @@ export const setToUnionType = <T>(set: Set<T>) => {
 };
 
 /**
- * Recursively walk a directory and call the callback with the file path.
- */
-async function walk(directory: string, callback: (filePath: string) => void) {
-  const files = await fs.readdir(directory);
-  for (const file of files) {
-    const p = path.join(directory, file);
-    if ((await fs.stat(p)).isDirectory()) {
-      await walk(p, callback);
-    } else {
-      // Normalise the paths so they are easier to convert to URLs
-      const normalizedPath = p.replaceAll(path.sep, '/');
-      callback(normalizedPath);
-    }
-  }
-}
-
-/**
  * Given a route, return all possible routes that could be generated from it.
  */
 export function extrapolateGroupRoutes(
@@ -328,7 +240,7 @@ export function extrapolateGroupRoutes(
   const groupsMatch = match[0];
 
   for (const group of groupsMatch.matchAll(CAPTURE_GROUP_REGEX)) {
-    extrapolateGroupRoutes(route.replace(groupsMatch, `(${group[1].trim()})`), routes);
+    extrapolateGroupRoutes(route.replace(groupsMatch, `(${group[1]!.trim()})`), routes);
   }
 
   return routes;
@@ -339,9 +251,7 @@ export function extrapolateGroupRoutes(
  * mix with arbitrary versions.
  * TODO: Version this code with `expo-router` or version expo-router with `@expo/cli`.
  */
-const routerDotTSTemplate = unsafeTemplate`/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable import/export */
-/* eslint-disable @typescript-eslint/ban-types */
+const routerDotTSTemplate = unsafeTemplate`/* eslint-disable */
 declare module "expo-router" {
   import type { LinkProps as OriginalLinkProps } from 'expo-router/build/link/Link';
   import type { Router as OriginalRouter } from 'expo-router/build/types';
@@ -367,7 +277,7 @@ declare module "expo-router" {
 
   type SearchOrHash = \`?\${string}\` | \`#\${string}\`;
   type UnknownInputParams = Record<string, string | number | (string | number)[]>;
-  type UnknownOutputParams = Record<string, string | string[]>;
+  type UnknownOutputParams = Record<string, string | string[] | undefined>;
 
   /**
    * Return only the RoutePart of a string. If the string has multiple parts return never
@@ -427,7 +337,7 @@ declare module "expo-router" {
     : IsParameter<Path>;
 
   /**
-   * Returns all segements of a route.
+   * Returns all segments of a route.
    *
    * /(group)/123/abc/[id]/[...rest] -> ['(group)', '123', 'abc', '[id]', '[...rest]'
    */

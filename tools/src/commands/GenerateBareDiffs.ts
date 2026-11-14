@@ -3,6 +3,7 @@ import spawnAsync from '@expo/spawn-async';
 import chalk from 'chalk';
 import { PromisyClass, TaskQueue } from 'cwait';
 import fs from 'fs-extra';
+import npmPacklist from 'npm-packlist';
 import os from 'os';
 import path from 'path';
 import semver from 'semver';
@@ -56,25 +57,75 @@ function sdkToBranch(sdkVersion: string) {
   return `sdk-${sdkVersion}`;
 }
 
-async function executeDiffCommand(diffDirPathRaw, sdkFrom: string, sdkTo: string) {
-  const diffCommand = `origin/${sdkToBranch(sdkFrom)}..origin/${sdkToBranch(sdkTo)}`;
+const TEMPLATE_PATH = 'templates/expo-template-bare-minimum';
+
+async function getTemplatePathspecs(): Promise<string[]> {
+  const packlist = await npmPacklist({ path: path.join(EXPO_DIR, TEMPLATE_PATH) });
+  return packlist
+    .filter((f) => f.startsWith('android/') || f.startsWith('ios/') || f === 'package.json')
+    .map((f) => `${TEMPLATE_PATH}/${f}`);
+}
+
+const TEMPLATE_PACKAGE_JSON_PATH = `${TEMPLATE_PATH}/package.json`;
+
+async function readPublishedPackageJsonAsync(ref: string) {
+  const packageJson = await Git.readFileAsync(ref, path.join(EXPO_DIR, TEMPLATE_PACKAGE_JSON_PATH));
+  let publishedPackageJson = packageJson;
+  for (const [dependency, name, range] of packageJson.matchAll(/"([^"]+)": "workspace:([~^*])"/g)) {
+    const packagePath = path.join(EXPO_DIR, 'packages', name, 'package.json');
+    const { version } = JSON.parse(await Git.readFileAsync(ref, packagePath));
+    publishedPackageJson = publishedPackageJson.replace(
+      dependency,
+      `"${name}": "${range === '*' ? '' : range}${version}"`
+    );
+  }
+  return publishedPackageJson;
+}
+
+async function diffPublishedPackageJsonAsync(fromRef: string, toRef: string) {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bare-diffs-'));
+  try {
+    const sides = [`a/${TEMPLATE_PACKAGE_JSON_PATH}`, `b/${TEMPLATE_PACKAGE_JSON_PATH}`];
+    await fs.outputFile(path.join(tempDir, sides[0]), await readPublishedPackageJsonAsync(fromRef));
+    await fs.outputFile(path.join(tempDir, sides[1]), await readPublishedPackageJsonAsync(toRef));
+    const { stdout: shortHead } = await Git.runAsync(['rev-parse', '--short', 'HEAD']);
+    const args = [
+      '-c',
+      `core.abbrev=${shortHead.trim().length}`,
+      'diff',
+      '--no-index',
+      '--no-prefix',
+    ];
+    const { stdout } = await spawnAsync('git', [...args, ...sides], { cwd: tempDir }).catch(
+      (error) => (error.status === 1 ? error : Promise.reject(error))
+    );
+    return stdout;
+  } finally {
+    await fs.remove(tempDir);
+  }
+}
+
+async function executeDiffCommand(
+  diffDirPathRaw,
+  sdkFrom: string,
+  sdkTo: string,
+  pathspecs: string[]
+) {
+  const fromRef = `origin/${sdkToBranch(sdkFrom)}`;
+  const toRef = `origin/${sdkToBranch(sdkTo)}`;
   const diffPath = path.join(diffDirPathRaw, `${sdkFrom}..${sdkTo}.diff`);
 
-  await Git.fetchAsync();
-
-  const diff = await spawnAsync(
-    'git',
-    ['diff', diffCommand, '--', 'templates/expo-template-bare-minimum'],
-    {
-      cwd: EXPO_DIR,
-    }
-  );
+  const otherPathspecs = pathspecs.filter((pathspec) => pathspec !== TEMPLATE_PACKAGE_JSON_PATH);
+  const diff = await spawnAsync('git', ['diff', `${fromRef}..${toRef}`, '--', ...otherPathspecs], {
+    cwd: EXPO_DIR,
+  });
+  const contents = diff.stdout + (await diffPublishedPackageJsonAsync(fromRef, toRef));
 
   // write raw diff for later comparison to see if templates changed.
-  await fs.writeFile(diffPath, diff.stdout);
+  await fs.writeFile(diffPath, contents);
 
   // used for the consolidated JSON
-  return { name: `${sdkFrom}..${sdkTo}`, contents: diff.stdout };
+  return { name: `${sdkFrom}..${sdkTo}`, contents };
 }
 
 async function action({ check = false }: ActionOptions) {
@@ -103,6 +154,8 @@ async function action({ check = false }: ActionOptions) {
     const sdkVersionsToDiff = allVersions(minSdk, maxSdk);
     sdkVersionsToDiff.push('unversioned');
 
+    await Git.fetchAsync();
+
     // clear all versions before regenerating
 
     // files/folders never change in base directory, all diffs are written to diffInfo.json
@@ -112,7 +165,7 @@ async function action({ check = false }: ActionOptions) {
     await fs.remove(diffDirPathRaw);
     await fs.ensureDir(diffDirPathRaw);
 
-    //const diffPairs: string[] = [];
+    const pathspecs = await getTemplatePathspecs();
 
     // start with the lowest SDK version and diff it with all other SDK versions equal to or lower than it
     sdkVersionsToDiff.forEach((toSdkVersion) => {
@@ -122,7 +175,9 @@ async function action({ check = false }: ActionOptions) {
           : sdkVersionsToDiff.filter((s) => s <= toSdkVersion);
       sdkVersionsLowerThenOrEqualTo.forEach((fromSdkVersion) => {
         diffJobs.push(
-          taskQueue.add(() => executeDiffCommand(diffDirPathRaw, fromSdkVersion, toSdkVersion))
+          taskQueue.add(() =>
+            executeDiffCommand(diffDirPathRaw, fromSdkVersion, toSdkVersion, pathspecs)
+          )
         );
       });
     });

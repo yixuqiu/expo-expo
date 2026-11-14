@@ -1,6 +1,7 @@
-import { JSONValue } from '@expo/json-file';
+import type { JSONValue } from '@expo/json-file';
 
 export type URLScheme = {
+  CFBundleTypeRole?: 'Editor' | 'Viewer' | 'Shell' | 'QLGenerator' | 'None';
   CFBundleURLName?: string;
   CFBundleURLSchemes: string[];
 };
@@ -39,6 +40,7 @@ export type InfoPlist = Record<string, JSONValue | undefined> & {
 export type ExpoPlist = {
   EXUpdatesCheckOnLaunch?: string;
   EXUpdatesEnabled?: boolean;
+  EXUpdatesHasEmbeddedUpdate?: boolean;
   EXUpdatesLaunchWaitMs?: number;
   EXUpdatesRuntimeVersion?: string;
   EXUpdatesRequestHeaders?: Record<string, string>;
@@ -49,4 +51,8 @@ export type ExpoPlist = {
   EXUpdatesURL?: string;
   EXUpdatesCodeSigningCertificate?: string;
   EXUpdatesCodeSigningMetadata?: Record<string, string>;
+  EXUpdatesDisableAntiBrickingMeasures?: boolean;
+  EXUpdatesEnableBsdiffPatchSupport?: boolean;
+  EXUpdatesExcludeFromBackup?: boolean;
+  EXUpdatesMaxUpdatesToKeep?: number;
 };

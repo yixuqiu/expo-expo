@@ -5,32 +5,31 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { getExpoHomeDirectory } from '@expo/config/build/getUserState';
 import JsonFile from '@expo/json-file';
-import spawnAsync, { SpawnOptions, SpawnResult } from '@expo/spawn-async';
+import type { SpawnOptions, SpawnResult } from '@expo/spawn-async';
+import spawnAsync from '@expo/spawn-async';
 import chalk from 'chalk';
 import { spawn, execSync } from 'child_process';
 import fs from 'fs';
 import assert from 'node:assert';
-import { Ora } from 'ora';
+import type { Ora } from 'ora';
 import { EOL } from 'os';
 import path from 'path';
-import tempy from 'tempy';
 
-import { xcrunAsync } from './xcrun';
+import { getExpoHomeDirectory } from '../../../api/user/UserSettings';
 import * as Log from '../../../log';
+import { createTempFilePath } from '../../../utils/createTempPath';
 import { CommandError } from '../../../utils/errors';
 import { installExitHooks } from '../../../utils/exit';
 import { isInteractive } from '../../../utils/interactive';
 import { ora } from '../../../utils/ora';
 import { confirmAsync } from '../../../utils/prompts';
+import { event } from '../events';
+import { xcrunAsync } from './xcrun';
 
 const DEVICE_CTL_EXISTS_PATH = path.join(getExpoHomeDirectory(), 'devicectl-exists');
 
-const debug = require('debug')('expo:devicectl') as typeof console.log;
-
-// eslint-disable-next-line @typescript-eslint/ban-types
-type AnyEnum<T extends string = string> = T | (string & {});
+type AnyEnum<T extends string = string> = T | (string & object);
 
 type DeviceCtlDevice = {
   capabilities: DeviceCtlDeviceCapability[];
@@ -59,7 +58,7 @@ type DeviceCtlHardwareProperties = {
   platform: AnyEnum<'iOS' | 'xrOS'>;
   /** "iPhone15,3" */
   productType: AnyEnum<'iPhone13,4' | 'iPhone15,3'>;
-  reality: AnyEnum<'physical'>;
+  reality: AnyEnum<'physical' | 'simulated'>;
   /** "X2X1CC1XXX" */
   serialNumber: string;
   supportedCPUTypes: DeviceCtlCpuType[];
@@ -118,7 +117,7 @@ type DeviceCtlConnectionProperties = {
   /** ["00001111-001111110110101A.coredevice.local", "A1A1AAA1-0011-1AA1-11A1-10A1111AA11A.coredevice.local"] */
   potentialHostnames: string[];
   transportType: AnyEnum<'localNetwork' | 'wired'>;
-  tunnelState: AnyEnum<'disconnected'>;
+  tunnelState: AnyEnum<'disconnected' | 'unavailable'>;
   tunnelTransportProtocol: AnyEnum<'tcp'>;
 };
 
@@ -152,12 +151,12 @@ export async function devicectlAsync(
 
 export async function getConnectedAppleDevicesAsync() {
   if (!hasDevicectlEverBeenInstalled()) {
-    debug('devicectl not found, skipping remote Apple devices.');
+    event('devicectl_not_found', {});
     return [];
   }
 
-  const tmpPath = tempy.file();
-  const devices = await devicectlAsync([
+  const tmpPath = createTempFilePath();
+  await devicectlAsync([
     'list',
     'devices',
     '--json-output',
@@ -166,10 +165,9 @@ export async function getConnectedAppleDevicesAsync() {
     '--timeout',
     '5',
   ]);
-  debug(devices.stdout);
   const devicesJson = await JsonFile.readAsync(tmpPath);
 
-  if ((devicesJson as any)?.info?.jsonVersion !== 2) {
+  if (![2, 3, 5].includes((devicesJson as any)?.info?.jsonVersion)) {
     Log.warn(
       'Unexpected devicectl JSON version output from devicectl. Connecting to physical Apple devices may not work as expected.'
     );
@@ -177,7 +175,9 @@ export async function getConnectedAppleDevicesAsync() {
 
   assertDevicesJson(devicesJson);
 
-  return devicesJson.result.devices as DeviceCtlDevice[];
+  return (devicesJson.result.devices as DeviceCtlDevice[]).filter(
+    (device) => device?.hardwareProperties?.reality !== 'simulated'
+  );
 }
 
 function assertDevicesJson(
@@ -215,7 +215,35 @@ export async function launchBinaryOnMacAsync(
 async function installAppWithDeviceCtlAsync(
   uuid: string,
   bundleIdOrAppPath: string,
-  onProgress: (event: { status: string; isComplete: boolean; progress: number }) => void
+  onProgress: (event: { status: string; progress: number }) => void
+): Promise<void> {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await installAppWithDeviceCtlInternalAsync(uuid, bundleIdOrAppPath, onProgress, attempt);
+      return;
+    } catch (error: any) {
+      if (error.code === 'detached') {
+        throw error;
+      }
+      const isTransientDisconnect =
+        error.message &&
+        (error.message.includes('CoreDeviceError') || error.message.includes('0xFA0'));
+
+      if (!isTransientDisconnect || attempt === maxAttempts) {
+        throw error;
+      }
+      const backoffDelay = 500 + Math.pow(2, attempt - 1) * 500;
+      await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+    }
+  }
+}
+
+async function installAppWithDeviceCtlInternalAsync(
+  uuid: string,
+  bundleIdOrAppPath: string,
+  onProgress: (event: { status: string; progress: number }) => void,
+  attempt: number
 ): Promise<void> {
   // 𝝠 xcrun devicectl device install app --device 00001110-001111110110101A /Users/evanbacon/Library/Developer/Xcode/DerivedData/Router-hgbqaxzhrhkiftfweydvhgttadvn/Build/Products/Debug-iphoneos/Router.app --verbose
   return new Promise((resolve, reject) => {
@@ -229,7 +257,7 @@ async function installAppWithDeviceCtlAsync(
       bundleIdOrAppPath,
     ];
     const childProcess = spawn('xcrun', args);
-    debug('xcrun ' + args.join(' '));
+    event('devicectl_install_spawn', { command: 'xcrun ' + args.join(' ') });
 
     let currentProgress = 0;
     let hasStarted = false;
@@ -240,10 +268,10 @@ async function installAppWithDeviceCtlAsync(
         return;
       }
       currentProgress = progress;
+      const statusPrefix = attempt > 1 ? `Installing (attempt ${attempt})` : 'Installing';
       onProgress({
         progress,
-        isComplete: progress === 100,
-        status: 'Installing',
+        status: statusPrefix,
       });
     }
 
@@ -263,22 +291,23 @@ async function installAppWithDeviceCtlAsync(
 
         const match = str.match(/(\d+)%\.\.\./);
         if (match) {
-          updateProgress(parseInt(match[1], 10));
+          updateProgress(parseInt(match[1]!, 10));
         } else if (hasStarted) {
           updateProgress(100);
         }
       });
+    });
 
-      debug('[stdout]:', strings);
+    let stderrBuffer = '';
+    childProcess.stderr.on('data', (data: Buffer) => {
+      stderrBuffer += data.toString();
     });
 
     childProcess.on('close', (code) => {
-      debug('[close]: ' + code);
       if (code === 0) {
         resolve();
       } else {
-        const stderr = childProcess.stderr.read();
-        const err = new Error(stderr);
+        const err = new Error(stderrBuffer || `Command failed with exit code ${code}`);
         (err as any).code = code;
         detach(err);
       }
@@ -288,9 +317,8 @@ async function installAppWithDeviceCtlAsync(
       off?.();
       if (childProcess) {
         return new Promise<void>((resolve) => {
-          childProcess?.on('close', resolve);
+          childProcess?.on('close', () => resolve());
           childProcess?.kill();
-          // childProcess = null;
           reject(err ?? new CommandError('detached'));
         });
       }
@@ -301,12 +329,20 @@ async function installAppWithDeviceCtlAsync(
 }
 
 export async function launchAppWithDeviceCtl(deviceId: string, bundleId: string) {
-  await devicectlAsync(['device', 'process', 'launch', '--device', deviceId, bundleId]);
+  await devicectlAsync([
+    'device',
+    'process',
+    'launch',
+    '--terminate-existing',
+    '--device',
+    deviceId,
+    bundleId,
+  ]);
 }
 
 /** Find all error codes from the output log */
 function getDeviceCtlErrorCodes(log: string): string[] {
-  return [...log.matchAll(/BSErrorCodeDescription\s+=\s+(.*)$/gim)].map(([_line, code]) => code);
+  return [...log.matchAll(/BSErrorCodeDescription\s+=\s+(.*)$/gim)].map(([_line, code]) => code!);
 }
 
 let hasEverBeenInstalled: boolean | undefined;
@@ -348,7 +384,7 @@ export async function installAndLaunchAppAsync(props: {
   udid: string;
   deviceName: string;
 }): Promise<void> {
-  debug('Running on device:', props);
+  event('devicectl_install_device', { props: props as Record<string, unknown> });
   const { bundle, bundleIdentifier, udid, deviceName } = props;
   let indicator: Ora | undefined;
 
@@ -360,24 +396,14 @@ export async function installAndLaunchAppAsync(props: {
     await installAppWithDeviceCtlAsync(
       udid,
       bundle,
-      ({
-        status,
-        isComplete,
-        progress,
-      }: {
-        status: string;
-        isComplete: boolean;
-        progress: number;
-      }) => {
+      ({ status, progress }: { status: string; progress: number }) => {
         if (!indicator) {
           indicator = ora(status).start();
         }
         indicator.text = `${chalk.bold(status)} ${progress}%`;
-        if (isComplete) {
-          indicator.succeed();
-        }
       }
     );
+    indicator.succeed(`Installed on ${deviceName}`);
   } catch (error: any) {
     if (indicator) {
       indicator.fail();

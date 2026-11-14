@@ -2,7 +2,9 @@ package expo.modules.medialibrary
 
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
+import expo.modules.kotlin.types.OptimizedRecord
 
+@OptimizedRecord
 data class AssetsOptions(
   @Field val first: Double,
   @Field val after: String?,
@@ -10,5 +12,6 @@ data class AssetsOptions(
   @Field val sortBy: List<String>,
   @Field val mediaType: List<String>,
   @Field val createdAfter: Double?,
-  @Field val createdBefore: Double?
+  @Field val createdBefore: Double?,
+  @Field val resolveWithFullInfo: Boolean?
 ) : Record

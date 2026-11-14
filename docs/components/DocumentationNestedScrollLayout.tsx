@@ -1,104 +1,229 @@
-import { mergeClasses } from '@expo/styleguide';
+import { Button, mergeClasses } from '@expo/styleguide';
+import { ChevronLeftIcon } from '@expo/styleguide-icons/outline/ChevronLeftIcon';
+import { ChevronRightIcon } from '@expo/styleguide-icons/outline/ChevronRightIcon';
 import {
-  Component,
   cloneElement,
-  createRef,
   type PropsWithChildren,
   type ReactElement,
   type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 
-import { ScrollContainer } from '~/components/ScrollContainer';
-import { SidebarHead, SidebarFooter } from '~/ui/components/Sidebar';
+import { ScrollContainer, type ScrollContainerHandle } from '~/components/ScrollContainer';
+import { SidebarFooter } from '~/ui/components/Sidebar/SidebarFooter';
+import { SidebarHead } from '~/ui/components/Sidebar/SidebarHead';
+import { TableOfContentsProps } from '~/ui/components/TableOfContents';
+import * as Tooltip from '~/ui/components/Tooltip';
 
 type Props = PropsWithChildren<{
   onContentScroll?: (scrollTop: number) => void;
   isMobileMenuVisible: boolean;
   hideTOC: boolean;
-  header: React.ReactNode;
-  sidebarScrollPosition: number;
+  header: ReactNode;
+  sidebarScrollPosition?: number;
   sidebar: ReactNode;
   sidebarActiveGroup: string;
-  sidebarRight: ReactElement;
+  sidebarRight: ReactElement<TableOfContentsProps>;
+  onSidebarToggle?: () => void;
+  isSidebarCollapsed?: boolean;
+  isChatExpanded?: boolean;
+  layoutRef?: { current: DocumentationNestedScrollLayoutHandles | null } | null;
 }>;
 
-export default class DocumentationNestedScrollLayout extends Component<Props> {
-  static defaultProps = {
-    sidebarScrollPosition: 0,
+export type DocumentationNestedScrollLayoutHandles = {
+  getSidebarScrollTop: () => number;
+  getContentScrollTop: () => number;
+  contentRef: { current: ScrollContainerHandle | null };
+};
+
+export default function DocumentationNestedScrollLayout({
+  header,
+  sidebar,
+  sidebarActiveGroup,
+  sidebarRight,
+  sidebarScrollPosition = 0,
+  isMobileMenuVisible,
+  hideTOC,
+  children,
+  onSidebarToggle,
+  isSidebarCollapsed = false,
+  isChatExpanded = false,
+  onContentScroll,
+  layoutRef,
+}: Props) {
+  const sidebarRef = useRef<ScrollContainerHandle | null>(null);
+  const contentRef = useRef<ScrollContainerHandle | null>(null);
+  const sidebarRightRef = useRef<ScrollContainerHandle | null>(null);
+  const [isMounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const getSidebarScrollTop = useCallback(() => sidebarRef.current?.getScrollTop() ?? 0, []);
+  const getContentScrollTop = useCallback(() => contentRef.current?.getScrollTop() ?? 0, []);
+
+  useEffect(() => {
+    if (!layoutRef) {
+      return;
+    }
+    layoutRef.current = {
+      getSidebarScrollTop,
+      getContentScrollTop,
+      contentRef,
+    };
+    return () => {
+      layoutRef.current = null;
+    };
+  }, [layoutRef, getSidebarScrollTop, getContentScrollTop]);
+
+  useEffect(() => {
+    // pages/_document.tsx adds the ios-webkit class.
+    if (!document.documentElement.classList.contains('ios-webkit')) {
+      return;
+    }
+    // overflow: hidden on the root does not stop hash links and scrollIntoView from scrolling
+    // the document and hiding the header. The keyboard and zoom need the document scroll.
+    const resetDocumentScroll = () => {
+      if (
+        window.scrollY === 0 ||
+        (window.visualViewport?.scale ?? 1) > 1 ||
+        isEditableElement(document.activeElement)
+      ) {
+        return;
+      }
+      window.scrollTo(0, 0);
+    };
+    resetDocumentScroll();
+    window.addEventListener('scroll', resetDocumentScroll);
+    return () => {
+      window.removeEventListener('scroll', resetDocumentScroll);
+    };
+  }, []);
+
+  const scrollHandler = () => {
+    if (onContentScroll) {
+      onContentScroll(getContentScrollTop());
+    }
   };
 
-  sidebarRef = createRef<ScrollContainer>();
-  contentRef = createRef<ScrollContainer>();
-  sidebarRightRef = createRef<ScrollContainer>();
-
-  public getSidebarScrollTop = () => {
-    return this.sidebarRef.current?.getScrollTop() ?? 0;
-  };
-
-  public getContentScrollTop = () => {
-    return this.contentRef.current?.getScrollTop() ?? 0;
-  };
-
-  render() {
-    const {
-      header,
-      sidebar,
-      sidebarActiveGroup,
-      sidebarRight,
-      sidebarScrollPosition,
-      isMobileMenuVisible,
-      hideTOC,
-      children,
-    } = this.props;
-
-    return (
-      <div className="w-full h-dvh overflow-hidden mx-auto flex flex-col">
-        <div className="max-lg-gutters:sticky">{header}</div>
-        <div className="flex mx-auto justify-between items-center w-full h-[calc(100vh-60px)]">
-          <div
-            className={mergeClasses(
-              'flex flex-col shrink-0 max-w-[280px] h-full overflow-hidden border-r border-r-default',
-              'max-lg-gutters:hidden'
-            )}>
-            <SidebarHead sidebarActiveGroup={sidebarActiveGroup} />
-            <ScrollContainer
-              ref={this.sidebarRef}
-              scrollPosition={sidebarScrollPosition}
-              className="pt-1.5">
-              {sidebar}
-              <SidebarFooter />
-            </ScrollContainer>
-          </div>
-          <div
-            className={mergeClasses(
-              'w-full h-[calc(100vh-60px)] flex overflow-hidden',
-              'max-lg-gutters:overflow-auto',
-              isMobileMenuVisible && 'hidden'
-            )}>
-            <ScrollContainer ref={this.contentRef} scrollHandler={this.scrollHandler}>
-              <div className="max-w-screen-xl mx-auto">{children}</div>
-            </ScrollContainer>
-          </div>
-          {!hideTOC && (
+  return (
+    <div
+      data-nested-scroll-layout
+      className="mx-auto flex h-(--nested-scroll-layout-height) w-full flex-col overflow-hidden">
+      <div className="max-lg:sticky">{header}</div>
+      <div
+        className={mergeClasses(
+          'mx-auto flex h-[calc(100dvh-60px)] w-full items-center justify-between',
+          'lg:[reading-flow:grid-rows] lg:grid lg:grid-rows-1',
+          isMounted
+            ? 'lg:grid-cols-[auto_minmax(0,1fr)] xl:grid-cols-[auto_minmax(0,1fr)_auto]'
+            : 'lg:grid-cols-[17.5rem_minmax(0,1fr)]',
+          !isMounted && !hideTOC && 'xl:grid-cols-[17.5rem_minmax(0,1fr)_17.5rem]'
+        )}>
+        <div
+          className={mergeClasses(
+            'relative flex h-[calc(var(--nested-scroll-layout-height)-60px)] w-full self-start overflow-hidden',
+            'lg:col-start-2 lg:row-start-1',
+            'max-lg:overflow-auto',
+            isMobileMenuVisible && 'hidden'
+          )}>
+          <ScrollContainer ref={contentRef} scrollHandler={scrollHandler}>
             <div
               className={mergeClasses(
-                'flex flex-col shrink-0 max-w-[280px] h-full overflow-hidden border-l border-l-default',
-                'max-lg-gutters:hidden'
+                'mx-auto max-w-screen-xl pb-[calc(var(--nested-scroll-layout-height)-100dvh)] transition-[padding,max-width,margin] duration-200 ease-out will-change-[padding,max-width,margin]',
+                isChatExpanded && 'max-lg:max-w-screen-xl max-lg:pr-0 max-lg:pl-0'
               )}>
-              <ScrollContainer ref={this.sidebarRightRef}>
-                {cloneElement(sidebarRight, {
-                  selfRef: this.sidebarRightRef,
-                  contentRef: this.contentRef,
-                })}
-              </ScrollContainer>
+              {children}
             </div>
-          )}
+          </ScrollContainer>
+        </div>
+        {!hideTOC && (
+          <div
+            className={mergeClasses(
+              'flex h-[calc(100dvh-60px)] max-w-70 shrink-0 flex-col overflow-hidden border-l border-l-default',
+              'xl:col-start-3 xl:row-start-1 max-xl:hidden'
+            )}>
+            <ScrollContainer ref={sidebarRightRef}>
+              {cloneElement(sidebarRight, {
+                selfRef: sidebarRightRef,
+                contentRef,
+              })}
+            </ScrollContainer>
+          </div>
+        )}
+        <div className="relative h-full lg:col-start-1 lg:row-start-1 max-lg:hidden">
+          {onSidebarToggle ? (
+            <div
+              className={mergeClasses(
+                'absolute z-20 flex items-center justify-center transition-all duration-200 ease-out',
+                'bottom-6',
+                isSidebarCollapsed ? 'left-5 translate-x-0' : 'left-70 -translate-x-1/2'
+              )}>
+              <Tooltip.Root delayDuration={300}>
+                <Tooltip.Trigger asChild>
+                  <Button
+                    type="button"
+                    theme="quaternary"
+                    size="xs"
+                    className={mergeClasses(
+                      'inline-flex size-9 items-center justify-center rounded-full border p-0! transition-colors duration-150 ease-out',
+                      'shadow-sm',
+                      isSidebarCollapsed
+                        ? 'border-palette-gray5 bg-palette-gray4 text-icon-secondary dark:border-palette-gray6 dark:bg-palette-gray5'
+                        : 'border-default bg-default text-icon-secondary',
+                      'hover:bg-element focus-visible:ring-2 focus-visible:ring-palette-blue9 focus-visible:outline-none'
+                    )}
+                    aria-label={isSidebarCollapsed ? 'Show navigation' : 'Hide navigation'}
+                    title={isSidebarCollapsed ? 'Show navigation' : 'Hide navigation'}
+                    aria-pressed={!isSidebarCollapsed}
+                    onClick={onSidebarToggle}>
+                    {isSidebarCollapsed ? (
+                      <ChevronRightIcon aria-hidden="true" className="icon-sm" />
+                    ) : (
+                      <ChevronLeftIcon aria-hidden="true" className="icon-sm" />
+                    )}
+                    <span className="sr-only">
+                      {isSidebarCollapsed ? 'Show navigation' : 'Hide navigation'}
+                    </span>
+                  </Button>
+                </Tooltip.Trigger>
+                <Tooltip.Content sideOffset={8} className="max-w-65 text-center text-sm">
+                  Use Cmd/Ctrl + Shift + Enter to toggle immersive mode.
+                </Tooltip.Content>
+              </Tooltip.Root>
+            </div>
+          ) : null}
+          <div
+            className={mergeClasses(
+              'flex h-full max-w-70 flex-col overflow-hidden border-r border-r-default transition-[max-width,opacity,width] duration-200 ease-out will-change-[max-width,width,opacity]',
+              isSidebarCollapsed ? 'w-0 max-w-0 border-r-0 opacity-0' : 'w-70 max-w-70 opacity-100'
+            )}>
+            {isSidebarCollapsed ? null : (
+              <>
+                <SidebarHead sidebarActiveGroup={sidebarActiveGroup} />
+                <ScrollContainer
+                  ref={sidebarRef}
+                  scrollPosition={sidebarScrollPosition}
+                  className="pt-1.5">
+                  {sidebar}
+                  <SidebarFooter />
+                </ScrollContainer>
+              </>
+            )}
+          </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-  private scrollHandler = () => {
-    this.props.onContentScroll && this.props.onContentScroll(this.getContentScrollTop());
-  };
+function isEditableElement(element: Element | null) {
+  return (
+    element instanceof HTMLElement &&
+    (element.isContentEditable || element.matches('input, textarea, select'))
+  );
 }

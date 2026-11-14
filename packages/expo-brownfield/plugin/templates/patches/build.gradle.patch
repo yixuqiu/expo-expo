@@ -1,0 +1,27 @@
+diff --git a/packages/expo-brownfield/plugin/templates/android/build.gradle.kts b/packages/expo-brownfield/plugin/templates/android/build.gradle.kts
+index 460abb61af..b705122d74 100644
+--- a/packages/expo-brownfield/plugin/templates/android/build.gradle.kts
++++ b/packages/expo-brownfield/plugin/templates/android/build.gradle.kts
+@@ -53,8 +53,22 @@ android {
+ 
+ kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
+ 
++val configureDevMenuInRelease = 
++  findProperty("expo.devmenu.configureInRelease")?.toString() == "true"
++
+ dependencies {
++  val debugOnly: (Any) -> Unit = { notation ->
++    debugImplementation(notation)
++    if (configureDevMenuInRelease) {
++      releaseImplementation(notation)
++    }
++  }
++
+   api("com.facebook.react:react-android")
+   api("com.facebook.hermes:hermes-android")
+   compileOnly("androidx.fragment:fragment-ktx:1.6.1")
++
++  debugOnly(project(":expo-brownfield"))
++  debugOnly(project(":expo-dev-menu"))
++  debugOnly(project(":expo-manifests"))
+ }

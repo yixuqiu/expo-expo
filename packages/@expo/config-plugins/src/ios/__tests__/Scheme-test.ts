@@ -1,3 +1,4 @@
+import type { URLScheme } from '../IosConfig.types';
 import {
   appendScheme,
   getScheme,
@@ -16,6 +17,7 @@ describe('scheme', () => {
     expect(getScheme({ scheme: 'myapp' })).toStrictEqual(['myapp']);
     expect(
       getScheme({
+        // @ts-ignore
         scheme: ['myapp', 'other', null],
       })
     ).toStrictEqual(['myapp', 'other']);
@@ -25,10 +27,8 @@ describe('scheme', () => {
     expect(
       setScheme(
         {
-          // @ts-ignore: TODO -- add this to the ExpoConfig type
           scheme: ['myapp', 'more'],
           ios: {
-            // @ts-ignore: TODO -- add this to the ExpoConfig type
             scheme: ['ios-only'],
             bundleIdentifier: 'com.demo.value',
           },
@@ -93,6 +93,25 @@ describe('scheme', () => {
     };
     expect(removeScheme('myapp3', infoPlist)).toStrictEqual({
       CFBundleURLTypes: [{ CFBundleURLSchemes: ['myapp1', 'myapp2'] }],
+    });
+  });
+
+  it(`appends and removes a scheme when a URL type has no CFBundleURLSchemes`, () => {
+    const getInfoPlist = () => ({
+      CFBundleURLTypes: [
+        { CFBundleURLName: 'com.demo.value' },
+        { CFBundleURLSchemes: ['myapp1'] },
+      ] as URLScheme[],
+    });
+    expect(appendScheme('myapp2', getInfoPlist())).toStrictEqual({
+      CFBundleURLTypes: [
+        { CFBundleURLName: 'com.demo.value' },
+        { CFBundleURLSchemes: ['myapp1'] },
+        { CFBundleURLSchemes: ['myapp2'] },
+      ],
+    });
+    expect(removeScheme('myapp1', getInfoPlist())).toStrictEqual({
+      CFBundleURLTypes: [{ CFBundleURLName: 'com.demo.value' }],
     });
   });
 });

@@ -1,14 +1,226 @@
 # Changelog
 
-## Unpublished
+## 58.0.4
 
-### 🛠 Breaking changes
+### Patch Changes
+
+- Add `ios.expiresAt` and `ios.localOnly` options to `setStringAsync`. They map to the pasteboard's expiration date and local-only options. ([#51911](https://github.com/expo/expo/pull/51911) by [@kirillzyusko](https://github.com/kirillzyusko))
+
+## 58.0.3
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.2
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.1 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
 
 ### 🎉 New features
 
-### 🐛 Bug fixes
+- [Android] Added `android.isSensitive` option to `setStringAsync` and `setImageAsync` methods. ([#43291](https://github.com/expo/expo/pull/43291) by [@maykonmichel](https://github.com/maykonmichel))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 - 2026-06-05
+
+### 🎉 New features
+
+- Add macOS support. ([#46479](https://github.com/expo/expo/pull/46479) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Removed deprecated `setString` function. Use `setStringAsync` instead. ([#41758](https://github.com/expo/expo/pull/41758) by [@barthap](https://github.com/barthap))
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
 
 ### 💡 Others
+
+- [Android] Instead of exporting the `ClipboardFileProvider` use `android:grantUriPermissions` to share image files. ([#44556](https://github.com/expo/expo/pull/44556) by [@behenate](https://github.com/behenate))
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+### 🐛 Bug fixes
+
+- Added missing export of `clipboardEventName` on Web. ([#42610](https://github.com/expo/expo/pull/42610) by [@Bram-dc](https://github.com/Bram-dc))
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🛠 Breaking changes
+
+- Removed deprecated `content` property of the clipboard event listener. Use `getStringAsync()` instead. ([#41739](https://github.com/expo/expo/pull/41739) by [@barthap](https://github.com/barthap))
+
+### 💡 Others
+
+- Remove tests related files from the published package content. ([#39551](https://github.com/expo/expo/pull/39551) by [@Simek](https://github.com/Simek))
+- mark `removeClipboardListener` call as deprecated ([#42098](https://github.com/expo/expo/pull/42098) by [@vonovak](https://github.com/vonovak))
+- [iOS] Update documentation regarding the edge case when the user denies paste permission ([#40259](https://github.com/expo/expo/pull/40259) by [@hryhoriiK97](https://github.com/hryhoriiK97))
+- Update internal TypeScript types. ([#41740](https://github.com/expo/expo/pull/41740) by [@barthap](https://github.com/barthap))
+
+## 8.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.6 — 2025-09-02
+
+### 💡 Others
+
+- [Android] Obfuscate clipped image filenames ([#39124](https://github.com/expo/expo/pull/39124) by [@kretkiewicz](https://github.com/kretkiewicz))
+
+## 8.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.5 - 2025-07-01
+
+### 💡 Others
+
+- [iOS] Refactor deprecated code ([#36714](https://github.com/expo/expo/pull/36714) by [@hirbod](https://github.com/hirbod))
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+
+## 7.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35288](https://github.com/expo/expo/pull/35288) by [@behenate](https://github.com/behenate))
+
+## 7.0.1 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840), [#30860](https://github.com/expo/expo/pull/30860) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- [iOS] fix ClipboardPasteButton asking for paste permission ([#30623](https://github.com/expo/expo/pull/30623) by [@vonovak](https://github.com/vonovak))
+- Fixed issue when copying PNG images on Android. ([#29629](https://github.com/expo/expo/pull/29629) by [@weslley75](https://github.com/weslley75))
+- Add missing `react`/`react-native` peer dependencies for isolated modules. ([#30463](https://github.com/expo/expo/pull/30463) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Removed redundant usage of `EventEmitter` instance. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
+- Standardized Babel configuration to use `expo-module-scripts`. ([#31915](https://github.com/expo/expo/pull/31915) by [@reichhartd](https://github.com/reichhartd))
 
 ## 6.0.3 — 2024-05-01
 

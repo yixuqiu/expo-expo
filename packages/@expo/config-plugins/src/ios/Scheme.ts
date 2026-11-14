@@ -1,7 +1,7 @@
-import { ExpoConfig } from '@expo/config-types';
+import type { ExpoConfig } from '@expo/config-types';
 
-import { InfoPlist, URLScheme } from './IosConfig.types';
 import { createInfoPlistPluginWithPropertyGuard } from '../plugins/ios-plugins';
+import type { InfoPlist, URLScheme } from './IosConfig.types';
 
 export const withScheme = createInfoPlistPluginWithPropertyGuard(
   setScheme,
@@ -28,11 +28,7 @@ export function setScheme(
   config: Partial<Pick<ExpoConfig, 'scheme' | 'ios'>>,
   infoPlist: InfoPlist
 ): InfoPlist {
-  const scheme = [
-    ...getScheme(config),
-    // @ts-ignore: TODO: ios.scheme is an unreleased -- harder to add to turtle v1.
-    ...getScheme(config.ios ?? {}),
-  ];
+  const scheme = [...getScheme(config), ...getScheme(config.ios ?? {})];
   // Add the bundle identifier to the list of schemes for easier Google auth and parity with Turtle v1.
   if (config.ios?.bundleIdentifier) {
     scheme.push(config.ios.bundleIdentifier);
@@ -53,7 +49,7 @@ export function appendScheme(scheme: string | null, infoPlist: InfoPlist): InfoP
   }
 
   const existingSchemes = infoPlist.CFBundleURLTypes ?? [];
-  if (existingSchemes?.some(({ CFBundleURLSchemes }) => CFBundleURLSchemes.includes(scheme))) {
+  if (existingSchemes?.some(({ CFBundleURLSchemes }) => CFBundleURLSchemes?.includes(scheme))) {
     return infoPlist;
   }
 
@@ -79,7 +75,7 @@ export function removeScheme(scheme: string | null, infoPlist: InfoPlist): InfoP
   }
 
   infoPlist.CFBundleURLTypes = infoPlist.CFBundleURLTypes.map((bundleUrlType) => {
-    const index = bundleUrlType.CFBundleURLSchemes.indexOf(scheme);
+    const index = bundleUrlType.CFBundleURLSchemes?.indexOf(scheme) ?? -1;
     if (index > -1) {
       bundleUrlType.CFBundleURLSchemes.splice(index, 1);
       if (bundleUrlType.CFBundleURLSchemes.length === 0) {

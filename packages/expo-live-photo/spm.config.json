@@ -1,0 +1,31 @@
+{
+  "$schema": "../../tools/src/prebuilds/schemas/spm.config.schema.json",
+  "publishPrebuilds": true,
+  "products": [
+    {
+      "name": "ExpoLivePhoto",
+      "podName": "ExpoLivePhoto",
+      "platforms": ["iOS(\"16.4\")"],
+      "externalDependencies": [
+        "ReactNativeDependencies",
+        "React",
+        "Hermes",
+        "expo-modules-core/ExpoModulesCore"
+      ],
+      "swiftLanguageVersions": ["5"],
+      "targets": [
+        {
+          "type": "swift",
+          "name": "ExpoLivePhoto",
+          "dependencies": [
+            "Hermes",
+            "React",
+            "ReactNativeDependencies",
+            "expo-modules-core/ExpoModulesCore"
+          ],
+          "linkedFrameworks": ["Foundation", "UIKit", "PhotosUI"]
+        }
+      ]
+    }
+  ]
+}

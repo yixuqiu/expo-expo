@@ -1,95 +1,79 @@
 // Copyright 2015-present 650 Industries. All rights reserved.
 
-import UIKit
+import SwiftUI
+import ExpoModulesCore
 
 class DevMenuViewController: UIViewController {
-  static let JavaScriptDidLoadNotification = Notification.Name("RCTJavaScriptDidLoadNotification")
-  static let ContentDidAppearNotification = Notification.Name("RCTContentDidAppearNotification")
-
   private let manager: DevMenuManager
-  private var reactRootView: UIView?
+  private var hostingController: UIHostingController<DevMenuRootView>?
 
   init(manager: DevMenuManager) {
     self.manager = manager
-
     super.init(nibName: nil, bundle: nil)
+
+#if !os(macOS)
     edgesForExtendedLayout = UIRectEdge.init(rawValue: 0)
     extendedLayoutIncludesOpaqueBars = true
+#endif
   }
 
+  @available(*, unavailable)
   required init?(coder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
 
-  func updateProps() {
-    if let reactRootView = reactRootView as? RCTRootView {
-      reactRootView.appProperties = initialProps()
-    } else if let reactRootView = reactRootView as? RCTSurfaceHostingProxyRootView {
-      reactRootView.appProperties = initialProps()
-    }
-  }
-
-  // MARK: UIViewController
-
   override func viewDidLoad() {
     super.viewDidLoad()
-    rebuildRootView()
+    setupSwiftUIView()
   }
 
-  override func viewWillLayoutSubviews() {
-    super.viewWillLayoutSubviews()
-    reactRootView?.frame = CGRect(x: 0, y: 0, width: view.frame.size.width, height: view.frame.size.height)
-  }
-
-  override func viewWillAppear(_ animated: Bool) {
-    super.viewWillAppear(animated)
-    reactRootView?.becomeFirstResponder()
-  }
-
+  #if !os(tvOS) && !os(macOS)
   override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-    get {
-      return UIInterfaceOrientationMask.all
-    }
+    return UIInterfaceOrientationMask.all
   }
+  #endif
 
-  @available(iOS 12.0, *)
+#if !os(macOS)
   override var overrideUserInterfaceStyle: UIUserInterfaceStyle {
     get {
       return manager.userInterfaceStyle
     }
     set {}
   }
+#endif
 
-  // MARK: private
-
-  private func initialProps() -> [String: Any] {
-    let isSimulator = TARGET_IPHONE_SIMULATOR > 0
-
-    return [
-      "showOnboardingView": manager.shouldShowOnboarding(),
-      "appInfo": manager.getAppInfo(),
-      "devSettings": manager.getDevSettings(),
-      "menuPreferences": DevMenuPreferences.serialize(),
-      "uuid": UUID.init().uuidString,
-      "isDevice": !isSimulator,
-      "registeredCallbacks": manager.registeredCallbacks.map { $0.name }
-    ]
+#if canImport(SwiftUICore, _version: 8.0.85) && os(iOS)
+  @available(iOS 27.1, *)
+  override var preferredVerticalBarBehavior: UIVerticalBarBehavior {
+    return .disabled
   }
+#endif
 
-  private func rebuildRootView() {
-    reactRootView = manager.appInstance.rootViewFactory.view(withModuleName: "main", initialProperties: initialProps())
-    reactRootView?.frame = view.bounds
-    reactRootView?.backgroundColor = UIColor { (traitCollection: UITraitCollection) -> UIColor in
-      if traitCollection.userInterfaceStyle == .dark {
-        return  UIColor(red: 22 / 255.0, green: 27 / 255.0, blue: 34 / 255.0, alpha: 1)
-      }
+  private func setupSwiftUIView() {
+    let rootView = DevMenuRootView()
+    let hostingController = UIHostingController(rootView: rootView)
 
-      return UIColor.clear
-    }
+    #if os(tvOS)
+    hostingController.view.backgroundColor =
+      preferredUserInterfaceStyle == .dark ? UIColor.systemGray.withAlphaComponent(0.8) : UIColor.white.withAlphaComponent(0.8)
+    #else
+    hostingController.view.backgroundColor = UIColor.clear
+    #endif
 
-    if isViewLoaded, let reactRootView = reactRootView {
-      view.addSubview(reactRootView)
-      view.setNeedsLayout()
-    }
+    addChild(hostingController)
+    view.addSubview(hostingController.view)
+#if !os(macOS)
+    hostingController.didMove(toParent: self)
+#endif
+
+    hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+      hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
+      hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+      hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+    ])
+
+    self.hostingController = hostingController
   }
 }

@@ -1,14 +1,375 @@
 # Changelog
 
-## Unpublished
+## 58.0.14
 
-### 🛠 Breaking changes
+### Patch Changes
+
+- Updated dependencies.
+  - expo-constants@58.0.13
+  - expo-linking@58.0.14
+
+## 58.0.13
+
+### Patch Changes
+
+- Updated dependencies. ([#51693](https://github.com/expo/expo/pull/51693))
+  - expo-application@58.1.2
+  - expo-crypto@58.0.7
+
+## 58.0.12
+
+### Patch Changes
+
+- Updated dependencies.
+  - expo-constants@58.0.12
+  - expo-linking@58.0.13
+
+## 58.0.11
+
+### Patch Changes
+
+- Updated dependencies. ([#51368](https://github.com/expo/expo/pull/51368), [#49784](https://github.com/expo/expo/pull/49784))
+  - expo-application@58.1.1
+  - expo-constants@58.0.11
+  - expo-linking@58.0.12
+
+## 58.0.10
+
+### Patch Changes
+
+- Updated dependencies. ([#51209](https://github.com/expo/expo/pull/51209), [#51136](https://github.com/expo/expo/pull/51136))
+  - expo-application@58.1.0
+  - expo-crypto@58.0.6
+
+## 58.0.9
+
+### Patch Changes
+
+- Updated dependencies. ([#51059](https://github.com/expo/expo/pull/51059), [#51077](https://github.com/expo/expo/pull/51077), [#51091](https://github.com/expo/expo/pull/51091))
+  - expo-web-browser@58.0.6
+  - expo-application@58.0.4
+  - expo-crypto@58.0.5
+  - expo-constants@58.0.10
+  - expo-linking@58.0.11
+
+## 58.0.8
+
+### Patch Changes
+
+- Updated dependencies. ([#50965](https://github.com/expo/expo/pull/50965))
+  - expo-web-browser@58.0.5
+
+## 58.0.7
+
+### Patch Changes
+
+- Updated dependencies. ([#50881](https://github.com/expo/expo/pull/50881))
+  - expo-application@58.0.3
+  - expo-crypto@58.0.4
+  - expo-linking@58.0.10
+  - expo-web-browser@58.0.4
+
+## 58.0.6
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762), [#49511](https://github.com/expo/expo/pull/49511), [#50661](https://github.com/expo/expo/pull/50661), [#50289](https://github.com/expo/expo/pull/50289))
+  - expo-application@58.0.2
+  - expo-constants@58.0.9
+  - expo-crypto@58.0.3
+  - expo-linking@58.0.9
+  - expo-web-browser@58.0.3
+
+## 58.0.5 — 2026-09-25
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.4 — 2026-09-22
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.3 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-16
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.1 — 2026-09-14
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-17
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-07-07
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-30
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.14 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.13 - 2026-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.12 — 2026-05-26
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.11 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.10 — 2026-05-20
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.9 — 2026-05-19
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.7 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-12
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-04-13
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-03-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-18
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 - 2026-03-11
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 - 2026-03-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
 
 ### 🎉 New features
 
+- Added `extraHeaders` option to `TokenRequest` and `RevokeTokenRequest`. ([#31381](https://github.com/expo/expo/pull/31381)) by [@levizimmerman](https://github.com/levizimmerman) and [@lsarni](https://github.com/lsarni)
+
+## 7.0.10 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.9 - 2025-11-17
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.8 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.7 — 2025-09-03
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.5 — 2025-08-28
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.4 — 2025-08-26
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.3 — 2025-08-21
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 6.2.1 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 6.2.0 - 2025-06-04
+
+### 🎉 New features
+
+- Added `rawResponse` to `TokenResponse`, allows reading fields that are not part of RFC 6749. ([#20284](https://github.com/expo/expo/pull/20284) by [@stefan-schweiger](https://github.com/stefan-schweiger))
+
 ### 🐛 Bug fixes
 
+- Allow `preferEphemeralSession` in promptAsync method. ([#35489](https://github.com/expo/expo/pull/35489) by [@TJTorola](https://github.com/TJTorola))
+
 ### 💡 Others
+
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+
+## 6.1.5 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 6.1.4 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 6.1.3 — 2025-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 6.1.2 — 2025-04-14
+
+### 🐛 Bug fixes
+
+- Fix `clientId` not being asserted properly if it's `undefined` in `providers/Facebook`, like it is for `providers/Google`
+
+## 6.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 6.1.0 — 2025-04-04
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.3 - 2025-01-31
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.2 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.1 - 2024-11-29
+
+### 💡 Others
+
+- Allow `prompt` parameter of `AuthRequest` to accept multiple values as an array ([#32373](https://github.com/expo/expo/pull/32373) by [@Nkzn](https://github.com/Nkzn))
+
+## 6.0.0 — 2024-10-22
+
+### 🐛 Bug fixes
+
+- Add missing `react`/`react-native` peer dependencies. ([#30573](https://github.com/expo/expo/pull/30573) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Add basic support for using in API routes. ([#31480](https://github.com/expo/expo/pull/31480) by [@EvanBacon](https://github.com/EvanBacon))
+- Use getRandomValues from expo-crypto ([#22608](https://github.com/expo/expo/pull/22608) by [@LinusU](https://github.com/LinusU))
+- Add a standard main package entry point (`index.ts`). ([#28970](https://github.com/expo/expo/pull/28970) by [@Simek](https://github.com/Simek))
+- Prefer using `type` for describing the shape of objects. ([#28970](https://github.com/expo/expo/pull/28970) by [@Simek](https://github.com/Simek))
+- Standardized Babel configuration to use `expo-module-scripts`. ([#31915](https://github.com/expo/expo/pull/31915) by [@reichhartd](https://github.com/reichhartd))
 
 ## 5.5.2 — 2024-05-02
 

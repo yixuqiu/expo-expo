@@ -1,24 +1,20 @@
-import { ExpoConfig } from '@expo/config';
-import assert from 'assert';
+import type { ExpoConfig } from '@expo/config';
 import chalk from 'chalk';
-import fs from 'fs';
-import { Ora } from 'ora';
-import path from 'path';
+import type { Ora } from 'ora';
 import semver from 'semver';
 
-import { fetchAsync } from '../api/rest/client';
 import * as Log from '../log';
 import { createGlobFilter } from '../utils/createFileTransform';
-import { AbortCommandError, CommandError } from '../utils/errors';
+import { AbortCommandError } from '../utils/errors';
+import { fetch } from '../utils/fetch';
 import {
-  ExtractProps,
   downloadAndExtractNpmModuleAsync,
   extractLocalNpmTarballAsync,
   extractNpmTarballFromUrlAsync,
 } from '../utils/npm';
-import { isUrlOk } from '../utils/url';
-
-const debug = require('debug')('expo:prebuild:resolveTemplate') as typeof console.log;
+import { event, debugEvent } from './events';
+import { resolveLocalTemplateAsync } from './resolveLocalTemplate';
+import type { ResolvedTemplateOption } from './resolveOptions';
 
 type RepoInfo = {
   username: string;
@@ -29,28 +25,54 @@ type RepoInfo = {
 
 export async function cloneTemplateAsync({
   templateDirectory,
+  projectRoot,
   template,
   exp,
   ora,
 }: {
   templateDirectory: string;
-  template?: string;
+  projectRoot: string;
+  template?: ResolvedTemplateOption;
   exp: Pick<ExpoConfig, 'name' | 'sdkVersion'>;
   ora: Ora;
 }): Promise<string> {
   if (template) {
-    return await resolveTemplateArgAsync(templateDirectory, ora, exp.name, template);
+    const expName = exp.name;
+    const { type, uri } = template;
+    if (type === 'file') {
+      event('template:resolved', { source: 'local', name: uri });
+      return await extractLocalNpmTarballAsync(uri, templateDirectory, {
+        expName,
+      });
+    } else if (type === 'npm') {
+      event('template:resolved', { source: 'npm', name: uri });
+      return await downloadAndExtractNpmModuleAsync(uri, templateDirectory, {
+        expName,
+      });
+    } else if (type === 'repository') {
+      event('template:resolved', { source: 'git', name: uri });
+      return await resolveAndDownloadRepoTemplateAsync(templateDirectory, ora, expName, uri);
+    } else {
+      throw new Error(`Unknown template type: ${type}`);
+    }
   } else {
-    const templatePackageName = await getTemplateNpmPackageName(exp.sdkVersion);
-    return await downloadAndExtractNpmModuleAsync(templatePackageName, {
-      cwd: templateDirectory,
-      name: exp.name,
-    });
+    try {
+      const result = await resolveLocalTemplateAsync({ templateDirectory, projectRoot, exp });
+      event('template:resolved', { source: 'local', name: 'expo-template-bare-minimum' });
+      return result;
+    } catch (error: any) {
+      const templatePackageName = getTemplateNpmPackageNameFromSdkVersion(exp.sdkVersion);
+      debugEvent('sdk_template_fallback', { name: templatePackageName });
+      event('template:resolved', { source: 'npm', name: templatePackageName });
+      return await downloadAndExtractNpmModuleAsync(templatePackageName, templateDirectory, {
+        expName: exp.name,
+      });
+    }
   }
 }
 
 /** Given an `sdkVersion` like `44.0.0` return a fully qualified NPM package name like: `expo-template-bare-minimum@sdk-44` */
-function getTemplateNpmPackageName(sdkVersion?: string): string {
+function getTemplateNpmPackageNameFromSdkVersion(sdkVersion?: string): string {
   // When undefined or UNVERSIONED, we use the latest version.
   if (!sdkVersion || sdkVersion === 'UNVERSIONED') {
     Log.log('Using an unspecified Expo SDK version. The latest template will be used.');
@@ -65,12 +87,13 @@ async function getRepoInfo(url: any, examplePath?: string): Promise<RepoInfo | u
 
   // Support repos whose entire purpose is to be an example, e.g.
   // https://github.com/:username/:my-cool-example-repo-name.
+  // Use the plain unauthenticated `fetch` so Expo credentials aren't forwarded to GitHub.
   if (t === undefined) {
-    const infoResponse = await fetchAsync(`https://api.github.com/repos/${username}/${name}`);
+    const infoResponse = await fetch(`https://api.github.com/repos/${username}/${name}`);
     if (infoResponse.status !== 200) {
       return;
     }
-    const info = await infoResponse.json();
+    const info: any = await infoResponse.json();
     return { username, name, branch: info['default_branch'], filePath };
   }
 
@@ -85,27 +108,33 @@ async function getRepoInfo(url: any, examplePath?: string): Promise<RepoInfo | u
   return undefined;
 }
 
-function hasRepo({ username, name, branch, filePath }: RepoInfo) {
+async function hasRepo({ username, name, branch, filePath }: RepoInfo): Promise<boolean> {
   const contentsUrl = `https://api.github.com/repos/${username}/${name}/contents`;
   const packagePath = `${filePath ? `/${filePath}` : ''}/package.json`;
 
-  return isUrlOk(contentsUrl + packagePath + `?ref=${branch}`);
+  try {
+    const response = await fetch(contentsUrl + packagePath + `?ref=${branch}`);
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 async function downloadAndExtractRepoAsync(
   { username, name, branch, filePath }: RepoInfo,
-  props: ExtractProps
+  output: string,
+  props: { expName?: string }
 ): Promise<string> {
   const url = `https://codeload.github.com/${username}/${name}/tar.gz/${branch}`;
 
-  debug('Downloading tarball from:', url);
+  debugEvent('repo_tarball_download', { url });
 
   // Extract the (sub)directory into non-empty path segments
   const directory = filePath.replace(/^\//, '').split('/').filter(Boolean);
   // Remove the (sub)directory paths, and the root folder added by GitHub
   const strip = directory.length + 1;
   // Only extract the relevant (sub)directories, ignoring irrelevant files
-  // The filder auto-ignores dotfiles, unless explicitly included
+  // The filter auto-ignores dotfiles, unless explicitly included
   const filter = createGlobFilter(
     !directory.length
       ? ['*/**', '*/ios/.xcode.env']
@@ -116,18 +145,20 @@ async function downloadAndExtractRepoAsync(
     }
   );
 
-  return await extractNpmTarballFromUrlAsync(url, { ...props, strip, filter });
+  return await extractNpmTarballFromUrlAsync(url, output, {
+    ...props,
+    strip,
+    filter,
+  });
 }
 
-export async function resolveTemplateArgAsync(
+async function resolveAndDownloadRepoTemplateAsync(
   templateDirectory: string,
   oraInstance: Ora,
-  appName: string,
+  expName: string,
   template: string,
   templatePath?: string
-): Promise<string> {
-  assert(template, 'template is required');
-
+) {
   let repoUrl: URL | undefined;
 
   try {
@@ -138,30 +169,16 @@ export async function resolveTemplateArgAsync(
       throw error;
     }
   }
-
-  // On Windows, we can actually create a URL from a local path
-  // Double-check if the created URL is not a path to avoid mixing up URLs and paths
-  if (process.platform === 'win32' && repoUrl && path.isAbsolute(repoUrl.toString())) {
-    repoUrl = undefined;
-  }
-
   if (!repoUrl) {
-    const templatePath = path.resolve(template);
-    if (!fs.existsSync(templatePath)) {
-      throw new CommandError(`template file does not exist: ${templatePath}`);
-    }
-
-    return await extractLocalNpmTarballAsync(templatePath, {
-      cwd: templateDirectory,
-      name: appName,
-    });
+    oraInstance.fail(`Invalid URL: ${chalk.red(`"${template}"`)}. Try again with a valid URL.`);
+    throw new AbortCommandError();
   }
 
   if (repoUrl.origin !== 'https://github.com') {
     oraInstance.fail(
       `Invalid URL: ${chalk.red(
         `"${template}"`
-      )}. Only GitHub repositories are supported. Please use a GitHub URL and try again.`
+      )}. Only GitHub repositories are supported. Try again with a valid GitHub URL.`
     );
     throw new AbortCommandError();
   }
@@ -170,7 +187,7 @@ export async function resolveTemplateArgAsync(
 
   if (!repoInfo) {
     oraInstance.fail(
-      `Found invalid GitHub URL: ${chalk.red(`"${template}"`)}. Please fix the URL and try again.`
+      `Found invalid GitHub URL: ${chalk.red(`"${template}"`)}. Fix the URL and try again.`
     );
     throw new AbortCommandError();
   }
@@ -181,7 +198,7 @@ export async function resolveTemplateArgAsync(
     oraInstance.fail(
       `Could not locate the repository for ${chalk.red(
         `"${template}"`
-      )}. Please check that the repository exists and try again.`
+      )}. Check that the repository exists and try again.`
     );
     throw new AbortCommandError();
   }
@@ -190,8 +207,5 @@ export async function resolveTemplateArgAsync(
     `Downloading files from repo ${chalk.cyan(template)}. This might take a moment.`
   );
 
-  return await downloadAndExtractRepoAsync(repoInfo, {
-    cwd: templateDirectory,
-    name: appName,
-  });
+  return await downloadAndExtractRepoAsync(repoInfo, templateDirectory, { expName });
 }

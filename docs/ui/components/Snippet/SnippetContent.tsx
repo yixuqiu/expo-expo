@@ -16,13 +16,14 @@ export const SnippetContent = forwardRef<HTMLDivElement, SnippetContentProps>(
     return (
       <div
         ref={ref}
+        data-md={alwaysDark ? 'code-block' : undefined}
         className={mergeClasses(
           preferredTheme === Themes.DARK && 'dark-theme',
-          wordWrap && '!whitespace-pre-wrap !break-words',
-          'relative text-default bg-subtle border border-default rounded-b-md overflow-x-auto p-4 !leading-[19px]',
-          'prose-code:!px-0',
-          alwaysDark && 'dark-theme bg-palette-black border-transparent whitespace-nowrap',
-          hideOverflow && 'overflow-hidden prose-code:!whitespace-nowrap',
+          wordWrap && 'wrap-break-word! whitespace-pre-wrap!',
+          '[scrollbar-color:var(--slate-5)_transparent] relative scrollbar-thin overflow-x-auto rounded-b-3xl border border-default bg-subtle p-4 leading-4.5! text-default',
+          'prose-code:px-0!',
+          alwaysDark && 'dark-theme border-transparent bg-palette-black whitespace-nowrap',
+          hideOverflow && 'overflow-hidden prose-code:whitespace-nowrap!',
           className
         )}>
         {children}

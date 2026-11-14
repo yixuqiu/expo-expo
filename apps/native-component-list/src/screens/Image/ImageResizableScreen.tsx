@@ -9,9 +9,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { PanGestureHandler, PanGestureHandlerGestureEvent } from 'react-native-gesture-handler';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, {
-  useAnimatedGestureHandler,
   useAnimatedProps,
   useAnimatedStyle,
   useDerivedValue,
@@ -24,15 +23,12 @@ import { Colors } from '../../constants';
 
 type CustomViewProps = React.PropsWithChildren<object>;
 
-type ContextType = {
-  x: number;
-  y: number;
-};
-
 const PADDING = 20;
 const HANDLE_SIZE = 25;
 const HANDLE_SLOP = 10;
 const WINDOW_DIMENSIONS = Dimensions.get('window');
+
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 const MAX_WIDTH = WINDOW_DIMENSIONS.width - 2 * PADDING;
 const MAX_HEIGHT = WINDOW_DIMENSIONS.height - 330;
 
@@ -40,14 +36,23 @@ const ResizableView: React.FC<CustomViewProps> = ({ children }) => {
   const width = useSharedValue(300);
   const height = useSharedValue(300);
 
-  const panGestureEvent = useAnimatedGestureHandler<PanGestureHandlerGestureEvent, ContextType>({
-    onStart: (_, context) => {
-      context.x = width.value;
-      context.y = height.value;
+  const startingPointX = useSharedValue(0);
+  const startingPointY = useSharedValue(0);
+
+  const panGestureHandler = usePanGesture({
+    onActivate: () => {
+      startingPointX.value = width.value;
+      startingPointY.value = height.value;
     },
-    onActive: (event, context) => {
-      width.value = Math.max(HANDLE_SIZE, Math.min(event.translationX + context.x, MAX_WIDTH));
-      height.value = Math.max(HANDLE_SIZE, Math.min(event.translationY + context.y, MAX_HEIGHT));
+    onUpdate: (event) => {
+      width.value = Math.max(
+        HANDLE_SIZE,
+        Math.min(event.translationX + startingPointX.value, MAX_WIDTH)
+      );
+      height.value = Math.max(
+        HANDLE_SIZE,
+        Math.min(event.translationY + startingPointY.value, MAX_HEIGHT)
+      );
     },
   });
 
@@ -65,8 +70,6 @@ const ResizableView: React.FC<CustomViewProps> = ({ children }) => {
       // Here we use any because the text prop is not available in the type
     } as any;
   });
-  const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
-
   return (
     <View>
       <AnimatedTextInput
@@ -84,11 +87,11 @@ const ResizableView: React.FC<CustomViewProps> = ({ children }) => {
         <Animated.View style={[styles.canvas, canvasStyle]}>
           {children}
 
-          <PanGestureHandler onGestureEvent={panGestureEvent}>
+          <GestureDetector gesture={panGestureHandler}>
             <Animated.View style={styles.resizeHandle}>
               <View style={styles.resizeHandleChild} />
             </Animated.View>
-          </PanGestureHandler>
+          </GestureDetector>
         </Animated.View>
       </View>
     </View>

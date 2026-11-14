@@ -12,14 +12,6 @@
     "privacy": "public",
     "icon": "./assets/icons/icon.png",
     "scheme": "ncl",
-    "notification": {
-      "icon": "./assets/icons/notificationIcon.png",
-      "color": "#000000",
-      "iosDisplayInForeground": true
-    },
-    "splash": {
-      "image": "./assets/icons/loadingIcon.png"
-    },
     "developmentClient": {
       "silentLaunch": true
     },
@@ -33,14 +25,7 @@
     "web": {
       "bundler": "metro"
     },
-    "facebookScheme": "fb1696089354000816",
-    "facebookAppId": "1696089354000816",
-    "facebookDisplayName": "Expo APIs",
-    "facebookAutoLogAppEventsEnabled": true,
-    "facebookAdvertiserIDCollectionEnabled": true,
-    "androidStatusBar": {
-      "backgroundColor": "#4630eb"
-    },
+    "newArchEnabled": true,
     "android": {
       "package": "host.exp.nclexp",
       "versionCode": 11,
@@ -70,23 +55,32 @@
       "googleServicesFile": "./GoogleService-Info.plist",
       "config": {
         "usesNonExemptEncryption": false,
-        "googleSignIn": {
-          "reservedClientId": "com.googleusercontent.apps.603386649315-1b2o2gole94qc6h4prj6lvoiueq83se4"
-        },
         "branch": {
           "apiKey": "key_live_pcxsCTBguAUqQBd8CjYZ7ogkurnZcQAO"
         },
         "googleMobileAdsAppId": "ca-app-pub-3940256099942544~1458002511"
       }
     },
-    "assetBundlePatterns": [
-      "assets/**",
-      "node_modules/react-navigation/src/**/*.png",
-      "node_modules/@expo/vector-icons/fonts/*.ttf"
+    "assetBundlePatterns": ["assets/**"],
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icons/loadingIcon.png"
+        }
+      ],
+      "expo-app-intents"
     ],
     "extra": {
       "eas": {
         "projectId": "2c28de10-a2cd-11e6-b8ce-59d1587e6774"
+      }
+    },
+    "experiments": {
+      "noxcturnalTransformWorker": true,
+      "inlineModules": {
+        "watchedDirectories": ["src/screens/inlineModules/inlineModulesExamples/", "app-intents"]
       }
     }
   }

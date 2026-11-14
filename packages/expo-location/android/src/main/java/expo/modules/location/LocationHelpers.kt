@@ -4,7 +4,9 @@ import android.content.Context
 import android.location.Location
 import android.location.LocationManager
 import android.os.Bundle
+import com.google.android.gms.location.ActivityRecognitionResult
 import com.google.android.gms.location.CurrentLocationRequest
+import com.google.android.gms.location.DetectedActivity
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.Granularity
 import com.google.android.gms.location.LocationRequest
@@ -15,9 +17,12 @@ import expo.modules.kotlin.exception.CodedException
 import expo.modules.location.records.LocationLastKnownOptions
 import expo.modules.location.records.LocationOptions
 import expo.modules.location.records.LocationResponse
+import expo.modules.location.records.MotionActivitiesRecord
+import expo.modules.location.records.MotionActivityConfidence
+import expo.modules.location.records.MotionActivityObjectRecord
+import expo.modules.location.records.MotionActivityStateRecord
+import expo.modules.location.records.MotionActivityType
 import expo.modules.location.records.PermissionRequestResponse
-import io.nlopez.smartlocation.location.config.LocationAccuracy
-import io.nlopez.smartlocation.location.config.LocationParams
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -110,16 +115,16 @@ class LocationHelpers {
 
     private fun mapOptionsToLocationParams(options: LocationOptions): LocationParams {
       val accuracy = options.accuracy
-      val locationParamsBuilder = buildLocationParamsForAccuracy(accuracy)
+      val locationParams = buildLocationParamsForAccuracy(accuracy)
 
       options.timeInterval?.let {
-        locationParamsBuilder.setInterval(it)
+        locationParams.interval = it
       }
       options.distanceInterval?.let {
-        locationParamsBuilder.setDistance(it.toFloat())
+        locationParams.distance = it.toFloat()
       }
 
-      return locationParamsBuilder.build()
+      return locationParams
     }
 
     private fun mapAccuracyToPriority(accuracy: Int): Int {
@@ -131,42 +136,15 @@ class LocationHelpers {
       }
     }
 
-    private fun buildLocationParamsForAccuracy(accuracy: Int): LocationParams.Builder {
+    private fun buildLocationParamsForAccuracy(accuracy: Int): LocationParams {
       return when (accuracy) {
-        LocationModule.ACCURACY_LOWEST -> LocationParams.Builder()
-          .setAccuracy(LocationAccuracy.LOWEST)
-          .setDistance(3000f)
-          .setInterval(10000)
-
-        LocationModule.ACCURACY_LOW -> LocationParams.Builder()
-          .setAccuracy(LocationAccuracy.LOW)
-          .setDistance(1000f)
-          .setInterval(5000)
-
-        LocationModule.ACCURACY_BALANCED -> LocationParams.Builder()
-          .setAccuracy(LocationAccuracy.MEDIUM)
-          .setDistance(100f)
-          .setInterval(3000)
-
-        LocationModule.ACCURACY_HIGH -> LocationParams.Builder()
-          .setAccuracy(LocationAccuracy.HIGH)
-          .setDistance(50f)
-          .setInterval(2000)
-
-        LocationModule.ACCURACY_HIGHEST -> LocationParams.Builder()
-          .setAccuracy(LocationAccuracy.HIGH)
-          .setDistance(25f)
-          .setInterval(1000)
-
-        LocationModule.ACCURACY_BEST_FOR_NAVIGATION -> LocationParams.Builder()
-          .setAccuracy(LocationAccuracy.HIGH)
-          .setDistance(0f)
-          .setInterval(500)
-
-        else -> LocationParams.Builder()
-          .setAccuracy(LocationAccuracy.MEDIUM)
-          .setDistance(100f)
-          .setInterval(3000)
+        LocationModule.ACCURACY_LOWEST -> LocationParams(accuracy = LocationAccuracy.LOWEST, distance = 3000f, interval = 10000)
+        LocationModule.ACCURACY_LOW -> LocationParams(accuracy = LocationAccuracy.LOW, distance = 1000f, interval = 5000)
+        LocationModule.ACCURACY_BALANCED -> LocationParams(accuracy = LocationAccuracy.MEDIUM, distance = 100f, interval = 3000)
+        LocationModule.ACCURACY_HIGH -> LocationParams(accuracy = LocationAccuracy.HIGH, distance = 50f, interval = 2000)
+        LocationModule.ACCURACY_HIGHEST -> LocationParams(accuracy = LocationAccuracy.HIGH, distance = 25f, interval = 1000)
+        LocationModule.ACCURACY_BEST_FOR_NAVIGATION -> LocationParams(accuracy = LocationAccuracy.HIGH, distance = 0f, interval = 500)
+        else -> LocationParams(accuracy = LocationAccuracy.MEDIUM, distance = 100f, interval = 3000)
       }
     }
 
@@ -188,7 +166,7 @@ class LocationHelpers {
               continuation.resume(PermissionRequestResponse(result))
             }
 
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
               continuation.resumeWithException(CodedException(code, message, cause))
             }
           },
@@ -210,13 +188,58 @@ class LocationHelpers {
               )
             }
 
-            override fun reject(code: String, message: String?, cause: Throwable?) {
+            override fun reject(code: String?, message: String?, cause: Throwable?) {
               it.resumeWithException(CodedException(code, message, cause))
             }
           },
           *permissionStrings
         )
       }
+    }
+
+    /**
+     * Converts a Google Play Services activity recognition result into a [MotionActivityObjectRecord],
+     * shared by the foreground motion activity watch and [expo.modules.location.taskConsumers.MotionActivityTaskConsumer].
+     */
+    internal fun motionActivityRecordFromResult(result: ActivityRecognitionResult): MotionActivityObjectRecord {
+      // When multiple Android types map to the same unified type
+      // (e.g. WALKING + ON_FOOT -> walking), take the highest confidence.
+      val confidenceByType = result.probableActivities
+        .groupBy { it.toMotionActivityType() }
+        .mapValues { (_, activities) -> activities.maxOf { it.confidence } }
+
+      return MotionActivityObjectRecord(
+        activities = MotionActivitiesRecord(
+          automotive = confidenceByType.stateFor(MotionActivityType.AUTOMOTIVE),
+          cycling = confidenceByType.stateFor(MotionActivityType.CYCLING),
+          running = confidenceByType.stateFor(MotionActivityType.RUNNING),
+          walking = confidenceByType.stateFor(MotionActivityType.WALKING),
+          stationary = confidenceByType.stateFor(MotionActivityType.STATIONARY),
+          unknown = confidenceByType.stateFor(MotionActivityType.UNKNOWN)
+        ),
+        timestamp = System.currentTimeMillis().toDouble()
+      )
+    }
+
+    private fun DetectedActivity.toMotionActivityType(): MotionActivityType = when (type) {
+      DetectedActivity.IN_VEHICLE -> MotionActivityType.AUTOMOTIVE
+      DetectedActivity.ON_BICYCLE -> MotionActivityType.CYCLING
+      DetectedActivity.RUNNING -> MotionActivityType.RUNNING
+      DetectedActivity.WALKING, DetectedActivity.ON_FOOT -> MotionActivityType.WALKING
+      DetectedActivity.STILL -> MotionActivityType.STATIONARY
+      else -> MotionActivityType.UNKNOWN
+    }
+
+    private fun Map<MotionActivityType, Int>.stateFor(type: MotionActivityType): MotionActivityStateRecord {
+      val raw = getOrDefault(type, 0)
+      return MotionActivityStateRecord(
+        detected = raw >= 50,
+        confidence = when {
+          raw >= 75 -> MotionActivityConfidence.HIGH
+          raw >= 50 -> MotionActivityConfidence.MEDIUM
+          else -> MotionActivityConfidence.LOW
+        }
+      )
     }
   }
 }

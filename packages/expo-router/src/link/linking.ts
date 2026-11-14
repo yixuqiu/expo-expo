@@ -1,24 +1,19 @@
-import { LinkingOptions } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 
-import { parsePathAndParamsFromExpoGoLink } from '../fork/extractPathFromURL';
-import getPathFromState from '../fork/getPathFromState';
-import getStateFromPath from '../fork/getStateFromPath';
-import { NativeIntent } from '../types';
+import {
+  parsePathAndParamsFromExpoGoLink,
+  parsePathFromExpoGoLink,
+} from '../fork/extractPathFromURL';
+import { getInitialURLWithTimeout } from '../fork/getInitialURLWithTimeout';
+import { getPathFromState } from '../fork/getPathFromState';
+import { getStateFromPath } from '../fork/getStateFromPath';
+import { applyRedirects } from '../getRoutesRedirects';
+import type { StoreRedirects } from '../global-state/types';
+import type { LinkingOptions } from '../react-navigation/native';
+import type { NativeIntent } from '../types';
 
 const isExpoGo = typeof expo !== 'undefined' && globalThis.expo?.modules?.ExpoGo;
-
-function getInitialURLWithTimeout(): Promise<string | null> {
-  return Promise.race([
-    Linking.getInitialURL(),
-    new Promise<null>((resolve) =>
-      // Timeout in 150ms if `getInitialState` doesn't resolve
-      // Workaround for https://github.com/facebook/react-native/issues/25675
-      setTimeout(() => resolve(null), 150)
-    ),
-  ]);
-}
 
 // A custom getInitialURL is used on native to ensure the app always starts at
 // the root path if it's launched from something other than a deep link.
@@ -28,15 +23,25 @@ function getInitialURLWithTimeout(): Promise<string | null> {
 export function getInitialURL(): ReturnType<
   NonNullable<LinkingOptions<Record<string, unknown>>['getInitialURL']>
 > {
-  if (Platform.OS === 'web') {
-    if (typeof window === 'undefined') {
-      return '';
-    } else if (window.location?.href) {
-      return window.location.href;
-    }
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  if (Platform.OS === 'web' && window.location?.href) {
+    return window.location.href;
+  }
+  if (Platform.OS === 'ios') {
+    // Use the new Expo API for iOS. This has better support for App Clips and handoff.
+    const url = Linking.getLinkingURL();
+    return (
+      parseExpoGoUrlFromListener(url) ??
+      // The path will be nullish in bare apps when the app is launched from the home screen.
+      // TODO(EvanBacon): define some policy around notifications.
+      getRootURL()
+    );
   }
 
-  return getInitialURLWithTimeout().then(
+  // TODO: Figure out if expo-linking on Android has full interop with the React Native implementation.
+  return Promise.resolve(getInitialURLWithTimeout()).then(
     (url) =>
       parseExpoGoUrlFromListener(url) ??
       // The path will be nullish in bare apps when the app is launched from the home screen.
@@ -49,7 +54,17 @@ let _rootURL: string | undefined;
 
 export function getRootURL(): string {
   if (_rootURL === undefined) {
-    _rootURL = Linking.createURL('/');
+    try {
+      _rootURL = Linking.createURL('/');
+    } catch {
+      // `createURL` throws in production when the app has no `scheme`.
+      // The root URL only seeds the initial route, so the root path is enough.
+      _rootURL = '/';
+      return _rootURL;
+    }
+    if (isExpoGo) {
+      _rootURL = parsePathFromExpoGoLink(_rootURL);
+    }
   }
   return _rootURL;
 }
@@ -68,27 +83,38 @@ function parseExpoGoUrlFromListener<T extends string | null>(url: T): T {
   return url;
 }
 
-export function addEventListener(nativeLinking?: NativeIntent) {
+export function subscribe(
+  nativeLinking: NativeIntent | undefined,
+  redirects: StoreRedirects[] | undefined
+) {
   return (listener: (url: string) => void) => {
     let callback: (({ url }: { url: string }) => void) | undefined;
+
+    const legacySubscription = nativeLinking?.legacy_subscribe?.(listener);
 
     if (isExpoGo) {
       // This extra work is only done in the Expo Go app.
       callback = async ({ url }) => {
-        url = parseExpoGoUrlFromListener(url);
-
-        if (url && nativeLinking?.redirectSystemPath) {
-          url = await nativeLinking.redirectSystemPath({ path: url, initial: false });
+        let href: string | undefined | null = parseExpoGoUrlFromListener(url);
+        href = applyRedirects(href, redirects);
+        if (href && nativeLinking?.redirectSystemPath) {
+          href = await nativeLinking.redirectSystemPath({ path: href, initial: false });
         }
 
-        listener(url);
+        if (href) {
+          listener(href);
+        }
       };
     } else {
       callback = async ({ url }) => {
-        if (url && nativeLinking?.redirectSystemPath) {
-          url = await nativeLinking.redirectSystemPath({ path: url, initial: false });
+        let href = applyRedirects(url, redirects);
+        if (href && nativeLinking?.redirectSystemPath) {
+          href = await nativeLinking.redirectSystemPath({ path: href, initial: false });
         }
-        listener(url);
+
+        if (href) {
+          listener(href);
+        }
       };
     }
 
@@ -97,6 +123,7 @@ export function addEventListener(nativeLinking?: NativeIntent) {
     return () => {
       // https://github.com/facebook/react-native/commit/6d1aca806cee86ad76de771ed3a1cc62982ebcd7
       subscription?.remove?.();
+      legacySubscription?.();
     };
   };
 }

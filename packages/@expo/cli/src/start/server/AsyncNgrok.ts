@@ -3,17 +3,17 @@ import crypto from 'crypto';
 import * as path from 'path';
 import slugify from 'slugify';
 
-import UserSettings from '../../api/user/UserSettings';
+import { getSettingsDirectory } from '../../api/user/UserSettings';
 import { getActorDisplayName, getUserAsync } from '../../api/user/user';
 import * as Log from '../../log';
 import { delayAsync, resolveWithTimeout } from '../../utils/delay';
 import { env } from '../../utils/env';
 import { CommandError } from '../../utils/errors';
-import { isNgrokClientError, NgrokInstance, NgrokResolver } from '../doctor/ngrok/NgrokResolver';
+import type { NgrokInstance } from '../doctor/ngrok/NgrokResolver';
+import { isNgrokClientError, NgrokResolver } from '../doctor/ngrok/NgrokResolver';
 import { hasAdbReverseAsync, startAdbReverseAsync } from '../platforms/android/adbReverse';
 import { ProjectSettings } from '../project/settings';
-
-const debug = require('debug')('expo:start:server:ngrok') as typeof console.log;
+import { debugEvent, event } from './tunnelEvents';
 
 const NGROK_CONFIG = {
   authToken: '5W1bR67GNbWcXqmxZzBG1_56GezNeaX6sSRvn8npeQ8',
@@ -51,7 +51,8 @@ export class AsyncNgrok {
     return [
       // NOTE: https://github.com/expo/expo/pull/16556#discussion_r822944286
       await this.getProjectRandomnessAsync(),
-      slugify(username),
+      // Strip out periods from the username to avoid subdomain issues with SSL certificates.
+      slugify(username, { remove: /\./ }),
       // Use the port to distinguish between multiple tunnels (webpack, metro).
       String(this.port),
     ];
@@ -69,35 +70,40 @@ export class AsyncNgrok {
 
   /** Start ngrok on the given port for the project. */
   async startAsync({ timeout }: { timeout?: number } = {}): Promise<void> {
-    // Ensure the instance is loaded first, this can linger so we should run it before the timeout.
-    await this.resolver.resolveAsync({
-      // For now, prefer global install since the package has native code (harder to install) and doesn't change very often.
-      prefersGlobalInstall: true,
-    });
+    const done = event.span();
+    try {
+      // Ensure the instance is loaded first, this can linger so we should run it before the timeout.
+      await this.resolver.resolveAsync({
+        // For now, prefer global install since the package has native code (harder to install) and doesn't change very often.
+        prefersGlobalInstall: true,
+      });
 
-    // NOTE(EvanBacon): If the user doesn't have ADB installed,
-    // then skip attempting to reverse the port.
-    if (hasAdbReverseAsync()) {
-      // Ensure ADB reverse is running.
-      if (!(await startAdbReverseAsync([this.port]))) {
-        // TODO: Better error message.
-        throw new CommandError(
-          'NGROK_ADB',
-          `Cannot start tunnel URL because \`adb reverse\` failed for the connected Android device(s).`
-        );
+      // NOTE(EvanBacon): If the user doesn't have ADB installed,
+      // then skip attempting to reverse the port.
+      if (hasAdbReverseAsync()) {
+        // Ensure ADB reverse is running.
+        if (!(await startAdbReverseAsync([this.port]))) {
+          // TODO: Better error message.
+          throw new CommandError(
+            'NGROK_ADB',
+            `Cannot start tunnel URL because \`adb reverse\` failed for the connected Android device(s).`
+          );
+        }
       }
+
+      this.serverUrl = await this._connectToNgrokAsync({ timeout });
+    } catch (error) {
+      event('failed', { provider: 'ngrok', error: event.error(error as Error) });
+      throw error;
     }
 
-    this.serverUrl = await this._connectToNgrokAsync({ timeout });
-
-    debug('Tunnel URL:', this.serverUrl);
+    debugEvent('url', { url: this.serverUrl });
     Log.log('Tunnel ready.');
+    done('done', { provider: 'ngrok', url: this.serverUrl });
   }
 
   /** Stop the ngrok process if it's running. */
   public async stopAsync(): Promise<void> {
-    debug('Stopping Tunnel');
-
     await this.resolver.get()?.kill?.();
     this.serverUrl = null;
   }
@@ -142,11 +148,11 @@ export class AsyncNgrok {
         typeof userDefinedSubdomain === 'string'
           ? userDefinedSubdomain
           : await this._getProjectSubdomainAsync();
-      debug('Subdomain:', subdomain);
+      debugEvent('ngrok_subdomain', { subdomain });
       return { subdomain };
     } else {
       const hostname = await this._getProjectHostnameAsync();
-      debug('Hostname:', hostname);
+      debugEvent('ngrok_hostname', { hostname });
       return { hostname };
     }
   }
@@ -157,8 +163,8 @@ export class AsyncNgrok {
   ): Promise<string | false> {
     try {
       // Global config path.
-      const configPath = path.join(UserSettings.getDirectory(), 'ngrok.yml');
-      debug('Global config path:', configPath);
+      const configPath = path.join(getSettingsDirectory(), 'ngrok.yml');
+      debugEvent('ngrok_config_path', { path: configPath });
       const urlProps = await this._getConnectionPropsAsync();
 
       const url = await instance.connect({
@@ -169,7 +175,7 @@ export class AsyncNgrok {
           if (status === 'closed') {
             Log.error(
               chalk.red(
-                'Tunnel connection has been closed. This is often related to intermittent connection problems with the Ngrok servers. Restart the dev server to try connecting to Ngrok again.'
+                'Tunnel connection has been closed. This is often related to intermittent connection issues between the dev server and ngrok. Restart the dev server to try connecting to ngrok again.'
               ) + chalk.gray('\nCheck the Ngrok status page for outages: https://status.ngrok.com/')
             );
           } else if (status === 'connected') {
@@ -223,16 +229,20 @@ export class AsyncNgrok {
 
   private async getProjectRandomnessAsync() {
     const { urlRandomness: randomness } = await ProjectSettings.readAsync(this.projectRoot);
-    if (randomness) {
+    if (randomness && /^[A-Za-z0-9]/.test(randomness)) {
       return randomness;
     }
     return await this._resetProjectRandomnessAsync();
   }
 
   async _resetProjectRandomnessAsync() {
-    const randomness = crypto.randomBytes(5).toString('base64url');
+    let randomness: string;
+    do {
+      randomness = crypto.randomBytes(5).toString('base64url');
+    } while (randomness.startsWith('_')); // _ is an invalid character for a hostname
+
     await ProjectSettings.setAsync(this.projectRoot, { urlRandomness: randomness });
-    debug('Resetting project randomness:', randomness);
+    debugEvent('ngrok_randomness_reset', { randomness });
     return randomness;
   }
 }

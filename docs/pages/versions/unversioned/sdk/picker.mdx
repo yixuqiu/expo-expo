@@ -1,26 +1,30 @@
 ---
-title: Picker
+title: '@react-native-picker/picker'
 description: A cross-platform component that provides access to the system UI for picking between several options.
 sourceCodeUrl: 'https://github.com/react-native-picker/picker'
 packageName: '@react-native-picker/picker'
-platforms: ['android', 'ios', 'macos', 'web']
+platforms: ['android', 'ios', 'macos', 'web', 'expo-go']
+inExpoGo: true
 ---
 
+import { BookOpen02Icon } from '@expo/styleguide-icons/outline/BookOpen02Icon';
+
 import { APIInstallSection } from '~/components/plugins/InstallSection';
-import PlatformsSection from '~/components/plugins/PlatformsSection';
+import { BoxLink } from '~/ui/components/BoxLink';
 
-{/* todo: add video */}
-
-> **info** This library is listed in the Expo SDK reference because it is included in [Expo Go](https://expo.dev/go). You may use any library of your choice with [development builds](/develop/development-builds/introduction/).
+> **important** [`@expo/ui` provides a drop-in replacement](./ui/drop-in-replacements/picker) for `@react-native-picker/picker`, powered by Jetpack Compose on Android and SwiftUI on iOS.
 
 A component that provides access to the system UI for picking between several options.
-
-<PlatformsSection android emulator ios simulator web />
 
 ## Installation
 
 <APIInstallSection href="https://github.com/react-native-picker/picker#getting-started" />
 
-## Usage
+## Learn more
 
-See complete documentation at [`react-native-picker/picker`](https://github.com/react-native-picker/picker).
+<BoxLink
+  title="Visit official documentation"
+  description="Get full information on API and its usage."
+  Icon={BookOpen02Icon}
+  href="https://github.com/react-native-picker/picker"
+/>

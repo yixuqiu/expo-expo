@@ -1,7 +1,8 @@
-import { Platform } from 'expo-modules-core';
+import { Platform } from 'expo';
 
 import ExpoLocation from './ExpoLocation';
-import { LocationObject, LocationAccuracy, LocationOptions } from './Location.types';
+import type { LocationObject, LocationOptions } from './Location.types';
+import { LocationAccuracy } from './Location.types';
 import { LocationSubscriber } from './LocationSubscribers';
 
 type GeolocationSuccessCallback = (data: LocationObject) => void;
@@ -32,10 +33,6 @@ export function installWebGeolocationPolyfill(): void {
       getCurrentPosition,
       watchPosition,
       clearWatch,
-
-      // We don't polyfill stopObserving, this is an internal method that probably should not even exist
-      // in react-native docs
-      stopObserving: () => {},
     };
   }
 }
@@ -78,7 +75,7 @@ function watchPosition(
 ) {
   const watchId = LocationSubscriber.registerCallback(success);
 
-  ExpoLocation.watchPositionImplAsync(watchId, options).catch((err) => {
+  ExpoLocation.watchPositionImplAsync(watchId, options).catch((err: any) => {
     LocationSubscriber.unregisterCallback(watchId);
     error({ watchId, message: err.message, code: err.code });
   });

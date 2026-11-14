@@ -1,0 +1,101 @@
+import ExpoModulesCore
+import ActivityKit
+
+final class LiveActivity: SharedObject {
+  let id: String
+  let name: String
+  private var pushTokenObserverTask: Task<Void, Never>?
+
+  init(id: String, name: String) {
+    self.id = id
+    self.name = name
+    super.init()
+  }
+
+  func getState() throws -> String {
+    guard let activity = Activity<LiveActivityAttributes>.activities.first(where: { $0.id == id }) else {
+      throw LiveActivityNotFoundException(id)
+    }
+
+    return switch activity.activityState {
+    case .pending: "pending"
+    case .active: "active"
+    case .stale: "stale"
+    case .ended: "ended"
+    case .dismissed: "dismissed"
+    @unknown default: "unknown"
+    }
+  }
+
+  func update(props: String?, options: LiveActivityUpdateOptions) async throws {
+    guard let activity = Activity<LiveActivityAttributes>.activities.first(where: { $0.id == id }) else {
+      throw LiveActivityNotFoundException(id)
+    }
+
+    let content = ActivityContent(
+      state: LiveActivityAttributes.ContentState(name: name, props: props),
+      staleDate: options.staleDate,
+      relevanceScore: options.relevanceScore
+    )
+
+    guard let contentDate = options.contentDate, #available(iOS 17.2, *) else {
+      return await activity.update(content)
+    }
+
+    await activity.update(content, timestamp: contentDate)
+  }
+
+  func end(dismissalPolicy: LiveActivityDismissalPolicy?, afterDate: Date?, props: String?, contentDate: Date?) async throws {
+    guard let activity = Activity<LiveActivityAttributes>.activities.first(where: { $0.id == id }) else {
+      throw LiveActivityNotFoundException(id)
+    }
+
+    let content: ActivityContent<LiveActivityAttributes.ContentState>?
+    if let props {
+      content = ActivityContent(state: LiveActivityAttributes.ContentState(name: name, props: props), staleDate: nil)
+    } else {
+      content = nil
+    }
+
+    guard let contentDate, #available(iOS 17.2, *) else {
+      return await activity.end(content, dismissalPolicy: dismissalPolicy?.toDismissalPolicy(date: afterDate) ?? .default)
+    }
+
+    await activity.end(content, dismissalPolicy: dismissalPolicy?.toDismissalPolicy(date: afterDate) ?? .default, timestamp: contentDate)
+  }
+
+  func getPushToken() throws -> String? {
+    guard let activity = Activity<LiveActivityAttributes>.activities.first(where: { $0.id == id }) else {
+      throw LiveActivityNotFoundException(id)
+    }
+
+    guard let tokenData = activity.pushToken else { return nil }
+
+    return tokenData.reduce("") { $0 + String(format: "%02x", $1) }
+  }
+
+  func observePushTokenUpdates(for activity: Activity<LiveActivityAttributes>, pushNotificationsEnabled: Bool) {
+    guard pushNotificationsEnabled else {
+      return
+    }
+
+    guard pushTokenObserverTask == nil else {
+      return
+    }
+
+    pushTokenObserverTask = Task {
+      for await data in activity.pushTokenUpdates {
+        let token = data.reduce("") { $0 + String(format: "%02x", $1) }
+        emit(event: onTokenReceived, payload: [
+          "activityId": activity.id,
+          "pushToken": token
+        ])
+      }
+    }
+  }
+
+  override func sharedObjectWillRelease() {
+    pushTokenObserverTask?.cancel()
+    pushTokenObserverTask = nil
+  }
+}

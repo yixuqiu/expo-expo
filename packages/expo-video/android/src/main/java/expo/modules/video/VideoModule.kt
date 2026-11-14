@@ -1,145 +1,85 @@
-@file:OptIn(EitherType::class)
-
 package expo.modules.video
 
-import android.app.Activity
+import android.net.Uri
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player.REPEAT_MODE_OFF
 import androidx.media3.common.Player.REPEAT_MODE_ONE
-import com.facebook.react.uimanager.PixelUtil
-import com.facebook.react.uimanager.Spacing
-import com.facebook.react.uimanager.ViewProps
-import com.facebook.yoga.YogaConstants
-import expo.modules.kotlin.apifeatures.EitherType
+import androidx.media3.common.util.UnstableApi
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
+import expo.modules.kotlin.functions.Coroutine
+import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.types.Either
+import expo.modules.kotlin.views.ViewDefinitionBuilder
+import expo.modules.video.enums.AudioMixingMode
+import expo.modules.video.enums.ContentFit
+import expo.modules.video.player.VideoPlayer
+import expo.modules.video.records.BufferOptions
+import expo.modules.video.records.PlayerBuilderOptions
+import expo.modules.video.records.ButtonOptions
+import expo.modules.video.records.FullscreenOptions
+import expo.modules.video.records.SubtitleTrack
+import expo.modules.video.records.AudioTrack
+import expo.modules.video.records.ScrubbingModeOptions
+import expo.modules.video.records.SeekTolerance
+import expo.modules.video.records.VideoSize
 import expo.modules.video.records.VideoSource
+import expo.modules.video.records.VideoThumbnailOptions
+import expo.modules.video.utils.runWithPiPMisconfigurationSoftHandling
+import expo.modules.video.managers.VideoManager
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlin.time.Duration
 
 // https://developer.android.com/guide/topics/media/media3/getting-started/migration-guide#improvements_in_media3
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@androidx.annotation.OptIn(UnstableApi::class)
 class VideoModule : Module() {
-  private val activity: Activity
-    get() = appContext.activityProvider?.currentActivity ?: throw Exceptions.MissingActivity()
-
   override fun definition() = ModuleDefinition {
     Name("ExpoVideo")
 
-    Function("isPictureInPictureSupported") {
-      return@Function VideoView.isPictureInPictureSupported(activity)
+    OnCreate {
+      VideoManager.onModuleCreated(appContext)
     }
 
-    View(VideoView::class) {
-      Events(
-        "onPictureInPictureStart",
-        "onPictureInPictureStop"
-      )
+    OnDestroy {
+      VideoManager.onModuleDestroyed(appContext)
+    }
 
-      Prop("player") { view: VideoView, player: VideoPlayer ->
-        view.videoPlayer = player
-        player.prepare()
-      }
+    Function("isPictureInPictureSupported") {
+      VideoView.isPictureInPictureSupported(appContext.throwingActivity)
+    }
 
-      Prop("nativeControls") { view: VideoView, useNativeControls: Boolean ->
-        view.useNativeControls = useNativeControls
-      }
+    Function("getCurrentVideoCacheSize") {
+      VideoManager.cache.getCurrentCacheSize()
+    }
 
-      Prop("contentFit") { view: VideoView, contentFit: ContentFit ->
-        view.contentFit = contentFit
-      }
+    AsyncFunction("setVideoCacheSizeAsync") { size: Long ->
+      VideoManager.cache.setMaxCacheSize(size)
+    }
 
-      Prop("startsPictureInPictureAutomatically") { view: VideoView, autoEnterPiP: Boolean ->
-        view.autoEnterPiP = autoEnterPiP
-      }
+    AsyncFunction("clearVideoCacheAsync") {
+      VideoManager.cache.clear()
+    }
 
-      Prop("allowsFullscreen") { view: VideoView, allowsFullscreen: Boolean? ->
-        view.allowsFullscreen = allowsFullscreen ?: true
-      }
-
-      Prop("requiresLinearPlayback") { view: VideoView, requiresLinearPlayback: Boolean? ->
-        val linearPlayback = requiresLinearPlayback ?: false
-        view.playerView.applyRequiresLinearPlayback(linearPlayback)
-        view.videoPlayer?.requiresLinearPlayback = linearPlayback
-      }
-
-      PropGroup(
-        ViewProps.BORDER_RADIUS to 0,
-        ViewProps.BORDER_TOP_LEFT_RADIUS to 1,
-        ViewProps.BORDER_TOP_RIGHT_RADIUS to 2,
-        ViewProps.BORDER_BOTTOM_RIGHT_RADIUS to 3,
-        ViewProps.BORDER_BOTTOM_LEFT_RADIUS to 4,
-        ViewProps.BORDER_TOP_START_RADIUS to 5,
-        ViewProps.BORDER_TOP_END_RADIUS to 6,
-        ViewProps.BORDER_BOTTOM_START_RADIUS to 7,
-        ViewProps.BORDER_BOTTOM_END_RADIUS to 8
-      ) { view: VideoView, index: Int, borderRadius: Float? ->
-        val radius = makeYogaUndefinedIfNegative(borderRadius ?: YogaConstants.UNDEFINED)
-        view.setBorderRadius(index, radius)
-      }
-
-      PropGroup(
-        ViewProps.BORDER_WIDTH to Spacing.ALL,
-        ViewProps.BORDER_LEFT_WIDTH to Spacing.LEFT,
-        ViewProps.BORDER_RIGHT_WIDTH to Spacing.RIGHT,
-        ViewProps.BORDER_TOP_WIDTH to Spacing.TOP,
-        ViewProps.BORDER_BOTTOM_WIDTH to Spacing.BOTTOM,
-        ViewProps.BORDER_START_WIDTH to Spacing.START,
-        ViewProps.BORDER_END_WIDTH to Spacing.END
-      ) { view: VideoView, index: Int, width: Float? ->
-        val pixelWidth = makeYogaUndefinedIfNegative(width ?: YogaConstants.UNDEFINED)
-          .ifYogaDefinedUse(PixelUtil::toPixelFromDIP)
-        view.setBorderWidth(index, pixelWidth)
-      }
-
-      PropGroup(
-        ViewProps.BORDER_COLOR to Spacing.ALL,
-        ViewProps.BORDER_LEFT_COLOR to Spacing.LEFT,
-        ViewProps.BORDER_RIGHT_COLOR to Spacing.RIGHT,
-        ViewProps.BORDER_TOP_COLOR to Spacing.TOP,
-        ViewProps.BORDER_BOTTOM_COLOR to Spacing.BOTTOM,
-        ViewProps.BORDER_START_COLOR to Spacing.START,
-        ViewProps.BORDER_END_COLOR to Spacing.END
-      ) { view: VideoView, index: Int, color: Int? ->
-        val rgbComponent = if (color == null) YogaConstants.UNDEFINED else (color and 0x00FFFFFF).toFloat()
-        val alphaComponent = if (color == null) YogaConstants.UNDEFINED else (color ushr 24).toFloat()
-        view.setBorderColor(index, rgbComponent, alphaComponent)
-      }
-
-      Prop("borderStyle") { view: VideoView, borderStyle: String? ->
-        view.setBorderStyle(borderStyle)
-      }
-
-      OnViewDidUpdateProps { view: VideoView ->
-        view.didUpdateProps()
-      }
-
-      AsyncFunction("enterFullscreen") { view: VideoView ->
-        view.enterFullscreen()
-      }
-
-      AsyncFunction("exitFullscreen") {
-        throw MethodUnsupportedException("exitFullscreen")
-      }
-
-      AsyncFunction("startPictureInPicture") { view: VideoView ->
-        view.enterPictureInPicture()
-      }
-
-      AsyncFunction("stopPictureInPicture") {
-        throw MethodUnsupportedException("stopPictureInPicture")
-      }
-
-      OnViewDestroys {
-        VideoManager.unregisterVideoView(it)
-      }
+    View(SurfaceVideoView::class) {
+      VideoViewComponent<SurfaceVideoView>()
+    }
+    View(TextureVideoView::class) {
+      VideoViewComponent<TextureVideoView>()
     }
 
     Class(VideoPlayer::class) {
-      Constructor { source: VideoSource ->
-        VideoPlayer(activity.applicationContext, appContext, source)
+      Constructor { source: VideoSource?, /* useSynchronousReplace - iOS-only */ _: Boolean?, playerBuilderOptions: PlayerBuilderOptions? ->
+        val applicationContext = appContext.reactContext?.applicationContext ?: throw Exceptions.ReactContextLost()
+        val player = VideoPlayer(applicationContext, appContext, source, playerBuilderOptions)
+        appContext.mainQueue.launch {
+          player.prepare()
+        }
+        return@Constructor player
       }
 
       Property("playing")
@@ -152,9 +92,7 @@ class VideoModule : Module() {
           ref.muted
         }
         .set { ref: VideoPlayer, muted: Boolean ->
-          appContext.mainQueue.launch {
-            ref.muted = muted
-          }
+          ref.muted = muted
         }
 
       Property("volume")
@@ -162,10 +100,8 @@ class VideoModule : Module() {
           ref.volume
         }
         .set { ref: VideoPlayer, volume: Float ->
-          appContext.mainQueue.launch {
-            ref.userVolume = volume
-            ref.volume = volume
-          }
+          ref.userVolume = volume
+          ref.volume = volume
         }
 
       Property("currentTime")
@@ -183,15 +119,89 @@ class VideoModule : Module() {
           }
         }
 
+      Property("currentLiveTimestamp")
+        .get { ref: VideoPlayer ->
+          runBlocking(appContext.mainQueue.coroutineContext) {
+            ref.currentLiveTimestamp
+          }
+        }
+
+      Property("availableVideoTracks")
+        .get { ref: VideoPlayer ->
+          ref.availableVideoTracks
+        }
+
+      Property("videoTrack")
+        .get { ref: VideoPlayer ->
+          ref.currentVideoTrack
+        }
+
+      Property("maxResolution")
+        .get { ref: VideoPlayer ->
+          ref.maxResolution
+        }
+        .set { ref: VideoPlayer, maxResolution: VideoSize? ->
+          ref.maxResolution = maxResolution
+        }
+
+      Property("availableSubtitleTracks")
+        .get { ref: VideoPlayer ->
+          ref.subtitles.availableSubtitleTracks
+        }
+
+      Property("subtitleTrack")
+        .get { ref: VideoPlayer ->
+          ref.subtitles.currentSubtitleTrack
+        }
+        .set { ref: VideoPlayer, subtitleTrack: SubtitleTrack? ->
+          appContext.mainQueue.launch {
+            ref.subtitles.currentSubtitleTrack = subtitleTrack
+          }
+        }
+
+      Property("availableAudioTracks")
+        .get { ref: VideoPlayer ->
+          ref.audioTracks.availableAudioTracks
+        }
+
+      Property("audioTrack")
+        .get { ref: VideoPlayer ->
+          ref.audioTracks.currentAudioTrack
+        }
+        .set { ref: VideoPlayer, audioTrack: AudioTrack? ->
+          appContext.mainQueue.launch {
+            ref.audioTracks.currentAudioTrack = audioTrack
+          }
+        }
+
+      Property("currentOffsetFromLive")
+        .get { ref: VideoPlayer ->
+          runBlocking(appContext.mainQueue.coroutineContext) {
+            ref.currentOffsetFromLive
+          }
+        }
+
+      Property("duration")
+        .get { ref: VideoPlayer ->
+          ref.duration
+        }
+
       Property("playbackRate")
         .get { ref: VideoPlayer ->
           ref.playbackParameters.speed
         }
         .set { ref: VideoPlayer, playbackRate: Float ->
-          appContext.mainQueue.launch {
-            val pitch = if (ref.preservesPitch) 1f else playbackRate
-            ref.playbackParameters = PlaybackParameters(playbackRate, pitch)
+          val pitch = if (ref.preservesPitch) {
+            1f
+          } else {
+            playbackRate
           }
+          ref.playbackParameters = PlaybackParameters(playbackRate, pitch)
+        }
+
+      Property("isLive")
+        .get { ref: VideoPlayer ->
+          ref.isLive
         }
 
       Property("preservesPitch")
@@ -199,9 +209,7 @@ class VideoModule : Module() {
           ref.preservesPitch
         }
         .set { ref: VideoPlayer, preservesPitch: Boolean ->
-          appContext.mainQueue.launch {
-            ref.preservesPitch = preservesPitch
-          }
+          ref.preservesPitch = preservesPitch
         }
 
       Property("showNowPlayingNotification")
@@ -209,9 +217,7 @@ class VideoModule : Module() {
           ref.showNowPlayingNotification
         }
         .set { ref: VideoPlayer, showNotification: Boolean ->
-          appContext.mainQueue.launch {
-            ref.showNowPlayingNotification = showNotification
-          }
+          ref.showNowPlayingNotification = showNotification
         }
 
       Property("status")
@@ -229,7 +235,9 @@ class VideoModule : Module() {
 
       Property("loop")
         .get { ref: VideoPlayer ->
-          ref.player.repeatMode == REPEAT_MODE_ONE
+          runBlocking(appContext.mainQueue.coroutineContext) {
+            ref.player.repeatMode == REPEAT_MODE_ONE
+          }
         }
         .set { ref: VideoPlayer, loop: Boolean ->
           appContext.mainQueue.launch {
@@ -239,6 +247,28 @@ class VideoModule : Module() {
               REPEAT_MODE_OFF
             }
           }
+        }
+
+      Property("bufferedPosition")
+        .get { ref: VideoPlayer ->
+          // Same as currentTime
+          runBlocking(appContext.mainQueue.coroutineContext) {
+            ref.bufferedPosition
+          }
+        }
+
+      Property("bufferOptions")
+        .get { ref: VideoPlayer ->
+          ref.bufferOptions
+        }
+        .set { ref: VideoPlayer, bufferOptions: BufferOptions ->
+          ref.bufferOptions = bufferOptions
+        }
+
+      Property("isExternalPlaybackActive")
+        .get { ref: VideoPlayer ->
+          // isExternalPlaybackActive is not supported on Android as of now. Return false.
+          false
         }
 
       Function("play") { ref: VideoPlayer ->
@@ -253,19 +283,55 @@ class VideoModule : Module() {
         }
       }
 
-      Function("replace") { ref: VideoPlayer, source: Either<String, VideoSource> ->
-        val videoSource = if (source.`is`(VideoSource::class)) {
-          source.get(VideoSource::class)
-        } else {
-          VideoSource(source.get(String::class))
+      Property("timeUpdateEventInterval")
+        .get { ref: VideoPlayer ->
+          ref.intervalUpdateClock.interval / 1000.0
         }
-        val mediaItem = videoSource.toMediaItem()
-        VideoManager.registerVideoSourceToMediaItem(mediaItem, videoSource)
+        .set { ref: VideoPlayer, intervalSeconds: Float ->
+          ref.intervalUpdateClock.interval = (intervalSeconds * 1000).toLong()
+        }
 
-        appContext.mainQueue.launch {
-          ref.videoSource = videoSource
-          ref.player.setMediaItem(mediaItem)
+      Property("audioMixingMode")
+        .get { ref: VideoPlayer ->
+          ref.audioMixingMode
         }
+        .set { ref: VideoPlayer, audioMixingMode: AudioMixingMode ->
+          ref.audioMixingMode = audioMixingMode
+        }
+
+      Property("keepScreenOnWhilePlaying")
+        .get { ref: VideoPlayer ->
+          ref.keepScreenOnWhilePlaying
+        }
+        .set { ref: VideoPlayer, value: Boolean? ->
+          ref.keepScreenOnWhilePlaying = value ?: true
+        }
+
+      Property("seekTolerance")
+        .get { ref: VideoPlayer ->
+          ref.seekTolerance
+        }
+        .set { ref: VideoPlayer, tolerance: SeekTolerance? ->
+          ref.seekTolerance = tolerance ?: SeekTolerance()
+        }
+
+      Property("scrubbingModeOptions")
+        .get { ref: VideoPlayer ->
+          ref.scrubbingModeOptions
+        }
+        .set { ref: VideoPlayer, options: ScrubbingModeOptions? ->
+          ref.scrubbingModeOptions = options ?: ScrubbingModeOptions()
+        }
+
+      Function("replace") { ref: VideoPlayer, source: Either<Uri, VideoSource>? ->
+        replaceImpl(ref, source)
+      }
+
+      // ExoPlayer automatically offloads loading of the asset onto a different thread so we can keep the same
+      // implementation until `replace` is deprecated and removed.
+      // TODO: @behenate see if we can further reduce load on the main thread
+      AsyncFunction("replaceAsync") { ref: VideoPlayer, source: Either<Uri, VideoSource>?, promise: Promise ->
+        replaceImpl(ref, source, promise)
       }
 
       Function("seekBy") { ref: VideoPlayer, seekTime: Double ->
@@ -281,6 +347,25 @@ class VideoModule : Module() {
           ref.player.play()
         }
       }
+
+      AsyncFunction("generateThumbnailsAsync") Coroutine { ref: VideoPlayer, times: List<Duration>, options: VideoThumbnailOptions? ->
+        return@Coroutine ref.toMetadataRetriever().safeUse {
+          val bitmaps = times.map { time ->
+            appContext.backgroundCoroutineScope.async {
+              generateThumbnailAtTime(time, options)
+            }
+          }
+
+          bitmaps.awaitAll()
+        }
+      }
+
+      Class<VideoThumbnail> {
+        Property("width") { ref -> ref.width }
+        Property("height") { ref -> ref.height }
+        Property("requestedTime") { ref -> ref.requestedTime }
+        Property("actualTime") { ref -> ref.actualTime }
+      }
     }
 
     OnActivityEntersForeground {
@@ -289,6 +374,87 @@ class VideoModule : Module() {
 
     OnActivityEntersBackground {
       VideoManager.onAppBackgrounded()
+    }
+  }
+  private fun replaceImpl(
+    ref: VideoPlayer,
+    source: Either<Uri, VideoSource>?,
+    promise: Promise? = null
+  ) {
+    val videoSource = source?.let {
+      if (it.`is`(VideoSource::class)) {
+        it.get(VideoSource::class)
+      } else {
+        VideoSource(it.get(Uri::class))
+      }
+    }
+
+    appContext.mainQueue.launch {
+      ref.uncommittedSource = videoSource
+      ref.prepare()
+      promise?.resolve()
+    }
+  }
+}
+
+@androidx.annotation.OptIn(UnstableApi::class)
+private inline fun <reified T : VideoView> ViewDefinitionBuilder<T>.VideoViewComponent() {
+  Events(
+    "onPictureInPictureStart",
+    "onPictureInPictureStop",
+    "onFullscreenEnter",
+    "onFullscreenExit",
+    "onFirstFrameRender"
+  )
+  Prop("player") { view: T, player: VideoPlayer? ->
+    view.videoPlayer = player
+  }
+  Prop("nativeControls") { view: T, useNativeControls: Boolean ->
+    view.useNativeControls = useNativeControls
+  }
+  Prop("contentFit") { view: T, contentFit: ContentFit ->
+    view.contentFit = contentFit
+  }
+  Prop("startsPictureInPictureAutomatically") { view: T, autoEnterPiP: Boolean? ->
+    view.autoEnterPiP = autoEnterPiP ?: false
+  }
+  Prop("fullscreenOptions") { view: T, fullscreenOptions: FullscreenOptions? ->
+    if (fullscreenOptions != null) {
+      view.fullscreenOptions = fullscreenOptions
+    }
+  }
+  Prop("requiresLinearPlayback") { view: T, requiresLinearPlayback: Boolean? ->
+    view.requiresLinearPlayback = requiresLinearPlayback ?: false
+  }
+  Prop("buttonOptions") { view: T, buttonOptions: ButtonOptions? ->
+    view.buttonOptions = buttonOptions ?: ButtonOptions()
+  }
+  Prop("useExoShutter") { view: T, useExoShutter: Boolean? ->
+    view.useExoShutter = useExoShutter
+  }
+  Prop("controllerAutoShow") { view: T, controllerAutoShow: Boolean? ->
+    view.controllerAutoShow = controllerAutoShow ?: true
+  }
+  AsyncFunction("enterFullscreen") { view: T ->
+    view.enterFullscreen()
+  }.runOnQueue(Queues.MAIN)
+  AsyncFunction("exitFullscreen") { view: T ->
+    VideoManager.finishFullscreenPlayer(view.videoViewId)
+  }.runOnQueue(Queues.MAIN)
+  AsyncFunction("startPictureInPicture") { view: T ->
+    runWithPiPMisconfigurationSoftHandling(true) {
+      view.enterPictureInPicture()
+    }
+  }
+  AsyncFunction("stopPictureInPicture") {
+    throw MethodUnsupportedException("stopPictureInPicture")
+  }
+  OnViewDestroys {
+    VideoManager.unregisterVideoView(it)
+  }
+  OnViewDidUpdateProps { view ->
+    if (view.playerView.useController != view.useNativeControls) {
+      view.playerView.useController = view.useNativeControls
     }
   }
 }

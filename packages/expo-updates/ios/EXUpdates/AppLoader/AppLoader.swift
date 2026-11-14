@@ -8,12 +8,13 @@
 // this class uses a lot of implicit non-null stuff across function calls. not worth refactoring to just satisfy lint
 // swiftlint:disable force_unwrapping
 
+import EXUpdatesInterface
 import Foundation
 
 public typealias AppLoaderUpdateResponseBlock = (_ updateResponse: UpdateResponse) -> Bool
 public typealias AppLoaderAssetBlock = (_ asset: UpdateAsset, _ successfulAssetCount: Int, _ failedAssetCount: Int, _ totalAssetCount: Int) -> Void
 public typealias AppLoaderSuccessBlock = (_ updateResponse: UpdateResponse?) -> Void
-public typealias AppLoaderErrorBlock = (_ error: Error) -> Void
+public typealias AppLoaderErrorBlock = (_ error: UpdatesError) -> Void
 
 /**
  * Responsible for loading an update's manifest, enumerating the assets required for it to launch,
@@ -25,30 +26,50 @@ public typealias AppLoaderErrorBlock = (_ error: Error) -> Void
 @objc(EXUpdatesAppLoader)
 @objcMembers
 open class AppLoader: NSObject {
-  private static let ErrorDomain = "EXUpdatesAppLoader"
-
   public let config: UpdatesConfig
+  public let logger: UpdatesLogger
   public let database: UpdatesDatabase
   public let directory: URL
   public let launchedUpdate: Update?
+  public var requestedUpdate: Update?
 
   private var updateResponseContainingManifest: UpdateResponse?
 
   public var updateResponseBlock: AppLoaderUpdateResponseBlock?
   public var assetBlock: AppLoaderAssetBlock?
+  public var assetLoadProgressBlock: FileDownloadProgressBlock?
   public var successBlock: AppLoaderSuccessBlock?
   public var errorBlock: AppLoaderErrorBlock?
 
   private var assetsToLoad: [UpdateAsset] = []
-  private var erroredAssets: [UpdateAsset] = []
+  private var assetDownloadProgress: [UpdateAsset: Double] = [:]
+  private var assetLoadFailures: [AssetLoadFailure] = []
   private var finishedAssets: [UpdateAsset] = []
   private var existingAssets: [UpdateAsset] = []
 
   private let arrayLock: NSLock = NSLock()
   private let completionQueue: DispatchQueue
 
-  public init(config: UpdatesConfig, database: UpdatesDatabase, directory: URL, launchedUpdate: Update?, completionQueue: DispatchQueue) {
+  /// Overridable for testing, where the bundle has no `app.manifest`.
+  internal lazy var embeddedUpdate: Update? = EmbeddedAppLoader.embeddedManifest(withConfig: config, database: database)
+
+  /// Overridable for testing, where fixtures live in the test bundle rather than in `updatesBundle`.
+  internal var embeddedAssetsBundle: Bundle = updatesBundle
+
+  /// Whether an asset with no database row may be copied out of the app binary rather than
+  /// downloaded. Only remote loads have anything to reuse.
+  internal var reusesEmbeddedAssets: Bool { true }
+
+  public init(
+    config: UpdatesConfig,
+    logger: UpdatesLogger,
+    database: UpdatesDatabase,
+    directory: URL,
+    launchedUpdate: Update?,
+    completionQueue: DispatchQueue
+  ) {
     self.config = config
+    self.logger = logger
     self.database = database
     self.directory = directory
     self.launchedUpdate = launchedUpdate
@@ -57,14 +78,17 @@ open class AppLoader: NSObject {
 
   public func reset() {
     assetsToLoad = []
-    erroredAssets = []
+    assetLoadFailures = []
     finishedAssets = []
     existingAssets = []
+    assetDownloadProgress = [:]
     updateResponseContainingManifest = nil
+    requestedUpdate = nil
     updateResponseBlock = nil
     assetBlock = nil
     successBlock = nil
     errorBlock = nil
+    assetLoadProgressBlock = nil
   }
 
   // MARK: - abstract methods
@@ -90,7 +114,7 @@ open class AppLoader: NSObject {
     preconditionFailure("Must override in concrete class")
   }
 
-  open func downloadAsset(_ asset: UpdateAsset) {
+  open func downloadAsset(_ asset: UpdateAsset, extraHeaders: [String: Any]) {
     preconditionFailure("Must override in concrete class")
   }
 
@@ -118,10 +142,10 @@ open class AppLoader: NSObject {
     if updateManifest.isDevelopmentMode {
       database.databaseQueue.async {
         do {
-          try self.database.addUpdate(updateManifest)
+          try self.database.addUpdate(updateManifest, config: self.config)
           try self.database.markUpdateFinished(updateManifest)
         } catch {
-          self.finish(withError: error)
+          self.finish(withError: UpdatesError.appLoaderUnknownError(cause: error))
           return
         }
 
@@ -155,12 +179,11 @@ open class AppLoader: NSObject {
         do {
           try self.database.setScopeKey(updateManifestScopeKey, onUpdate: existingUpdate)
         } catch {
-          self.finish(withError: error)
+          self.finish(withError: UpdatesError.appLoaderUnknownError(cause: error))
           return
         }
 
-        // swiftlint:disable:next line_length
-        NSLog("AppLoader: Loaded an update with the same ID but a different scopeKey than one we already have on disk. This is a server error. Overwriting the scopeKey and loading the existing update.")
+        self.logger.warn(.localScopeKeyMismatch)
       }
 
       if let existingUpdate = existingUpdate,
@@ -179,15 +202,15 @@ open class AppLoader: NSObject {
         self.updateResponseContainingManifest = updateResponse
       } else {
         if let existingUpdateError = existingUpdateError {
-          NSLog("Failed to select old update from DB: %@", existingUpdateError.localizedDescription)
+          self.logger.warn(.localSelectUpdateFailed, cause: existingUpdateError)
         }
 
         // no update already exists with this ID, so we need to insert it and download everything.
         self.updateResponseContainingManifest = updateResponse
         do {
-          try self.database.addUpdate(updateManifest)
+          try self.database.addUpdate(updateManifest, config: self.config)
         } catch {
-          self.finish(withError: error)
+          self.finish(withError: UpdatesError.appLoaderUnknownError(cause: error))
           return
         }
       }
@@ -195,6 +218,27 @@ open class AppLoader: NSObject {
       if let assets = updateManifest.assets(),
         !assets.isEmpty {
         self.assetsToLoad = assets
+        let embeddedUpdate = self.embeddedUpdate
+        let embeddedAssetsByKey = Dictionary(
+          (embeddedUpdate?.assets() ?? []).compactMap { embeddedAsset in
+            embeddedAsset.key.map { ($0, embeddedAsset) }
+          },
+          uniquingKeysWith: { first, _ in first }
+        )
+        let requestedUpdate: Update? = {
+          if let launchedUpdate = self.launchedUpdate,
+            launchedUpdate.updateId == updateManifest.updateId {
+            return nil
+          }
+          return updateManifest
+        }()
+        self.requestedUpdate = requestedUpdate
+        let extraHeaders = FileDownloader.extraHeadersForRemoteAssetRequest(
+          launchedUpdate: self.launchedUpdate,
+          embeddedUpdate: embeddedUpdate,
+          requestedUpdate: requestedUpdate
+        )
+
         for asset in assets {
           // before downloading, check to see if we already have this asset in the database
           let matchingDbEntry = try? self.database.asset(withKey: asset.key)
@@ -207,7 +251,7 @@ open class AppLoader: NSObject {
             do {
               try self.database.mergeAsset(asset, withExistingEntry: matchingDbEntry)
             } catch {
-              NSLog("Failed to merge asset with existing database entry: %@", error.localizedDescription)
+              self.logger.warn(.localMergeAssetFailed, cause: error)
             }
 
             // make sure the file actually exists on disk
@@ -219,11 +263,16 @@ open class AppLoader: NSObject {
                   self.handleAssetDownloadAlreadyExists(asset)
                 }
               } else {
-                self.downloadAsset(asset)
+                self.downloadAsset(asset, extraHeaders: extraHeaders)
               }
             }
           } else {
-            self.downloadAsset(asset)
+            FileDownloader.assetFilesQueue.async {
+              if self.copyAssetFromEmbeddedBundleIfPresent(asset, embeddedAssetsByKey: embeddedAssetsByKey) {
+                return
+              }
+              self.downloadAsset(asset, extraHeaders: extraHeaders)
+            }
           }
         }
       } else {
@@ -232,10 +281,85 @@ open class AppLoader: NSObject {
     }
   }
 
+  /**
+   * Satisfies an asset from the embedded update in the app binary rather than downloading it.
+   * Embedded assets have no database row when copying is off, so the lookup above misses them and
+   * a remote update would otherwise re-download bytes that already ship in the app.
+   *
+   * Returns true when it handled the asset. Every failure returns false so the caller downloads it.
+   *
+   * Must be called on `FileDownloader.assetFilesQueue`.
+   */
+  internal func copyAssetFromEmbeddedBundleIfPresent(
+    _ asset: UpdateAsset,
+    embeddedAssetsByKey: [String: UpdateAsset]
+  ) -> Bool {
+    guard reusesEmbeddedAssets else {
+      return false
+    }
+
+    guard let key = asset.key,
+      UpdatesUtils.isSafeFilename(asset.filename),
+      let embeddedAsset = embeddedAssetsByKey[key],
+      embeddedAsset.mainBundleFilename != nil,
+      let bundlePath = UpdatesUtils.path(forBundledAsset: embeddedAsset, in: embeddedAssetsBundle) else {
+      return false
+    }
+
+    guard let data = try? Data(contentsOf: URL(fileURLWithPath: bundlePath), options: .mappedIfSafe) else {
+      logger.warn(.embeddedAssetFallback, values: ["assetKey": key, "reason": "unreadable"])
+      return false
+    }
+
+    // Keys are content-addressed, so a mismatch means the manifest is wrong about what we shipped.
+    if let expectedHash = asset.expectedHash {
+      let actualHash = UpdatesUtils.base64UrlEncodedSHA256WithData(data)
+      if expectedHash != actualHash {
+        logger.warn(
+          .embeddedAssetFallback,
+          values: ["assetKey": key, "reason": "hashMismatch", "expectedHash": expectedHash, "actualHash": actualHash]
+        )
+        return false
+      }
+    }
+
+    do {
+      try data.write(to: directory.appendingPathComponent(asset.filename), options: .atomic)
+    } catch {
+      logger.warn(.embeddedAssetFallback, cause: error, values: ["assetKey": key, "reason": "copyFailed"])
+      return false
+    }
+
+    DispatchQueue.global().async {
+      self.handleAssetDownload(withData: data, response: nil, asset: asset)
+    }
+    return true
+  }
+
   public func handleAssetDownloadAlreadyExists(_ asset: UpdateAsset) {
     arrayLock.lock()
     assetsToLoad.remove(asset)
     existingAssets.append(asset)
+    notifyProgress(withAsset: asset)
+    notifyAssetLoadProgress(asset: asset, progress: 1)
+    if assetsToLoad.isEmpty {
+      finish()
+    }
+    arrayLock.unlock()
+  }
+
+  public func handleAssetDownload(withError error: UpdatesError, asset: UpdateAsset) {
+    let assetKey = asset.key ?? asset.filename
+    logger.warn(
+      UpdatesLogMessage.forLoadFailure(error, failed: .remoteAssetDownloadFailed, unreachable: .remoteAssetDownloadUnreachable),
+      cause: error,
+      values: ["assetKey": assetKey],
+      updateId: updateResponseContainingManifest?.manifestUpdateResponsePart?.updateManifest.loggingId(),
+      assetId: assetKey
+    )
+    arrayLock.lock()
+    assetsToLoad.remove(asset)
+    assetLoadFailures.append(AssetLoadFailure(assetKey: assetKey, error: error))
     notifyProgress(withAsset: asset)
     if assetsToLoad.isEmpty {
       finish()
@@ -243,32 +367,36 @@ open class AppLoader: NSObject {
     arrayLock.unlock()
   }
 
-  public func handleAssetDownload(withError error: Error, asset: UpdateAsset) {
-    // TODO: retry. for now log an error
-    NSLog("error loading asset \(asset.key ?? "nil key"): \(error.localizedDescription)")
+  public func assetLoadProgressListener(asset: UpdateAsset, progress: Double) {
     arrayLock.lock()
-    assetsToLoad.remove(asset)
-    erroredAssets.append(asset)
-    notifyProgress(withAsset: asset)
-    if assetsToLoad.isEmpty {
-      finish()
-    }
+    notifyAssetLoadProgress(asset: asset, progress: progress)
     arrayLock.unlock()
+  }
+
+  /**
+   * This should only be called on threads that have acquired self->_arrayLock
+   */
+  public func notifyAssetLoadProgress(asset: UpdateAsset, progress: Double) {
+    assetDownloadProgress[asset] = progress
+    let totalAssetsCount = finishedAssets.count + existingAssets.count + assetLoadFailures.count + assetsToLoad.count
+    if totalAssetsCount > 0 {
+      let progress = assetDownloadProgress.values.reduce(0, +) / Double(totalAssetsCount)
+      if let assetLoadProgressBlock = assetLoadProgressBlock {
+        assetLoadProgressBlock(progress)
+      }
+    }
   }
 
   public func handleAssetDownload(withData data: Data, response: URLResponse?, asset: UpdateAsset) {
     arrayLock.lock()
     assetsToLoad.remove(asset)
 
-    if let response = response as? HTTPURLResponse,
-      let allHeaderFields = response.allHeaderFields as? [String: Any] {
-      asset.headers = allHeaderFields
-    }
     asset.contentHash = UpdatesUtils.hexEncodedSHA256WithData(data)
     asset.downloadTime = Date()
 
     finishedAssets.append(asset)
     notifyProgress(withAsset: asset)
+    notifyAssetLoadProgress(asset: asset, progress: 1)
     if assetsToLoad.isEmpty {
       finish()
     }
@@ -289,13 +417,13 @@ open class AppLoader: NSObject {
       it(
         asset,
         finishedAssets.count + existingAssets.count,
-        erroredAssets.count,
-        finishedAssets.count + existingAssets.count + erroredAssets.count + assetsToLoad.count
+        assetLoadFailures.count,
+        finishedAssets.count + existingAssets.count + assetLoadFailures.count + assetsToLoad.count
       )
     }
   }
 
-  private func finish(withError error: Error) {
+  private func finish(withError error: UpdatesError) {
     completionQueue.async {
       self.errorBlock.let { it in
         it(error)
@@ -308,18 +436,29 @@ open class AppLoader: NSObject {
     database.databaseQueue.async {
       self.arrayLock.lock()
 
+      guard let updateResponse = self.updateResponseContainingManifest,
+        let updateManifest = updateResponse.manifestUpdateResponsePart?.updateManifest else {
+        self.arrayLock.unlock()
+        self.finish(withError: UpdatesError.appLoaderFinishedWithoutManifest)
+        return
+      }
+
+      var assetsToLink: [UpdateAsset] = []
       for existingAsset in self.existingAssets {
-        var existingAssetFound: Bool = false
+        let existingAssetFound: Bool
         do {
-          existingAssetFound = try self.database.addExistingAsset(
-            existingAsset,
-            toUpdateWithId: self.updateResponseContainingManifest!.manifestUpdateResponsePart!.updateManifest.updateId
-          )
+          existingAssetFound = try self.database.asset(withKey: existingAsset.key) != nil
         } catch {
-          NSLog("Error searching for existing asset in DB: %@", error.localizedDescription)
+          // treating a failed check as "not found" would re-insert an existing asset, and the
+          // key-conflicting replace cascade-deletes every update that uses the old row
+          self.arrayLock.unlock()
+          self.finish(withError: UpdatesError.appLoaderUnknownError(cause: error))
+          return
         }
 
-        if !existingAssetFound {
+        if existingAssetFound {
+          assetsToLink.append(existingAsset)
+        } else {
           // the database and filesystem have gotten out of sync
           // do our best to create a new entry for this file even though it already existed on disk
           // TODO: we should probably get rid of this assumption that if an asset exists on disk with the same filename, it's the same asset
@@ -330,7 +469,9 @@ open class AppLoader: NSObject {
             }
           }
           // This replaces the old force try
-          assert(contents != nil)
+          if !UpdatesUtils.isNativeDebuggingEnabled() {
+            assert(contents != nil)
+          }
           if let contents = contents {
             existingAsset.contentHash = UpdatesUtils.hexEncodedSHA256WithData(contents)
             existingAsset.downloadTime = Date()
@@ -340,30 +481,23 @@ open class AppLoader: NSObject {
       }
 
       do {
-        try self.database.addNewAssets(
-          self.finishedAssets,
-          toUpdateWithId: self.updateResponseContainingManifest!.manifestUpdateResponsePart!.updateManifest.updateId
+        try self.database.finishUpdateRegistration(
+          updateManifest,
+          newAssets: self.finishedAssets,
+          existingAssets: assetsToLink,
+          markFinished: self.assetLoadFailures.isEmpty
         )
       } catch {
         self.arrayLock.unlock()
-        self.finish(withError: error)
+        self.finish(withError: UpdatesError.appLoaderUnknownError(cause: error))
         return
-      }
-
-      if self.erroredAssets.isEmpty {
-        do {
-          try self.database.markUpdateFinished(self.updateResponseContainingManifest!.manifestUpdateResponsePart!.updateManifest)
-        } catch {
-          self.arrayLock.unlock()
-          self.finish(withError: error)
-          return
-        }
       }
 
       var successBlock: AppLoaderSuccessBlock?
       var errorBlock: AppLoaderErrorBlock?
+      let assetLoadFailures = self.assetLoadFailures
 
-      if !self.erroredAssets.isEmpty {
+      if !assetLoadFailures.isEmpty {
         if let selfErrorBlock = self.errorBlock {
           errorBlock = selfErrorBlock
         }
@@ -377,15 +511,9 @@ open class AppLoader: NSObject {
 
       self.completionQueue.async {
         if let errorBlock = errorBlock {
-          errorBlock(NSError(
-            domain: AppLoader.ErrorDomain,
-            code: 1012,
-            userInfo: [
-              NSLocalizedDescriptionKey: "Failed to load all assets"
-            ]
-          ))
+          errorBlock(UpdatesError.appLoaderFailedToLoadAllAssets(failures: assetLoadFailures))
         } else if let successBlock = successBlock {
-          successBlock(self.updateResponseContainingManifest!)
+          successBlock(updateResponse)
         }
       }
     }

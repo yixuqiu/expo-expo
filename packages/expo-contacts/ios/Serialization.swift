@@ -49,7 +49,7 @@ func decodePhoneLabel(_ label: String?) -> String? {
     return nil
   }
 
-  var decodedLabel = decodeLabel(label: label)
+  let decodedLabel = decodeLabel(label: label)
   switch decodedLabel {
   case CNLabeledValue<NSString>.localizedString(forLabel: CNLabelPhoneNumberMain):
     return CNLabelPhoneNumberMain
@@ -99,11 +99,12 @@ func decodeBirthday(_ input: ContactDate?, contact: CNContact) -> DateComponents
   }
   if let year = input.year {
     components.year = year
+    // To be able to display a birthday with year component the contact requires
+    // us to set the calendar as well.
+    components.calendar = Calendar.current
   }
   if let day = input.day {
     components.day = day
-  }
-  if let format = input.format {
   }
 
   return components
@@ -200,7 +201,7 @@ func getDescriptors(for fields: [String]?, isWriting: Bool = false) -> [CNKeyDes
 }
 
 func serializeContact(person: CNContact, keys: [String]?, directory: URL?) throws -> [String: Any] {
-  var keysToFetch = keys ?? contactKeysToFetch(from: nil)
+  let keysToFetch = keys ?? contactKeysToFetch(from: nil)
   var contact = [String: Any]()
 
   contact[ContactsKey.id] = person.identifier
@@ -236,19 +237,20 @@ func serializeContact(person: CNContact, keys: [String]?, directory: URL?) throw
     contact[ContactsKey.jobTitle] = person.jobTitle
   }
   if fieldHasValue(field: person.departmentName) {
-    contact[ContactsKey.department] = person.dates
+    contact[ContactsKey.department] = person.departmentName
   }
 
   if keysToFetch.contains(CNContactNamePrefixKey) && fieldHasValue(field: person.namePrefix) {
+    contact[ContactsKey.namePrefix] = person.namePrefix
   }
   if keysToFetch.contains(CNContactNameSuffixKey) && fieldHasValue(field: person.nameSuffix) {
     contact[ContactsKey.nameSuffix] = person.nameSuffix
   }
   if keysToFetch.contains(CNContactPhoneticGivenNameKey) && fieldHasValue(field: person.phoneticGivenName) {
-    contact[ContactsKey.note] = person.phoneticGivenName
+    contact[ContactsKey.phoneticFirstName] = person.phoneticGivenName
   }
   if keysToFetch.contains(CNContactPhoneticMiddleNameKey) && fieldHasValue(field: person.phoneticMiddleName) {
-    contact[ContactsKey.note] = person.phoneticMiddleName
+    contact[ContactsKey.phoneticMiddleName] = person.phoneticMiddleName
   }
   if keysToFetch.contains(CNContactPhoneticFamilyNameKey) && fieldHasValue(field: person.phoneticFamilyName) {
     contact[ContactsKey.phoneticLastName] = person.phoneticFamilyName
@@ -307,7 +309,7 @@ func serializeContact(person: CNContact, keys: [String]?, directory: URL?) throw
     }
   }
   if keysToFetch.contains(CNContactInstantMessageAddressesKey) {
-    let values = socialProfilesFor(contact: person)
+    let values = instantMessageAddressesFor(contact: person)
     if let values {
       contact[ContactsKey.instantMessageAddresses] = values
     }
@@ -341,7 +343,9 @@ private func writeDataToUri(userId: String, data: Data?, imageKey: String, inclu
   let image = UIImage(data: data)
   let fileExtension = ".png"
 
-  var fileName = "\(userId)-\(imageKey)"
+  // Contact identifiers can contain "/" (e.g. "com.apple.introductions.accepted/494"), which
+  // `appendingPathComponent` would treat as a nested directory that doesn't exist.
+  var fileName = "\(userId.replacingOccurrences(of: "/", with: "_"))-\(imageKey)"
   fileName.append(fileExtension)
   guard let newPath = directory?.appendingPathComponent(fileName) else {
     return nil
@@ -349,7 +353,7 @@ private func writeDataToUri(userId: String, data: Data?, imageKey: String, inclu
 
   try data.write(to: newPath, options: .atomic)
   var response: [String: Any?] = [
-    "uri": newPath.path,
+    "uri": newPath.absoluteString,
     "width": image?.cgImage?.width,
     "height": image?.cgImage?.height
   ]
@@ -370,9 +374,7 @@ private func relationsFor(contact person: CNContact) -> [[String: Any]]? {
     var relation = [String: Any]()
     relation["name"] = val.name
     relation["id"] = container.identifier
-    if let label = container.label {
-      relation["label"] = CNLabeledValue<NSString>.localizedString(forLabel: label)
-    }
+    relation["label"] = getLocalizedLabel(from: container.label)
     results.append(relation)
   }
 
@@ -389,7 +391,7 @@ private func instantMessageAddressesFor(contact person: CNContact) -> [[String: 
     address["localizedService"] = CNInstantMessageAddress.localizedString(forKey: val.service)
     address["username"] = val.username
     address["id"] = container.identifier
-    address["label"] = container.label
+    address["label"] = getLocalizedLabel(from: container.label)
     results.append(address)
   }
 
@@ -408,9 +410,7 @@ private func socialProfilesFor(contact person: CNContact) -> [[String: Any]]? {
     profile["username"] = val.username
     profile["userId"] = val.userIdentifier
     profile["id"] = container.identifier
-    if let label = container.label {
-      profile["label"] = CNLabeledValue<NSString>.localizedString(forLabel: label) ?? label
-    }
+    profile["label"] = getLocalizedLabel(from: container.label)
     results.append(profile)
   }
 
@@ -422,12 +422,7 @@ private func emailsFor(contact person: CNContact) -> [[String: Any]]? {
 
   for container in person.emailAddresses {
     let emailAddress = container.value as String
-    if let label = container.label {
-      let emailLabel = CNLabeledValue<NSString>.localizedString(forLabel: label)
-      results.append(["email": emailAddress, "label": emailLabel, "id": container.identifier])
-    } else {
-      results.append(["email": emailAddress, "id": container.identifier])
-    }
+    results.append(["email": emailAddress, "label": getLocalizedLabel(from: container.label), "id": container.identifier])
   }
 
   return results.isEmpty ? nil : results
@@ -443,9 +438,7 @@ private func phoneNumbersFor(contact person: CNContact) -> [[String: Any]]? {
     phoneNumber["countryCode"] = val.value(forKey: "countryCode")
     phoneNumber["digits"] = val.value(forKey: "digits")
     phoneNumber["id"] = container.identifier
-    if let label = container.label {
-      phoneNumber["label"] = CNLabeledValue<NSString>.localizedString(forLabel: label)
-    }
+    phoneNumber["label"] = getLocalizedLabel(from: container.label)
     results.append(phoneNumber)
   }
 
@@ -466,11 +459,7 @@ private func addressesFor(contact person: CNContact) -> [[String: Any]]? {
     address["country"] = val.country
     address["isoCountryCode"] = val.isoCountryCode
     address["id"] = container.identifier
-
-    if let label = container.label {
-      address["label"] = CNLabeledValue<NSString>.localizedString(forLabel: label)
-    }
-
+    address["label"] = getLocalizedLabel(from: container.label)
     results.append(address)
   }
 
@@ -504,12 +493,7 @@ private func urlsFor(contact person: CNContact) -> [[String: Any]]? {
 
   for container in person.urlAddresses {
     let urlAddress = container.value
-    if let label = container.label {
-      let urlLabel = CNLabeledValue<NSString>.localizedString(forLabel: label)
-      results.append(["url": urlAddress, "label": urlLabel, "id": container.identifier])
-    } else {
-      results.append(["url": urlAddress, "id": container.identifier])
-    }
+    results.append(["url": urlAddress, "label": getLocalizedLabel(from: container.label), "id": container.identifier])
   }
 
   return results.isEmpty ? nil : results
@@ -517,7 +501,6 @@ private func urlsFor(contact person: CNContact) -> [[String: Any]]? {
 
 private func datesFor(contact person: CNContact) -> [[String: Any]]? {
   var results = [[String: Any]]()
-
   for container in person.dates {
     let val = container.value
     var date = [String: Any]()
@@ -528,9 +511,7 @@ private func datesFor(contact person: CNContact) -> [[String: Any]]? {
     if let calendar = val.calendar {
       date["format"] = calendarFormatToString(calendar.identifier)
     }
-    if let label = container.label {
-      date["label"] = CNLabeledValue<NSString>.localizedString(forLabel: label)
-    }
+    date["label"] = getLocalizedLabel(from: container.label)
     results.append(date)
   }
 
@@ -539,6 +520,15 @@ private func datesFor(contact person: CNContact) -> [[String: Any]]? {
 
 private func fieldHasValue(field: String) -> Bool {
   return !field.isEmpty
+}
+
+private func getLocalizedLabel(from label: String?) -> String {
+  if let label = label {
+    return CNLabeledValue<NSString>.localizedString(forLabel: label)
+  }
+  // Use localized "other" label to match iOS's standard.
+  // Since label is optional (String?), we provide a default value to ensure consistent label handling.
+  return CNLabeledValue<NSString>.localizedString(forLabel: CNLabelOther)
 }
 
 private func calendarFormatToString(_ identifier: Calendar.Identifier) -> String {
@@ -566,7 +556,7 @@ private func calendarFormatToString(_ identifier: Calendar.Identifier) -> String
 
 func encodeContainer(_ container: CNContainer) -> [String: Any] {
   return [
-    "name": container.name ?? "",
+    "name": container.name,
     "id": container.identifier,
     "type": encodeContainerType(container.type)
   ]
@@ -580,6 +570,8 @@ private func encodeContainerType(_ type: CNContainerType) -> String {
     return "exchange"
   case .cardDAV:
     return "cardDAV"
+  case .unassigned:
+    fallthrough
   @unknown default:
     return "unassigned"
   }

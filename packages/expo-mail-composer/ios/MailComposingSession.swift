@@ -1,10 +1,10 @@
 // Copyright 2022-present 650 Industries. All rights reserved.
 
 import MessageUI
-import MobileCoreServices
+import UniformTypeIdentifiers
 import ExpoModulesCore
 
-internal final class MailComposingSession: NSObject, MFMailComposeViewControllerDelegate {
+internal final class MailComposingSession: NSObject, MFMailComposeViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
   typealias ComposingCallback = (Result<[String: String], Exception>) -> ()
 
   let appContext: AppContext
@@ -47,6 +47,9 @@ internal final class MailComposingSession: NSObject, MFMailComposeViewController
       return
     }
     self.callback = callback
+    if let presentationController = composeController.presentationController {
+      presentationController.delegate = self
+    }
     currentViewController.present(composeController, animated: true)
   }
 
@@ -71,12 +74,20 @@ internal final class MailComposingSession: NSObject, MFMailComposeViewController
       }
     }
   }
+
+  // MARK: - UIAdaptivePresentationControllerDelegate
+  func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+    guard let callback = self.callback else {
+      return
+    }
+    callback(.success(["status": "cancelled"]))
+  }
 }
 
 private func findMimeType(forAttachment attachment: URL) -> String {
-  if let identifier = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, attachment.pathExtension as CFString, nil)?.takeRetainedValue(),
-     let type = UTTypeCopyPreferredTagWithClass(identifier, kUTTagClassMIMEType)?.takeRetainedValue() {
-    return type as String
+  if let utType = UTType(tag: attachment.pathExtension, tagClass: .filenameExtension, conformingTo: nil),
+     let mimeType = utType.preferredMIMEType {
+    return mimeType
   }
   return "application/octet-stream"
 }

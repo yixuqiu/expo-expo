@@ -1,6 +1,6 @@
-import path from 'path';
+import path from 'node:path';
+import { URL } from 'node:url';
 import { visit } from 'unist-util-visit';
-import { URL } from 'url';
 
 /**
  * @typedef {import('@types/mdast').Root} Root - https://github.com/syntax-tree/mdast#root
@@ -35,7 +35,7 @@ export default function remarkLinkRewrite(options) {
    */
   return (tree, file) => {
     // we can't rewrite files without knowing where the file exists
-    if (!file.cwd || !file.history || !file.history.length) {
+    if (!file.cwd || !file.history || file.history.length === 0) {
       return;
     }
     // index references should be ignored, it's handled by Next
@@ -63,6 +63,8 @@ export default function remarkLinkRewrite(options) {
         if (newUrl.includes(ignoredIndex)) {
           newUrl = newUrl.replace(ignoredIndex, '');
         }
+
+        newUrl = newUrl.replace(/(^|\/)index(#|$)/, '$1$2');
 
         // force forward slash on non-posix systems
         node.url = `/${newUrl.replace(/\\/g, '/')}`;

@@ -1,18 +1,24 @@
 import ExpoModulesCore
 
-internal class InvalidKeyException: Exception {
+internal final class InvalidKeyException: Exception {
   override var reason: String {
     "Invalid key"
   }
 }
 
-internal class MissingPlistKeyException: Exception {
+internal final class MissingPlistKeyException: Exception {
   override var reason: String {
     "You must set `NSFaceIDUsageDescription` in your Info.plist file to use the `requireAuthentication` option"
   }
 }
 
-internal class KeyChainException: GenericException<OSStatus> {
+internal final class SecAccessControlError: GenericException<Int?> {
+  override var reason: String {
+    return "Unable to construct SecAccessControl: \(param.map { "code " + String($0) } ?? "unknown error")"
+  }
+}
+
+internal final class KeyChainException: GenericException<OSStatus> {
   override var reason: String {
     switch param {
     case errSecUnimplemented:
@@ -22,10 +28,10 @@ internal class KeyChainException: GenericException<OSStatus> {
       return "I/O error."
 
     case errSecOpWr:
-      return "File already open with with write permission."
+      return "File already open with write permission."
 
     case errSecParam:
-      return "One or more parameters passed to a function where not valid."
+      return "One or more parameters passed to a function were not valid."
 
     case errSecAllocate:
       return "Failed to allocate memory."
@@ -55,6 +61,9 @@ internal class KeyChainException: GenericException<OSStatus> {
       return "Authentication failed. Provided passphrase/PIN is incorrect or there is no user authentication method configured for this device."
 
     default:
+      if let errorMessage = SecCopyErrorMessageString(param, nil) as? String {
+        return errorMessage
+      }
       return "Unknown Keychain Error."
     }
   }

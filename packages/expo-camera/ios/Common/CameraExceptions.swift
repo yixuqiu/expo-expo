@@ -1,55 +1,85 @@
 import ExpoModulesCore
 
-internal class CameraUnmountedException: Exception {
+internal final class CameraUnmountedException: Exception, @unchecked Sendable {
   override var reason: String {
     "Camera unmounted during taking photo process"
   }
 }
 
-internal class CameraNotReadyException: Exception {
+internal final class CameraNotReadyException: Exception, @unchecked Sendable {
   override var reason: String {
-    "Camera unmounted during taking photo process"
+    "Camera is not ready yet"
   }
 }
 
-internal class CameraOutputNotReadyException: Exception {
+internal final class CameraOutputNotReadyException: Exception, @unchecked Sendable {
   override var reason: String {
     "Camera is not ready yet. Wait for 'onCameraReady' callback"
   }
 }
 
-internal class CameraImageCaptureException: Exception {
+internal final class CameraImageCaptureException: Exception, @unchecked Sendable {
   override var reason: String {
     "Image could not be captured"
   }
 }
 
-internal class CameraSavingImageException: Exception {
+internal final class CameraSavingImageException: GenericException<String>, @unchecked Sendable {
   override var reason: String {
-    "Could not save the image"
+    "Failed to save image: \(param)"
   }
 }
 
-internal class CameraRecordingException: GenericException<String?> {
+internal final class CameraRecordingException: GenericException<String?>, @unchecked Sendable {
   override var reason: String {
-    "Video Codec '\(param)' is not supported on this device"
+    "Video Codec '\(String(describing: param))' is not supported on this device"
   }
 }
 
-internal class CameraRecordingFailedException: Exception {
+internal final class CameraRecordingFailedException: Exception, @unchecked Sendable {
   override var reason: String {
     "An error occurred while recording a video"
   }
 }
 
-internal class CameraMetadataDecodingException: Exception {
+internal final class CameraAlreadyRecordingException: Exception, @unchecked Sendable {
+  override var reason: String {
+    "The camera is already recording. Call `stopRecording()` and wait for the previous `recordAsync()` to resolve before starting a new recording"
+  }
+}
+
+internal final class CameraMetadataDecodingException: Exception, @unchecked Sendable {
   override var reason: String {
     "Could not decode image metadata"
   }
 }
 
-internal class CameraInvalidPhotoData: Exception {
+internal final class CameraInvalidPhotoData: Exception, @unchecked Sendable {
   override var reason: String {
-    "An error occured while generating photo data"
+    "An error occurred while generating photo data"
+  }
+}
+
+internal final class CameraToggleRecordingException: Exception, @unchecked Sendable {
+  override var reason: String {
+    "`toggleRecording()` is only supported on iOS 18.0 or later"
+  }
+}
+
+internal final class CameraScannerUnavailableException: Exception, @unchecked Sendable {
+  override var reason: String {
+    "Modern barcode scanner is not available on this device"
+  }
+}
+
+internal final class DocumentScannerUnavailableException: Exception, @unchecked Sendable {
+  override var reason: String {
+    "Document scanning is unavailable on this device. Check `CameraView.isDocumentScannerAvailable` before calling `scanDocumentAsync`"
+  }
+}
+
+internal final class DocumentScanFailedException: GenericException<String>, @unchecked Sendable {
+  override var reason: String {
+    "The document scan could not be completed: \(param)"
   }
 }

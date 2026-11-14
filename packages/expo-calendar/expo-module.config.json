@@ -1,10 +1,17 @@
 {
-  "name": "expo-calendar",
-  "platforms": ["ios", "android"],
-  "ios": {
-    "modules": ["CalendarModule"]
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["CalendarModule", "CalendarNextModule"]
   },
   "android": {
-    "modules": ["expo.modules.calendar.CalendarModule"]
+    "modules": [
+      "expo.modules.calendar.CalendarModule",
+      "expo.modules.calendar.next.CalendarNextModule"
+    ],
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.calendar",
+      "repository": "local-maven-repo"
+    }
   }
 }

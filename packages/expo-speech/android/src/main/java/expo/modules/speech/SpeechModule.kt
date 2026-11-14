@@ -4,9 +4,11 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.util.ArrayDeque
+import java.util.IllformedLocaleException
 import java.util.Locale
 import java.util.Queue
 
@@ -18,6 +20,8 @@ const val speakingErrorEvent = "Exponent.speakingError"
 
 class SpeechModule : Module() {
   private val delayedUtterances: Queue<Utterance> = ArrayDeque()
+  private val delayedGetVoices: Queue<Promise> = ArrayDeque()
+  private var ttsState = TtsState.PENDING
 
   override fun definition() = ModuleDefinition {
     Name("ExpoSpeech")
@@ -30,7 +34,9 @@ class SpeechModule : Module() {
       speakingErrorEvent
     )
 
-    Constants("maxSpeechInputLength" to TextToSpeech.getMaxSpeechInputLength())
+    Constant("maxSpeechInputLength") {
+      TextToSpeech.getMaxSpeechInputLength()
+    }
 
     OnActivityDestroys {
       textToSpeech.shutdown()
@@ -40,26 +46,16 @@ class SpeechModule : Module() {
       textToSpeech.isSpeaking
     }
 
-    AsyncFunction<List<VoiceRecord>>("getVoices") {
-      val nativeVoices = try {
-        textToSpeech.voices.toList()
-      } catch (_: Exception) {
-        emptyList()
-      }
+    AsyncFunction("getVoices") { promise: Promise ->
+      when (ttsState) {
+        TtsState.READY -> promise.resolve(getVoices())
+        TtsState.FAILED -> promise.resolve(emptyList<VoiceRecord>())
+        TtsState.PENDING -> {
+          delayedGetVoices.add(promise)
 
-      return@AsyncFunction nativeVoices.map {
-        val quality = if (it.quality > Voice.QUALITY_NORMAL) {
-          VoiceQuality.ENHANCED
-        } else {
-          VoiceQuality.DEFAULT
+          // Init TTS, the promise will be fulfilled after onInit
+          textToSpeech
         }
-
-        VoiceRecord(
-          identifier = it.name,
-          name = it.name,
-          quality = quality,
-          language = LanguageUtils.getISOCode(it.locale)
-        )
       }
     }
 
@@ -72,15 +68,40 @@ class SpeechModule : Module() {
         throw SpeechInputIsToLongException()
       }
 
-      if (isTextToSpeechReady) {
-        speakOut(id, text, options)
-      } else {
-        delayedUtterances.add(Utterance(id, text, options))
+      when (ttsState) {
+        TtsState.READY -> speakOut(id, text, options)
+        TtsState.FAILED -> sendEvent(speakingErrorEvent, idToMap(id))
+        TtsState.PENDING -> {
+          delayedUtterances.add(Utterance(id, text, options))
 
-        // init TTS, speaking will be available only after onInit
-        textToSpeech
+          // init TTS, speaking will be available only after onInit
+          textToSpeech
+        }
       }
       Unit
+    }
+  }
+
+  private fun getVoices(): List<VoiceRecord> {
+    val nativeVoices = try {
+      textToSpeech.voices.toList()
+    } catch (err: Exception) {
+      throw SpeechUnableToGetVoicesException(err)
+    }
+
+    return nativeVoices.map {
+      val quality = if (it.quality > Voice.QUALITY_NORMAL) {
+        VoiceQuality.ENHANCED
+      } else {
+        VoiceQuality.DEFAULT
+      }
+
+      VoiceRecord(
+        identifier = it.name,
+        name = it.name,
+        quality = quality,
+        language = LanguageUtils.getISOCode(it.locale)
+      )
     }
   }
 
@@ -89,15 +110,19 @@ class SpeechModule : Module() {
     options.rate?.let(textToSpeech::setSpeechRate)
 
     textToSpeech.language = options.language?.let {
-      val locale = Locale(it)
-      val languageAvailable = textToSpeech.isLanguageAvailable(locale)
+      try {
+        val locale = Locale.Builder().setLanguage(it).build()
+        val languageAvailable = textToSpeech.isLanguageAvailable(locale)
 
-      return@let if (
-        languageAvailable != TextToSpeech.LANG_MISSING_DATA &&
-        languageAvailable != TextToSpeech.LANG_NOT_SUPPORTED
-      ) {
-        locale
-      } else {
+        return@let if (
+          languageAvailable != TextToSpeech.LANG_MISSING_DATA &&
+          languageAvailable != TextToSpeech.LANG_NOT_SUPPORTED
+        ) {
+          locale
+        } else {
+          Locale.getDefault()
+        }
+      } catch (_: IllformedLocaleException) {
         Locale.getDefault()
       }
     } ?: Locale.getDefault()
@@ -108,25 +133,29 @@ class SpeechModule : Module() {
         ?.let(textToSpeech::setVoice)
     }
 
+    val params = Bundle().apply {
+      options.volume?.let {
+        val volume = it.coerceAtLeast(0.0f).coerceAtMost(1.0f)
+        putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume)
+      }
+    }
+
     textToSpeech.speak(
       text,
       TextToSpeech.QUEUE_ADD,
-      null,
+      params,
       id
     )
   }
 
   // TextToSpeech object related code
 
-  private val isTextToSpeechReady
-    get() = _ttsReady
-
   private val textToSpeech: TextToSpeech by lazy {
     val newTtsInstance = TextToSpeech(appContext.reactContext) { status: Int ->
       if (status == TextToSpeech.SUCCESS) {
         // synchronize because in some cases this runs on another thread and _textToSpeech is null
         synchronized(this@SpeechModule) {
-          _ttsReady = true
+          ttsState = TtsState.READY
           _textToSpeech!!.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
 
             override fun onStart(utteranceId: String) {
@@ -157,6 +186,15 @@ class SpeechModule : Module() {
           for ((id, text, options) in delayedUtterances) {
             speakOut(id, text, options)
           }
+          for (promise in delayedGetVoices) {
+            promise.resolve(getVoices())
+          }
+        }
+      } else {
+        synchronized(this@SpeechModule) {
+          ttsState = TtsState.FAILED
+          delayedGetVoices.forEach { it.resolve(emptyList<VoiceRecord>()) }
+          delayedUtterances.forEach { sendEvent(speakingErrorEvent, idToMap(it.id)) }
         }
       }
     }
@@ -175,7 +213,12 @@ class SpeechModule : Module() {
     val options: SpeechOptions
   )
 
-  // do not refer to these - they're only needed when initializing `textToSpeech`
+  private enum class TtsState {
+    PENDING,
+    READY,
+    FAILED
+  }
+
+  // do not refer to this - it's only needed when initializing `textToSpeech`
   private var _textToSpeech: TextToSpeech? = null
-  private var _ttsReady = false
 }

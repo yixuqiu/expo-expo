@@ -1,26 +1,13 @@
 package expo.modules.kotlin.types
 
 import com.google.common.truth.Truth
+import expo.modules.kotlin.EnumWithInt
+import expo.modules.kotlin.EnumWithRenamedParameter
+import expo.modules.kotlin.EnumWithString
+import expo.modules.kotlin.EnumWithoutParameter
 import org.junit.Test
 
 class EnumSerializerTest {
-  enum class EnumWithoutParameter : Enumerable {
-    VALUE1,
-    VALUE2,
-    VALUE3
-  }
-
-  enum class EnumWithInt(val value: Int) : Enumerable {
-    VALUE1(1),
-    VALUE2(2),
-    VALUE3(3)
-  }
-
-  enum class EnumWithString(val value: String) : Enumerable {
-    VALUE1("value1"),
-    VALUE2("value2"),
-    VALUE3("value3")
-  }
 
   enum class IncompatibleEnum(val v1: String, val v2: String) : Enumerable {
     SOME_VALUE("hello", "world")
@@ -57,6 +44,11 @@ class EnumSerializerTest {
     Truth.assertThat(v1.toJSValue()).isEqualTo("value1")
     Truth.assertThat(v2.toJSValue()).isEqualTo("value2")
     Truth.assertThat(v3.toJSValue()).isEqualTo("value3")
+  }
+
+  @Test
+  fun `should convert enum with renamed constructor parameter to its value`() {
+    Truth.assertThat(EnumWithRenamedParameter.VALUE1.toJSValue()).isEqualTo("value1")
   }
 
   @Test(expected = IllegalStateException::class)

@@ -1,36 +1,42 @@
 import spawnAsync from '@expo/spawn-async';
 import fs from 'fs';
-import fse from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import process from 'process';
-import resolveFrom from 'resolve-from';
 
 const debug = require('debug')('expo:metro:hermes') as typeof console.log;
 
-const reactNativeDir = path.join(require.resolve('react-native/package.json'), '..');
-
 function importHermesCommandFromProject(): string {
   const platformExecutable = getHermesCommandPlatform();
-  const hermescLocations = [
+
+  const reactNativeRoot = path.dirname(require.resolve('react-native/package.json'));
+  const hermesCompilerRoot = path.dirname(
+    require.resolve('hermes-compiler/package.json', {
+      paths: [require.resolve('react-native/package.json')],
+    })
+  );
+
+  const hermescPaths = [
     // Override hermesc dir by environment variables
     process.env['REACT_NATIVE_OVERRIDE_HERMES_DIR']
-      ? path.join(process.env['REACT_NATIVE_OVERRIDE_HERMES_DIR'], 'build/bin/hermesc')
+      ? `${process.env['REACT_NATIVE_OVERRIDE_HERMES_DIR']}/build/bin/hermesc`
       : '',
 
     // Building hermes from source
-    'react-native/ReactAndroid/hermes-engine/build/hermes/bin/hermesc',
+    `${reactNativeRoot}/ReactAndroid/hermes-engine/build/hermes/bin/hermesc`,
+
+    // react-native 0.83+ moved hermesc to a separate package
+    `${hermesCompilerRoot}/hermesc/${platformExecutable}`,
 
     // Prebuilt hermesc in official react-native 0.69+
-    `react-native/sdks/hermesc/${platformExecutable}`,
-
-    // Legacy hermes-engine package
-    `hermes-engine/${platformExecutable}`,
+    `${reactNativeRoot}/sdks/hermesc/${platformExecutable}`,
   ];
 
-  for (const location of hermescLocations) {
+  for (const hermescPath of hermescPaths) {
     try {
-      return resolveFrom(reactNativeDir, location);
+      if (fs.existsSync(hermescPath)) {
+        return hermescPath;
+      }
     } catch {}
   }
   throw new Error('Cannot find the hermesc executable.');
@@ -81,6 +87,6 @@ export async function compileToHermesBytecodeAsync({
     }
     throw error;
   } finally {
-    await fse.remove(tempDir);
+    await fs.promises.rm(tempDir, { recursive: true, force: true });
   }
 }

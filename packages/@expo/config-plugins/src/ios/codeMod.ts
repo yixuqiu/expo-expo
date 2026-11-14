@@ -1,4 +1,5 @@
-import { CodeBlock, insertContentsAtOffset, searchFromOffset } from '../utils/commonCodeMod';
+import type { CodeBlock } from '../utils/commonCodeMod';
+import { insertContentsAtOffset, searchFromOffset } from '../utils/commonCodeMod';
 import { findMatchingBracketPosition } from '../utils/matchBrackets';
 
 interface SwiftFunctionParam {
@@ -25,6 +26,25 @@ export function addObjcImports(source: string, imports: string[]): string {
   for (const importElement of imports) {
     if (!source.includes(importElement)) {
       const importStatement = `#import ${importElement}`;
+      lines.splice(lineIndexWithFirstImport + 1, 0, importStatement);
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Add Swift import
+ * @param source source contents
+ * @param imports array of imports, e.g. ['Expo']
+ * @returns updated contents
+ */
+export function addSwiftImports(source: string, imports: string[]): string {
+  const lines = source.split('\n');
+  // Try to insert statements after first import where would probably not in #if block
+  const lineIndexWithFirstImport = lines.findIndex((line) => line.match(/^import .*$/));
+  for (const importElement of imports) {
+    if (!source.includes(importElement)) {
+      const importStatement = `import ${importElement}`;
       lines.splice(lineIndexWithFirstImport + 1, 0, importStatement);
     }
   }
@@ -175,7 +195,7 @@ export function findSwiftFunctionCodeBlock(contents: string, selector: string): 
       continue;
     }
     for (let i = 0; i < argLabels.length; ++i) {
-      if (argLabels[i] !== params[i].argumentLabel) {
+      if (argLabels[i] !== params[i]?.argumentLabel) {
         continue;
       }
     }
@@ -196,7 +216,7 @@ export function findSwiftFunctionCodeBlock(contents: string, selector: string): 
 
 function parseSwiftFunctionParam(paramTuple: string): SwiftFunctionParam {
   const semiIndex = paramTuple.indexOf(':');
-  const [argumentLabel, parameterName] = paramTuple.substring(0, semiIndex).split(/\s+/);
+  const [argumentLabel = '', parameterName = ''] = paramTuple.substring(0, semiIndex).split(/\s+/);
   const typeString = paramTuple.substring(semiIndex + 1).trim();
   return {
     argumentLabel,

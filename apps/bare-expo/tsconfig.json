@@ -1,9 +1,15 @@
 {
+  "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "lib": [
-      "dom",
-      "esnext"
-    ]
-  },
-  "extends": "expo/tsconfig.base"
+    "baseUrl": ".",
+    "lib": ["dom", "esnext"],
+    "paths": {
+      "ThemeProvider": ["../common/ThemeProvider"],
+      "benchmark-helper": ["./modules/benchmark-helper"],
+      "expo-v2-demo": ["./modules/expo-v2-demo"],
+      "benchmarking": ["./modules/benchmarking"],
+      "worklets-tester": ["./modules/worklets-tester"],
+      "test-expo-ui": ["./modules/test-expo-ui"]
+    }
+  }
 }

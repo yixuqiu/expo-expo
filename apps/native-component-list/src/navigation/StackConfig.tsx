@@ -1,50 +1,64 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { HeaderStyleInterpolators } from '@react-navigation/stack';
+import Ionicons from '@react-native-vector-icons/ionicons';
+import { ThemeType, useTheme } from 'ThemeProvider';
+import { Stack, router, type NativeStackNavigationOptions, useRouter } from 'expo-router';
 import * as React from 'react';
-import { Platform, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Platform, TouchableOpacity } from 'react-native';
 
-import { Colors } from '../constants';
+// iOS takes an SF Symbol name, Android needs an xml drawable.
+const searchIcon =
+  process.env.EXPO_OS === 'ios' ? 'magnifyingglass' : require('@expo/material-symbols/search.xml');
 
-const styles = StyleSheet.create({
-  header: Platform.select({
-    default: {
-      backgroundColor: Colors.headerBackground,
-    },
-    android: {
-      elevation: 0,
-      borderBottomWidth: 1,
-      borderBottomColor: '#eee',
-    },
-  }),
-  headerTitle: {
-    color: Colors.headerTitle,
-  },
-  card: {
-    backgroundColor: Colors.greyBackground,
-  },
-});
-
-export default function getStackConfig({
-  navigation,
-}: {
-  navigation: BottomTabNavigationProp<any>;
-}) {
+export function getStackScreenOptions(theme: ThemeType): NativeStackNavigationOptions {
   return {
-    cardStyle: styles.card,
-    screenOptions: () => ({
-      headerStyleInterpolator: HeaderStyleInterpolators.forUIKit,
-      headerStyle: styles.header,
-      headerTintColor: Colors.tintColor,
-      headerTitleStyle: styles.headerTitle,
-      headerPressColorAndroid: Colors.tintColor,
-      headerRight: () => (
-        <TouchableOpacity
-          onPress={() => navigation.navigate('searchNavigator')}
-          style={{ marginRight: 16 }}>
-          <Ionicons name="search" size={Platform.OS === 'ios' ? 22 : 25} color={Colors.tintColor} />
-        </TouchableOpacity>
-      ),
-    }),
+    contentStyle: { backgroundColor: theme.background.default },
+    headerStyle: { backgroundColor: theme.background.default },
+    headerTintColor: theme.icon.info,
+    headerTitleStyle: { color: theme.text.default },
   };
 }
+
+/** Header search button, rendered by the screens that browse the API and component lists. */
+export function SearchToolbar() {
+  const { theme } = useTheme();
+
+  // Toolbar items have no native counterpart on web, so `asChild` renders a JS button instead.
+  if (Platform.OS === 'web') {
+    return (
+      <Stack.Toolbar placement="right" asChild>
+        <HeaderRightComponent theme={theme} />
+      </Stack.Toolbar>
+    );
+  }
+
+  return (
+    <Stack.Toolbar placement="right">
+      <Stack.Toolbar.Button
+        accessibilityLabel="Search"
+        icon={searchIcon}
+        tintColor={theme.icon.info}
+        onPress={() => router.push('/search')}
+      />
+    </Stack.Toolbar>
+  );
+}
+
+const HeaderRightComponent = ({ theme }: { theme: ThemeType }) => {
+  const router = useRouter();
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginHorizontal: 10,
+        marginBottom: 4,
+        marginTop: 4,
+        gap: 20,
+      }}>
+      <TouchableOpacity onPress={() => router.push('/search')}>
+        <Ionicons name="search" size={Platform.OS === 'ios' ? 22 : 25} color={theme.icon.info} />
+      </TouchableOpacity>
+      {/* This toggler does not work properly, it only updates the navigation and not the body UI */}
+      {/* <ThemeToggler /> */}
+    </View>
+  );
+};

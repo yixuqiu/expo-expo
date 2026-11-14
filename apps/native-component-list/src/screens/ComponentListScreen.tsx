@@ -1,25 +1,61 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { Link, useLinkProps } from '@react-navigation/native';
+import Ionicons from '@react-native-vector-icons/ionicons';
+import { isRunningInExpoGo } from 'expo';
+import { Link } from 'expo-router';
 import React from 'react';
 import {
   FlatList,
   ListRenderItem,
   PixelRatio,
   StatusBar,
+  StyleProp,
   StyleSheet,
   Text,
   TouchableHighlight,
   View,
+  ViewStyle,
   Platform,
   Pressable,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getScreenIdForLinking } from 'test-suite/screens/getScreenIdForLinking';
+
+import { useTheme } from '../../../common/ThemeProvider';
+import type { ScreenConfig } from '../types/ScreenConfig';
+
+const useObserve: typeof import('expo-observe').useObserve = isRunningInExpoGo()
+  ? () => ({ markInteractive: () => {} })
+  : require('expo-observe').useObserve;
 
 export interface ListElement {
+  screenName?: string;
   name: string;
-  route?: string;
-  isAvailable?: boolean;
+  route: string;
+  isAvailable: boolean;
+}
+
+/**
+ * Converts component screen configs to ListElements with '/components/' prefix.
+ * @param screens - Array of screen configurations
+ */
+export function componentScreensToListElements(screens: ScreenConfig[]): ListElement[] {
+  return screens.map((screen) => ({
+    name: screen.name,
+    isAvailable: true,
+    route: `/components/${getScreenIdForLinking(screen)}`,
+  }));
+}
+
+/**
+ * Converts API screen configs to ListElements with '/apis/' prefix.
+ * @param screens - Array of screen configurations
+ */
+export function apiScreensToListElements(screens: ScreenConfig[]): ListElement[] {
+  return screens.map((screen) => ({
+    name: screen.name,
+    isAvailable: true,
+    route: `/apis/${getScreenIdForLinking(screen)}`,
+  }));
 }
 
 interface Props {
@@ -29,50 +65,63 @@ interface Props {
 }
 
 function LinkButton({
-  to,
-  action,
+  href,
   children,
   ...rest
-}: React.ComponentProps<typeof Link> & { disabled?: boolean; children?: React.ReactNode }) {
-  const { onPress, ...props } = useLinkProps({ to, action });
-
+}: {
+  href: string;
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+  children?: React.ReactNode;
+}) {
+  const { theme } = useTheme();
   const [isPressed, setIsPressed] = React.useState(false);
 
   if (Platform.OS === 'web') {
     // It's important to use a `View` or `Text` on web instead of `TouchableX`
     // Otherwise React Native for Web omits the `onClick` prop that's passed
-    // You'll also need to pass `onPress` as `onClick` to the `View`
     // You can add hover effects using `onMouseEnter` and `onMouseLeave`
     return (
-      <Pressable
-        pointerEvents={rest.disabled === true ? 'none' : 'auto'}
-        onPressIn={() => setIsPressed(true)}
-        onPressOut={() => setIsPressed(false)}
-        onPress={onPress}
-        {...props}
-        {...rest}
-        style={[
-          {
-            backgroundColor: isPressed ? '#dddddd' : undefined,
-          },
-          rest.style,
-        ]}>
-        {children}
-      </Pressable>
+      <Link href={href} asChild>
+        <Pressable
+          pointerEvents={rest.disabled === true ? 'none' : 'auto'}
+          onPressIn={() => setIsPressed(true)}
+          onPressOut={() => setIsPressed(false)}
+          {...rest}
+          // `Link asChild` requires a flattened style object on its child.
+          style={StyleSheet.flatten([
+            {
+              backgroundColor: isPressed ? theme.background.hover : undefined,
+            },
+            rest.style,
+          ])}>
+          {children}
+        </Pressable>
+      </Link>
     );
   }
 
   return (
-    <TouchableHighlight underlayColor="#dddddd" onPress={onPress} {...props} {...rest}>
-      {children}
-    </TouchableHighlight>
+    <Link href={href} asChild>
+      <TouchableHighlight
+        underlayColor={theme.background.hover}
+        {...rest}
+        // `Link asChild` requires a flattened style object on its child.
+        style={StyleSheet.flatten(rest.style)}>
+        {children}
+      </TouchableHighlight>
+    </Link>
   );
 }
 
 export default function ComponentListScreen(props: Props) {
+  const { theme } = useTheme();
+  const { markInteractive } = useObserve();
+
   React.useEffect(() => {
     StatusBar.setHidden(false);
-  }, []);
+    markInteractive();
+  }, [markInteractive]);
 
   const { width } = useWindowDimensions();
   const isMobile = width <= 640;
@@ -81,16 +130,19 @@ export default function ComponentListScreen(props: Props) {
   const { bottom, right } = useSafeAreaInsets();
 
   const renderExampleSection: ListRenderItem<ListElement> = ({ item }) => {
-    const { route, name: exampleName, isAvailable } = item;
+    const { route, screenName, name: exampleName, isAvailable } = item;
     return (
-      <LinkButton disabled={!isAvailable} to={route ?? exampleName} style={[styles.rowTouchable]}>
+      <LinkButton
+        disabled={!isAvailable}
+        href={route ?? screenName ?? exampleName}
+        style={[styles.rowTouchable, { borderBottomColor: theme.border.secondary }]}>
         <View
           pointerEvents="none"
           style={[styles.row, !isAvailable && styles.disabledRow, { paddingRight: 10 + right }]}>
           {props.renderItemRight && props.renderItemRight(item)}
-          <Text style={styles.rowLabel}>{exampleName}</Text>
+          <Text style={[styles.rowLabel, { color: theme.text.default }]}>{exampleName}</Text>
           <Text style={styles.rowDecorator}>
-            <Ionicons name="chevron-forward" size={18} color="#595959" />
+            <Ionicons name="chevron-forward" size={18} color={theme.icon.secondary} />
           </Text>
         </View>
       </LinkButton>
@@ -118,9 +170,15 @@ export default function ComponentListScreen(props: Props) {
     <FlatList<ListElement>
       initialNumToRender={25}
       removeClippedSubviews={false}
+      // Screens with a native search bar or large title grow their header at runtime, so let iOS
+      // inset the list instead of letting the header cover the first rows.
+      contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
-      contentContainerStyle={{ backgroundColor: '#fff', paddingBottom: isMobile ? 0 : bottom }}
+      style={{ backgroundColor: theme.background.screen }}
+      contentContainerStyle={{
+        paddingBottom: isMobile ? 0 : bottom,
+      }}
       data={sortedApis}
       keyExtractor={keyExtractor}
       renderItem={renderExampleSection}
@@ -146,7 +204,6 @@ const styles = StyleSheet.create({
   },
   rowTouchable: {
     borderBottomWidth: 1.0 / PixelRatio.get(),
-    borderBottomColor: '#dddddd',
   },
   disabledRow: {
     opacity: 0.3,

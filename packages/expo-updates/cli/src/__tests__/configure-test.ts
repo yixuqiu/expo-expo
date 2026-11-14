@@ -4,7 +4,7 @@ import {
   generateKeyPair,
   generateSelfSignedCodeSigningCertificate,
 } from '@expo/code-signing-certificates';
-import { getConfig } from '@expo/config';
+import { getConfig } from 'expo/config';
 import fs from 'fs';
 import { vol } from 'memfs';
 import path from 'path';
@@ -12,6 +12,7 @@ import path from 'path';
 import { configureCodeSigningAsync } from '../configureCodeSigningAsync';
 
 jest.mock('fs');
+jest.mock('node:fs', () => require('memfs').fs);
 
 const fsReal = jest.requireActual('fs') as typeof fs;
 

@@ -1,6 +1,9 @@
-import { ProxyNativeModule } from 'expo-modules-core';
+import type { ProxyNativeModule } from 'expo-modules-core';
 
 // @docsMissing
+/**
+ * @platform android
+ * */
 export enum AndroidNotificationVisibility {
   UNKNOWN = 0,
   PUBLIC = 1,
@@ -9,6 +12,9 @@ export enum AndroidNotificationVisibility {
 }
 
 // @docsMissing
+/**
+ * @platform android
+ * */
 export enum AndroidAudioContentType {
   UNKNOWN = 0,
   SPEECH = 1,
@@ -18,22 +24,27 @@ export enum AndroidAudioContentType {
 }
 
 // @docsMissing
+/**
+ * @platform android
+ * */
 export enum AndroidImportance {
   UNKNOWN = 0,
+  /**
+   * Use `DEFAULT` instead. This value is present for compatibility reasons.
+   * */
   UNSPECIFIED = 1,
   NONE = 2,
   MIN = 3,
   LOW = 4,
   DEFAULT = 5,
-  /**
-   * @deprecated Use `DEFAULT` instead.
-   */
-  DEEFAULT = 5,
   HIGH = 6,
   MAX = 7,
 }
 
 // @docsMissing
+/**
+ * @platform android
+ * */
 export enum AndroidAudioUsage {
   UNKNOWN = 0,
   MEDIA = 1,
@@ -53,6 +64,9 @@ export enum AndroidAudioUsage {
 }
 
 // @docsMissing
+/**
+ * @platform android
+ */
 export interface AudioAttributes {
   usage: AndroidAudioUsage;
   contentType: AndroidAudioContentType;
@@ -65,10 +79,13 @@ export interface AudioAttributes {
 // We're making inner flags required to set intentionally.
 // Not providing `true` for a flag makes it false, it doesn't make sense
 // to let it be left undefined.
+/**
+ * @platform android
+ */
 export type AudioAttributesInput = Partial<AudioAttributes>;
 
 /**
- * An object represents a notification channel.
+ * An object which represents a notification channel.
  * @platform android
  */
 export interface NotificationChannel {
@@ -80,6 +97,9 @@ export interface NotificationChannel {
   groupId?: string | null;
   lightColor: string;
   lockscreenVisibility: AndroidNotificationVisibility;
+  /**
+   * Whether this channel allows launcher badges. Display depends on the launcher and the user's settings.
+   */
   showBadge: boolean;
   sound: 'default' | 'custom' | null;
   audioAttributes: AudioAttributes;
@@ -88,10 +108,13 @@ export interface NotificationChannel {
   enableVibrate: boolean;
 }
 
+/**
+ * @hidden
+ * */
 export type RequiredBy<T, K extends keyof T> = Partial<Omit<T, K>> & Required<Pick<T, K>>;
 
 /**
- * An object represents a notification channel to be set.
+ * An object which represents a notification channel to be set.
  * @platform android
  */
 export type NotificationChannelInput = RequiredBy<

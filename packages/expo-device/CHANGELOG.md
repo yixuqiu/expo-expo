@@ -1,14 +1,238 @@
 # Changelog
 
-## Unpublished
+## 58.0.5
 
-### 🛠 Breaking changes
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.4
+
+### Patch Changes
+
+- Add missing types to `modelId`. ([#50768](https://github.com/expo/expo/pull/50768) by [@zoontek](https://github.com/zoontek))
+
+## 58.0.3
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.2 — 2026-09-22
 
 ### 🎉 New features
 
+- [iOS] Added 2026 iPhone models. ([#49924](https://github.com/expo/expo/pull/49924) by [@fobos531](https://github.com/fobos531))
+
+## 58.0.1 — 2026-09-21
+
 ### 🐛 Bug fixes
 
+- [Android] `isSideLoadingEnabledAsync` no longer surfaces a raw `SecurityException` when the app does not declare `REQUEST_INSTALL_PACKAGES` - it now throws a coded error explaining the requirement. ([#50265](https://github.com/expo/expo/pull/50265) by [@lukmccall](https://github.com/lukmccall))
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.16 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-04-13
+
+### 🛠 Breaking changes
+
+- [iOS] Change the names of "iPad Air (11-inch) (6th generation)", "iPad Air (13-inch) (6th generation)" and "iPhone SE" to "iPad Air 11-inch (M2)", "iPad Air 13-inch (M2)" and "iPhone SE (1st generation)". ([#43644](https://github.com/expo/expo/pull/43644) by [@prusnak](https://github.com/prusnak))
+
+### 🎉 New features
+
+- [iOS] Update Apple devices ([#43644](https://github.com/expo/expo/pull/43644) by [@prusnak](https://github.com/prusnak))
+
+## 55.0.14 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
 ### 💡 Others
+
+- [Android] Removed unused `androidx.legacy:legacy-support` dependency. ([#39762](https://github.com/expo/expo/pull/39762) by [@lukmccall](https://github.com/lukmccall))
+
+## 8.0.10 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.9 - 2025-10-01
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.8 - 2025-09-18
+
+### 🎉 New features
+
+- [iOS] Added support for iOS 26 and iPhone 17 devices. ([#39797](https://github.com/expo/expo/pull/39797) by [@chrfalch](https://github.com/chrfalch))
+
+## 8.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.6 — 2025-09-02
+
+### 💡 Others
+
+- Change Constants to Constant/Property. ([#38926](https://github.com/expo/expo/pull/38926) by [@jakex7](https://github.com/jakex7))
+
+## 8.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+
+## 7.0.3 - 2025-04-01
+
+### 🐛 Bug fixes
+
+- [ios] Fixed build errors in XCode 16.3 ([#35811](https://github.com/expo/expo/pull/35811) by [@chrfalch](https://github.com/chrfalch))
+
+## 7.0.2 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.1 — 2024-10-22
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- [iOS] Added some missing entries for 2024 Apple devices. ([#31970](https://github.com/expo/expo/pull/31970) by [@fobos531](https://github.com/fobos531))
 
 ## 6.0.2 — 2024-05-01
 

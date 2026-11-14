@@ -1,69 +1,86 @@
-import ReactMarkdown from 'react-markdown';
+import { mergeClasses } from '@expo/styleguide';
+import { CornerDownRightIcon } from '@expo/styleguide-icons/outline/CornerDownRightIcon';
 
+import { APIBoxHeader } from '~/components/plugins/api/components/APIBoxHeader';
+import { APIBoxSectionHeader } from '~/components/plugins/api/components/APIBoxSectionHeader';
+import { H2, CODE, CALLOUT } from '~/ui/components/Text';
+
+import { ClassDefinitionData, GeneratedData, PropData, TypeDocKind } from './APIDataTypes';
+import { APISectionDeprecationNote } from './APISectionDeprecationNote';
+import { renderMethod } from './APISectionMethods';
+import { renderProp } from './APISectionProps';
 import {
-  ClassDefinitionData,
-  GeneratedData,
-  PropData,
-} from '~/components/plugins/api/APIDataTypes';
-import { APISectionDeprecationNote } from '~/components/plugins/api/APISectionDeprecationNote';
-import { renderMethod } from '~/components/plugins/api/APISectionMethods';
-import { APISectionPlatformTags } from '~/components/plugins/api/APISectionPlatformTags';
-import { renderProp } from '~/components/plugins/api/APISectionProps';
-import {
-  CommentTextBlock,
-  H3Code,
   getTagData,
-  getTagNamesList,
-  mdComponents,
   resolveTypeName,
-  STYLES_APIBOX,
-  STYLES_APIBOX_NESTED,
-  TypeDocKind,
-  getCommentContent,
-  BoxSectionHeader,
   DEFAULT_BASE_NESTING_LEVEL,
-} from '~/components/plugins/api/APISectionUtils';
-import { H2, P, CODE, MONOSPACE, DEMI } from '~/ui/components/Text';
+  extractDefaultPropValue,
+  getAllTagData,
+} from './APISectionUtils';
+import { APICommentTextBlock } from './components/APICommentTextBlock';
+import { STYLES_APIBOX, STYLES_APIBOX_NESTED, STYLES_SECONDARY, VERTICAL_SPACING } from './styles';
 
 export type APISectionClassesProps = {
   data: GeneratedData[];
   sdkVersion: string;
-
-  /**
-   * Whether to expose all classes props in the sidebar.
-   * @default true when `data` has only one class, false otherwise.
-   *
-   * > **Note:** When you have multiple classes and want to enable this option, you should also set the mdx `maxHeadingDepth` at least to 3.
-   */
-  exposeAllClassPropsInSidebar?: boolean;
 };
 
-const classNamesMap: Record<string, string> = {
+const CLASS_NAMES_MAP: Record<string, string> = {
   AccelerometerSensor: 'Accelerometer',
   BarometerSensor: 'Barometer',
   DeviceMotionSensor: 'DeviceMotion',
   GyroscopeSensor: 'Gyroscope',
   MagnetometerSensor: 'Magnetometer',
+  LightSensor: 'LightSensor',
 } as const;
 
-const isProp = (child: PropData) =>
-  child.kind === TypeDocKind.Property &&
-  !child.overwrites &&
-  !child.name.startsWith('_') &&
-  !child.implementationOf;
+const CLASSES_TO_IGNORE_INHERITED_PROPS = [
+  'EventEmitter',
+  'NativeModule',
+  'SharedObject',
+  'SharedRef',
+] as const;
 
-const isMethod = (child: PropData, allowOverwrites: boolean = false) =>
-  child.kind &&
-  [TypeDocKind.Method, TypeDocKind.Function, TypeDocKind.Accessor].includes(child.kind) &&
-  (allowOverwrites || !child.overwrites) &&
-  !child.name.startsWith('_') &&
-  !child?.implementationOf;
+const isProp = (child: PropData) => {
+  const isImplementationOfBlobInterface =
+    child.implementationOf?.type === 'reference' &&
+    child.implementationOf?.name?.startsWith('Blob.');
+
+  return (
+    child.kind &&
+    [TypeDocKind.Property, TypeDocKind.Accessor].includes(child.kind) &&
+    !child.overwrites &&
+    !child.name.startsWith('_') &&
+    (!child.implementationOf || isImplementationOfBlobInterface)
+  );
+};
+
+const isMethod = (child: PropData, allowOverwrites: boolean = false) => {
+  const isImplementationOfBlobInterface =
+    child.implementationOf?.type === 'reference' &&
+    child.implementationOf?.name?.startsWith('Blob.');
+
+  return (
+    child.kind &&
+    [TypeDocKind.Method, TypeDocKind.Function].includes(child.kind) &&
+    (allowOverwrites || !child.overwrites) &&
+    !child.name.startsWith('_') &&
+    (!child?.implementationOf || isImplementationOfBlobInterface)
+  );
+};
+
+// This is intended to filter out inherited properties from some
+// common classes that are documented inside the `expo` package docs.
+const isInheritedFromCommonClass = (child: PropData) =>
+  child.inheritedFrom?.type === 'reference' &&
+  CLASSES_TO_IGNORE_INHERITED_PROPS.some(className =>
+    child.inheritedFrom?.name.startsWith(`${className}.`)
+  );
 
 const remapClass = (clx: ClassDefinitionData) => {
-  clx.isSensor = !!classNamesMap[clx.name] || Object.values(classNamesMap).includes(clx.name);
-  clx.name = classNamesMap[clx.name] ?? clx.name;
+  clx.allowOverwrites = true;
+  clx.name = CLASS_NAMES_MAP[clx.name] ?? clx.name;
 
-  if (clx.isSensor && clx.extendedTypes) {
+  if (clx.allowOverwrites && clx.extendedTypes) {
     clx.extendedTypes = clx.extendedTypes.map(type => ({
       ...type,
       name: type.name === 'default' ? 'DeviceSensor' : type.name,
@@ -74,31 +91,35 @@ const remapClass = (clx: ClassDefinitionData) => {
 };
 
 const renderClass = (
-  clx: ClassDefinitionData,
-  options: { exposeAllClassPropsInSidebar: boolean; baseNestingLevelForClassProps: number },
+  {
+    name,
+    comment,
+    type,
+    extendedTypes,
+    children,
+    implementedTypes,
+    allowOverwrites,
+  }: ClassDefinitionData,
   sdkVersion: string
-): JSX.Element => {
-  const { name, comment, type, extendedTypes, children, implementedTypes, isSensor } = clx;
-
+) => {
   const properties = children?.filter(isProp);
   const methods = children
-    ?.filter(child => isMethod(child, isSensor))
+    ?.filter(child => isMethod(child, allowOverwrites) && !isInheritedFromCommonClass(child))
     .sort((a: PropData, b: PropData) => a.name.localeCompare(b.name));
   const returnComment = getTagData('returns', comment);
 
+  const linksNestingLevel = DEFAULT_BASE_NESTING_LEVEL + 2;
+
   return (
-    <div key={`class-definition-${name}`} css={[STYLES_APIBOX, STYLES_APIBOX_NESTED]}>
-      <APISectionDeprecationNote comment={comment} />
-      <APISectionPlatformTags comment={comment} />
-      <H3Code tags={getTagNamesList(comment)}>
-        <MONOSPACE weight="medium" className="wrap-anywhere">
-          {name}
-        </MONOSPACE>
-      </H3Code>
+    <div
+      key={`class-definition-${name}`}
+      className={mergeClasses(STYLES_APIBOX, STYLES_APIBOX_NESTED)}>
+      <APISectionDeprecationNote comment={comment} sticky />
+      <APIBoxHeader name={name} comment={comment} />
       {(extendedTypes?.length || implementedTypes?.length) && (
-        <P className="mb-3">
-          <DEMI theme="secondary">Type: </DEMI>
-          {type ? <CODE>{resolveTypeName(type, sdkVersion)}</CODE> : 'Class'}
+        <CALLOUT className={mergeClasses('mb-3 font-normal!', STYLES_SECONDARY, VERTICAL_SPACING)}>
+          <span className="font-medium">Type: </span>
+          {type ? <CODE>{resolveTypeName(type, sdkVersion)}</CODE> : <span>Class</span>}
           {extendedTypes?.length && (
             <>
               <span> extends </span>
@@ -119,45 +140,66 @@ const renderClass = (
               ))}
             </>
           )}
-        </P>
+        </CALLOUT>
       )}
-      <CommentTextBlock comment={comment} includePlatforms={false} />
-      {returnComment && (
-        <>
-          <BoxSectionHeader text="Returns" />
-          <ReactMarkdown components={mdComponents}>
-            {getCommentContent(returnComment.content)}
-          </ReactMarkdown>
-        </>
-      )}
+      <APICommentTextBlock
+        comment={comment}
+        includePlatforms={false}
+        afterContent={
+          returnComment && (
+            <div className="flex flex-col items-start">
+              <div className="flex flex-row items-center gap-2">
+                <CornerDownRightIcon
+                  aria-hidden="true"
+                  className="relative -mt-0.5 inline-block icon-sm text-icon-tertiary"
+                />
+                <span className={STYLES_SECONDARY}>Returns</span>
+              </div>
+              <div className="mt-1.5 mb-1 flex flex-col pl-6">
+                <APICommentTextBlock
+                  comment={{ summary: returnComment.content }}
+                  includeSpacing={false}
+                />
+              </div>
+            </div>
+          )
+        }
+      />
       {properties?.length ? (
         <>
-          <BoxSectionHeader
+          <APIBoxSectionHeader
             text={`${name} Properties`}
-            exposeInSidebar={options.exposeAllClassPropsInSidebar}
-            baseNestingLevel={options.baseNestingLevelForClassProps}
+            exposeInSidebar={false}
+            baseNestingLevel={DEFAULT_BASE_NESTING_LEVEL + 2}
           />
           <div>
             {properties.map(property =>
-              renderProp(property, sdkVersion, property?.defaultValue, {
-                exposeInSidebar: options.exposeAllClassPropsInSidebar,
-                baseNestingLevel: options.baseNestingLevelForClassProps + 1,
-              })
+              renderProp(
+                property,
+                sdkVersion,
+                extractDefaultPropValue(property) ?? property?.defaultValue,
+                getAllTagData('platform', comment),
+                {
+                  exposeInSidebar: true,
+                  baseNestingLevel: linksNestingLevel,
+                }
+              )
             )}
           </div>
         </>
       ) : null}
       {methods?.length > 0 && (
         <>
-          <BoxSectionHeader
+          <APIBoxSectionHeader
             text={`${name} Methods`}
-            exposeInSidebar={options.exposeAllClassPropsInSidebar}
-            baseNestingLevel={options.baseNestingLevelForClassProps}
+            exposeInSidebar={false}
+            baseNestingLevel={DEFAULT_BASE_NESTING_LEVEL + 2}
           />
           {methods.map(method =>
             renderMethod(method, {
-              exposeInSidebar: options.exposeAllClassPropsInSidebar,
-              baseNestingLevel: options.baseNestingLevelForClassProps + 1,
+              exposeInSidebar: true,
+              nested: true,
+              baseNestingLevel: linksNestingLevel,
               sdkVersion,
             })
           )}
@@ -167,26 +209,12 @@ const renderClass = (
   );
 };
 
-const APISectionClasses = ({ data, sdkVersion, ...props }: APISectionClassesProps) => {
+const APISectionClasses = ({ data, sdkVersion }: APISectionClassesProps) => {
   if (data?.length) {
-    const hasMultipleClasses = data.length > 1;
-    const exposeAllClassPropsInSidebar = props.exposeAllClassPropsInSidebar ?? !hasMultipleClasses;
-    const baseNestingLevelForClassProps = hasMultipleClasses
-      ? DEFAULT_BASE_NESTING_LEVEL + 2
-      : DEFAULT_BASE_NESTING_LEVEL;
     return (
       <>
         <H2>Classes</H2>
-        {data.map(clx =>
-          renderClass(
-            remapClass(clx),
-            {
-              exposeAllClassPropsInSidebar,
-              baseNestingLevelForClassProps,
-            },
-            sdkVersion
-          )
-        )}
+        {data.map(clx => renderClass(remapClass(clx), sdkVersion))}
       </>
     );
   }

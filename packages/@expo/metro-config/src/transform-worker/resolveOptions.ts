@@ -1,4 +1,4 @@
-import { JsTransformOptions } from 'metro-transform-worker';
+import type { JsTransformOptions } from '@expo/metro/metro-transform-worker';
 
 function isHermesEngine(options: Pick<JsTransformOptions, 'unstable_transformProfile'>): boolean {
   // NOTE: This has multiple inputs since we also use the `customTransformOptions.engine` option to indicate the Hermes engine.
@@ -9,10 +9,7 @@ function isHermesEngine(options: Pick<JsTransformOptions, 'unstable_transformPro
 }
 
 function isBytecodeEnabled(options: Pick<JsTransformOptions, 'customTransformOptions'>): boolean {
-  return (
-    options.customTransformOptions?.bytecode === true ||
-    options.customTransformOptions?.bytecode === 'true'
-  );
+  return options.customTransformOptions?.bytecode === '1';
 }
 
 export function shouldMinify(

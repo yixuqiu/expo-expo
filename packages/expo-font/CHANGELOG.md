@@ -1,14 +1,401 @@
 # Changelog
 
-## Unpublished
+## 58.0.10
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- On web, loading several fonts no longer fails with a timeout after 12 seconds in WebKit (Safari). Each `@font-face` rule now goes into the same `<style>` element through `insertRule`, so the browser does not parse the style sheet again for every font. ([#52093](https://github.com/expo/expo/pull/52093) by [@fixfon](https://github.com/fixfon))
+
+## 58.0.9
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-core@58.0.23. ([#51823](https://github.com/expo/expo/pull/51823) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.8
+
+### Patch Changes
+
+- [Internal] Bump precompiled artifacts due to ABI breakage in expo-modules-jsi, which makes `JavaScriptValue` a non-copyable struct. ([#51368](https://github.com/expo/expo/pull/51368) by [@tsapeta](https://github.com/tsapeta))
+
+## 58.0.7
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-core@58.0.13. ([#51138](https://github.com/expo/expo/pull/51138) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.6
+
+### Patch Changes
+
+- Restored the `./plugin` subpath export so typed config plugins can be imported from `<package>/plugin` again. ([#50965](https://github.com/expo/expo/pull/50965) by [@Titozzz](https://github.com/Titozzz))
+
+## 58.0.5
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.4
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.3 — 2026-09-28
 
 ### 🐛 Bug fixes
 
+- [iOS] Keep the previously registered font when a font loaded from a new path has the same PostScript name, instead of unregistering it and crashing on render. ([#50561](https://github.com/expo/expo/pull/50561) by [@eliotgevers](https://github.com/eliotgevers))
+
+## 58.0.2 — 2026-09-21
+
+### 🐛 Bug fixes
+
+- [iOS] Import `UIKit` in the `UIFont` extension, which relied on another file in the module importing it. ([#50277](https://github.com/expo/expo/pull/50277) by [@chrfalch](https://github.com/chrfalch))
+
+## 58.0.1 — 2026-09-15
+
+### 🛠 Breaking changes
+
+- [web] Removed `FontResource.testString`. The CSS Font Loading API detects font loading without a test string. ([#49497](https://github.com/expo/expo/pull/49497) by [@vonovak](https://github.com/vonovak))
+
+### 🎉 New features
+
+- [android][ios] Select a face of a multi-face font family with the `fontWeight` and `fontStyle` style props. ([#49486](https://github.com/expo/expo/pull/49486) by [@vonovak](https://github.com/vonovak))
+- Support loading multiple font weights and styles per `fontFamily` in `useFonts`/`loadAsync` on Android, iOS, and web. Use `fontWeight` and `fontStyle` style props to select the correct face. ([#47939](https://github.com/expo/expo/pull/47939) by [@bryanmylee](https://github.com/bryanmylee))
+- [web] Accept a variable-font weight range, for example `weight: '100 900'`, on a font face. Android and iOS ignore a range and read the weight from the font file. ([#49487](https://github.com/expo/expo/pull/49487) by [@vonovak](https://github.com/vonovak))
+
 ### 💡 Others
+
+- [web] Replaced the `fontfaceobserver` dependency with the CSS Font Loading API, so `loadAsync` also waits for the font on Safari and iOS browsers. ([#49497](https://github.com/expo/expo/pull/49497) by [@vonovak](https://github.com/vonovak))
+
+## 58.0.0 — 2026-09-10
+
+### 🛠 Breaking changes
+
+- [ios] `getLoadedFonts()` no longer reports the PostScript name read out of a font loaded with `loadAsync`, only the name (the alias) it was loaded under. ([#48432](https://github.com/expo/expo/pull/48432) by [@vonovak](https://github.com/vonovak))
+
+### 🎉 New features
+
+- [android] Added an `axes` field to the config plugin's font definitions, so one variable font file can also back a slanted or condensed face through its `slnt`, `wdth` and other variation axes. ([#48621](https://github.com/expo/expo/pull/48621) by [@vonovak](https://github.com/vonovak))
+- [android] Support variable weight fonts in the config plugin ([#48129](https://github.com/expo/expo/pull/48129) by [@L65FREAD](https://github.com/L65FREAD))
+- [ios] Apply `fontWeight` to variable fonts loaded with `useFonts`. ([#48432](https://github.com/expo/expo/pull/48432) by [@vonovak](https://github.com/vonovak))
+
+### 🐛 Bug fixes
+
+- [android] Apply `fontWeight` and `fontStyle` to fonts loaded with `useFonts`, instancing a variable font's `wght` axis at each weight. Bold and italic text previously fell back to a system font. ([#48129](https://github.com/expo/expo/pull/48129) by [@L65FREAD](https://github.com/L65FREAD))
+- [iOS] Fixed `renderToImageAsync` reporting the main screen's scale rather than the scale the image was rendered at. ([#48172](https://github.com/expo/expo/pull/48172) by [@alanjhughes](https://github.com/alanjhughes))
+- [web] Fixed `isLoaded()` always returning `false` on Firefox, and on every engine for font families whose name needs quoting, by normalizing quotes when comparing family names against the CSSOM. This also stops `loadAsync()` from injecting a duplicate `@font-face` rule on every call and makes `unloadAsync()` and `getLoadedFonts()` behave consistently across engines. ([#49266](https://github.com/expo/expo/pull/49266) by [@irfanfandi](https://github.com/irfanfandi))
+- [web] Match `@font-face` rules by comparing the rule's bare family name against the caller's literal name, so families whose names contain quotes or padding resolve correctly, and fixed `unloadAsync()` deleting wrong rules when several rules match. ([#49379](https://github.com/expo/expo/pull/49379) by [@vonovak](https://github.com/vonovak))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+### 🛠 Breaking changes
+
+- [web] Removed `Server.resetServerContext()`. Server-side font state is now scoped per-render via `AsyncLocalStorage`. ([#46669](https://github.com/expo/expo/pull/46669) by [@hassankhan](https://github.com/hassankhan))
+
+### 🎉 New features
+
+- [web] Added `Server.withServerContext(callback)` which scopes server-side font loads per render. ([#46669](https://github.com/expo/expo/pull/46669) by [@hassankhan](https://github.com/hassankhan))
+
+## 56.0.7 - 2026-06-15
+
+### 💡 Others
+
+- Resolve package-style font paths. ([#46784](https://github.com/expo/expo/pull/46784) by [@maxlapides](https://github.com/maxlapides))
+
+## 56.0.6 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-19
+
+### 🐛 Bug fixes
+
+- Sanitize values in web font loader and Android config plugin ([#45887](https://github.com/expo/expo/pull/45887) by [@kitten](https://github.com/kitten))
+
+## 56.0.4 — 2026-05-15
+
+### 🐛 Bug fixes
+
+- [android] include xml-fonts in the `getLoadedFonts()` list ([#43860](https://github.com/expo/expo/pull/43860) by [@vonovak](https://github.com/vonovak))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+- Add structured server resource descriptors for streaming SSR ([#44927](https://github.com/expo/expo/pull/44927) by [@hassankhan](https://github.com/hassankhan))
+
+### 🐛 Bug fixes
+
+- Align `ServerFontResourceDescriptor.crossOrigin` type with React ([#45115](https://github.com/expo/expo/pull/45115) by [@hassankhan](https://github.com/hassankhan))
+
+### 💡 Others
+
+- Export `ServerFontResourceDescriptor` type for external usage ([#45116](https://github.com/expo/expo/pull/45116) by [@hassankhan](https://github.com/hassankhan))
+
+## 55.0.7 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🎉 New features
+
+- Add support for setting custom testStrings for FontObserver on the web. ([#42442](https://github.com/expo/expo/pull/42442) by [@aleqsio](https://github.com/aleqsio))
+- add support for line-height ([#41094](https://github.com/expo/expo/pull/41094) by [@Ubax](https://github.com/Ubax))
+
+### 🐛 Bug fixes
+
+- [ios] Defer native font querying to prevent startup hang on iOS. ([#42033](https://github.com/expo/expo/pull/42033) by [@mozzius](https://github.com/mozzius))
+- unify `useFonts` return value in RSC ([#40481](https://github.com/expo/expo/pull/40481) by [@vonovak](https://github.com/vonovak))
+
+### 💡 Others
+
+- update ExpoFontUtils mock, to align with new API ([#40964](https://github.com/expo/expo/pull/40964) by [@Ubax](https://github.com/Ubax))
+
+## 14.0.10 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.9 - 2025-10-09
+
+### 🐛 Bug fixes
+
+- fix android image scaling in `renderToImageAsync` ([#40113](https://github.com/expo/expo/pull/40113) by [@vonovak](https://github.com/vonovak))
+
+## 14.0.8 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.7 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.6 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.5 — 2025-08-27
+
+### 🛠 Breaking changes
+
+- [android] improve bitmap rendering for `renderToImageAsync` ([#39118](https://github.com/expo/expo/pull/39118) by [@vonovak](https://github.com/vonovak))
+
+## 14.0.4 — 2025-08-26
+
+### 💡 Others
+
+- Fix types and adjust platform checks. ([#37302](https://github.com/expo/expo/pull/37302) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 14.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- expose `ExpoFontLoader` on web ([#37991](https://github.com/expo/expo/pull/37991) by [@vonovak](https://github.com/vonovak))
+- Add local package mocks. ([#37736](https://github.com/expo/expo/pull/37736) by [@aleqsio](https://github.com/aleqsio))
+
+### 💡 Others
+
+- [web] remove deprecated style 'type' attribute ([#38114](https://github.com/expo/expo/pull/38114) by [@vonovak](https://github.com/vonovak))
+- Add missing `react-native` peer dependency ([#38540](https://github.com/expo/expo/pull/38540) by [@kitten](https://github.com/kitten))
+- Update remaining `@expo/config-plugins` in config plugin to `expo/config-plugins` ([#38580](https://github.com/expo/expo/pull/38580) by [@kitten](https://github.com/kitten))
+
+## 13.3.2 - 2025-07-01
+
+_This version does not introduce any user-facing changes._
+
+## 13.3.1 — 2025-05-02
+
+### 🐛 Bug fixes
+
+- Bail out early when `getLoadedFonts` returns an empty array. ([#36586](https://github.com/expo/expo/pull/36586) by [@brentvatne](https://github.com/brentvatne))
+
+## 13.3.0 — 2025-04-30
+
+### 🎉 New features
+
+- [Android] Added support for font weight styles (through XML font definitions) to config plugin. ([#26082](https://github.com/expo/expo/pull/26082) by [@jongbelegen](https://github.com/jongbelegen))
+
+## 13.2.2 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 13.2.1 — 2025-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 13.2.0 — 2025-04-21
+
+### 🎉 New features
+
+- Render to image ([#36185](https://github.com/expo/expo/pull/36185) by [@jakex7](https://github.com/jakex7))
+
+## 13.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.0 — 2025-04-04
+
+### 🛠 Breaking changes
+
+- Bump minimum macOS version to 11.0. ([#34980](https://github.com/expo/expo/pull/34980) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 🎉 New features
+
+- Support loading expo-font in a `react-server` environment. ([#34736](https://github.com/expo/expo/pull/34736) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Add missing export specifier. ([#34839](https://github.com/expo/expo/pull/34839) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+
+## 13.0.4 - 2025-02-19
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.3 - 2025-01-10
+
+### 🐛 Bug fixes
+
+- [ios] Fix crash when writing to fontFamilyAliases ([#34044](https://github.com/expo/expo/pull/34044) by [@techied](https://github.com/techied))
+
+## 13.0.2 - 2024-12-19
+
+### 🐛 Bug fixes
+
+- [iOS] Fix crash when accessing resource from multiple threads ([#33574](https://github.com/expo/expo/pull/33574) by [@chrfalch](https://github.com/chrfalch))
+
+## 13.0.1 — 2024-11-05
+
+### 💡 Others
+
+- Remove deprecated Font.processFontFamily() ([#32631](https://github.com/expo/expo/pull/32631) by [@brentvatne](https://github.com/brentvatne))
+
+## 13.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- More detailed error messages for `FontLoader` native module rejections ([#31104](https://github.com/expo/expo/pull/31104) by [@vonovak](https://github.com/vonovak))
+- Add `getLoadedFonts()` function ([#30431](https://github.com/expo/expo/pull/30431) by [@vonovak](https://github.com/vonovak))
+
+### 🐛 Bug fixes
+
+- `useFonts` could previously attempt to set state on an unmounted component ([#31143](https://github.com/expo/expo/pull/31143) by [@vonovak](https://github.com/vonovak))
+- On iOS `loadAsync()` will reject if font loading fails. ([#31053](https://github.com/expo/expo/pull/31053) by [@vonovak](https://github.com/vonovak))
+- Add missing `react` peer dependencies for isolated modules. ([#30467](https://github.com/expo/expo/pull/30467) by [@byCedric](https://github.com/byCedric))
+- Only import from `expo/config` to follow proper dependency chains. ([#30501](https://github.com/expo/expo/pull/30501) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Stopped scoping font family names in Expo Go on Android. ([#28797](https://github.com/expo/expo/pull/28797) by [@lukmccall](https://github.com/lukmccall))
+- Replaced `@testing-library/react-hooks` with `@testing-library/react-native`. ([#30742](https://github.com/expo/expo/pull/30742) by [@byCedric](https://github.com/byCedric))
+- Removed all `NativeModulesProxy` occurrences. ([#31496](https://github.com/expo/expo/pull/31496) by [@reichhartd](https://github.com/reichhartd))
+
+## 12.0.10 - 2024-09-03
+
+### 🐛 Bug fixes
+
+- Fix support for macOS. ([#31307](https://github.com/expo/expo/pull/31307) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 12.0.9 - 2024-07-16
+
+### 🐛 Bug fixes
+
+- On `iOS`, fix issues where fonts were removed when the app is backgrounded. ([#30400](https://github.com/expo/expo/pull/30400) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 12.0.8 - 2024-07-11
+
+### 🎉 New features
+
+- Allow `woff` and `woff2` format on iOS with the config plugin. ([#30220](https://github.com/expo/expo/pull/30220) by [@titozzz](https://github/Titozzz))
+
+## 12.0.7 - 2024-06-06
+
+### 🐛 Bug fixes
+
+- On `iOS`, store the font `postscriptName` instead of `fullName` which is what `iOS` will use to register the font. ([#29502](https://github.com/expo/expo/pull/29502) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 12.0.6 - 2024-05-29
+
+### 🐛 Bug fixes
+
+- [iOS] Fix font registration failing when font was in use. ([#28989](https://github.com/expo/expo/pull/28989) by [@aleqsio](https://github.com/aleqsio))
+
+## 12.0.5 — 2024-05-10
+
+### 🐛 Bug fixes
+
+- Fixed some vector icons not rendering correctly. ([#28747](https://github.com/expo/expo/pull/28747) by [@tsapeta](https://github.com/tsapeta))
 
 ## 12.0.4 — 2024-04-24
 

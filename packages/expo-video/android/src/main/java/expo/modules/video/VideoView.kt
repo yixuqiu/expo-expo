@@ -1,84 +1,120 @@
 package expo.modules.video
 
 import android.app.Activity
-import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
-import android.graphics.Canvas
-import android.graphics.Rect
+import android.graphics.Color
 import android.os.Build
-import android.util.Rational
+import android.view.accessibility.CaptioningManager
+import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.widget.ImageButton
-import androidx.fragment.app.FragmentActivity
+import androidx.media3.common.Tracks
 import androidx.media3.ui.PlayerView
-import com.facebook.react.modules.i18nmanager.I18nUtil
-import com.facebook.react.uimanager.PixelUtil
-import com.facebook.react.uimanager.Spacing
-import com.facebook.react.views.view.ReactViewBackgroundDrawable
-import com.facebook.yoga.YogaConstants
+import com.facebook.react.bridge.ReactContext
+import com.facebook.react.uimanager.UIManagerHelper
+import com.facebook.react.uimanager.events.EventDispatcher
+import com.facebook.react.uimanager.events.TouchEventCoalescingKeyHelper
 import expo.modules.kotlin.AppContext
-import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
-import expo.modules.video.drawing.OutlineProvider
+import expo.modules.video.delegates.IgnoreSameSet
+import expo.modules.video.enums.ContentFit
+import expo.modules.video.player.VideoPlayer
+import expo.modules.video.listeners.VideoPlayerListener
+import expo.modules.video.listeners.VideoViewListener
+import expo.modules.video.records.AudioTrack
+import expo.modules.video.records.ButtonOptions
+import expo.modules.video.records.SubtitleTrack
+import expo.modules.video.records.VideoSource
+import expo.modules.video.records.VideoTrack
+import expo.modules.video.records.FullscreenOptions
+import expo.modules.video.utils.SubtitleUtils
+import expo.modules.video.utils.dispatchMotionEvent
+import expo.modules.video.managers.VideoManager
+import expo.modules.video.managers.calculateCurrentPipAspectRatio
+import expo.modules.video.records.PiPParams
+import expo.modules.video.utils.calculateRectHint
+import java.lang.ref.WeakReference
 import java.util.UUID
 
-// https://developer.android.com/guide/topics/media/media3/getting-started/migration-guide#improvements_in_media3
+class SurfaceVideoView(context: Context, appContext: AppContext) : VideoView(context, appContext)
+class TextureVideoView(context: Context, appContext: AppContext) : VideoView(context, appContext, true)
+
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class VideoView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
-  val id: String = UUID.randomUUID().toString()
-  val playerView: PlayerView = PlayerView(context.applicationContext)
+open class VideoView(context: Context, appContext: AppContext, useTextureView: Boolean = false) : ExpoView(context, appContext), VideoPlayerListener {
+  val videoViewId: String = UUID.randomUUID().toString()
+  val playerView: PlayerView = LayoutInflater.from(context.applicationContext).inflate(getPlayerViewLayoutId(useTextureView), null) as PlayerView
   val onPictureInPictureStart by EventDispatcher<Unit>()
   val onPictureInPictureStop by EventDispatcher<Unit>()
+  val onFullscreenEnter by EventDispatcher<Unit>()
+  val onFullscreenExit by EventDispatcher<Unit>()
+  val onFirstFrameRender by EventDispatcher<Unit>()
 
-  var willEnterPiP: Boolean = false
+  // In some situations we can't detect if the view will enter PiP, in that case the playback will be paused
+  // We can get an event after PiP has started, that's when we should resume playback
+  var wasAutoPaused: Boolean = false
   var isInFullscreen: Boolean = false
     private set
+  var currentTrackHasSubtitles = false
+    private set
+  var showsAudioTracksButton = false
+    private set
 
-  private val currentActivity = appContext.currentActivity
-    ?: throw Exceptions.MissingActivity()
+  var requiresLinearPlayback: Boolean = false
+    set(value) {
+      field = value
+      videoPlayer?.requiresLinearPlayback = value
+      playerView.applyRequiresLinearPlayback(value)
+      applyButtonSettings()
+    }
+
+  var buttonOptions: ButtonOptions = ButtonOptions()
+    set(value) {
+      field = value
+      applyButtonSettings()
+    }
+
+  private var listeners = mutableListOf<WeakReference<VideoViewListener>>()
+  private val currentActivity = appContext.throwingActivity
   private val decorView = currentActivity.window.decorView
-  private val rootView = decorView.findViewById<ViewGroup>(android.R.id.content)
+  private val touchEventCoalescingKeyHelper = TouchEventCoalescingKeyHelper()
+  private var reactNativeEventDispatcher: EventDispatcher? = null
+  private var captioningChangeListener: CaptioningManager.CaptioningChangeListener? = null
 
-  private val rectHint: Rect = Rect()
-  private val rootViewChildrenOriginalVisibility: ArrayList<Int> = arrayListOf()
-
-  private var pictureInPictureHelperTag: String? = null
-
-  private var shouldInvalided = false
-
-  private val outlineProvider = OutlineProvider(context)
-
-  private val borderDrawableLazyHolder = lazy {
-    ReactViewBackgroundDrawable(context).apply {
-      callback = this@VideoView
-
-      outlineProvider.borderRadiiConfig
-        .map { it.ifYogaDefinedUse(PixelUtil::toPixelFromDIP) }
-        .withIndex()
-        .forEach { (i, radius) ->
-          if (i == 0) {
-            setRadius(radius)
-          } else {
-            setRadius(radius, i - 1)
-          }
-        }
+  private val windowFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
+    if (hasFocus) {
+      // Reconfigure when window gains focus (returning from settings)
+      SubtitleUtils.configureSubtitleView(playerView, context)
     }
   }
 
-  private val borderDrawable
-    get() = borderDrawableLazyHolder.value
-
-  var autoEnterPiP: Boolean = false
-    set(value) {
-      field = value
-      if (Build.VERSION.SDK_INT >= 31) {
-        currentActivity.setPictureInPictureParams(PictureInPictureParams.Builder().setAutoEnterEnabled(value).build())
-      }
+  var pipParams by IgnoreSameSet(PiPParams()) { new, old ->
+    listeners.forEach {
+      it.get()?.onPiPParamsChanged(this, old, new)
     }
+  }
+    private set
+
+  // We need to keep track of the target surface view visibility, but only apply it when `useExoShutter` is false.
+  var shouldHideSurfaceView: Boolean = true
+
+  var useExoShutter: Boolean? = null
+    set(value) {
+      if (value == true) {
+        playerView.setShutterBackgroundColor(Color.BLACK)
+      } else {
+        playerView.setShutterBackgroundColor(Color.TRANSPARENT)
+      }
+      applySurfaceViewVisibility()
+      field = value
+    }
+
+  var autoEnterPiP: Boolean by IgnoreSameSet(false) { new, _ ->
+    pipParams = pipParams.copy(autoEnter = new)
+  }
 
   var contentFit: ContentFit = ContentFit.CONTAIN
     set(value) {
@@ -87,20 +123,38 @@ class VideoView(context: Context, appContext: AppContext) : ExpoView(context, ap
     }
 
   var videoPlayer: VideoPlayer? = null
-    set(videoPlayer) {
+    set(newPlayer) {
       field?.let {
         VideoManager.onVideoPlayerDetachedFromView(it, this)
       }
-      playerView.player = videoPlayer?.player
-      field = videoPlayer
-      videoPlayer?.let {
+      val oldPlayer = videoPlayer
+      val hasEmittedFirstFrame = newPlayer?.firstFrameEventGenerator?.hasSentFirstFrameForCurrentMediaItem
+        ?: false
+      oldPlayer?.removeListener(this)
+      newPlayer?.addListener(this)
+      field = newPlayer
+      shouldHideSurfaceView = !hasEmittedFirstFrame
+      applySurfaceViewVisibility()
+      attachPlayer()
+      newPlayer?.let {
         VideoManager.onVideoPlayerAttachedToView(it, this)
+      }
+      if (oldPlayer != newPlayer) {
+        oldPlayer?.hasBeenDisconnectedFromVideoView()
       }
     }
 
   var useNativeControls: Boolean = true
     set(value) {
+      val shouldShowSubtitle = value && (buttonOptions.showSubtitles ?: currentTrackHasSubtitles)
       playerView.useController = value
+      playerView.setShowSubtitleButton(shouldShowSubtitle)
+      field = value
+    }
+
+  var controllerAutoShow: Boolean = true
+    set(value) {
+      playerView.controllerAutoShow = value
       field = value
     }
 
@@ -117,6 +171,17 @@ class VideoView(context: Context, appContext: AppContext) : ExpoView(context, ap
       field = value
     }
 
+  var fullscreenOptions: FullscreenOptions = FullscreenOptions()
+    set(value) {
+      field = value
+      if (value.enable) {
+        playerView.setFullscreenButtonClickListener { enterFullscreen() }
+      } else {
+        playerView.setFullscreenButtonClickListener(null)
+        playerView.setFullscreenButtonVisibility(false)
+      }
+    }
+
   private val mLayoutRunnable = Runnable {
     measure(
       MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
@@ -128,6 +193,16 @@ class VideoView(context: Context, appContext: AppContext) : ExpoView(context, ap
   init {
     VideoManager.registerVideoView(this)
     playerView.setFullscreenButtonClickListener { enterFullscreen() }
+    // The prop `useNativeControls` prop is sometimes applied after the view is created, and sometimes there is a visible
+    // flash of controls event when they are set to off. Initially we set it to `false` and apply it in `onAttachedToWindow` to avoid this.
+    this.playerView.useController = false
+
+    // Start with the SurfaceView being transparent to avoid any flickers when the prop value is delivered.
+    this.playerView.setShutterBackgroundColor(Color.TRANSPARENT)
+    this.playerView.videoSurfaceView?.alpha = 0f
+
+    // Configure subtitle view to fix sizing issues with embedded styles
+    SubtitleUtils.configureSubtitleView(playerView, context)
     addView(
       playerView,
       ViewGroup.LayoutParams(
@@ -135,11 +210,24 @@ class VideoView(context: Context, appContext: AppContext) : ExpoView(context, ap
         ViewGroup.LayoutParams.MATCH_PARENT
       )
     )
+
+    reactNativeEventDispatcher = UIManagerHelper.getEventDispatcher(appContext.reactContext as ReactContext, id)
+  }
+
+  fun applySurfaceViewVisibility() {
+    if (useExoShutter != true && shouldHideSurfaceView) {
+      playerView.videoSurfaceView?.alpha = 0f
+    } else {
+      playerView.videoSurfaceView?.alpha = 1f
+    }
   }
 
   fun enterFullscreen() {
     val intent = Intent(context, FullscreenPlayerActivity::class.java)
-    intent.putExtra(VideoManager.INTENT_PLAYER_KEY, id)
+    intent.putExtra(VideoManager.INTENT_PLAYER_KEY, videoViewId)
+    intent.putExtra(FullscreenPlayerActivity.INTENT_FULLSCREEN_OPTIONS_KEY, fullscreenOptions)
+    // Set before starting the activity to avoid entering PiP unintentionally
+    isInFullscreen = true
     currentActivity.startActivity(intent)
 
     // Disable the enter transition
@@ -149,15 +237,22 @@ class VideoView(context: Context, appContext: AppContext) : ExpoView(context, ap
       @Suppress("DEPRECATION")
       currentActivity.overridePendingTransition(0, 0)
     }
-    isInFullscreen = true
+    onFullscreenEnter(Unit)
+    pipParams = pipParams.copy(blocksAppFromEntering = true)
+  }
+
+  fun attachPlayer() {
+    videoPlayer?.changeVideoView(this)
   }
 
   fun exitFullscreen() {
     // Fullscreen uses a different PlayerView instance, because of that we need to manually update the non-fullscreen player icon after exiting
     val fullScreenButton: ImageButton = playerView.findViewById(androidx.media3.ui.R.id.exo_fullscreen)
     fullScreenButton.setImageResource(androidx.media3.ui.R.drawable.exo_icon_fullscreen_enter)
-    videoPlayer?.changePlayerView(playerView)
+    attachPlayer()
+    onFullscreenExit(Unit)
     isInFullscreen = false
+    pipParams = pipParams.copy(blocksAppFromEntering = false)
   }
 
   fun enterPictureInPicture() {
@@ -165,94 +260,81 @@ class VideoView(context: Context, appContext: AppContext) : ExpoView(context, ap
       throw PictureInPictureUnsupportedException()
     }
 
-    val player = playerView.player
-      ?: throw PictureInPictureEnterException("No player attached to the VideoView")
-    playerView.useController = false
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      var aspectRatio = if (contentFit == ContentFit.CONTAIN) {
-        Rational(player.videoSize.width, player.videoSize.height)
-      } else {
-        Rational(width, height)
-      }
-      // Android PiP doesn't support aspect ratios lower than 0.4184 or higher than 2.39
-      if (aspectRatio.toFloat() > 2.39) {
-        aspectRatio = Rational(239, 100)
-      } else if (aspectRatio.toFloat() < 0.4184) {
-        aspectRatio = Rational(10000, 4184)
-      }
-
-      currentActivity.setPictureInPictureParams(
-        PictureInPictureParams
-          .Builder()
-          .setSourceRectHint(rectHint)
-          .setAspectRatio(aspectRatio)
-          .build()
-      )
+    if (playerView.player == null) {
+      throw PictureInPictureEnterException("No player attached to the VideoView")
     }
 
-    calculateRectHint()
-    willEnterPiP = true
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      currentActivity.enterPictureInPictureMode(PictureInPictureParams.Builder().build())
-    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-      @Suppress("DEPRECATION")
-      currentActivity.enterPictureInPictureMode()
-    }
+    pipParams = pipParams.copy(willEnter = true)
+    VideoManager.pictureInPicture.enterPictureInPicture(this)
   }
 
   /**
-   * For optimal picture in picture experience it's best to only have one view. This method
-   * hides all children of the root view and makes the player the only visible child of the rootView.
+   * @param pipCandidate - VideoView that was elected to be displayed in PiP
    */
-  fun layoutForPiPEnter() {
-    playerView.useController = false
-    (playerView.parent as? ViewGroup)?.removeView(playerView)
-    for (i in 0 until rootView.childCount) {
-      if (rootView.getChildAt(i) != playerView) {
-        rootViewChildrenOriginalVisibility.add(rootView.getChildAt(i).visibility)
-        rootView.getChildAt(i).visibility = View.GONE
-      }
-    }
-    rootView.addView(playerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+  fun onStartPictureInPicture(pipCandidate: VideoView?) {
+    onPictureInPictureStart(Unit)
   }
 
-  fun layoutForPiPExit() {
-    playerView.useController = useNativeControls
-    rootView.removeView(playerView)
-    for (i in 0 until rootView.childCount) {
-      rootView.getChildAt(i).visibility = rootViewChildrenOriginalVisibility[i]
-    }
-    rootViewChildrenOriginalVisibility.clear()
-    this.addView(playerView)
+  /**
+   * @param pipCandidate - VideoView that was being displayed in PiP
+   */
+  fun onStopPictureInPicture(pipCandidate: VideoView?) {
+    pipParams = pipParams.copy(willEnter = false)
+    onPictureInPictureStop(Unit)
   }
 
-  private fun calculateRectHint() {
-    getGlobalVisibleRect(rectHint)
+  fun addVideoViewListener(listener: VideoViewListener) {
+    if (listeners.any { it.get() == listener }) {
+      return
+    }
+    listeners.add(WeakReference(listener))
+  }
 
-    // For `contain` contentFit we need to calculate where the video content is in the view and set the rectHint to that area
-    if (contentFit == ContentFit.CONTAIN) {
-      val player = playerView.player ?: return
-      val width = playerView.width
-      val height = playerView.height
-      val videoWidth = player.videoSize.width
-      val videoHeight = player.videoSize.height
-      val videoRatio = videoWidth.toFloat() / videoHeight.toFloat()
-      val viewRatio = width.toFloat() / height.toFloat()
+  fun removeVideoViewListener(listener: VideoViewListener) {
+    listeners.retainAll { it.get() != listener }
+  }
 
-      if (videoRatio > viewRatio) {
-        val newHeight = (width.toFloat() / videoRatio).toInt()
-        rectHint.set(rectHint.left, rectHint.top + (height - newHeight) / 2, rectHint.right, rectHint.bottom - (height - newHeight) / 2)
-      } else {
-        val newWidth = (height.toFloat() * videoRatio).toInt()
-        rectHint.set(rectHint.left + (width - newWidth) / 2, rectHint.top, rectHint.right - (width - newWidth) / 2, rectHint.bottom)
-      }
+  override fun onSourceChanged(player: VideoPlayer, source: VideoSource?, oldSource: VideoSource?) {
+    // When replacing the media on the same player, keep the surface hidden until the first frame of
+    // the new item is rendered. Otherwise the previous stream can remain visible (often mis-scaled)
+    // while the new stream buffers — e.g. switching from a higher-resolution URL to a lower one.
+    // See https://github.com/expo/expo/issues/44385
+    if (player == videoPlayer && oldSource != null) {
+      shouldHideSurfaceView = true
+      applySurfaceViewVisibility()
     }
   }
 
-  private fun applyRectHint() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      currentActivity.setPictureInPictureParams(PictureInPictureParams.Builder().setSourceRectHint(rectHint).build())
+  override fun onVideoSourceLoaded(
+    player: VideoPlayer,
+    videoSource: VideoSource?,
+    duration: Double?,
+    availableVideoTracks: List<VideoTrack>,
+    availableSubtitleTracks: List<SubtitleTrack>,
+    availableAudioTracks: List<AudioTrack>
+  ) {
+    pipParams = pipParams.copy(aspectRatio = calculateCurrentPipAspectRatio())
+    super.onVideoSourceLoaded(player, videoSource, duration, availableVideoTracks, availableSubtitleTracks, availableAudioTracks)
+  }
+
+  override fun onIsPlayingChanged(player: VideoPlayer, isPlaying: Boolean, oldIsPlaying: Boolean?) {
+    if (player == videoPlayer && isPlaying) {
+      wasAutoPaused = false
+    }
+  }
+
+  override fun onTracksChanged(player: VideoPlayer, tracks: Tracks) {
+    currentTrackHasSubtitles = player.subtitles.availableSubtitleTracks.isNotEmpty()
+    showsAudioTracksButton = player.audioTracks.availableAudioTracks.size > 1
+    playerView.setShowSubtitleButton(buttonOptions.showSubtitles ?: currentTrackHasSubtitles)
+    super.onTracksChanged(player, tracks)
+  }
+
+  override fun onRenderedFirstFrame(player: VideoPlayer) {
+    if (player.currentVideoView == this) {
+      shouldHideSurfaceView = false
+      applySurfaceViewVisibility()
+      onFirstFrameRender(Unit)
     }
   }
 
@@ -269,123 +351,99 @@ class VideoView(context: Context, appContext: AppContext) : ExpoView(context, ap
     super.onLayout(changed, l, t, r, b)
     // On every re-layout ExoPlayer resets the timeBar to be enabled.
     // We need to disable it to keep scrubbing impossible.
+
+    pipParams = pipParams.copy(rectHint = calculateRectHint(playerView))
     playerView.setTimeBarInteractive(videoPlayer?.requiresLinearPlayback ?: true)
-
-    calculateRectHint()
-    applyRectHint()
-  }
-
-  override fun draw(canvas: Canvas) {
-    // When the border-radii are not all the same, a convex-path
-    // is used for the Outline. Unfortunately clipping is not supported
-    // for convex-paths and we fallback to Canvas clipping.
-    outlineProvider.clipCanvasIfNeeded(canvas, this)
-
-    super.draw(canvas)
-
-    // Draw borders on top of the video
-    if (borderDrawableLazyHolder.isInitialized()) {
-      val layoutDirection = if (I18nUtil.getInstance().isRTL(context)) {
-        LAYOUT_DIRECTION_RTL
-      } else {
-        LAYOUT_DIRECTION_LTR
-      }
-
-      borderDrawable.apply {
-        resolvedLayoutDirection = layoutDirection
-        setBounds(0, 0, width, height)
-        draw(canvas)
-      }
-    }
   }
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
-    (currentActivity as? FragmentActivity)?.let {
-      val fragment = PictureInPictureHelperFragment(this)
-      pictureInPictureHelperTag = fragment.id
-      it.supportFragmentManager.beginTransaction()
-        .add(fragment, fragment.id)
-        .commitAllowingStateLoss()
+
+    // Set up listener for accessibility caption changes when attached to window
+    setupCaptioningChangeListener()
+    // Reconfigure when view is attached (handles returning from settings)
+    SubtitleUtils.configureSubtitleView(playerView, context)
+
+    // Set up window focus change listener
+    decorView.onFocusChangeListener = windowFocusChangeListener
+
+    pipParams = pipParams.copy(canEnter = true)
+  }
+
+  override fun onVisibilityChanged(changedView: View, visibility: Int) {
+    super.onVisibilityChanged(changedView, visibility)
+    if (visibility == View.VISIBLE) {
+      // Reconfigure subtitles when view becomes visible (immediate response)
+      SubtitleUtils.configureSubtitleView(playerView, context)
     }
   }
 
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
-    (currentActivity as? FragmentActivity)?.let {
-      val fragment = it.supportFragmentManager.findFragmentByTag(pictureInPictureHelperTag ?: "")
-        ?: return
-      it.supportFragmentManager.beginTransaction()
-        .remove(fragment)
-        .commitAllowingStateLoss()
+
+    // Clean up captioning change listener
+    captioningChangeListener?.let {
+      val captioningManager = context.getSystemService(Context.CAPTIONING_SERVICE) as? CaptioningManager
+      captioningManager?.removeCaptioningChangeListener(it)
+      captioningChangeListener = null
     }
+
+    // Clean up window focus listener
+    decorView.onFocusChangeListener = null
+
+    pipParams = pipParams.copy(canEnter = false)
   }
 
-  internal fun setBorderRadius(position: Int, borderRadius: Float) {
-    val isInvalidated = outlineProvider.setBorderRadius(borderRadius, position)
-    if (isInvalidated) {
-      invalidateOutline()
-      if (!outlineProvider.hasEqualCorners()) {
-        shouldInvalided = true
+  // After adding the `PlayerView` to the hierarchy the touch events stop being emitted to the JS side.
+  // The only workaround I have found is to dispatch the touch events manually using the `EventDispatcher`.
+  // The behavior is different when the native controls are enabled and disabled.
+  override fun onTouchEvent(event: MotionEvent?): Boolean {
+    if (!useNativeControls) {
+      event?.eventTime?.let {
+        touchEventCoalescingKeyHelper.addCoalescingKey(it)
+        reactNativeEventDispatcher?.dispatchMotionEvent(this@VideoView, event, touchEventCoalescingKeyHelper)
       }
     }
+    if (event?.actionMasked == MotionEvent.ACTION_UP) {
+      performClick()
+    }
+    // Mark the event as handled
+    return true
+  }
 
-    // Setting the border-radius doesn't necessarily mean that a border
-    // should to be drawn. Only update the border-drawable when needed.
-    if (borderDrawableLazyHolder.isInitialized()) {
-      shouldInvalided = true
-      val radius = borderRadius.ifYogaDefinedUse(PixelUtil::toPixelFromDIP)
-      borderDrawableLazyHolder.value.apply {
-        if (position == 0) {
-          setRadius(radius)
-        } else {
-          setRadius(radius, position - 1)
-        }
+  override fun onInterceptTouchEvent(event: MotionEvent?): Boolean {
+    if (useNativeControls) {
+      event?.eventTime?.let {
+        touchEventCoalescingKeyHelper.addCoalescingKey(it)
+        reactNativeEventDispatcher?.dispatchMotionEvent(this@VideoView, MotionEvent.obtainNoHistory(event), touchEventCoalescingKeyHelper)
       }
     }
+    // Return false to receive all other events before the target `onTouchEvent`
+    return false
   }
 
-  internal fun setBorderWidth(position: Int, width: Float) {
-    borderDrawable.setBorderWidth(position, width)
-    shouldInvalided = true
-  }
-
-  internal fun setBorderColor(position: Int, rgb: Float, alpha: Float) {
-    borderDrawable.setBorderColor(position, rgb, alpha)
-    shouldInvalided = true
-  }
-
-  internal fun setBorderStyle(style: String?) {
-    borderDrawable.setBorderStyle(style)
-    shouldInvalided = true
-  }
-
-  fun didUpdateProps() {
-    val hasBorder = if (borderDrawableLazyHolder.isInitialized()) {
-      val spacings = listOf(
-        Spacing.ALL,
-        Spacing.LEFT,
-        Spacing.RIGHT,
-        Spacing.TOP,
-        Spacing.BOTTOM,
-        Spacing.START,
-        Spacing.END
-      )
-      spacings
-        .any {
-          val boarderWidth = borderDrawable.getBorderWidthOrDefaultTo(YogaConstants.UNDEFINED, it)
-          boarderWidth != YogaConstants.UNDEFINED && boarderWidth > 0f
-        }
+  private fun getPlayerViewLayoutId(useTextureView: Boolean): Int {
+    return if (useTextureView) {
+      R.layout.texture_player_view
     } else {
-      false
+      R.layout.surface_player_view
     }
+  }
 
-    // We need to enable drawing on the view to draw the border or background
-    setWillNotDraw(!isOpaque && !hasBorder)
-    if (shouldInvalided) {
-      shouldInvalided = false
-      invalidate()
+  private fun setupCaptioningChangeListener() {
+    val captioningManager = context.getSystemService(Context.CAPTIONING_SERVICE) as? CaptioningManager
+
+    captioningChangeListener = SubtitleUtils.createCaptioningChangeListener(playerView, context)
+
+    captioningChangeListener?.let { listener ->
+      captioningManager?.addCaptioningChangeListener(listener)
     }
+  }
+
+  private fun applyButtonSettings() {
+    val shouldShowSubtitle = buttonOptions.showSubtitles ?: currentTrackHasSubtitles
+    playerView.applyButtonOptions(buttonOptions, requiresLinearPlayback)
+    playerView.setShowSubtitleButton(shouldShowSubtitle)
   }
 
   companion object {

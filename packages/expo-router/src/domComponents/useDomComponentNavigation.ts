@@ -1,0 +1,40 @@
+import { addGlobalDomEventListener } from 'expo/dom/global';
+import React from 'react';
+
+import { useRouterActions } from '../global-state/useRouterActions';
+import {
+  ROUTER_LINK_TYPE,
+  ROUTER_DISMISS_ALL_TYPE,
+  ROUTER_DISMISS_TYPE,
+  ROUTER_BACK_TYPE,
+  ROUTER_SET_PARAMS_TYPE,
+} from './events';
+
+export function useDomComponentNavigation() {
+  const router = useRouterActions();
+
+  React.useEffect(() => {
+    if (process.env.EXPO_OS === 'web') {
+      return () => {};
+    }
+    return addGlobalDomEventListener<any>(({ type, data }) => {
+      switch (type) {
+        case ROUTER_LINK_TYPE:
+          router.linkTo(data.href, data.options);
+          break;
+        case ROUTER_DISMISS_ALL_TYPE:
+          router.dismissAll(data.options);
+          break;
+        case ROUTER_DISMISS_TYPE:
+          router.dismiss(data.count, data.options);
+          break;
+        case ROUTER_BACK_TYPE:
+          router.back(data.options);
+          break;
+        case ROUTER_SET_PARAMS_TYPE:
+          router.setParams(data.params);
+          break;
+      }
+    });
+  }, [router]);
+}

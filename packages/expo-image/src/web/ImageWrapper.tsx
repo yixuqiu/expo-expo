@@ -1,12 +1,13 @@
-import React, { useEffect, Ref } from 'react';
+import type { Ref } from 'react';
+import React, { useEffect, useId } from 'react';
 
+import type { ImageNativeProps, ImageSource } from '../Image.types';
 import ColorTintFilter, { getTintColorStyle } from './ColorTintFilter';
-import { ImageWrapperProps } from './ImageWrapper.types';
+import type { ImageWrapperProps } from './ImageWrapper.types';
 import { getImageWrapperEventHandler } from './getImageWrapperEventHandler';
 import { useHeaders, useImageHashes } from './hooks';
 import { absoluteFilledPosition, getObjectPositionFromContentPositionObject } from './positioning';
-import { SrcSetSource } from './useSourceSelection';
-import { ImageNativeProps, ImageSource } from '../Image.types';
+import type { SrcSetSource } from './useSourceSelection';
 
 function getFetchPriorityFromImagePriority(priority: ImageNativeProps['priority'] = 'normal') {
   return priority && ['low', 'high'].includes(priority) ? priority : 'auto';
@@ -30,12 +31,14 @@ const ImageWrapper = React.forwardRef(
       contentPosition,
       hashPlaceholderContentPosition,
       priority,
+      loading,
       style,
       hashPlaceholderStyle,
       tintColor,
       className,
       accessibilityLabel,
       cachePolicy,
+      draggable,
       ...props
     }: ImageWrapperProps,
     ref: Ref<HTMLImageElement>
@@ -43,6 +46,15 @@ const ImageWrapper = React.forwardRef(
     useEffect(() => {
       events?.onMount?.forEach((e) => e?.());
     }, []);
+
+    // Use a unique ID for the SVG filter so that multiple <Image> can be used
+    // on the same page with different tint colors without conflicts.
+    const tintId = useId()
+      // Make it safe for use as an SVG ID. SVG IDs are most strict than HTML
+      // IDs. They must be compliant with https://www.w3.org/TR/xml/#NT-Name.
+      // React 19 changed useId() to include « and ». These must be removed or
+      // the SVG filter will not work (e.g. in Safari which enforces the spec).
+      .replace(/[«»]/g, '_');
 
     // Thumbhash uri always has to start with 'thumbhash:/'
     const { resolvedSource, isImageHash } = useImageHashes(source);
@@ -56,7 +68,7 @@ const ImageWrapper = React.forwardRef(
     }
     return (
       <>
-        <ColorTintFilter tintColor={tintColor} />
+        <ColorTintFilter id={tintId} tintColor={tintColor} />
         <img
           ref={ref}
           alt={accessibilityLabel}
@@ -66,13 +78,15 @@ const ImageWrapper = React.forwardRef(
           style={{
             objectPosition,
             ...absoluteFilledPosition,
-            ...getTintColorStyle(tintColor),
+            ...getTintColorStyle(tintId, tintColor),
             ...style,
             ...(isImageHash ? hashPlaceholderStyle : {}),
           }}
           // @ts-ignore
           // eslint-disable-next-line react/no-unknown-property
-          fetchpriority={getFetchPriorityFromImagePriority(priority || 'normal')}
+          fetchPriority={getFetchPriorityFromImagePriority(priority || 'normal')}
+          loading={loading || undefined}
+          draggable={draggable}
           {...getImageWrapperEventHandler(events, sourceWithHeaders)}
           {...getImgPropsFromSource(source)}
           {...props}

@@ -1,14 +1,483 @@
 # Changelog
 
-## Unpublished
+## 58.0.18
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Updated dependencies.
+  - expo-constants@58.0.13
+
+## 58.0.17
+
+### Patch Changes
+
+- Export the `VirtualAssetModule` type that `Asset.fromModule` accepts. ([#51797](https://github.com/expo/expo/pull/51797) by [@amandeepmittal](https://github.com/amandeepmittal))
+
+## 58.0.16
+
+### Patch Changes
+
+- Use `AssetRegistry` from public API instead of Metro entry point. ([#51302](https://github.com/expo/expo/pull/51302) by [@byCedric](https://github.com/byCedric))
+
+## 58.0.15
+
+### Patch Changes
+
+- Updated dependencies.
+  - @expo/image-utils@0.12.5
+  - expo-constants@58.0.12
+
+## 58.0.14
+
+### Patch Changes
+
+- Updated dependencies.
+  - expo-constants@58.0.11
+
+## 58.0.13
+
+### Patch Changes
+
+- [Internal] Use `Image.resolveAssetSource` from `react-native` instead of the `Libraries/Image/resolveAssetSource` deep import. ([#51092](https://github.com/expo/expo/pull/51092) by [@huntie](https://github.com/huntie))
+- [Internal] Import React Native internals from `react-native/unstable-internals-do-not-use`. ([#50860](https://github.com/expo/expo/pull/50860) by [@huntie](https://github.com/huntie))
+
+## 58.0.12
+
+### Patch Changes
+
+- Updated dependencies.
+  - @expo/image-utils@0.12.4
+  - expo-constants@58.0.10
+
+## 58.0.11
+
+### Patch Changes
+
+- Updated dependencies. ([#50391](https://github.com/expo/expo/pull/50391))
+  - @expo/image-utils@0.12.3
+
+## 58.0.10
+
+### Patch Changes
+
+- [Internal] Type the `react-native/asset-registry` entry point after React Native's `AssetRegistry` API, replacing the deprecated `@react-native/assets-registry` reference. ([#50861](https://github.com/expo/expo/pull/50861) by [@huntie](https://github.com/huntie))
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.9
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762), [#49511](https://github.com/expo/expo/pull/49511), [#50661](https://github.com/expo/expo/pull/50661))
+  - @expo/image-utils@0.12.2
+  - expo-constants@58.0.9
+
+## 58.0.8 — 2026-09-28
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.7 — 2026-09-25
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.6 — 2026-09-23
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.5 — 2026-09-22
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.4 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.3 — 2026-09-16
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-15
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.1 — 2026-09-14
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
 
 ### 🐛 Bug fixes
 
+- Resolve development asset URLs from the bundle URL instead of the manifest's `debuggerHost` ([#48275](https://github.com/expo/expo/pull/48275) by [@kitten](https://github.com/kitten))
+- Add support for React Native 0.87. ([#47729](https://github.com/expo/expo/pull/47729) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 57.0.8 - 2026-07-29
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.7 - 2026-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.6 - 2026-07-17
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-06-30
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.17 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.16 - 2026-06-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.15 — 2026-05-26
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.14 — 2026-05-23
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.13 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.12 — 2026-05-20
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.11 — 2026-05-19
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.10 — 2026-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.9 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.7 — 2026-05-11
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-07
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+- Add support for .glb model assets. ([#42495](https://github.com/expo/expo/pull/42495) by [@pchalupa](https://github.com/pchalupa))
+
+## 55.0.17 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.16 - 2026-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-04-13
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-03-18
+
+### 🐛 Bug fixes
+
+- Fixed incorrect MD5 checksum on Android. ([#43909](https://github.com/expo/expo/pull/43909) by [@kudo](https://github.com/kudo))
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 - 2026-02-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🐛 Bug fixes
+
+- [Android] Fix asset loading when Metro server runs over HTTPS by deriving scheme from `manifestBaseUrl` instead of hardcoding `http://`. ([#42184](https://github.com/expo/expo/pull/42184) by [@ink404](https://github.com/ink404))
+
 ### 💡 Others
+
+- validate asset names with `isAndroidAssetNameValid` from `expo/config-plugins` ([#39883](https://github.com/expo/expo/pull/39883) by [@vonovak](https://github.com/vonovak))
+
+## 12.0.11 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.10 - 2025-11-17
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.9 - 2025-09-18
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.8 — 2025-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.7 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.6 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.5 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.4 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.3 — 2025-08-21
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- Add resource name validation for Android. ([#37322](https://github.com/expo/expo/pull/37322) by [@aleqsio](https://github.com/aleqsio))
+
+### 🐛 Bug fixes
+
+- [Android] fix file scheme handling in `downloadAsync` ([#38227](https://github.com/expo/expo/pull/38227) by [@vonovak](https://github.com/vonovak))
+
+### 💡 Others
+
+- [android] throw when loading empty font file ([#38229](https://github.com/expo/expo/pull/38229) by [@vonovak](https://github.com/vonovak))
+- Update remaining `@expo/config-plugins` in config plugin to `expo/config-plugins` ([#38580](https://github.com/expo/expo/pull/38580) by [@kitten](https://github.com/kitten))
+
+## 11.1.7 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 11.1.6 - 2025-07-01
+
+### 💡 Others
+
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+
+## 11.1.5 — 2025-05-03
+
+_This version does not introduce any user-facing changes._
+
+## 11.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 11.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 11.1.2 — 2025-04-14
+
+### 💡 Others
+
+- Added `file:///android_res/` format support. ([#36058](https://github.com/expo/expo/pull/36058) by [@kudo](https://github.com/kudo))
+
+## 11.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 11.1.0 — 2025-04-04
+
+### 🛠 Breaking changes
+
+- Bump minimum macOS version to 11.0. ([#34980](https://github.com/expo/expo/pull/34980) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 🎉 New features
+
+- Add RSC support. ([#34213](https://github.com/expo/expo/pull/34213) by [@EvanBacon](https://github.com/EvanBacon))
+- Add .riv to accepted media types ([#35758](https://github.com/expo/expo/pull/35758) by [@alextoudic](https://github.com/alextoudic))
+
+### 🐛 Bug fixes
+
+- [macOS] Add macOS platform support ([#33505](https://github.com/expo/expo/pull/33505) by [@hassankhan](https://github.com/hassankhan))
+
+### 💡 Others
+
+- Deprecate `expo-asset/tools/hashAssetFiles` in favor of built-in hashing support in `expo/metro-config`. ([#34208](https://github.com/expo/expo/pull/34208) by [@EvanBacon](https://github.com/EvanBacon))
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- Drop `invariant` and `md5-file` dependencies. ([#35328](https://github.com/expo/expo/pull/35328) by [@kitten](https://github.com/kitten))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35288](https://github.com/expo/expo/pull/35288) by [@behenate](https://github.com/behenate))
+
+## 11.0.5 - 2025-03-20
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.4 - 2025-02-19
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.3 - 2025-01-31
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.2 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.1 — 2024-11-10
+
+### 🐛 Bug fixes
+
+- Add support for simplified object asset format. ([#32728](https://github.com/expo/expo/pull/32728) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 11.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Add missing dependencies and follow proper dependency chains. ([#30500](https://github.com/expo/expo/pull/30500) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Remove unused `pathJoin` function. ([#29963](https://github.com/expo/expo/pull/29963) by [@EvanBacon](https://github.com/EvanBacon))
+- Replaced `@testing-library/react-hooks` with `@testing-library/react-native`. ([#30742](https://github.com/expo/expo/pull/30742) by [@byCedric](https://github.com/byCedric))
+
+## 10.0.10 - 2024-06-20
+
+### 🐛 Bug fixes
+
+- Fixed `PlatformUtils.ts` to have the correct export placeholders for react-native-web ([#29791](https://github.com/expo/expo/pull/29791) by [@Bram-dc](https://github.com/Bram-dc))
+- Add missing `react` and `react-native` peer dependencies for isolated modules. ([#30454](https://github.com/expo/expo/pull/30454) by [@byCedric](https://github.com/byCedric))
+
+## 10.0.9 - 2024-06-13
+
+### 💡 Others
+
+- Removed @react-native/assets-registry dependency. ([#29541](https://github.com/expo/expo/pull/29541) by [@kudo](https://github.com/kudo))
+
+## 10.0.8 - 2024-06-06
+
+_This version does not introduce any user-facing changes._
+
+## 10.0.7 - 2024-06-05
+
+### 💡 Others
+
+- Pin @react-native subpackage versions to 0.74.83. ([#29441](https://github.com/expo/expo/pull/29441) by [@kudo](https://github.com/kudo))
 
 ## 10.0.6 — 2024-05-03
 

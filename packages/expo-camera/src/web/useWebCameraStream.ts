@@ -1,14 +1,14 @@
 /* eslint-env browser */
 import * as React from 'react';
 
-import * as Utils from './WebCameraUtils';
-import { FacingModeToCameraType } from './WebConstants';
-import {
+import type {
   CameraReadyListener,
   CameraType,
   MountErrorListener,
   WebCameraSettings,
-} from '../legacy/Camera.types';
+} from '../Camera.types';
+import * as Utils from './WebCameraUtils';
+import { FacingModeToCameraType } from './WebConstants';
 
 const VALID_SETTINGS_KEYS = [
   'autoFocus',
@@ -23,7 +23,7 @@ const VALID_SETTINGS_KEYS = [
   'focusDistance',
   'whiteBalance',
   'zoom',
-];
+] as const;
 
 function useLoadedVideo(video: HTMLVideoElement | null, onLoaded: () => void) {
   React.useEffect(() => {
@@ -58,12 +58,12 @@ export function useWebCameraStream(
     autoFocus: 'continuous',
     flashMode: 'off',
     whiteBalance: 'continuous',
-    zoom: 1,
+    zoom: 0,
   });
   const [stream, setStream] = React.useState<MediaStream | null>(null);
 
   const mediaTrackSettings = React.useMemo(() => {
-    return stream ? stream.getTracks()[0].getSettings() : null;
+    return stream?.getTracks()[0]?.getSettings() ?? null;
   }, [stream]);
 
   // The actual camera type - this can be different from the incoming camera type.
@@ -73,19 +73,17 @@ export function useWebCameraStream(
     }
     // On desktop no value will be returned, in this case we should assume the cameraType is 'front'
     const { facingMode = 'user' } = mediaTrackSettings;
-    return FacingModeToCameraType[facingMode];
+    return FacingModeToCameraType[facingMode] ?? null;
   }, [mediaTrackSettings]);
 
   const getStreamDeviceAsync = React.useCallback(async (): Promise<MediaStream | null> => {
     try {
       return await Utils.getPreferredStreamDevice(preferredType);
-    } catch (nativeEvent) {
+    } catch (nativeEvent: any) {
       if (__DEV__) {
         console.warn(`Error requesting UserMedia for type "${preferredType}":`, nativeEvent);
       }
-      if (onMountError) {
-        onMountError({ nativeEvent });
-      }
+      onMountError?.({ nativeEvent });
       return null;
     }
   }, [preferredType, onMountError]);
@@ -105,13 +103,9 @@ export function useWebCameraStream(
       activeStreams.current.push(nextStream!);
     }
 
-    // Set the new stream -> update the video, settings, and actual camera type.
     setStream(nextStream);
-    if (onCameraReady) {
-      onCameraReady();
-    }
     return false;
-  }, [getStreamDeviceAsync, setStream, onCameraReady, stream, activeStreams.current]);
+  }, [getStreamDeviceAsync, setStream, stream, activeStreams.current]);
 
   React.useEffect(() => {
     // Restart the camera and guard concurrent actions.
@@ -134,25 +128,21 @@ export function useWebCameraStream(
   React.useEffect(() => {
     const changes: WebCameraSettings = {};
 
-    for (const key of Object.keys(settings)) {
-      if (!VALID_SETTINGS_KEYS.includes(key)) {
-        continue;
-      }
-      const nextValue = settings[key];
-      if (nextValue !== capabilities.current[key]) {
-        changes[key] = nextValue;
+    for (const key of VALID_SETTINGS_KEYS) {
+      if (key in settings) {
+        const nextValue = settings[key];
+        if (nextValue !== capabilities.current[key]) {
+          changes[key] = nextValue;
+        }
       }
     }
 
-    // Only update the native camera if changes were found
-    const hasChanges = !!Object.keys(changes).length;
-
-    const nextWebCameraSettings = { ...capabilities.current, ...changes };
+    const hasChanges = Object.keys(changes).length > 0;
     if (hasChanges) {
       Utils.syncTrackCapabilities(preferredType, stream, changes);
     }
 
-    capabilities.current = nextWebCameraSettings;
+    capabilities.current = { ...capabilities.current, ...changes };
   }, [
     settings.autoFocus,
     settings.flashMode,
@@ -168,12 +158,40 @@ export function useWebCameraStream(
     settings.zoom,
   ]);
 
+  const onCameraReadyRef = React.useRef(onCameraReady);
+  onCameraReadyRef.current = onCameraReady;
+
   React.useEffect(() => {
     // set or unset the video source.
-    if (!video.current) {
+    const element = video.current;
+    if (!element) {
       return;
     }
-    Utils.setVideoSource(video.current, stream);
+    Utils.setVideoSource(element, stream);
+    if (!stream) {
+      return;
+    }
+
+    // Only report the camera as ready once the video has a frame to capture,
+    // otherwise `takePictureAsync` would throw `ERR_CAMERA_NOT_READY`.
+    const readyEvents = ['loadeddata', 'canplay', 'canplaythrough', 'playing'] as const;
+    const onVideoReady = () => {
+      if (!Utils.isVideoReadyForCapture(element)) {
+        return;
+      }
+      removeListeners();
+      onCameraReadyRef.current?.();
+    };
+    const removeListeners = () => {
+      for (const event of readyEvents) {
+        element.removeEventListener(event, onVideoReady);
+      }
+    };
+    for (const event of readyEvents) {
+      element.addEventListener(event, onVideoReady);
+    }
+    onVideoReady();
+    return removeListeners;
   }, [video.current, stream]);
 
   React.useEffect(() => {

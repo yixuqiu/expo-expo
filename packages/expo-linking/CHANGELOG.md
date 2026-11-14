@@ -1,14 +1,375 @@
 # Changelog
 
-## Unpublished
+## 58.0.14
 
-### 🛠 Breaking changes
+### Patch Changes
+
+- Updated dependencies.
+  - expo-constants@58.0.13
+
+## 58.0.13
+
+### Patch Changes
+
+- Updated dependencies.
+  - expo-constants@58.0.12
+
+## 58.0.12
+
+### Patch Changes
+
+- Updated dependencies.
+  - expo-constants@58.0.11
+
+## 58.0.11
+
+### Patch Changes
+
+- Updated dependencies.
+  - expo-constants@58.0.10
+
+## 58.0.10
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.9
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Stop decoding query parameter values twice in `parse()`. Values with percent-encoded `%`, `+` or `@` were altered, and malformed percent-encoding threw a `URIError`. ([#50289](https://github.com/expo/expo/pull/50289) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Add `unwrapDevLaunchURL()` to resolve the URL an app should route from an Expo Go or development build launch URL, dropping the reserved `__expo_*` params. ([#50289](https://github.com/expo/expo/pull/50289) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762), [#49511](https://github.com/expo/expo/pull/49511), [#50661](https://github.com/expo/expo/pull/50661))
+  - expo-constants@58.0.9
+
+## 58.0.8 — 2026-09-28
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.7 — 2026-09-25
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.6 — 2026-09-23
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.5 — 2026-09-22
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.4 — 2026-09-21
 
 ### 🎉 New features
 
+- [iOS] Ignore the fingerprint-check trigger URL, so it never becomes the initial URL `getLinkingURL()` returns. ([#49494](https://github.com/expo/expo/pull/49494) by [@vonovak](https://github.com/vonovak))
+
+## 58.0.3 — 2026-09-16
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-15
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.1 — 2026-09-14
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
 ### 🐛 Bug fixes
 
+- Create development deep links from the bundle URL's authority instead of the manifest's `hostUri` ([#48275](https://github.com/expo/expo/pull/48275) by [@kitten](https://github.com/kitten))
+
 ### 💡 Others
+
+- [Internal] Read the development server URL from `expo/internal/bundle-origin` instead of duplicating its accessor ([#48278](https://github.com/expo/expo/pull/48278) by [@kitten](https://github.com/kitten))
+
+## 57.0.4 - 2026-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-07-07
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-30
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.14 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.13 - 2026-05-29
+
+### 🎉 New features
+
+- Added `Linking.clearInitialURL()` to reset the cached deep-link URL. ([#46265](https://github.com/expo/expo/pull/46265) by @gabrieldonadel)
+
+## 56.0.12 — 2026-05-26
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.11 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.10 — 2026-05-20
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.9 — 2026-05-19
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.7 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-12
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.15 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-13
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 - 2026-03-18
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-23
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.10 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.9 - 2025-11-17
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.8 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.7 — 2025-09-03
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.6 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.5 — 2025-08-28
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.4 — 2025-08-26
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.3 — 2025-08-21
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.7 - 2025-07-03
+
+### 🐛 Bug fixes
+
+- Fix cold booting iOS apps from a universal link. ([#37647](https://github.com/expo/expo/pull/37647) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 7.1.6 - 2025-07-01
+
+### 💡 Others
+
+- Deprecate `useURL` in favor of `useLinkingURL`. ([#37005](https://github.com/expo/expo/pull/37005) by [@aleqsio](https://github.com/aleqsio))
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+
+## 7.1.5 — 2025-05-08
+
+### 🐛 Bug fixes
+
+- Fixed `createURL` double-encodes URI parameters. ([#36704](https://github.com/expo/expo/pull/36704) by [@lukmccall](https://github.com/lukmccall))
+
+## 7.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.0 — 2025-04-04
+
+### 🎉 New features
+
+- Add macOS support. ([#35064](https://github.com/expo/expo/pull/35064) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+
+## 7.0.5 - 2025-01-27
+
+### 🎉 New features
+
+- [iOS] Add basic support for App Clips. ([#34327](https://github.com/expo/expo/pull/34327) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 7.0.4 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.3 — 2024-11-19
+
+### 🐛 Bug fixes
+
+- [iOS] Fix `addEventListener` and `useURL` hook. ([#33076](https://github.com/expo/expo/pull/33076) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 7.0.2 — 2024-10-25
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.1 — 2024-10-24
+
+### 🐛 Bug fixes
+
+- [iOS] Add tvOS to podspec. ([#32255](https://github.com/expo/expo/pull/32255) by [@douglowder](https://github.com/douglowder))
+
+## 7.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Add shims for `react-server` environments. ([#31622](https://github.com/expo/expo/pull/31622) by [@EvanBacon](https://github.com/EvanBacon))
+- Add native `getLinkingURL` function. ([#29405](https://github.com/expo/expo/pull/29405) by [@aleqsio](https://github.com/aleqsio))
+
+### 🐛 Bug fixes
+
+- Add missing `react` and `react-native` peer dependencies for isolated modules. ([#30473](https://github.com/expo/expo/pull/30473) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Standardized Babel configuration to use `expo-module-scripts`. ([#31915](https://github.com/expo/expo/pull/31915) by [@reichhartd](https://github.com/reichhartd))
 
 ## 6.3.1 — 2024-04-23
 
@@ -86,7 +447,7 @@ _This version does not introduce any user-facing changes._
 
 ### 💡 Others
 
-- Fix link in README that was incorrectly pointing to to expo-asset. ([#20616](https://github.com/expo/expo/pull/20616) by [@stereoplegic](https://github.com/stereoplegic))
+- Fix link in README that was incorrectly pointing to expo-asset. ([#20616](https://github.com/expo/expo/pull/20616) by [@stereoplegic](https://github.com/stereoplegic))
 
 ## 3.3.1 — 2023-02-27
 

@@ -1,11 +1,11 @@
+import { Platform, CodedError, UnavailabilityError } from 'expo';
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
-import { Platform, CodedError, UnavailabilityError } from 'expo-modules-core';
 
 import { setAutoServerRegistrationEnabledAsync } from './DevicePushTokenAutoRegistration.fx';
 import ServerRegistrationModule from './ServerRegistrationModule';
-import { DevicePushToken, ExpoPushToken, ExpoPushTokenOptions } from './Tokens.types';
-import getDevicePushTokenAsync from './getDevicePushTokenAsync';
+import type { DevicePushToken, ExpoPushToken, ExpoPushTokenOptions } from './Tokens.types';
+import { getDevicePushTokenAsync } from './getDevicePushTokenAsync';
 
 const productionBaseUrl = 'https://exp.host/--/api/v2/';
 
@@ -16,6 +16,10 @@ const productionBaseUrl = 'https://exp.host/--/api/v2/';
  * (for example, due to the device being offline, experiencing a network timeout, or other HTTPS request failures).
  * To provide offline support to your users, you should `try/catch` this method and implement retry logic to attempt
  * to get the push token later, once the device is back online.
+ *
+ * If the [app config](/workflow/configuration/) has no project ID and `options.projectId` is not
+ * set, this method rejects with the `ERR_NOTIFICATIONS_NO_EXPERIENCE_ID` error.
+ * See [`ExpoPushTokenOptions`](#expopushtokenoptions).
  *
  * > For Expo's backend to be able to send notifications to your app, you will need to provide it with push notification keys.
  * For more information, see [credentials](/push-notifications/push-notifications-setup/#get-credentials-for-development-builds) in the push notifications setup.
@@ -46,24 +50,22 @@ const productionBaseUrl = 'https://exp.host/--/api/v2/';
  * }
  * ```
  */
-export default async function getExpoPushTokenAsync(
+export async function getExpoPushTokenAsync(
   options: ExpoPushTokenOptions = {}
 ): Promise<ExpoPushToken> {
   const devicePushToken = options.devicePushToken || (await getDevicePushTokenAsync());
 
   const deviceId = options.deviceId || (await getDeviceIdAsync());
-  const projectId = options.projectId || Constants.easConfig?.projectId;
-
-  if (!projectId) {
-    console.warn(
-      'Calling getExpoPushTokenAsync without specifying a projectId is deprecated and will no longer be supported in SDK 49+'
-    );
-  }
+  // Depending on the runtime environment, the default may be located in various places.
+  const projectId =
+    options.projectId ||
+    Constants.easConfig?.projectId ||
+    Constants.expoConfig?.extra?.eas?.projectId;
 
   if (!projectId) {
     throw new CodedError(
       'ERR_NOTIFICATIONS_NO_EXPERIENCE_ID',
-      "No 'projectId' found. If 'projectId' can't be inferred from the manifest (eg. in bare workflow), you have to pass it in yourself."
+      `No "projectId" found. If "projectId" can't be inferred from the manifest (for instance, in bare workflow), you have to pass it in yourself.`
     );
   }
 
@@ -71,7 +73,7 @@ export default async function getExpoPushTokenAsync(
   if (!applicationId) {
     throw new CodedError(
       'ERR_NOTIFICATIONS_NO_APPLICATION_ID',
-      "No applicationId found. If it can't be inferred from native configuration by expo-application, you have to pass it in yourself."
+      `No "applicationId" found. If it can't be inferred from native configuration by expo-application, you have to pass it in yourself.`
     );
   }
   const type = options.type || getTypeOfToken(devicePushToken);

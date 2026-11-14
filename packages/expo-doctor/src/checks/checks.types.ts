@@ -1,11 +1,12 @@
-import { ExpoConfig, PackageJSONConfig } from '@expo/config';
+import type { ExpoConfig, PackageJSONConfig } from '@expo/config';
 
-export interface DoctorCheck {
+export interface DoctorCheck<CacheType extends { [prop: string]: any } = { [prop: string]: any }> {
   // description that will appear as each check is run
   description: string;
   // semver range of SDK versions that this check is relevant for
   sdkVersionRange: string;
-  runAsync: (params: DoctorCheckParams) => Promise<DoctorCheckResult>;
+
+  runAsync(params: DoctorCheckParams, cache: CacheType): Promise<DoctorCheckResult>;
 }
 
 export interface DoctorCheckResult {
@@ -13,7 +14,7 @@ export interface DoctorCheckResult {
   /** many checks currently output their own issues, no need to duplicate */
   issues: string[];
   // Optional: a string with a suggestion to resolve the issue, which will be appended to the issue
-  advice?: string;
+  advice: string[];
 }
 
 export interface DoctorCheckParams {

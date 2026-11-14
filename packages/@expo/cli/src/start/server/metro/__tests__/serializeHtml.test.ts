@@ -1,4 +1,281 @@
-import { serializeHtmlWithAssets } from '../serializeHtml';
+import type { SerialAsset } from '@expo/metro-config/src/serializer/serializerAssets';
+
+import {
+  serializeHtmlWithAssets,
+  serialAssetsToStaticContentAssets,
+  assetsRequiresSort,
+  sortMatchedAssetsByEntryPoints,
+} from '../serializeHtml';
+
+describe(serialAssetsToStaticContentAssets, () => {
+  const js = (filename: string, metadata: any): SerialAsset =>
+    ({ filename, originFilename: filename, type: 'js', metadata, source: '' }) as any;
+
+  const granularJs = (filename: string, metadata: SerialAsset['metadata'] = {}) =>
+    js(filename, {
+      chunkingStrategy: 'granular',
+      entryPaths: [],
+      modulePaths: [],
+      requires: [],
+      isAsync: true,
+      ...metadata,
+    });
+
+  function granularAssets() {
+    return [
+      granularJs('dist/entry.js', {
+        isAsync: false,
+        entryPaths: ['/entry.js', '/app/inlined.tsx'],
+        entryChunks: {
+          '/entry.js': [],
+          '/app/inlined.tsx': [],
+          '/app/_layout.tsx': ['dist/layout.js', 'dist/shared.js'],
+          '/app/nested/page.tsx': ['dist/page.js', 'dist/shared.js'],
+        },
+        requires: ['dist/runtime.js'],
+      }),
+      granularJs('dist/page.js', {
+        entryPaths: ['/app/nested/page.tsx'],
+        requires: ['dist/runtime.js', 'dist/shared.js'],
+      }),
+      granularJs('dist/unrelated.js'),
+      granularJs('dist/layout.js', {
+        entryPaths: ['/app/_layout.tsx'],
+        requires: ['dist/runtime.js', 'dist/shared.js'],
+      }),
+      granularJs('dist/worker.js'),
+      granularJs('dist/shared.js', {
+        modulePaths: ['/app/_layout.tsx'],
+        requires: ['dist/runtime.js'],
+      }),
+      granularJs('dist/runtime.js', { isAsync: false }),
+    ];
+  }
+
+  it('expands semantic roots before the initial bundle without re-sorting prerequisites', () => {
+    const result = serialAssetsToStaticContentAssets(granularAssets(), {
+      isExporting: true,
+      baseUrl: '/sub/',
+      route: {
+        contextKey: './nested/page.tsx',
+        entryPoints: ['/app/_layout.tsx', '/app/nested/page.tsx'],
+      } as any,
+    });
+    expect(result.js).toEqual([
+      '/sub/dist/runtime.js',
+      '/sub/dist/shared.js',
+      '/sub/dist/layout.js',
+      '/sub/dist/page.js',
+      '/sub/dist/entry.js',
+    ]);
+    expect(new URL(result.js[1]!, 'https://example.com/sub/nested/page').pathname).toBe(
+      '/sub/dist/shared.js'
+    );
+  });
+
+  it('does not preload unrelated shared chunks, workers, or aliases owned by the initial bundle', () => {
+    const assets = granularAssets();
+    for (const route of [undefined, { entryPoints: ['/app/inlined.tsx'] } as any]) {
+      expect(
+        serialAssetsToStaticContentAssets(assets, { isExporting: true, baseUrl: '', route }).js
+      ).toEqual(['/dist/runtime.js', '/dist/entry.js']);
+    }
+  });
+
+  it('loads an entry from its owner without an empty facade', () => {
+    const assets = [
+      granularJs('entry.js', {
+        isAsync: false,
+        requires: ['runtime.js'],
+        entryChunks: { '/app/a.tsx': ['a.js'], '/app/b.tsx': ['a.js'] },
+      }),
+      granularJs('a.js', {
+        entryPaths: ['/app/a.tsx'],
+        modulePaths: ['/app/a.tsx', '/app/b.tsx'],
+        requires: ['runtime.js'],
+      }),
+      granularJs('runtime.js', { isAsync: false }),
+    ];
+    expect(
+      serialAssetsToStaticContentAssets(assets, {
+        isExporting: true,
+        baseUrl: '',
+        route: { entryPoints: ['/app/b.tsx'] } as any,
+      }).js
+    ).toEqual(['/runtime.js', '/a.js', '/entry.js']);
+  });
+
+  it.each(['a', 'b'])('loads only the required owner for /%s/index without a facade', (route) => {
+    const assets = [
+      granularJs('entry.js', {
+        isAsync: false,
+        requires: ['runtime.js'],
+        entryChunks: {
+          '/app/a/index.tsx': ['shared-a.js'],
+          '/app/b/index.tsx': ['shared-b.js'],
+        },
+      }),
+      granularJs('shared-a.js', { requires: ['runtime.js'] }),
+      granularJs('shared-b.js', { requires: ['runtime.js'] }),
+      granularJs('runtime.js', { isAsync: false }),
+    ];
+    expect(
+      serialAssetsToStaticContentAssets(assets, {
+        isExporting: true,
+        baseUrl: '/sub/',
+        route: { entryPoints: [`/app/${route}/index.tsx`] } as any,
+      }).js
+    ).toEqual(['/sub/runtime.js', `/sub/shared-${route}.js`, '/sub/entry.js']);
+  });
+
+  it('rejects missing or duplicated entry-to-chunks mappings', () => {
+    const missing = granularJs('entry.js', { isAsync: false });
+    expect(() =>
+      serialAssetsToStaticContentAssets([missing], { isExporting: true, baseUrl: '' })
+    ).toThrow(/entry-to-chunks mapping/);
+    expect(() =>
+      serialAssetsToStaticContentAssets(
+        [granularJs('a.js', { entryChunks: {} }), granularJs('b.js', { entryChunks: {} })],
+        { isExporting: true, baseUrl: '' }
+      )
+    ).toThrow(/entry-to-chunks mapping/);
+  });
+
+  it('rejects a missing file referenced by an entry', () => {
+    const entry = granularJs('entry.js', {
+      isAsync: false,
+      entryChunks: { '/app/page.tsx': ['missing.js'] },
+    });
+    expect(() =>
+      serialAssetsToStaticContentAssets([entry], {
+        isExporting: true,
+        baseUrl: '',
+        route: { entryPoints: ['/app/page.tsx'] } as any,
+      })
+    ).toThrow('Asset not found for entry /app/page.tsx: missing.js');
+  });
+
+  it('rejects incomplete or mixed provenance instead of using legacy matching', () => {
+    const invalid = granularJs('bad.js', { entryPaths: undefined });
+    expect(() =>
+      serialAssetsToStaticContentAssets([invalid], { isExporting: true, baseUrl: '' })
+    ).toThrow(/entryPaths/);
+    expect(() =>
+      serialAssetsToStaticContentAssets([granularJs('new.js'), js('legacy.js', {})], {
+        isExporting: true,
+        baseUrl: '',
+      })
+    ).toThrow(/strategy/);
+  });
+
+  it('walks only the selected roots, but still rejects missing requirements and cycles', () => {
+    const a = js('a.js', { requires: ['shared.js'] });
+    const shared = js('shared.js', { requires: [] });
+    const unrelated = js('unrelated.js', { requires: ['missing.js'] });
+    expect(assetsRequiresSort([a, unrelated, shared], [a]).map((a) => a.filename)).toEqual([
+      'shared.js',
+      'a.js',
+    ]);
+    expect(assetsRequiresSort([a, unrelated, shared], [])).toEqual([]);
+    expect(() => assetsRequiresSort([a, unrelated, shared], [unrelated])).toThrow(
+      'Asset not found: missing.js'
+    );
+    expect(() => assetsRequiresSort([a, js('shared.js', { requires: ['a.js'] })], [a])).toThrow(
+      /Circular dependencies/
+    );
+  });
+
+  it('builds linked CSS and dependency-ordered, route-scoped JS when exporting', () => {
+    const resources: SerialAsset[] = [
+      {
+        type: 'css-external',
+        filename: 'https://x/a.css',
+        originFilename: 'a',
+        source: '<link rel="stylesheet" href="https://x/a.css">',
+        metadata: {},
+      } as any,
+      {
+        type: 'css',
+        filename: 'dist/a.css',
+        originFilename: 'a',
+        source: '',
+        metadata: {},
+      } as any,
+      {
+        type: 'css-external',
+        filename: 'https://x/b.css',
+        originFilename: 'b',
+        source: '<link rel="stylesheet" href="https://x/b.css">',
+        metadata: {},
+      } as any,
+      {
+        type: 'css',
+        filename: 'dist/b.css',
+        originFilename: 'b',
+        source: '',
+        metadata: {},
+      } as any,
+      js('dist/runtime.js', { isAsync: false, requires: [], modulePaths: [] }),
+      js('dist/entry.js', { isAsync: false, requires: ['dist/runtime.js'], modulePaths: [] }),
+      js('dist/chunk-page.js', { isAsync: true, requires: [], modulePaths: ['/app/[slug].tsx'] }),
+      js('dist/chunk-layout.js', {
+        isAsync: true,
+        requires: [],
+        modulePaths: ['/app/_layout.tsx'],
+      }),
+      js('dist/chunk-unrelated.js', {
+        isAsync: true,
+        requires: [],
+        modulePaths: ['/app/other.tsx'],
+      }),
+    ];
+    const route = {
+      contextKey: './[slug].tsx',
+      entryPoints: ['/app/_layout.tsx', '/app/[slug].tsx'],
+    } as any;
+
+    const assets = serialAssetsToStaticContentAssets(resources, {
+      isExporting: true,
+      baseUrl: '',
+      route,
+    });
+
+    expect(assets.js).toEqual([
+      '/dist/runtime.js',
+      '/dist/chunk-layout.js',
+      '/dist/chunk-page.js',
+      '/dist/entry.js',
+    ]);
+    expect(assets.css).toEqual([
+      { type: 'external', href: 'https://x/a.css', media: undefined },
+      { type: 'css', href: '/dist/a.css' },
+      { type: 'external', href: 'https://x/b.css', media: undefined },
+      { type: 'css', href: '/dist/b.css' },
+    ]);
+  });
+
+  it('builds inline CSS and a single dev bundle in development', () => {
+    const resources: SerialAsset[] = [
+      {
+        type: 'css',
+        filename: 'dist/a.css',
+        originFilename: 'a',
+        source: '.a{}',
+        metadata: { hmrId: 'a' },
+      } as any,
+      js('dist/ignored.js', { isAsync: false, requires: [], modulePaths: [] }),
+    ];
+
+    const assets = serialAssetsToStaticContentAssets(resources, {
+      isExporting: false,
+      baseUrl: '',
+      bundleUrl: '/index.bundle?platform=web',
+    });
+
+    expect(assets.css).toEqual([{ type: 'inline', source: '.a{}', hmrId: 'a' }]);
+    expect(assets.js).toEqual(['/index.bundle?platform=web']);
+  });
+});
 
 it('serializes development static html', () => {
   const res = serializeHtmlWithAssets({
@@ -18,6 +295,27 @@ it('serializes development static html', () => {
   });
   expect(res).toMatchSnapshot();
   expect(res).toMatch(/<script src="\/packages\/expo-router\/entry\.bundle\?platform=web" defer>/);
+});
+
+it('injects hydration flag', () => {
+  const res = serializeHtmlWithAssets({
+    resources: [
+      {
+        filename: 'dist/entry.js',
+        originFilename: '../../packages/expo-router/entry.js',
+        type: 'js',
+        metadata: { isAsync: false, requires: [], modulePaths: [] },
+        source: '',
+      },
+    ],
+    baseUrl: '',
+    isExporting: true,
+    template: '<!DOCTYPE html><html><head></head><body><div id="root"></div></body></html>',
+    devBundleUrl: '/packages/expo-router/entry.bundle?platform=web',
+    hydrate: true,
+  });
+  expect(res).toMatchSnapshot();
+  expect(res).toMatch(/__EXPO_ROUTER_HYDRATE__/);
 });
 
 it('serializes production static html for export', () => {
@@ -86,4 +384,255 @@ it('serializes development export static html with correct baseUrl and script sr
     // Note the explicit `/Users` part, not adding a double `//` by accident
     /<script src="\/custom\/base\/url\/Users\/path\/to\/expo\/app\/node_modules\/expo\/AppEntry.js" defer>/
   );
+});
+
+it('serializes HTML with async chunks in correct order for dynamic routes', () => {
+  const res = serializeHtmlWithAssets({
+    resources: [
+      {
+        filename: 'dist/entry.js',
+        originFilename: 'entry.js',
+        type: 'js',
+        metadata: { isAsync: false, requires: [], modulePaths: [] },
+        source: '',
+      },
+      {
+        filename: 'dist/chunk-page.js',
+        originFilename: 'chunk-page.js',
+        type: 'js',
+        metadata: { isAsync: true, requires: [], modulePaths: ['/app/[slug].tsx'] },
+        source: '',
+      },
+      {
+        filename: 'dist/chunk-layout.js',
+        originFilename: 'chunk-layout.js',
+        type: 'js',
+        metadata: { isAsync: true, requires: [], modulePaths: ['/app/_layout.tsx'] },
+        source: '',
+      },
+    ],
+    baseUrl: '',
+    isExporting: true,
+    template: '<!DOCTYPE html><html><head></head><body><div id="root"></div></body></html>',
+    route: {
+      contextKey: './[slug].tsx',
+      entryPoints: ['/app/_layout.tsx', '/app/[slug].tsx'],
+    } as any,
+  });
+
+  expect(res).toContain(
+    '<script src="/dist/chunk-layout.js" defer></script><script src="/dist/chunk-page.js" defer></script>'
+  );
+});
+
+it('places sync entry scripts after async chunks so preloaded chunks resolve synchronously', () => {
+  const res = serializeHtmlWithAssets({
+    resources: [
+      {
+        filename: 'dist/runtime.js',
+        originFilename: 'runtime.js',
+        type: 'js',
+        metadata: { isAsync: false, requires: [], modulePaths: [] },
+        source: '',
+      },
+      {
+        filename: 'dist/entry.js',
+        originFilename: 'entry.js',
+        type: 'js',
+        metadata: { isAsync: false, requires: ['dist/runtime.js'], modulePaths: [] },
+        source: '',
+      },
+      {
+        filename: 'dist/chunk-layout.js',
+        originFilename: 'chunk-layout.js',
+        type: 'js',
+        metadata: { isAsync: true, requires: [], modulePaths: ['/app/_layout.tsx'] },
+        source: '',
+      },
+      {
+        filename: 'dist/chunk-page.js',
+        originFilename: 'chunk-page.js',
+        type: 'js',
+        metadata: { isAsync: true, requires: [], modulePaths: ['/app/[slug].tsx'] },
+        source: '',
+      },
+    ],
+    baseUrl: '',
+    isExporting: true,
+    template: '<!DOCTYPE html><html><head></head><body><div id="root"></div></body></html>',
+    route: {
+      contextKey: './[slug].tsx',
+      entryPoints: ['/app/_layout.tsx', '/app/[slug].tsx'],
+    } as any,
+  });
+
+  expect(res).toContain(
+    '<script src="/dist/runtime.js" defer></script>' +
+      '<script src="/dist/chunk-layout.js" defer></script>' +
+      '<script src="/dist/chunk-page.js" defer></script>' +
+      '<script src="/dist/entry.js" defer></script>'
+  );
+});
+
+it('sorts assets based on requires tree', () => {
+  const assets: SerialAsset[] = [
+    {
+      filename: 'a.js',
+      originFilename: 'a.ts',
+      type: 'js',
+      metadata: { requires: ['d.js', 'b.js'] },
+      source: '// a code',
+    },
+    {
+      filename: 'b.js',
+      originFilename: 'b.ts',
+      type: 'js',
+      metadata: { requires: ['d.js'] },
+      source: '// b code',
+    },
+    {
+      filename: 'c.js',
+      originFilename: 'c.ts',
+      type: 'js',
+      metadata: { requires: [] },
+      source: '// c code',
+    },
+    {
+      filename: 'd.js',
+      originFilename: 'd.ts',
+      type: 'js',
+      metadata: { requires: ['c.js'] },
+      source: '// d code',
+    },
+  ];
+  const sortedAssets = assetsRequiresSort(assets);
+  expect(sortedAssets).toMatchInlineSnapshot(`
+    [
+      {
+        "filename": "c.js",
+        "metadata": {
+          "requires": [],
+        },
+        "originFilename": "c.ts",
+        "source": "// c code",
+        "type": "js",
+      },
+      {
+        "filename": "d.js",
+        "metadata": {
+          "requires": [
+            "c.js",
+          ],
+        },
+        "originFilename": "d.ts",
+        "source": "// d code",
+        "type": "js",
+      },
+      {
+        "filename": "b.js",
+        "metadata": {
+          "requires": [
+            "d.js",
+          ],
+        },
+        "originFilename": "b.ts",
+        "source": "// b code",
+        "type": "js",
+      },
+      {
+        "filename": "a.js",
+        "metadata": {
+          "requires": [
+            "d.js",
+            "b.js",
+          ],
+        },
+        "originFilename": "a.ts",
+        "source": "// a code",
+        "type": "js",
+      },
+    ]
+  `);
+});
+
+describe(sortMatchedAssetsByEntryPoints, () => {
+  it('corrects incorrectly ordered chunks', () => {
+    const assets: SerialAsset[] = [
+      {
+        filename: 'chunk-page.js',
+        originFilename: 'chunk-page.js',
+        type: 'js',
+        metadata: { isAsync: true, modulePaths: ['/app/[slug].tsx'] },
+        source: '',
+      },
+      {
+        filename: 'chunk-layout.js',
+        originFilename: 'chunk-layout.js',
+        type: 'js',
+        metadata: { isAsync: true, modulePaths: ['/app/_layout.tsx'] },
+        source: '',
+      },
+    ];
+
+    const sorted = sortMatchedAssetsByEntryPoints(assets, ['/app/_layout.tsx', '/app/[slug].tsx']);
+    expect(sorted.map((a) => a.filename)).toEqual(['chunk-layout.js', 'chunk-page.js']);
+  });
+
+  it('preserves already correct order', () => {
+    const assets: SerialAsset[] = [
+      {
+        filename: 'chunk-layout.js',
+        originFilename: 'chunk-layout.js',
+        type: 'js',
+        metadata: { isAsync: true, modulePaths: ['/app/_layout.tsx'] },
+        source: '',
+      },
+      {
+        filename: 'chunk-page.js',
+        originFilename: 'chunk-page.js',
+        type: 'js',
+        metadata: { isAsync: true, modulePaths: ['/app/index.tsx'] },
+        source: '',
+      },
+    ];
+    const sorted = sortMatchedAssetsByEntryPoints(assets, ['/app/_layout.tsx', '/app/index.tsx']);
+    expect(sorted.map((a) => a.filename)).toEqual(['chunk-layout.js', 'chunk-page.js']);
+  });
+
+  it('handles nested layouts', () => {
+    const assets: SerialAsset[] = [
+      {
+        filename: 'chunk-root.js',
+        originFilename: 'chunk-root.js',
+        type: 'js',
+        metadata: { isAsync: true, modulePaths: ['/app/_layout.tsx'] },
+        source: '',
+      },
+      {
+        filename: 'chunk-nested.js',
+        originFilename: 'chunk-nested.js',
+        type: 'js',
+        metadata: { isAsync: true, modulePaths: ['/app/settings/_layout.tsx'] },
+        source: '',
+      },
+      {
+        filename: 'chunk-page.js',
+        originFilename: 'chunk-page.js',
+        type: 'js',
+        metadata: { isAsync: true, modulePaths: ['/app/settings/profile.tsx'] },
+        source: '',
+      },
+    ];
+
+    const sorted = sortMatchedAssetsByEntryPoints(assets, [
+      '/app/_layout.tsx',
+      '/app/settings/_layout.tsx',
+      '/app/settings/profile.tsx',
+    ]);
+    expect(sorted.map((a) => a.filename)).toEqual([
+      'chunk-root.js',
+      'chunk-nested.js',
+      'chunk-page.js',
+    ]);
+  });
 });

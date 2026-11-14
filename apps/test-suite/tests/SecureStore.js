@@ -1,6 +1,7 @@
 'use strict';
 
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 export const name = 'SecureStore';
 
@@ -87,7 +88,38 @@ export function test(t) {
             try {
               await SecureStore.setItemAsync(key, value, {
                 keychainService: 'service',
-                requireAuthentication: true,
+                requireAuthentication: 'biometry',
+              });
+              if (!canSave) {
+                t.fail('Expected SecureStore.setItemAsync to throw an error');
+              }
+            } catch {
+              if (canSave) {
+                t.fail('Expected SecureStore.setItemAsync to succeed');
+              }
+            }
+          } catch (e) {
+            t.fail(e);
+          }
+        });
+      }
+    );
+    t.describe(
+      'canUseDeviceCredentialsAuthentication correctly indicates if a value can be saved with fallback authentication',
+      () => {
+        const canSave = SecureStore.canUseDeviceCredentialsAuthentication();
+        t.it('canUseDeviceCredentialsAuthentication returns a boolean', async () => {
+          t.expect(typeof canSave).toBe('boolean');
+        });
+        const testDescription = `canUseDeviceCredentialsAuthentication is ${canSave} -> saving the value should ${
+          canSave ? 'succeed' : 'fail'
+        }`;
+        t.it(testDescription, async () => {
+          try {
+            try {
+              await SecureStore.setItemAsync(key, value, {
+                keychainService: 'fallback_service',
+                requireAuthentication: 'deviceCredentials',
               });
               if (!canSave) {
                 t.fail('Expected SecureStore.setItemAsync to throw an error');
@@ -142,6 +174,45 @@ export function test(t) {
         const result = await SecureStore.getItemAsync(key);
         t.expect(result).toBe(longValue);
       });
+    });
+    t.describe('Stores with access group', () => {
+      t.it('Set long value', async () => {
+        const result = await SecureStore.setItemAsync(key, longValue, {
+          accessGroup: 'group.dev.expo.Payments',
+        });
+        t.expect(result).toBe(undefined);
+      });
+      t.it('Fetch long value', async () => {
+        const result = await SecureStore.getItemAsync(key, {
+          accessGroup: 'group.dev.expo.Payments',
+        });
+        t.expect(result).toBe(longValue);
+      });
+      t.it('Delete long value', async () => {
+        const result = await SecureStore.deleteItemAsync(key, {
+          accessGroup: 'group.dev.expo.Payments',
+        });
+        t.expect(result).toBe(undefined);
+      });
+      if (Platform.OS === 'ios') {
+        t.it('Set in non access group and validate get in access group is empty', async () => {
+          await SecureStore.setItemAsync(key, longValue, {});
+          const result = await SecureStore.getItemAsync(key, {
+            accessGroup: 'group.dev.expo.Payments',
+          });
+          t.expect(result).toBe(null);
+        });
+        t.it('Set for access group without entitlements, expect error', async () => {
+          try {
+            const result = await SecureStore.setItemAsync(key, emptyValue, {
+              accessGroup: 'group.no.entitlement',
+            });
+            t.fail(result);
+          } catch (e) {
+            t.expect(e).toBeTruthy();
+          }
+        });
+      }
     });
   });
 }

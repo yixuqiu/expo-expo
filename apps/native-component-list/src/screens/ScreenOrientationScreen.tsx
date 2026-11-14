@@ -1,8 +1,9 @@
-import { Platform, Subscription } from 'expo-modules-core';
+import { Platform, type EventSubscription } from 'expo';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import React from 'react';
-import { ScrollView, Text, SafeAreaView } from 'react-native';
+import { ScrollView, SafeAreaView } from 'react-native';
 
+import { BodyText } from '../components/BodyText';
 import ListButton from '../components/ListButton';
 
 interface State {
@@ -10,16 +11,14 @@ interface State {
   orientationLock?: ScreenOrientation.OrientationLock;
 }
 
-// See: https://github.com/expo/expo/pull/10229#discussion_r490961694
-// eslint-disable-next-line @typescript-eslint/ban-types
-export default class ScreenOrientationScreen extends React.Component<{}, State> {
+export default class ScreenOrientationScreen extends React.Component<object, State> {
   static navigationOptions = {
     title: 'ScreenOrientation',
   };
 
   readonly state: State = {};
 
-  listener?: Subscription;
+  listener?: EventSubscription;
 
   async componentDidMount() {
     this.listener = ScreenOrientation.addOrientationChangeListener(
@@ -130,10 +129,12 @@ export default class ScreenOrientationScreen extends React.Component<{}, State> 
       <SafeAreaView>
         <ScrollView style={{ padding: 10 }}>
           {orientation !== undefined && (
-            <Text>Orientation: {ScreenOrientation.Orientation[orientation]}</Text>
+            <BodyText>Orientation: {ScreenOrientation.Orientation[orientation]}</BodyText>
           )}
           {orientationLock !== undefined && (
-            <Text>OrientationLock: {ScreenOrientation.OrientationLock[orientationLock]}</Text>
+            <BodyText>
+              OrientationLock: {ScreenOrientation.OrientationLock[orientationLock]}
+            </BodyText>
           )}
           {this.getScreenOrientationLockOptions().map((o) => (
             <ListButton key={o.key} onPress={() => this.lock(o.value)} title={o.key} />

@@ -9,20 +9,26 @@
  * https://github.com/facebook/metro/blob/bbdd7d7c5e6e0feb50a9967ffae1f723c1d7c4e8/packages/metro/src/DeltaBundler/Serializers/helpers/js.js#L1
  */
 
+import { addParamsToDefineCall } from '@expo/metro/metro-transform-plugins';
+import type { JsOutput } from '@expo/metro/metro-transform-worker';
+import type { MixedOutput, Module } from '@expo/metro/metro/DeltaBundler';
+import type { SerializerOptions } from '@expo/metro/metro/DeltaBundler/types';
+import { isResolvedDependency } from '@expo/metro/metro/lib/isResolvedDependency';
 import assert from 'assert';
 import jscSafeUrl from 'jsc-safe-url';
-import type { MixedOutput, Module } from 'metro';
-import { addParamsToDefineCall } from 'metro-transform-plugins';
-import type { JsOutput } from 'metro-transform-worker';
 import path from 'path';
 
-export type Options = {
+import type { AsyncDependencyType } from '../../transform-worker/collect-dependencies';
+import { toPosixPath as normalizePathSeparatorsToPosix } from '../../utils/filePath';
+import type { AsyncModulePaths } from '../serializerAssets';
+
+export type Options = Pick<SerializerOptions, 'unstable_getAsyncDependencyPath'> & {
   createModuleId: (module: string) => number | string;
   dev: boolean;
   includeAsyncPaths: boolean;
   projectRoot: string;
   serverRoot: string;
-  sourceUrl: string | undefined;
+  sourceUrl?: string | null;
   splitChunks: boolean;
   skipWrapping: boolean;
   computedAsyncModulePaths: Record<string, string> | null;
@@ -31,7 +37,7 @@ export type Options = {
 export function wrapModule(
   module: Module,
   options: Options
-): { src: string; paths: Record<string, string> } {
+): { src: string; paths: AsyncModulePaths } {
   const output = getJsOutput(module);
 
   if (output.type.startsWith('js/script')) {
@@ -39,11 +45,7 @@ export function wrapModule(
   }
 
   const { params, paths } = getModuleParams(module, options);
-  let src = output.data.code;
-  if (!options.skipWrapping) {
-    src = addParamsToDefineCall(output.data.code, ...params);
-  }
-
+  const src = addParamsToDefineCall(output.data.code, ...params);
   return { src, paths };
 }
 
@@ -59,14 +61,35 @@ export function getModuleParams(
     | 'dev'
     | 'projectRoot'
     | 'computedAsyncModulePaths'
+    | 'unstable_getAsyncDependencyPath'
   >
-): { params: any[]; paths: Record<string, string> } {
+): { params: any[]; paths: AsyncModulePaths } {
   const moduleId = options.createModuleId(module.path);
 
-  const paths: { [moduleID: number | string]: any } = {};
+  const paths: AsyncModulePaths = {};
   let hasPaths = false;
+
   const dependencyMapArray = Array.from(module.dependencies.values()).map((dependency) => {
-    const id = options.createModuleId(dependency.absolutePath);
+    if (!isResolvedDependency(dependency)) {
+      return null;
+    }
+    let modulePath = dependency.absolutePath;
+
+    if (modulePath == null) {
+      if (dependency.data.data.isOptional) {
+        // For optional dependencies, that could not be resolved.
+        modulePath = dependency.data.name;
+      } else {
+        throw new Error(
+          `Module "${module.path}" has a dependency with missing absolutePath: ${JSON.stringify(
+            dependency,
+            null,
+            2
+          )}`
+        );
+      }
+    }
+    const id = options.createModuleId(modulePath);
     if (
       // NOTE(EvanBacon): Disabled this to ensure that paths are provided even when the entire bundle
       // is created. This is required for production bundle splitting.
@@ -74,7 +97,21 @@ export function getModuleParams(
 
       dependency.data.data.asyncType != null
     ) {
-      if (options.includeAsyncPaths) {
+      if (options.unstable_getAsyncDependencyPath) {
+        // Prefer the callback: production exports also set sourceUrl.
+        if (options.includeAsyncPaths) {
+          const asyncPath = options.unstable_getAsyncDependencyPath(dependency, options);
+          if (asyncPath != null) {
+            assert(
+              typeof asyncPath === 'string' ||
+                (Array.isArray(asyncPath) && asyncPath.every((path) => typeof path === 'string')),
+              `Async path for ${dependency.absolutePath} must be a string or an array of strings.`
+            );
+            paths[id] = asyncPath;
+            hasPaths = true;
+          }
+        }
+      } else if (options.includeAsyncPaths) {
         if (options.sourceUrl) {
           hasPaths = true;
           // TODO: Only include path if the target is not in the bundle
@@ -83,13 +120,21 @@ export function getModuleParams(
           // most parameters from the main bundle's URL.
 
           const { searchParams } = new URL(jscSafeUrl.toNormalUrl(options.sourceUrl));
-          searchParams.set('modulesOnly', 'true');
-          searchParams.set('runModule', 'false');
+          if ((dependency.data.data.asyncType as AsyncDependencyType | null) === 'worker') {
+            // Include all modules and run the module when of type worker.
+            searchParams.set('modulesOnly', 'false');
+            searchParams.set('runModule', 'true');
+            searchParams.delete('shallow');
+          } else {
+            searchParams.set('modulesOnly', 'true');
+            searchParams.set('runModule', 'false');
+          }
 
           const bundlePath = path.relative(options.serverRoot, dependency.absolutePath);
           paths[id] =
             '/' +
             path.join(
+              // TODO: This is not the proper Metro URL encoding of a file path
               path.dirname(bundlePath),
               // Strip the file extension
               path.basename(bundlePath, path.extname(bundlePath))
@@ -100,7 +145,7 @@ export function getModuleParams(
       } else if (options.splitChunks && options.computedAsyncModulePaths != null) {
         hasPaths = true;
         // A template string that we'll match and replace later when we know the content hash for a given path.
-        paths[id] = options.computedAsyncModulePaths[dependency.absolutePath];
+        paths[id] = options.computedAsyncModulePaths[dependency.absolutePath]!;
       }
     }
     return id;
@@ -119,7 +164,7 @@ export function getModuleParams(
   if (options.dev) {
     // Add the relative path of the module to make debugging easier.
     // This is mapped to `module.verboseName` in `require.js`.
-    params.push(path.relative(options.projectRoot, module.path));
+    params.push(normalizePathSeparatorsToPosix(path.relative(options.projectRoot, module.path)));
   }
 
   return { params, paths };

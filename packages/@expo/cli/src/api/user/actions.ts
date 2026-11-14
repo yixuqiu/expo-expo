@@ -1,14 +1,17 @@
 import assert from 'assert';
 import chalk from 'chalk';
 
-import { retryUsernamePasswordAuthWithOTPAsync } from './otp';
-import { Actor, getUserAsync, loginAsync, ssoLoginAsync } from './user';
 import * as Log from '../../log';
 import { env } from '../../utils/env';
 import { CommandError } from '../../utils/errors';
+import { isInteractive } from '../../utils/interactive';
 import { learnMore } from '../../utils/link';
-import promptAsync, { Question } from '../../utils/prompts';
+import type { Question } from '../../utils/prompts';
+import promptAsync, { selectAsync } from '../../utils/prompts';
 import { ApiV2Error } from '../rest/client';
+import { retryUsernamePasswordAuthWithOTPAsync } from './otp';
+import type { Actor } from './user';
+import { getUserAsync, loginAsync, browserLoginAsync } from './user';
 
 /** Show login prompt while prompting for missing credentials. */
 export async function showLoginPromptAsync({
@@ -21,6 +24,7 @@ export async function showLoginPromptAsync({
   password?: string;
   otp?: string;
   sso?: boolean | undefined;
+  browser?: boolean | undefined;
 } = {}): Promise<void> {
   if (env.EXPO_OFFLINE) {
     throw new CommandError('OFFLINE', 'Cannot authenticate in offline-mode');
@@ -28,12 +32,16 @@ export async function showLoginPromptAsync({
   const hasCredentials = options.username && options.password;
   const sso = options.sso;
 
+  // Browser-based login is the default.
+  const browser = options.browser ?? (!hasCredentials && isInteractive());
+
   if (printNewLine) {
     Log.log();
   }
 
-  if (sso) {
-    await ssoLoginAsync();
+  if (sso || browser) {
+    await browserLoginAsync({ sso: !!sso });
+    Log.log('Logged in');
     return;
   }
 
@@ -80,27 +88,56 @@ export async function showLoginPromptAsync({
     });
   } catch (e) {
     if (e instanceof ApiV2Error && e.expoApiV2ErrorCode === 'ONE_TIME_PASSWORD_REQUIRED') {
-      await retryUsernamePasswordAuthWithOTPAsync(
-        username,
-        password,
-        e.expoApiV2ErrorMetadata as any
-      );
+      await retryUsernamePasswordAuthWithOTPAsync(username, password);
     } else {
       throw e;
     }
   }
+
+  Log.log('Logged in');
 }
 
-/** Ensure the user is logged in, if not, prompt to login. */
-export async function ensureLoggedInAsync(): Promise<Actor> {
-  let user = await getUserAsync().catch(() => null);
+export async function tryGetUserAsync(): Promise<Actor | null> {
+  const user = await getUserAsync().catch(() => null);
 
-  if (!user) {
-    Log.warn(chalk.yellow`An Expo user account is required to proceed.`);
-    await showLoginPromptAsync({ printNewLine: true });
-    user = await getUserAsync();
+  if (user) {
+    return user;
   }
 
-  assert(user, 'User should be logged in');
-  return user;
+  // In non-interactive environments (CI, non-TTY) we can't prompt for login. Proceed
+  // anonymously so callers like the Expo Go manifest code-signing flow degrade
+  // gracefully instead of bubbling a NON_INTERACTIVE error to the client.
+  if (!isInteractive()) {
+    return null;
+  }
+
+  const choices = [
+    {
+      title: 'Log in',
+      value: true,
+    },
+    {
+      title: 'Proceed anonymously',
+      value: false,
+    },
+  ];
+
+  const value = await selectAsync(
+    chalk`\n\nIt is recommended to log in with your Expo account before proceeding. \n{dim ${learnMore(
+      'https://expo.fyi/unverified-app-expo-go'
+    )}}\n`,
+    choices,
+    {
+      nonInteractiveHelp: `Use the EXPO_TOKEN environment variable to authenticate in CI (${learnMore(
+        'https://docs.expo.dev/accounts/programmatic-access/'
+      )})`,
+    }
+  );
+
+  if (value) {
+    await showLoginPromptAsync({ printNewLine: true });
+    return (await getUserAsync()) ?? null;
+  }
+
+  return null;
 }

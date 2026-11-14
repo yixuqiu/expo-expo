@@ -12,7 +12,8 @@ import expo.modules.kotlin.getUnimoduleProxy
 class ViewManagerDefinition(
   private val viewFactory: (Context, AppContext) -> View,
   internal val viewType: Class<out View>,
-  internal val props: Map<String, AnyViewProp>,
+  internal val props: Map<String, AnyViewProp> = emptyMap(),
+  internal val name: String = viewType.name,
   val onViewDestroys: ((View) -> Unit)? = null,
   val callbacksDefinition: CallbacksDefinition? = null,
   val viewGroupDefinition: ViewGroupDefinition? = null,
@@ -36,7 +37,9 @@ class ViewManagerDefinition(
     val reactContext = (view.context as? ReactContext) ?: return
     val nativeModulesProxy = reactContext.getUnimoduleProxy() ?: return
     val appContext = nativeModulesProxy.kotlinInteropModuleRegistry.appContext
-
-    appContext.errorManager?.reportExceptionToLogBox(exception)
+    appContext.jsLogger?.error(
+      message = exception.message.toString(),
+      cause = exception
+    )
   }
 }

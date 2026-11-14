@@ -1,6 +1,6 @@
 import ExpoModulesCore
-import UIKit
 import MobileCoreServices
+import UIKit
 
 struct PickingContext {
   let promise: Promise
@@ -32,24 +32,16 @@ public class DocumentPickerModule: Module, PickingResultHandler {
       documentPickerVC.presentationController?.delegate = pickerDelegate
       documentPickerVC.allowsMultipleSelection = options.multiple
 
-      if UIDevice.current.userInterfaceIdiom == .pad {
-        let viewFrame = currentVc.view.frame
-        documentPickerVC.popoverPresentationController?.sourceRect = CGRect(
-          x: viewFrame.midX,
-          y: viewFrame.maxY,
-          width: 0,
-          height: 0
-        )
-        documentPickerVC.popoverPresentationController?.sourceView = currentVc.view
-        documentPickerVC.modalPresentationStyle = .pageSheet
-      }
+      SceneGeometry.anchorPopover(of: documentPickerVC, to: currentVc.view)
+      documentPickerVC.modalPresentationStyle = .pageSheet
       currentVc.present(documentPickerVC, animated: true)
     }.runOnQueue(.main)
   }
 
   func didPickDocumentsAt(urls: [URL]) {
     guard let options = self.pickingContext?.options,
-    let promise = self.pickingContext?.promise else {
+      let promise = self.pickingContext?.promise
+    else {
       log.error("Picking context has been lost.")
       return
     }
@@ -101,12 +93,10 @@ public class DocumentPickerModule: Module, PickingResultHandler {
       return 0
     }
 
-    let folderSize = contents.reduce(0) { currentSize, file in
+    return contents.reduce(0) { currentSize, file in
       let fileSize = getFileSize(path: path.appendingPathComponent(file)) ?? 0
       return currentSize + fileSize
     }
-
-    return folderSize
   }
 
   private func readDocumentDetails(documentUrl: URL, copy: Bool) throws -> DocumentInfo {
@@ -116,7 +106,7 @@ public class DocumentPickerModule: Module, PickingResultHandler {
       throw Exceptions.FileSystemModuleNotFound()
     }
 
-    guard let fileSize = try? getFileSize(path: documentUrl) else {
+    guard let fileSize = getFileSize(path: documentUrl) else {
       throw InvalidFileException()
     }
 
@@ -132,11 +122,20 @@ public class DocumentPickerModule: Module, PickingResultHandler {
 
     let mimeType = self.getMimeType(from: documentUrl.pathExtension) ?? "application/octet-stream"
 
+    // Get last modified date or use current date if not available.
+    // This follows the Web API spec.
+    // https://developer.mozilla.org/en-US/docs/Web/API/File/lastModified
+    let lastModified = try? documentUrl.resourceValues(forKeys: [.contentModificationDateKey])
+      .contentModificationDate?.timeIntervalSince1970
+    // Convert to milliseconds and ensure integer value to match the Web API spec.
+    let lastModifiedMs = Int64((lastModified ?? Date().timeIntervalSince1970) * 1000)
+
     return DocumentInfo(
       uri: newUrl.absoluteString,
       name: documentUrl.lastPathComponent,
       size: fileSize,
-      mimeType: mimeType
+      mimeType: mimeType,
+      lastModified: lastModifiedMs
     )
   }
 
@@ -146,7 +145,8 @@ public class DocumentPickerModule: Module, PickingResultHandler {
     } else {
       if let uti = UTTypeCreatePreferredIdentifierForTag(
         kUTTagClassFilenameExtension,
-        pathExtension as NSString, nil
+        pathExtension as NSString,
+        nil
       )?.takeRetainedValue() {
         if let mimetype = UTTypeCopyPreferredTagWithClass(uti, kUTTagClassMIMEType)?.takeRetainedValue() {
           return mimetype as String
@@ -164,7 +164,7 @@ public class DocumentPickerModule: Module, PickingResultHandler {
     case "image/*":
       return UTType.image
     case "video/*":
-      return UTType.video
+      return UTType.movie
     case "audio/*":
       return UTType.audio
     case "text/*":

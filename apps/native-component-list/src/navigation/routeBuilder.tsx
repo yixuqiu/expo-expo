@@ -12,7 +12,20 @@ export function ErroredScreen({ message }: { message: string }) {
 export function optionalRequire(requirer: () => { default: React.ComponentType }) {
   try {
     return requirer().default;
-  } catch (error) {
+  } catch (error: any) {
     return () => <ErroredScreen message={error.message} />;
+  }
+}
+
+/**
+ * Loads a group of screens, or none when its module cannot be loaded, for example because it
+ * imports a native module that is not available on the current platform.
+ */
+export function optionalScreens<T>(requirer: () => T[]): T[] {
+  try {
+    return requirer();
+  } catch (error: any) {
+    console.warn(`Skipping a screen group that failed to load: ${error.message}`);
+    return [];
   }
 }

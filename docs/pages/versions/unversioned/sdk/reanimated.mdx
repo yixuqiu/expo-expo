@@ -1,23 +1,31 @@
 ---
-title: Reanimated
+title: react-native-reanimated
 description: A library that provides an API that greatly simplifies the process of creating smooth, powerful, and maintainable animations.
 sourceCodeUrl: 'https://github.com/software-mansion/react-native-reanimated'
-packageName: 'react-native-reanimated'
-platforms: ['android', 'ios', 'tvos', 'web']
+packageName: react-native-reanimated
+platforms: ['android', 'ios', 'tvos', 'web', 'expo-go']
+inExpoGo: true
 ---
 
-import { APIInstallSection } from '~/components/plugins/InstallSection';
-import { SnackInline } from '~/ui/components/Snippet';
+import { BookOpen02Icon } from '@expo/styleguide-icons/outline/BookOpen02Icon';
 
-> **info** This library is listed in the Expo SDK reference because it is included in [Expo Go](https://expo.dev/go). You may use any library of your choice with [development builds](/develop/development-builds/introduction/).
+import { BoxLink } from '~/ui/components/BoxLink';
+import { SnackInline, Terminal } from '~/ui/components/Snippet';
 
 [`react-native-reanimated`](https://docs.swmansion.com/react-native-reanimated/docs/fundamentals/getting-started/) provides an API that greatly simplifies the process of creating smooth, powerful, and maintainable animations.
 
-> **Reanimated uses React Native APIs that are incompatible with "Remote JS Debugging" for JavaScriptCore**. To use a debugger with your app with `react-native-reanimated`, you'll need to use the [Hermes JavaScript engine](/guides/using-hermes) and the [JavaScript Inspector for Hermes](/guides/using-hermes#javascript-inspector-for-hermes).
+> **Reanimated uses React Native APIs that are incompatible with "Remote JS Debugging" for JavaScriptCore**. To use a debugger with your app with `react-native-reanimated`, you'll need to use the [Hermes JavaScript engine](/guides/using-hermes) and the [JavaScript Inspector for Hermes](/guides/using-hermes#javascript-debugger).
 
 ## Installation
 
-<APIInstallSection href="https://docs.swmansion.com/react-native-reanimated/docs/fundamentals/installation" />
+<Terminal
+  cmd={{
+    npm: ['$ npx expo install react-native-reanimated react-native-worklets'],
+    yarn: ['$ yarn expo install react-native-reanimated react-native-worklets'],
+    pnpm: ['$ pnpm expo install react-native-reanimated react-native-worklets'],
+    bun: ['$ bun expo install react-native-reanimated react-native-worklets'],
+  }}
+/>
 
 <br />
 
@@ -25,7 +33,7 @@ No additional configuration is required. [Reanimated Babel plugin](https://docs.
 
 ## Usage
 
-The following example shows how to use the `react-native-reanimated` library to create a simple animation. For more information on the API and its usage, see [`react-native-reanimated` documentation](https://docs.swmansion.com/react-native-reanimated/docs/fundamentals/your-first-animation).
+The following example shows how to use the `react-native-reanimated` library to create a simple animation.
 
 <SnackInline label="Using react-native-reanimated" dependencies={['react-native-reanimated']}>
 
@@ -82,3 +90,12 @@ const styles = StyleSheet.create({
 ```
 
 </SnackInline>
+
+## Learn more
+
+<BoxLink
+  title="Visit official documentation"
+  description="Get full information on API and its usage."
+  Icon={BookOpen02Icon}
+  href="https://docs.swmansion.com/react-native-reanimated/docs/fundamentals/your-first-animation"
+/>

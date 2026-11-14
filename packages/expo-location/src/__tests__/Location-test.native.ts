@@ -1,8 +1,8 @@
-import { Platform } from 'expo-modules-core';
+import { Platform } from 'expo';
 import { mockProperty, unmockAllProperties } from 'jest-expo';
 
 import ExpoLocation from '../ExpoLocation';
-import * as Location from '../Location';
+import * as Location from '../index';
 
 const fakeReturnValue = {
   coords: {
@@ -79,6 +79,85 @@ if (Platform.OS === 'android') {
   });
 }
 
+describe('startMotionActivityUpdatesAsync', () => {
+  it(`registers a task and reports it as started`, async () => {
+    mockProperty(
+      ExpoLocation,
+      'startMotionActivityUpdatesAsync',
+      jest.fn(async () => {})
+    );
+    mockProperty(
+      ExpoLocation,
+      'hasStartedMotionActivityUpdatesAsync',
+      jest.fn(async () => true)
+    );
+
+    await Location.startMotionActivityUpdatesAsync('motion-task');
+
+    expect(ExpoLocation.startMotionActivityUpdatesAsync).toHaveBeenCalledWith('motion-task', {});
+    await expect(Location.hasStartedMotionActivityUpdatesAsync('motion-task')).resolves.toBe(true);
+  });
+
+  it(`forwards the foregroundService option`, async () => {
+    mockProperty(
+      ExpoLocation,
+      'startMotionActivityUpdatesAsync',
+      jest.fn(async () => {})
+    );
+
+    const foregroundService = { notificationTitle: 'Title', notificationBody: 'Body' };
+    await Location.startMotionActivityUpdatesAsync('motion-task', { foregroundService });
+
+    expect(ExpoLocation.startMotionActivityUpdatesAsync).toHaveBeenCalledWith('motion-task', {
+      foregroundService,
+    });
+  });
+
+  it(`rejects an empty task name`, () => {
+    return expect(Location.startMotionActivityUpdatesAsync('')).rejects.toEqual(expect.any(Error));
+  });
+});
+
+describe('stopMotionActivityUpdatesAsync', () => {
+  it(`unregisters the task`, async () => {
+    mockProperty(
+      ExpoLocation,
+      'stopMotionActivityUpdatesAsync',
+      jest.fn(async () => {})
+    );
+
+    await Location.stopMotionActivityUpdatesAsync('motion-task');
+
+    expect(ExpoLocation.stopMotionActivityUpdatesAsync).toHaveBeenCalledWith('motion-task');
+  });
+});
+
+describe('watchHeadingAsync', () => {
+  it(`passes heading options to the native module`, async () => {
+    const watchDeviceHeading = jest.fn(async () => {});
+    mockProperty(ExpoLocation, 'watchDeviceHeading', watchDeviceHeading);
+
+    const subscription = await Location.watchHeadingAsync(jest.fn(), undefined, {
+      headingFilter: 0.5,
+    });
+
+    expect(watchDeviceHeading).toHaveBeenCalledWith(Location._getCurrentWatchId(), {
+      headingFilter: 0.5,
+    });
+    subscription.remove();
+  });
+
+  it(`passes empty options when none are given`, async () => {
+    const watchDeviceHeading = jest.fn(async () => {});
+    mockProperty(ExpoLocation, 'watchDeviceHeading', watchDeviceHeading);
+
+    const subscription = await Location.watchHeadingAsync(jest.fn());
+
+    expect(watchDeviceHeading).toHaveBeenCalledWith(Location._getCurrentWatchId(), {});
+    subscription.remove();
+  });
+});
+
 describe('reverseGeocodeAsync', () => {
   it(`rejects non-numeric latitude/longitude`, () => {
     // We need to cast these latitude/longitude strings to any type, so TypeScript diagnostics will pass here.
@@ -99,11 +178,11 @@ describe('navigator.geolocation polyfill', () => {
 
   describe('getCurrentPosition', () => {
     it(`delegates to getCurrentPositionAsync`, async () => {
-      let pass;
+      let pass: (_arg?: any) => void;
       const barrier = new Promise((resolve) => {
         pass = resolve;
       });
-      navigator.geolocation.getCurrentPosition(pass, pass, {});
+      navigator.geolocation.getCurrentPosition(pass!, pass!, {});
       await barrier;
       expect(ExpoLocation.getCurrentPositionAsync).toHaveBeenCalled();
     });
@@ -111,7 +190,7 @@ describe('navigator.geolocation polyfill', () => {
 
   describe('watchPosition', () => {
     it(`watches for updates and stops when clearWatch is called`, async () => {
-      let resolveBarrier;
+      let resolveBarrier: (_args?: any) => void;
       const watchBarrier = new Promise((resolve) => {
         resolveBarrier = resolve;
       });
@@ -119,7 +198,7 @@ describe('navigator.geolocation polyfill', () => {
         ExpoLocation,
         'watchPositionImplAsync',
         jest.fn(async () => {
-          resolveBarrier();
+          resolveBarrier!();
         })
       );
       const callback = jest.fn();
@@ -138,8 +217,8 @@ describe('navigator.geolocation polyfill', () => {
   });
 });
 
-function emitNativeLocationUpdate(location) {
-  Location.EventEmitter.emit('Expo.locationChanged', {
+function emitNativeLocationUpdate(location: any) {
+  ExpoLocation.emit('Expo.locationChanged', {
     watchId: Location._getCurrentWatchId(),
     location,
   });

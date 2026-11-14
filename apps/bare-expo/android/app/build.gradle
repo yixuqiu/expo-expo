@@ -13,33 +13,29 @@ react {
       workingDir(rootDir)
       commandLine("node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute")
     }.standardOutput.asText.get().trim())
-    def reactNativeRelativeDir = file(providers.exec {
-      workingDir(rootDir)
-      commandLine("node", "--print", "require.resolve('react-native/package.json')")
-    }.standardOutput.asText.get().trim()).getParentFile()
-    reactNativeDir = reactNativeRelativeDir.getAbsoluteFile()
-    hermesCommand = reactNativeRelativeDir.getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+    reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
+    hermesCommand = new File(["node", "--print", "require.resolve('hermes-compiler/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/hermesc/%OS-BIN%/hermesc"
     codegenDir = file(providers.exec {
       workingDir(rootDir)
-      commandLine("node", "--print", "require.resolve('@react-native/codegen/package.json')")
+      commandLine("node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })")
     }.standardOutput.asText.get().trim()).getParentFile().getAbsoluteFile()
 
 
     // Use Expo CLI to bundle the JS code
     cliFile = file(providers.exec {
       workingDir(rootDir)
-      commandLine("node", "--print", "require.resolve('@expo/cli')")
+      commandLine("node", "--print", "require.resolve('expo/bin/cli')")
     }.standardOutput.asText.get().trim())
 
     bundleCommand = "export:embed"
 
     /* Folders */
-    //   The root of your project, i.e. where "package.json" lives. Default is '..'
-    // root = file("../")
-    //   The folder where the react-native NPM package is. Default is ../node_modules/react-native
-    // reactNativeDir = file("../node_modules/react-native")
-    //   The folder where the react-native Codegen package is. Default is ../node_modules/@react-native/codegen
-    // codegenDir = file("../node_modules/@react-native/codegen")
+    //   The root of your project, i.e. where "package.json" lives. Default is '../..'
+    // root = file("../../")
+    //   The folder where the react-native NPM package is. Default is ../../node_modules/react-native
+    // reactNativeDir = file("../../node_modules/react-native")
+    //   The folder where the react-native Codegen package is. Default is ../../node_modules/@react-native/codegen
+    // codegenDir = file("../../node_modules/@react-native/codegen")
 
     /* Variants */
     //   The list of variants to that are debuggable. For those we're going to
@@ -71,12 +67,15 @@ react {
     //
     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
     // hermesFlags = ["-O", "-output-source-map"]
+
+    /* Autolinking */
+    autolinkLibrariesWithApp()
 }
 
 /**
- * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
+ * Set this to true to Run R8 on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInReleaseBuilds') ?: false).toBoolean()
+def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: false).toBoolean()
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -104,9 +103,6 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
-
-        testBuildType System.getProperty('testBuildType', 'debug')
-        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     signingConfigs {
         debug {
@@ -124,18 +120,32 @@ android {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.debug
-            shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
-            minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
+            shrinkResources enableShrinkResources.toBoolean()
+            minifyEnabled enableMinifyInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
-        releaseWithDevMenu {
-            initWith release
-            matchingFallbacks = ['release', 'debug']
+        benchmark {
+            initWith buildTypes.release
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
+            matchingFallbacks = ['release']
         }
     }
     packagingOptions {
         jniLibs {
-            useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+            def enableLegacyPackaging = findProperty('expo.useLegacyPackaging') ?: 'false'
+            useLegacyPackaging enableLegacyPackaging.toBoolean()
+        }
+    }
+    androidResources {
+        ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/jni/CMakeLists.txt"
         }
     }
 }
@@ -163,6 +173,7 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation expoLibs.androidx.profileinstaller
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
@@ -170,15 +181,15 @@ dependencies {
 
     if (isGifEnabled) {
         // For animated gif support
-        implementation("com.facebook.fresco:animated-gif:${reactAndroidLibs.versions.fresco.get()}")
+        implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
     }
 
     if (isWebpEnabled) {
         // For webp support
-        implementation("com.facebook.fresco:webpsupport:${reactAndroidLibs.versions.fresco.get()}")
+        implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
         if (isWebpAnimatedEnabled) {
             // Animated webp support
-            implementation("com.facebook.fresco:animated-webp:${reactAndroidLibs.versions.fresco.get()}")
+            implementation("com.facebook.fresco:animated-webp:${expoLibs.versions.fresco.get()}")
         }
     }
 
@@ -187,32 +198,65 @@ dependencies {
     } else {
         implementation jscFlavor
     }
-
-    androidTestImplementation('androidx.test.espresso:espresso-core:3.5.1')
-    androidTestImplementation('androidx.test:runner:1.5.2')
-    androidTestImplementation('androidx.test:rules:1.5.0')
-    androidTestImplementation('androidx.test.ext:junit-ktx:1.1.5')
 }
 
-class ExecuteSetupAndroidProject implements Plugin<Project> {
-    @Override
-    void apply(Project target) {
-        target.providers.exec {
-            def configuration = target.gradle.startParameter.taskNames.any {
-                it.toLowerCase().contains("release")
-            } ? "release" : "debug"
+// Generates minimal stub PCH files from an empty header so the IDE's C++ engine
+// doesn't fail during sync. The actual build regenerates proper PCH files via ninja.
+def cxxDir = project.file(".cxx")
+def generateStubPCHTask = tasks.register("generateStubPCH") {
+  dependsOn("configureCMakeDebug")
 
-            workingDir '../..'
-            commandLine "./scripts/setup-android-project.sh", configuration
-        }
+  doLast {
+    if (!cxxDir.exists()) {
+      return
     }
+
+    cxxDir.eachFileRecurse { file ->
+      if (file.name != "compile_commands.json") {
+        return
+      }
+
+      new groovy.json.JsonSlurper().parseText(file.text).each { entry ->
+        if (!entry.file.endsWith("cmake_pch.hxx.cxx")) {
+          return
+        }
+
+        def pchFile = new File(entry.file.substring(0, entry.file.length() - ".cxx".length()) + ".pch")
+
+        if (!pchFile.exists() || pchFile.length() == 0) {
+          pchFile.parentFile.mkdirs()
+
+          def compiler = entry.command.split(" ")[0]
+          def target = (entry.command =~ /--target=\S+/)[0]
+          def sysroot = (entry.command =~ /--sysroot=\S+/)[0]
+
+          def stubHeader = new File(pchFile.parentFile, "stub_pch.hxx")
+          stubHeader.text = ""
+
+          def process = new ProcessBuilder(
+            compiler,
+            target,
+            sysroot,
+            "-x", "c++-header",
+            "-o", pchFile.absolutePath,
+            stubHeader.absolutePath
+          )
+            .directory(new File(entry.directory))
+            .redirectErrorStream(true)
+            .start()
+          process.outputStream.close()
+          if (process.waitFor() != 0) {
+            throw new GradleException("Stub PCH generation failed: ${process.inputStream.text}")
+          }
+        }
+
+        // Ensure PCH is older than source so ninja rebuilds the real one during build
+        pchFile.setLastModified(new File(entry.file).lastModified() - 1)
+      }
+    }
+  }
 }
 
-apply plugin: ExecuteSetupAndroidProject
-
-apply from: new File(providers.exec {
-  workingDir(rootDir)
-  commandLine("node", "--print", "require.resolve('@react-native-community/cli-platform-android/package.json')")
-}.standardOutput.asText.get().trim(), "../native_modules.gradle")
-
-applyNativeModulesAppBuildGradle(project)
+tasks.register("prepareKotlinBuildScriptModel") {
+  dependsOn(generateStubPCHTask)
+}

@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 
 import { getConfig } from '@expo/config';
-import { compileModsAsync, ModPlatform } from '@expo/config-plugins';
+import type { ModPlatform } from '@expo/config-plugins';
+import { IOSConfig, compileModsAsync } from '@expo/config-plugins';
 import chalk from 'chalk';
 import { Command } from 'commander';
+import fs from 'fs';
+import path from 'path';
 import prompts from 'prompts';
+import semver from 'semver';
 
 import {
   shouldUpdateAgpVersionAsync,
@@ -17,28 +21,36 @@ import {
   withIosDeploymentTarget,
 } from './plugins/ios/withIosDeploymentTarget';
 import { withIosModules } from './plugins/ios/withIosModules';
+import { assertNoLegacySourceUrl } from './plugins/ios/withIosModulesAppDelegate';
+import { getSceneDelegatePath } from './plugins/ios/withIosSceneDelegate';
+import { withSwiftVersion } from './plugins/ios/withSwiftVersion';
 import { withXCParseXcodeProjectBaseMod } from './plugins/ios/withXCParseXcodeProject';
-import { getDefaultSdkVersion, getVersionInfo, VersionInfo } from './utils/expoVersionMappings';
+import type { VersionInfo } from './utils/expoVersionMappings';
+import { getDefaultSdkVersion, getVersionInfo } from './utils/expoVersionMappings';
 import { learnMore } from './utils/link';
-import { installExpoPackageAsync, installPodsAsync } from './utils/packageInstaller';
+import {
+  installBabelPresetExpoNonInteractiveAsync,
+  installExpoPackageAsync,
+  installPodsAsync,
+} from './utils/packageInstaller';
 import { normalizeProjectRootAsync } from './utils/projectRoot';
 
-const packageJSON = require('../package.json');
+let packageJSON = null;
+try {
+  packageJSON = require('install-expo-modules/package.json');
+} catch {}
 
-let inputProjectRoot: string = '';
-
-const program = new Command(packageJSON.name)
-  .version(packageJSON.version)
-  .arguments('<project-directory>')
-  .usage(`${chalk.green('<project-directory>')} [options]`)
+const program = new Command(packageJSON?.name ?? 'install-expo-modules')
+  .version(packageJSON?.version ?? '0.0.0')
+  .arguments('[project-directory]')
+  .usage(`${chalk.green('[project-directory]')} [options]`)
   .description('Install expo-modules into your project')
   .option('-s, --sdk-version <version>', 'Install specified expo-modules sdk version')
   .option('--non-interactive', 'Disable interactive prompts')
-  .action((_inputProjectRoot: string) => (inputProjectRoot = _inputProjectRoot))
   .parse(process.argv);
 
 function getSdkVersionInfo(projectRoot: string): VersionInfo {
-  const { sdkVersion } = program;
+  const { sdkVersion } = program.opts();
   if (sdkVersion) {
     const versionInfo = getVersionInfo(sdkVersion);
     if (!versionInfo) {
@@ -60,7 +72,7 @@ async function promptUpgradeAgpVersionAsync(projectRoot: string, agpVersion: str
   }
 
   const deploymentTargetMessage = `The minimum Android Gradle Plugin version for Expo modules is ${agpVersion}. This tool will change your AGP version to ${agpVersion}.`;
-  if (program.nonInteractive) {
+  if (program.opts().nonInteractive) {
     console.log(chalk.yellow(`⚠️  ${deploymentTargetMessage}`));
     return true;
   } else {
@@ -85,7 +97,7 @@ async function promptUpgradeIosDeployTargetAsync(projectRoot: string, iosDeploym
   }
 
   const deploymentTargetMessage = `Expo modules minimum iOS requirement is ${iosDeploymentTarget}. This tool will change your iOS deployment target to ${iosDeploymentTarget}.`;
-  if (program.nonInteractive) {
+  if (program.opts().nonInteractive) {
     console.log(chalk.yellow(`⚠️  ${deploymentTargetMessage}`));
     return true;
   } else {
@@ -104,15 +116,10 @@ async function promptUpgradeIosDeployTargetAsync(projectRoot: string, iosDeploym
  * @returns true if user confirm to add Expo CLI integration. otherwise, returns false.
  */
 async function promptCliIntegrationAsync() {
-  const message = `This tool can install Expo CLI integration for your project.
-Using Expo CLI has some benefits over the the default CLI in bare React Native projects:
-  - Built-in JavaScript debugger and React Devtools.
-  - Support for Continuous Native Generation (CNG) with \`npx expo prebuild\` for easy upgrades.
-  - Automatic web support with Metro.
-${learnMore('https://docs.expo.dev/bare/using-expo-cli/')}
-Do you want to install the Expo CLI integration?`;
+  const message = `We recommend installing the Expo CLI integration for the best experience. Not using it may result in some features not working as expected. ${learnMore('https://docs.expo.dev/bare/using-expo-cli/')}
+Install the Expo CLI integration?`;
 
-  if (program.nonInteractive) {
+  if (program.opts().nonInteractive) {
     return true;
   }
   const { value } = await prompts({
@@ -124,12 +131,14 @@ Do you want to install the Expo CLI integration?`;
   return !!value;
 }
 
-async function runAsync(programName: string) {
-  const { projectRoot, platformAndroid, platformIos } =
-    await normalizeProjectRootAsync(inputProjectRoot);
+async function runAsync() {
+  const { projectRoot, platformAndroid, platformIos } = await normalizeProjectRootAsync(
+    program.args[0] || process.cwd()
+  );
 
   const {
-    expoSdkVersion: sdkVersion,
+    sdkVersion,
+    expoPackageVersion,
     iosDeploymentTarget,
     androidAgpVersion,
     supportCliIntegration,
@@ -143,6 +152,21 @@ async function runAsync(programName: string) {
   }
   if (platformIos && !(await promptUpgradeIosDeployTargetAsync(projectRoot, iosDeploymentTarget))) {
     return;
+  }
+
+  if (platformIos && sdkVersion && semver.gte(sdkVersion, '59.0.0')) {
+    const appDelegate = IOSConfig.Paths.getAppDelegate(projectRoot);
+    if (appDelegate.language === 'swift') {
+      assertNoLegacySourceUrl(appDelegate.contents, sdkVersion);
+    }
+    const sceneDelegatePath = getSceneDelegatePath(appDelegate.path);
+    if (fs.existsSync(sceneDelegatePath)) {
+      assertNoLegacySourceUrl(
+        fs.readFileSync(sceneDelegatePath, 'utf8'),
+        sdkVersion,
+        path.basename(sceneDelegatePath)
+      );
+    }
   }
 
   const cliIntegration = supportCliIntegration && (await promptCliIntegrationAsync());
@@ -174,6 +198,7 @@ async function runAsync(programName: string) {
   config = withIosDeploymentTarget(config, {
     deploymentTarget: iosDeploymentTarget,
   });
+  config = withSwiftVersion(config, '5.0');
 
   if (cliIntegration) {
     config = withCliIntegration(config);
@@ -189,10 +214,15 @@ async function runAsync(programName: string) {
   });
 
   console.log('\u203A Installing expo packages...');
-  await installExpoPackageAsync(projectRoot, sdkVersion);
+  await installExpoPackageAsync(projectRoot, expoPackageVersion);
+  if (cliIntegration) {
+    await installBabelPresetExpoNonInteractiveAsync(projectRoot);
+  }
 
-  console.log('\u203A Installing ios pods...');
-  await installPodsAsync(projectRoot);
+  if (process.platform === 'darwin') {
+    console.log('\u203A Installing ios pods...');
+    await installPodsAsync(projectRoot);
+  }
 
   console.log(chalk.bold('\u203A Installation completed!'));
 }
@@ -200,7 +230,7 @@ async function runAsync(programName: string) {
 (async () => {
   program.parse(process.argv);
   try {
-    await runAsync(packageJSON.name);
+    await runAsync();
   } catch (e) {
     console.error('Uncaught Error', e);
     process.exit(1);

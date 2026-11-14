@@ -1,5 +1,6 @@
 import ExpoModulesCore
 
+#if !os(macOS)
 enum CornerStyle: String, Enumerable {
   case dynamic
   case fixed
@@ -44,6 +45,7 @@ enum DisplayMode: String, Enumerable {
     }
   }
 }
+#endif
 
 enum AcceptedTypes: String, Enumerable {
   case plainText = "plain-text"
@@ -51,7 +53,6 @@ enum AcceptedTypes: String, Enumerable {
   case html
   case image
 
-  @available(iOS 14.0, *)
   func typeIdentifier() -> String {
     switch self {
     case .plainText:

@@ -5,13 +5,17 @@ description: Learn how to develop your app for the web so you can build a univer
 hideTOC: true
 ---
 
-import { Terminal } from '~/ui/components/Snippet';
+import { RouterLogo } from '@expo/styleguide';
+import { Cloud01Icon } from '@expo/styleguide-icons/outline/Cloud01Icon';
+import { CodeSquare01Icon } from '@expo/styleguide-icons/outline/CodeSquare01Icon';
+
 import { BoxLink } from '~/ui/components/BoxLink';
 import { Collapsible } from '~/ui/components/Collapsible';
-import { CODE } from '~/ui/components/Text';
+import { DiffBlock, Terminal } from '~/ui/components/Snippet';
 import { Tabs, Tab } from '~/ui/components/Tabs';
+import { CODE } from '~/ui/components/Text';
 
-Expo has first-class support for building full-stack websites with React. Expo websites can be [statically rendered](/router/reference/static-rendering) for SEO and performance, or client-rendered for a more app-like experience in the browser.
+Expo has first-class support for building full-stack websites with React. Expo websites can be [statically rendered](/router/web/static-rendering) for SEO and performance, or client-rendered for a more app-like experience in the browser.
 
 <Tabs>
 
@@ -29,7 +33,7 @@ Expo has first-class support for building full-stack websites with React. Expo w
 
     React Native for web (RNW) is a set of component libraries such as `<View>`, and `<Text>`, that wrap `react-dom` primitives such as `<div>`, `<p>`, and `<img>`. RNW is optional when developing for web since you can use React DOM directly, but we often recommended it when building across platforms as it maximizes code reuse.
 
-    > React Native for web is used to power the entire [**𝕏** / Twitter](https://x.com/) website.
+    > React Native for web is used to power the entire [X](https://x.com/) website.
 
 </Tab>
 
@@ -57,7 +61,14 @@ Development features like Fast Refresh, debugging, environment variables, and [b
 
 ### Install web dependencies
 
-<Terminal cmd={['$ npx expo install react-dom react-native-web @expo/metro-runtime']} />
+<Terminal
+  cmd={{
+    npm: ['$ npx expo install react-dom react-native-web @expo/metro-runtime'],
+    yarn: ['$ yarn expo install react-dom react-native-web @expo/metro-runtime'],
+    pnpm: ['$ pnpm expo install react-dom react-native-web @expo/metro-runtime'],
+    bun: ['$ bun expo install react-dom react-native-web @expo/metro-runtime'],
+  }}
+/>
 
 <Collapsible summary={<>Not using the <CODE>expo</CODE> package in your app yet?</>}>
 
@@ -65,20 +76,30 @@ If you haven't added Expo to your React Native app yet, you can either [install 
 
 1. Install [Expo CLI](/more/expo-cli/) in your project:
 
-<Terminal cmd={['$ npm install expo']} />
+<Terminal
+  cmd={{
+    npm: ['$ npm install expo'],
+    yarn: ['$ yarn add expo'],
+    pnpm: ['$ pnpm add expo'],
+    bun: ['$ bun add expo'],
+  }}
+/>
 
-2. Modify the entry file to use [`registerRootComponent`](/versions/latest/sdk/register-root-component#registerrootcomponentcomponent) instead of `AppRegistry.registerComponent`:
+2. Modify the entry file to use [`registerRootComponent`](/versions/latest/sdk/expo/#registerrootcomponentcomponent) instead of `AppRegistry.registerComponent`:
 
-```diff
-+ import {registerRootComponent} from 'expo';
-
+<DiffBlock
+  raw={`diff --git a/index.js b/index.js
+--- a/index.js
++++ b/index.js
+@@ -1,5 +1,4 @@
+-import {AppRegistry} from 'react-native';
+-import {name as appName} from './app.json';
++import {registerRootComponent} from 'expo';
 import App from './App';
-- import {AppRegistry} from 'react-native';
-- import {name as appName} from './app.json';
 
-- AppRegistry.registerComponent(appName, () => App);
-+ registerRootComponent(App);
-```
+-AppRegistry.registerComponent(appName, () => App);
++registerRootComponent(App);`}
+/>
 
 </Collapsible>
 
@@ -86,11 +107,25 @@ import App from './App';
 
 You can now start the dev server and develop in the browser with:
 
-<Terminal cmd={['$ npx expo start --web']} cmdCopy="npx expo start --web" />
+<Terminal
+  cmd={{
+    npm: ['$ npx expo start --web'],
+    yarn: ['$ yarn expo start --web'],
+    pnpm: ['$ pnpm expo start --web'],
+    bun: ['$ bun expo start --web'],
+  }}
+/>
 
 The app can be exported as a production website with:
 
-<Terminal cmd={['$ npx expo export --platform web']} cmdCopy="npx expo export --platform web" />
+<Terminal
+  cmd={{
+    npm: ['$ npx expo export --platform web'],
+    yarn: ['$ yarn expo export --platform web'],
+    pnpm: ['$ pnpm expo export --platform web'],
+    bun: ['$ bun expo export --platform web'],
+  }}
+/>
 
 ## Next
 
@@ -98,22 +133,26 @@ The app can be exported as a production website with:
   title="File-based routing"
   description="Build routes and navigation with Expo Router."
   href="/router/introduction"
+  Icon={RouterLogo}
 />
 
 <BoxLink
   title="Static rendering and SEO"
   description="Render your website as static HTML with Expo Router to improve SEO and performance."
-  href="/router/reference/static-rendering"
+  href="/router/web/static-rendering"
+  Icon={RouterLogo}
 />
 
 <BoxLink
-  title="Publish websites"
-  description="Export your website and upload to any web host."
-  href="/distribution/publishing-websites"
+  title="Deploy instantly with Expo Hosting"
+  description="Expo Hosting is the best way to deploy your Expo Router and React Native web apps with support for custom domains, SSL, and more."
+  href="/eas/hosting/get-started"
+  Icon={Cloud01Icon}
 />
 
 <BoxLink
   title="Customizing the JavaScript bundler"
   description="Customize Metro bundler for your project."
   href="/guides/customizing-metro"
+  Icon={CodeSquare01Icon}
 />

@@ -1,9 +1,10 @@
-import { boolish } from 'getenv';
+import { boolish } from '@expo/env';
 
 class Env {
   /** Is running in non-interactive CI mode */
   get CI() {
-    return boolish('CI', false);
+    const ci = process.env.CI;
+    return ci === '1' || ci?.toLowerCase() === 'true';
   }
 
   /** Enable debug logging */
@@ -19,6 +20,31 @@ class Env {
   /** Allow disabling InstalledDependencyVersionCheck */
   get EXPO_DOCTOR_SKIP_DEPENDENCY_VERSION_CHECK() {
     return boolish('EXPO_DOCTOR_SKIP_DEPENDENCY_VERSION_CHECK', false);
+  }
+
+  /** Opt in to ReactNativeDirectoryCheck */
+  get EXPO_DOCTOR_ENABLE_DIRECTORY_CHECK() {
+    if (typeof process.env.EXPO_DOCTOR_ENABLE_DIRECTORY_CHECK === 'undefined') {
+      return null;
+    }
+
+    return boolish('EXPO_DOCTOR_ENABLE_DIRECTORY_CHECK', false);
+  }
+
+  /** If a test makes an online check and failures due to a network error, don't count it as failing the overall doctor check */
+  get EXPO_DOCTOR_WARN_ON_NETWORK_ERRORS() {
+    return boolish('EXPO_DOCTOR_WARN_ON_NETWORK_ERRORS', false);
+  }
+
+  /** Is running in EAS Build */
+  get EAS_BUILD() {
+    return boolish('EAS_BUILD', false);
+  }
+
+  /** EAS Build Platform */
+  get EAS_BUILD_PLATFORM(): 'android' | 'ios' | null {
+    const easPlatform = process.env.EAS_BUILD_PLATFORM;
+    return easPlatform === 'android' || easPlatform === 'ios' ? easPlatform : null;
   }
 }
 

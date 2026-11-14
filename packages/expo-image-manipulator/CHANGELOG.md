@@ -1,14 +1,444 @@
 # Changelog
 
-## Unpublished
+## 58.0.15
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Bump precompiled artifacts due to ABI breakage in expo-modules-core@58.0.23. ([#51823](https://github.com/expo/expo/pull/51823) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.14
+
+### Patch Changes
+
+- [Internal] Bump precompiled artifacts due to ABI breakage in expo-modules-jsi, which makes `JavaScriptValue` a non-copyable struct. ([#51368](https://github.com/expo/expo/pull/51368) by [@tsapeta](https://github.com/tsapeta))
+- [Android] Fix `renderAsync()` rejecting with `JobCancellationException` when the context is released while the render is still pending, for example when a component using `useImageManipulator` unmounts mid-render. ([#50218](https://github.com/expo/expo/pull/50218) by [@dev-eyoungmin](https://github.com/dev-eyoungmin))
+
+## 58.0.13
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-core@58.0.13. ([#51138](https://github.com/expo/expo/pull/51138) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.12
+
+### Patch Changes
+
+- [iOS] Added missing `import UIKit` statements so the module builds from source with Swift Package Manager. ([#50961](https://github.com/expo/expo/pull/50961) by [@chrfalch](https://github.com/chrfalch))
+
+## 58.0.11
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50881](https://github.com/expo/expo/pull/50881))
+  - expo-image-loader@58.0.3
+
+## 58.0.10
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762))
+  - expo-image-loader@58.0.2
+
+## 58.0.9 — 2026-09-28
 
 ### 🐛 Bug fixes
 
+- [iOS] Fixed `renderAsync` failing with `ERR_IMAGE_CONTEXT_LOST` for 10-bit HDR images, such as HEIC screenshots. ([#50011](https://github.com/expo/expo/pull/50011) by [@expo-bot](https://github.com/expo-bot))
+- [iOS] Keep the full pixel resolution of images loaded with a scale factor greater than 1 instead of downscaling them to their point size. ([#50011](https://github.com/expo/expo/pull/50011) by [@vonovak](https://github.com/vonovak))
+
+## 58.0.8 — 2026-09-25
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.7 — 2026-09-23
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.6 — 2026-09-22
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.5 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.4 — 2026-09-16
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.3 — 2026-09-15
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-14
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.1 — 2026-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+### 🎉 New features
+
+- Added `maxWidth`/`maxHeight` options to `ImageManipulator.manipulate` and `useImageManipulator` that downsample large images while decoding, significantly reducing the peak memory usage and avoiding out-of-memory crashes. ([#47877](https://github.com/expo/expo/pull/47877) by [@jiunshinn](https://github.com/jiunshinn))
+
+### 🐛 Bug fixes
+
+- [Web] Fixed `release()` not releasing image manipulation resources. ([#49831](https://github.com/expo/expo/pull/49831) by [@mozzius](https://github.com/mozzius))
+- Fixed `ImageManipulator.Image` being typed as an `ImageRef` instance rather than the class it holds at runtime, which rejected `instanceof` checks and made instance members appear to exist on it. ([#48613](https://github.com/expo/expo/pull/48613) by [@vonovak](https://github.com/vonovak))
+
 ### 💡 Others
+
+- Add missing `react` and `react-native` peer dependencies ([#49744](https://github.com/expo/expo/pull/49744) by [@kitten](https://github.com/kitten))
+
+### 📚 3rd party library updates
+
+- Bump `SDWebImage` to 5.21.6 and `SDWebImageWebPCoder` to 0.15.0 to align with `expo-image` ([#49744](https://github.com/expo/expo/pull/49744) by [@kitten](https://github.com/kitten))
+
+## 57.0.7 - 2026-07-29
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.6 - 2026-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-17
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.19 - 2026-06-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.18 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.17 - 2026-06-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.16 - 2026-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.15 — 2026-05-26
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.14 — 2026-05-23
+
+### 🐛 Bug fixes
+
+- [Web] Throw an error when requested mime type is not supported. ([#46165](https://github.com/expo/expo/pull/46165) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 56.0.13 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.12 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.11 — 2026-05-20
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.10 — 2026-05-19
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.9 — 2026-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-13
+
+### 🐛 Bug fixes
+
+- [Android] Save manipulated images in the scoped cache directory. ([#45708](https://github.com/expo/expo/pull/45708) by [@mvincentong](https://github.com/mvincentong))
+
+## 56.0.7 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-11
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-07
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.16 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-02
+
+### 💡 Others
+
+- [iOS] Use `internal import SDWebImageWebPCoder` to hide third-party dependency from public module interface. ([#44248](https://github.com/expo/expo/pull/44248) by [@chrfalch](https://github.com/chrfalch))
+
+## 55.0.11 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-03-11
+
+### 🐛 Bug fixes
+
+- [iOS] Preserve HEIC orientation when loading local files for image manipulation. ([#43725](https://github.com/expo/expo/pull/43725) by [@maxsz](https://github.com/maxsz))
+
+## 55.0.9 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🐛 Bug fixes
+
+- Fix image manipulator in Expo Go. ([#42347](https://github.com/expo/expo/pull/42347) by [@aleqsio](https://github.com/aleqsio))
+- fix TS build issue ([#41448](https://github.com/expo/expo/pull/41448) by [@vonovak](https://github.com/vonovak))
+
+### 💡 Others
+
+- [Android] Removed unused `androidx.annotation:annotation` dependency ([#39764](https://github.com/expo/expo/pull/39764) by [@lukmccall](https://github.com/lukmccall))
+- [iOS] Removed dependency on `expo-image-loader` on iOS. ([#41395](https://github.com/expo/expo/pull/41395) by [@tsapeta](https://github.com/tsapeta))
+
+## 14.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.7 — 2025-09-10
+
+### 💡 Others
+
+- Extracted the read permission check from `FileSystemUtilities` ([#39210](https://github.com/expo/expo/pull/39210) by [@kosmydel](https://github.com/kosmydel))
+
+## 14.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- [iOS] Add Apple TV support. ([#38513](https://github.com/expo/expo/pull/38513) by [@douglowder](https://github.com/douglowder))
+
+## 13.1.7 — 2025-05-08
+
+### 🐛 Bug fixes
+
+- Fix `ReferenceError` during export for web. ([#36703](https://github.com/expo/expo/pull/36703) by [@aleqsio](https://github.com/aleqsio))
+
+## 13.1.6 — 2025-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.5 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.4 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.3 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.2 — 2025-04-11
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.0 — 2025-04-04
+
+### 🐛 Bug fixes
+
+- Changed `export` to `export type` for TS type declarations. ([#33446](https://github.com/expo/expo/pull/33446) by [@j-piasecki](https://github.com/j-piasecki))
+- Fixed `saveAsync` not respecting the format and compression quality. ([#33690](https://github.com/expo/expo/pull/33690) by [@tsapeta](https://github.com/tsapeta))
+- [Web] Overwrite class `name` property in `ImageManipulator`. ([#35806](https://github.com/expo/expo/pull/35806) by [@alimek](https://github.com/alimek))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35288](https://github.com/expo/expo/pull/35288) by [@behenate](https://github.com/behenate))
+
+## 13.0.6 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.5 — 2024-10-29
+
+### 🎉 New features
+
+- [Android] Added support for image refs in `ImageManipulator.manipulate` and `useImageManipulator`. ([#32398](https://github.com/expo/expo/pull/32398) by [@lukmccall](https://github.com/lukmccall))
+
+## 13.0.4 — 2024-10-28
+
+### 🎉 New features
+
+- [iOS][Web] Added support for image refs in `ImageManipulator.manipulate` and `useImageManipulator`. ([#32346](https://github.com/expo/expo/pull/32346), [#32354](https://github.com/expo/expo/pull/32354) by [@tsapeta](https://github.com/tsapeta))
+
+## 13.0.3 — 2024-10-25
+
+### 🎉 New features
+
+- [iOS] Added support for image refs in `ImageManipulator.manipulate` and `useImageManipulator`. ([#32346](https://github.com/expo/expo/pull/32346) by [@tsapeta](https://github.com/tsapeta))
+
+## 13.0.2 — 2024-10-24
+
+### 💡 Others
+
+- Exported missing types, removed unnecessary fallback and properly registered the module on Web. ([#32302](https://github.com/expo/expo/pull/32302) by [@tsapeta](https://github.com/tsapeta))
+
+## 13.0.1 — 2024-10-22
+
+_This version does not introduce any user-facing changes._
+
+## 13.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- [iOS][Web] Introduce a new API for image manipulation. ([#30135](https://github.com/expo/expo/pull/30135), [#30194](https://github.com/expo/expo/pull/30194) by [@tsapeta](https://github.com/tsapeta))
+- [Android] Introduce a new API for image manipulation. ([#30232](https://github.com/expo/expo/pull/30232) by [@lukmccall](https://github.com/lukmccall))
+
+### 💡 Others
+
+- Use the `src` folder as the Metro target. ([#30079](https://github.com/expo/expo/pull/30079) by [@tsapeta](https://github.com/tsapeta))
+- Prefer `UIGraphicsImageRenderer` over `UIGraphicsBeginImageContext`. ([#30211](https://github.com/expo/expo/pull/30211) by [@alanjhughes](https://github.com/alanjhughes))
+- Provide image's memory footprint for better garbage collection. ([#31168](https://github.com/expo/expo/pull/31168) by [@tsapeta](https://github.com/tsapeta) & [#31784](https://github.com/expo/expo/pull/31784) by [@lukmccall](https://github.com/lukmccall))
+
+## 12.0.5 — 2024-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 12.0.4 — 2024-05-13
+
+### 🐛 Bug fixes
+
+- On `iOS` correctly handle urls coming from the users photo library. ([#28777](https://github.com/expo/expo/pull/28777) by [@alanjhughes](https://github.com/alanjhughes))
 
 ## 12.0.3 — 2024-05-01
 

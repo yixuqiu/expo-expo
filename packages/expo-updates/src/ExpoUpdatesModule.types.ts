@@ -1,6 +1,6 @@
-import { ProxyNativeModule } from 'expo-modules-core';
+import { NativeModule } from 'expo-modules-core';
 
-import {
+import type {
   Manifest,
   UpdateCheckResultAvailable,
   UpdateCheckResultNotAvailable,
@@ -10,15 +10,28 @@ import {
   UpdateFetchResultSuccess,
   UpdatesLogEntry,
   UpdatesNativeStateMachineContext,
+  ReloadScreenOptions,
 } from './Updates.types';
 
+export type UpdatesEvents = {
+  'Expo.nativeUpdatesStateChangeEvent': (params: any) => void;
+};
+
+export type UpdatesCheckAutomaticallyNativeValue =
+  | 'ALWAYS'
+  | 'ERROR_RECOVERY_ONLY'
+  | 'NEVER'
+  | 'WIFI_ONLY';
+
 /**
+ * Common interface for all native module implementations (android, ios, web).
+ *
  * @internal
  */
-export interface ExpoUpdatesModule
-  extends Pick<ProxyNativeModule, 'addListener' | 'removeListeners'> {
+export interface UpdatesModuleInterface {
   isEmergencyLaunch: boolean;
   emergencyLaunchReason: string | null;
+  launchDuration: number | null;
   isEmbeddedLaunch: boolean;
   isEnabled: boolean;
   isUsingEmbeddedAssets?: boolean;
@@ -26,7 +39,7 @@ export interface ExpoUpdatesModule
    * Can be empty string
    */
   runtimeVersion: string;
-  checkAutomatically: string;
+  checkAutomatically: UpdatesCheckAutomaticallyNativeValue;
   /**
    * Can be empty string
    */
@@ -43,6 +56,13 @@ export interface ExpoUpdatesModule
    */
   manifest?: Manifest;
   localAssets?: Record<string, string>;
+
+  initialContext: UpdatesNativeStateMachineContext & {
+    latestManifestString?: string;
+    downloadedManifestString?: string;
+    lastCheckForUpdateTimeString?: string;
+    rollbackString?: string;
+  };
 
   reload: () => Promise<void>;
   checkForUpdateAsync: () => Promise<
@@ -61,15 +81,64 @@ export interface ExpoUpdatesModule
     | UpdateFetchResultFailure
     | UpdateFetchResultRollBackToEmbedded
   >;
-  /**
-   * @hidden
-   */
-  getNativeStateMachineContextAsync: () => Promise<
-    UpdatesNativeStateMachineContext & {
-      latestManifestString?: string;
-      downloadedManifestString?: string;
-      lastCheckForUpdateTimeString?: string;
-      rollbackString?: string;
-    }
+}
+
+/**
+ * @internal
+ */
+export declare class ExpoUpdatesModule
+  extends NativeModule<UpdatesEvents>
+  implements UpdatesModuleInterface
+{
+  isEmergencyLaunch: boolean;
+  emergencyLaunchReason: string | null;
+  launchDuration: number | null;
+  isEmbeddedLaunch: boolean;
+  isEnabled: boolean;
+  isUsingEmbeddedAssets?: boolean;
+  runtimeVersion: string;
+  checkAutomatically: UpdatesCheckAutomaticallyNativeValue;
+  channel: string;
+  shouldDeferToNativeForAPIMethodAvailabilityInDevelopment: boolean;
+  updateId?: string;
+  commitTime?: string;
+  manifestString?: string;
+  manifest?: Manifest;
+  localAssets?: Record<string, string>;
+
+  initialContext: UpdatesNativeStateMachineContext & {
+    latestManifestString?: string;
+    downloadedManifestString?: string;
+    lastCheckForUpdateTimeString?: string;
+    rollbackString?: string;
+  };
+
+  reload: (options?: ReloadScreenOptions | null) => Promise<void>;
+  checkForUpdateAsync: () => Promise<
+    | UpdateCheckResultRollBack
+    | (Omit<UpdateCheckResultAvailable, 'manifest'> &
+        ({ manifestString: string } | { manifest: Manifest }))
+    | UpdateCheckResultNotAvailable
   >;
+  getExtraParamsAsync: () => Promise<Record<string, string>>;
+  setExtraParamAsync: (key: string, value: string | null) => Promise<void>;
+  readLogEntriesAsync: (maxAge: number) => Promise<UpdatesLogEntry[]>;
+  clearLogEntriesAsync: () => Promise<void>;
+  fetchUpdateAsync: () => Promise<
+    | (Omit<UpdateFetchResultSuccess, 'manifest'> &
+        ({ manifestString: string } | { manifest: Manifest }))
+    | UpdateFetchResultFailure
+    | UpdateFetchResultRollBackToEmbedded
+  >;
+
+  setUpdateURLAndRequestHeadersOverride: (
+    configOverride: {
+      updateUrl: string;
+      requestHeaders: Record<string, string> | null;
+    } | null
+  ) => void;
+  setUpdateRequestHeadersOverride: (requestHeaders: Record<string, string> | null) => void;
+
+  showReloadScreen: (options?: ReloadScreenOptions | null) => Promise<void>;
+  hideReloadScreen: () => Promise<void>;
 }

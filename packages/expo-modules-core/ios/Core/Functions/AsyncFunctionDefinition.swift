@@ -1,6 +1,7 @@
 // Copyright 2022-present 650 Industries. All rights reserved.
 
 import Dispatch
+import ExpoModulesJSI
 
 /**
  Type-erased protocol for asynchronous functions.
@@ -9,18 +10,23 @@ internal protocol AnyAsyncFunctionDefinition: AnyFunctionDefinition {
   /**
    Specifies on which queue the function should run.
    */
+  @discardableResult
   func runOnQueue(_ queue: DispatchQueue?) -> Self
 }
 
 /**
  The default queue used for module's async function calls.
  */
-private let defaultQueue = DispatchQueue(label: "expo.modules.AsyncFunctionQueue", qos: .userInitiated)
+internal let asyncFunctionQueue = DispatchQueue(label: "expo.modules.AsyncFunctionQueue", qos: .userInitiated)
 
 /**
  Represents a function that can only be called asynchronously, thus its JavaScript equivalent returns a Promise.
  */
-public final class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyAsyncFunctionDefinition {
+public class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyAsyncFunctionDefinition, @unchecked Sendable {
+  public var _definitionClassification: DefinitionClassification {
+    return DefinitionClassification(kind: .function(self))
+  }
+
   typealias ClosureType = (Args) throws -> ReturnType
 
   /**
@@ -38,16 +44,31 @@ public final class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyA
    */
   var queue: DispatchQueue?
 
+  /**
+   Dynamic type of the function's return value. Only used when the body returns a value
+   directly (i.e. `takesPromise` is false). When `takesPromise` is true, the body returns
+   `Void` and the user is responsible for calling `Promise.resolve(_:)` with a typed value.
+   */
+  let returnType: AnyDynamicType
+
   init(
     _ name: String,
     firstArgType: FirstArgType.Type,
     dynamicArgumentTypes: [AnyDynamicType],
+    returnType: AnyDynamicType = ~ReturnType.self,
     _ body: @escaping ClosureType
   ) {
     self.name = name
     self.takesPromise = dynamicArgumentTypes.last?.wraps(Promise.self) ?? false
     self.dynamicArgumentTypes = dynamicArgumentTypes
+    self.returnType = returnType
     self.body = body
+
+    self.trailingOptionalArgumentsCount = dynamicArgumentTypes
+      .dropLast(takesPromise ? 1 : 0)
+      .reversed()
+      .prefix(while: { $0 is DynamicOptionalType })
+      .count
   }
 
   // MARK: - AnyFunction
@@ -56,31 +77,36 @@ public final class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyA
 
   let dynamicArgumentTypes: [AnyDynamicType]
 
+  private let trailingOptionalArgumentsCount: Int
+
   var argumentsCount: Int {
     return dynamicArgumentTypes.count - (takesOwner ? 1 : 0) - (takesPromise ? 1 : 0)
   }
 
+  var requiredArgumentsCount: Int {
+    return argumentsCount - trailingOptionalArgumentsCount
+  }
+
   var takesOwner: Bool = false
 
-  func call(by owner: AnyObject?, withArguments args: [Any], appContext: AppContext, callback: @escaping (FunctionCallResult) -> ()) {
-    let promise = Promise { value in
-      callback(.success(Conversions.convertFunctionResult(value)))
+  @JavaScriptActor
+  func call(_ appContext: AppContext, this: borrowing JavaScriptValue, arguments: consuming JavaScriptValuesBuffer, callback: @Sendable @escaping (consuming FunctionCallResult) -> Void) {
+    let promise = Promise(appContext: appContext) { value in
+      callback(.success(value))
     } rejecter: { exception in
       callback(.failure(exception))
     }
-    var arguments: [Any] = concat(
-      arguments: args,
-      withOwner: owner,
-      withPromise: takesPromise ? promise : nil,
-      forFunction: self,
-      appContext: appContext
-    )
+    var nativeArguments: [Any]
 
     do {
-      try validateArgumentsNumber(function: self, received: args.count)
+      try validateArgumentsNumber(function: self, received: arguments.count)
 
-      // All `JavaScriptValue` args must be preliminarly converted on the JS thread, so before we jump to the function's queue.
-      arguments = try cast(jsValues: arguments, forFunction: self, appContext: appContext)
+      // Arguments must be converted on the JS thread, before we jump to another thread.
+      nativeArguments = try toNativeClosureArguments(converter: appContext.converter, fn: self, this: this, arguments: arguments)
+
+      if takesPromise {
+        nativeArguments.append(promise)
+      }
     } catch let error as Exception {
       callback(.failure(error))
       return
@@ -89,18 +115,13 @@ public final class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyA
       return
     }
 
-    let queue = queue ?? defaultQueue
-
-    queue.async { [body, name] in
-      let returnedValue: ReturnType?
+    let bodyBlock: () -> Void = { [body, name] in
+      let returnedValue: ReturnType
 
       do {
-        // Convert arguments to the types desired by the function.
-        arguments = try cast(arguments: arguments, forFunction: self, appContext: appContext)
-
-        // swiftlint:disable:next force_cast
-        let argumentsTuple = try Conversions.toTuple(arguments) as! Args
-
+        guard let argumentsTuple: Args = try Conversions.toTuple(nativeArguments) else {
+          throw ArgumentConversionException()
+        }
         returnedValue = try body(argumentsTuple)
       } catch let error as Exception {
         promise.reject(FunctionCallException(name).causedBy(error))
@@ -110,27 +131,90 @@ public final class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyA
         return
       }
       if !self.takesPromise {
-        promise.resolve(returnedValue)
+        promise.resolve(returnedValue, dynamicType: self.returnType)
       }
+    }
+    // Run inline when the runtime has no scheduler (e.g. tests) to avoid
+    // touching the runtime from a background queue.
+    let supportsAsyncScheduling = (try? appContext.runtime.supportsAsyncScheduling) ?? false
+
+    if supportsAsyncScheduling {
+      let queue = queue ?? asyncFunctionQueue
+      dispatchOnQueueUntilViewRegisters(appContext: appContext, arguments: nativeArguments, queue: queue, bodyBlock)
+    } else {
+      bodyBlock()
+    }
+  }
+
+  /**
+   * Checks if the `AsyncFunction` is a method of a `View`, if it is and the `View` has not yet been registered in the view registry it
+   * re-dispatches the block until the view registers. The block can be re-dispatched up to three times before the cast is considered failed.
+   * This is a sub-optimal solution, but the only one until we get access to the runtime scheduler. In the vast majority of cases the block
+   * will be dispatched without any retries.
+   */
+  private func dispatchOnQueueUntilViewRegisters(
+    appContext: AppContext,
+    arguments: [Any],
+    queue: DispatchQueue,
+    retryCount: Int = 0,
+    _ block: @escaping () -> Void
+  ) {
+    // Empirically a single retry is enough, use three just to be safe
+    let maxRetryCount = 3
+
+    queue.async {
+      // The app context's JS runtime can be torn down between this block being
+      // queued and running — e.g. when iOS deallocates a headless background
+      // task's context after the task finishes. Touching it then (resolving the
+      // promise in `block()`, or the view-registry lookup below) dereferences
+      // freed memory and crashes with EXC_BAD_ACCESS. Bail gracefully instead;
+      // the JS context is gone, so there is nothing to resolve back into.
+      // Mirrors the nil-guards added for ExpoFabricViewObjC (#42634) and
+      // SwiftUIVirtualView (#45175).
+      guard (try? appContext.runtime) != nil else {
+        return
+      }
+      // Checks if this is a view function unregistered in the view registry. The check can be performed from the main thread only.
+      if retryCount < maxRetryCount,
+        let viewTag = arguments.first as? Int,
+        let uiManager = appContext.reactBridge?.uiManager,
+        self.dynamicArgumentTypes.first is DynamicViewType,
+        Thread.isMainThread, // swiftlint:disable:next legacy_objc_type
+        uiManager.view(forReactTag: NSNumber(value: viewTag)) == nil {
+        // Schedule the block on the original queue through UI manager if view is missing in the registry.
+        self.dispatchOnQueueUntilViewRegisters(appContext: appContext, arguments: arguments, queue: queue, retryCount: retryCount + 1, block)
+        return
+      }
+      // Schedule the block as normal.
+      block()
     }
   }
 
   // MARK: - JavaScriptObjectBuilder
 
+  @JavaScriptActor
   func build(appContext: AppContext) throws -> JavaScriptObject {
     // It seems to be safe to capture a strong reference to `self` here. This is needed for detached functions, that are not part of the module definition.
     // Module definitions are held in memory anyway, but detached definitions (returned by other functions) are not, so we need to capture them here.
     // It will be deallocated when that JS host function is garbage-collected by the JS VM.
-    return try appContext.runtime.createAsyncFunction(name, argsCount: argumentsCount) { [self] this, args, resolve, reject in
-      self.call(by: this, withArguments: args, appContext: appContext) { result in
-        switch result {
-        case .failure(let error):
-          reject(error.code, error.description, nil)
+    let function = try appContext.runtime.createFunction(name) { [weak appContext, self] this, arguments in
+      guard let appContext else {
+        throw Exceptions.AppContextLost()
+      }
+      let promise = try JavaScriptPromise(appContext.runtime)
+      let promiseValue = promise.asValue()
+
+      self.call(appContext, this: this, arguments: arguments) { [promise] result in
+        switch consume result {
         case .success(let value):
-          resolve(value)
+          promise.resolve(value)
+        case .failure(let error):
+          promise.reject(error)
         }
       }
+      return promiseValue
     }
+    return function.asObject()
   }
 
   // MARK: - AnyAsyncFunctionDefinition
@@ -138,13 +222,5 @@ public final class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyA
   public func runOnQueue(_ queue: DispatchQueue?) -> Self {
     self.queue = queue
     return self
-  }
-}
-
-// MARK: - Exceptions
-
-internal final class NativeFunctionUnavailableException: GenericException<String> {
-  override var reason: String {
-    return "Native function '\(param)' is no longer available in memory"
   }
 }

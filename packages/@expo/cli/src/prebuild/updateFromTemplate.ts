@@ -1,16 +1,19 @@
-import { ExpoConfig, PackageJSONConfig } from '@expo/config';
-import { ModPlatform } from '@expo/config-plugins';
+import type { ExpoConfig, PackageJSONConfig } from '@expo/config';
+import type { ModPlatform } from '@expo/config-plugins';
 import chalk from 'chalk';
 
-import { copyTemplateFiles, createCopyFilesSuccessMessage } from './copyTemplateFiles';
-import { getTemplateFilesToRenameAsync, renameTemplateAppNameAsync } from './renameTemplateAppName';
-import { cloneTemplateAsync } from './resolveTemplate';
-import { DependenciesModificationResults, updatePackageJSONAsync } from './updatePackageJson';
-import { validateTemplatePlatforms } from './validateTemplatePlatforms';
 import * as Log from '../log';
+import { createTempDirectoryPath } from '../utils/createTempPath';
 import { AbortCommandError, SilentError } from '../utils/errors';
 import { logNewSection } from '../utils/ora';
 import { profile } from '../utils/profile';
+import { copyTemplateFiles, createCopyFilesSuccessMessage } from './copyTemplateFiles';
+import { getTemplateFilesToRenameAsync, renameTemplateAppNameAsync } from './renameTemplateAppName';
+import type { ResolvedTemplateOption } from './resolveOptions';
+import { cloneTemplateAsync } from './resolveTemplate';
+import type { DependenciesModificationResults } from './updatePackageJson';
+import { updatePackageJSONAsync } from './updatePackageJson';
+import { validateTemplatePlatforms } from './validateTemplatePlatforms';
 
 /**
  * Creates local native files from an input template file path.
@@ -31,8 +34,8 @@ export async function updateFromTemplateAsync(
     exp: ExpoConfig;
     /** package.json as JSON */
     pkg: PackageJSONConfig;
-    /** Template reference ID. */
-    template?: string;
+    /** Template to clone from. */
+    template?: ResolvedTemplateOption;
     /** Directory to write the template to before copying into the project. */
     templateDirectory?: string;
     /** List of platforms to clone. */
@@ -51,8 +54,7 @@ export async function updateFromTemplateAsync(
   } & DependenciesModificationResults
 > {
   if (!templateDirectory) {
-    const temporary = await import('tempy');
-    templateDirectory = temporary.directory();
+    templateDirectory = createTempDirectoryPath();
   }
 
   const { copiedPaths, templateChecksum } = await profile(cloneTemplateAndCopyToProjectAsync)({
@@ -92,7 +94,7 @@ export async function cloneTemplateAndCopyToProjectAsync({
 }: {
   projectRoot: string;
   templateDirectory: string;
-  template?: string;
+  template?: ResolvedTemplateOption;
   exp: Pick<ExpoConfig, 'name' | 'sdkVersion'>;
   platforms: ModPlatform[];
 }): Promise<{ copiedPaths: string[]; templateChecksum: string }> {
@@ -105,7 +107,13 @@ export async function cloneTemplateAndCopyToProjectAsync({
   const ora = logNewSection(`Creating native ${pluralized} (${platformDirectories})`);
 
   try {
-    const templateChecksum = await cloneTemplateAsync({ templateDirectory, template, exp, ora });
+    const templateChecksum = await cloneTemplateAsync({
+      templateDirectory,
+      projectRoot,
+      template,
+      exp,
+      ora,
+    });
 
     const platforms = validateTemplatePlatforms({
       templateDirectory,
@@ -117,11 +125,14 @@ export async function cloneTemplateAndCopyToProjectAsync({
       platforms,
     });
 
-    const files = await getTemplateFilesToRenameAsync({ cwd: projectRoot });
-    await renameTemplateAppNameAsync({
-      cwd: projectRoot,
+    // TODO(@kitten): This duplicates functionality that `cloneTemplateAsync` can already do
+    const files = await getTemplateFilesToRenameAsync(projectRoot);
+    // `AndroidConfig.Name.withName` later overwrites `app_name` from the raw config name,
+    // escaped the same way, so the escaping done here only has to keep the file valid
+    // until the mods run.
+    await renameTemplateAppNameAsync(projectRoot, {
       files,
-      name: exp.name,
+      expName: exp.name,
     });
 
     // Says: "Created native directories"

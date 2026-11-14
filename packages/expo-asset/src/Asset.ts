@@ -1,7 +1,7 @@
-import { getAssetByID } from '@react-native/assets-registry/registry';
 import { Platform } from 'expo-modules-core';
+import { AssetRegistry } from 'react-native';
 
-import { AssetMetadata, selectAssetSource } from './AssetSources';
+import { type AssetMetadata, selectAssetSource } from './AssetSources';
 import * as AssetUris from './AssetUris';
 import { downloadAsync } from './ExpoAsset';
 import * as ImageAssets from './ImageAssets';
@@ -24,15 +24,40 @@ type DownloadPromiseCallbacks = {
   reject: (error: Error) => void;
 };
 
-export { AssetMetadata };
+/**
+ * The value of `require('path/to/file')` for an image on web and in server environments, when
+ * Metro can read the image dimensions.
+ */
+export interface VirtualAssetModule {
+  uri: string;
+  width: number;
+  height: number;
+}
+
+function isVirtualAsset(assetModule: unknown): assetModule is VirtualAssetModule {
+  return (
+    !!assetModule &&
+    typeof assetModule === 'object' &&
+    'uri' in assetModule &&
+    typeof assetModule.uri === 'string'
+  );
+}
+
+export type { AssetMetadata } from './AssetSources';
+
+/**
+ * Android resource URL prefix.
+ * @hidden
+ */
+export const ANDROID_EMBEDDED_URL_BASE_RESOURCE = 'file:///android_res/';
 
 /**
  * The `Asset` class represents an asset in your app. It gives metadata about the asset (such as its
  * name and type) and provides facilities to load the asset data.
  */
 export class Asset {
-  private static byHash = {};
-  private static byUri = {};
+  private static byHash: Record<string, Asset | undefined> = {};
+  private static byUri: Record<string, Asset | undefined> = {};
 
   /**
    * The name of the asset file without the extension. Also without the part from `@` onward in the
@@ -53,7 +78,7 @@ export class Asset {
    * asset. When running the app from Expo CLI during development, this URI points to Expo CLI's
    * server running on your computer and the asset is served directly from your computer. If you
    * are not using Classic Updates (legacy), this field should be ignored as we ensure your assets
-   * are on device before before running your application logic.
+   * are on device before running your application logic.
    */
   public readonly uri: string;
   /**
@@ -95,7 +120,11 @@ export class Asset {
 
     if (hash) {
       this.localUri = getLocalAssetUri(hash, type);
-      if (this.localUri) {
+      if (this.localUri?.startsWith(ANDROID_EMBEDDED_URL_BASE_RESOURCE)) {
+        // Treat Android embedded resources as not downloaded state, because the uri is not direct accessible.
+        this.uri = this.localUri;
+        this.localUri = null;
+      } else if (this.localUri) {
         this.downloaded = true;
       }
     }
@@ -130,25 +159,36 @@ export class Asset {
   // @needsAudit
   /**
    * Returns the [`Asset`](#asset) instance representing an asset given its module or URL.
-   * @param virtualAssetModule The value of `require('path/to/file')` for the asset or external
+   * @param assetModule The value of `require('path/to/file')` for the asset or external
    * network URL
    * @return The [`Asset`](#asset) instance for the asset.
    */
-  static fromModule(virtualAssetModule: number | string): Asset {
-    if (typeof virtualAssetModule === 'string') {
-      return Asset.fromURI(virtualAssetModule);
+  static fromModule(assetModule: number | string | VirtualAssetModule): Asset {
+    if (typeof assetModule === 'string') {
+      return Asset.fromURI(assetModule);
+    }
+    if (isVirtualAsset(assetModule)) {
+      const extension = AssetUris.getFileExtension(assetModule.uri);
+      return new Asset({
+        name: '',
+        type: extension.startsWith('.') ? extension.substring(1) : extension,
+        hash: null,
+        uri: assetModule.uri,
+        width: assetModule.width,
+        height: assetModule.height,
+      });
     }
 
-    const meta = getAssetByID(virtualAssetModule);
+    const meta = AssetRegistry.getAssetByID(assetModule);
     if (!meta) {
-      throw new Error(`Module "${virtualAssetModule}" is missing from the asset registry`);
+      throw new Error(`Module "${assetModule}" is missing from the asset registry`);
     }
 
     // Outside of the managed env we need the moduleId to initialize the asset
     // because resolveAssetSource depends on it
     if (!IS_ENV_WITH_LOCAL_ASSETS) {
       // null-check is performed above with `getAssetByID`.
-      const { uri } = resolveAssetSource(virtualAssetModule)!;
+      const { uri } = resolveAssetSource(assetModule)!;
 
       const asset = new Asset({
         name: meta.name,
@@ -179,8 +219,9 @@ export class Asset {
     // The hash of the whole asset, not to be confused with the hash of a specific file returned
     // from `selectAssetSource`
     const metaHash = meta.hash;
-    if (Asset.byHash[metaHash]) {
-      return Asset.byHash[metaHash];
+    const assetByHash = Asset.byHash[metaHash];
+    if (assetByHash) {
+      return assetByHash;
     }
 
     const { uri, hash } = selectAssetSource(meta);
@@ -205,7 +246,7 @@ export class Asset {
     // Possibly a Base64-encoded URI
     let type = '';
     if (uri.indexOf(';base64') > -1) {
-      type = uri.split(';')[0].split('/')[1];
+      type = uri.split(';')[0]?.split('/')[1] ?? '';
     } else {
       const extension = AssetUris.getFileExtension(uri);
       type = extension.startsWith('.') ? extension.substring(1) : extension;
@@ -230,6 +271,14 @@ export class Asset {
    * to a local file containing the asset data. The asset is only downloaded if an up-to-date local
    * file for the asset isn't already present due to an earlier download. The downloaded `Asset`
    * will be returned when the promise is resolved.
+   *
+   * > **Note:** There is no guarantee that files downloaded via `downloadAsync` persist between app sessions.
+   * `downloadAsync` stores files in the caches directory, so it's up to the OS to clear this folder at its
+   * own discretion or when the user manually purges the caches directory. Downloaded assets are stored as
+   * `ExponentAsset-{cacheFileId}.{extension}` within the cache directory.
+   * > To manually clear cached assets, you can use [`expo-file-system`](./filesystem/) to
+   * delete the cache directory: `Paths.cache.delete()` or use the legacy API `deleteAsync(cacheDirectory)`.
+   *
    * @return Returns a Promise which fulfills with an `Asset` instance.
    */
   async downloadAsync(): Promise<this> {
@@ -259,7 +308,7 @@ export class Asset {
 
       this.downloaded = true;
       this._downloadCallbacks.forEach(({ resolve }) => resolve());
-    } catch (e) {
+    } catch (e: any) {
       this._downloadCallbacks.forEach(({ reject }) => reject(e));
       throw e;
     } finally {

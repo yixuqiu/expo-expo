@@ -5,6 +5,13 @@ set -xeuo pipefail
 ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/../../.. && pwd )"
 export PATH="$ROOT_DIR/bin:$PATH"
 
+if [ -n "${EXPO_TOKEN+x}" ]; then
+  echo "Unsetting EXPO_TOKEN"
+  unset EXPO_TOKEN
+else
+  echo "EXPO_TOKEN is not set"
+fi
+
 notify_slack() {
   if [[ ! -z "$SLACK_HOOK" ]]; then
     curl \
@@ -20,14 +27,23 @@ notify_slack() {
 }
 
 upload_crashlytics_symbols() {
+  local variant="MobileRelease"
+  if [[ "${EAS_DANGEROUS_OVERRIDE_ANDROID_APPLICATION_ID:-}" == "host.exp.exponent.quest" ]]; then
+    variant="QuestRelease"
+  fi
+
   pushd $ROOT_DIR/apps/eas-expo-go/android
-  ./gradlew :app:uploadCrashlyticsSymbolFile$1
+  ./gradlew ":app:uploadCrashlyticsSymbolFile${variant}"
   popd
 }
 
+if [[ "$EAS_BUILD_PLATFORM" == "ios" ]]; then
+  df -h /
+fi
+
 if [[ "$EAS_BUILD_PROFILE" == "release-client" ]]; then
   if [[ "$EAS_BUILD_PLATFORM" == "android" ]]; then
-    upload_crashlytics_symbols "Release"
+    upload_crashlytics_symbols
   fi
 
   SLUG="release-client"
@@ -50,7 +66,7 @@ fi
 
 if [[ "$EAS_BUILD_PROFILE" == "publish-client" ]]; then
   if [[ "$EAS_BUILD_PLATFORM" == "android" ]]; then
-    upload_crashlytics_symbols "Release"
+    upload_crashlytics_symbols
   fi
 
   SLUG="publish-client"
@@ -62,12 +78,9 @@ if [[ "$EAS_BUILD_PROFILE" == "publish-client" ]]; then
 
   MESSAGE="Release triggered by: $EAS_BUILD_USERNAME\\nCommit author: $COMMIT_AUTHOR\\n$EAS_BUILD_MESSAGE_PART\\n$GITHUB_MESSAGE_PART"
 
-  source $ROOT_DIR/secrets/expotools.env
   if [[ "$EAS_BUILD_PLATFORM" == "android" ]]; then
-    et eas android-apk-publish
-    notify_slack "Successful Expo Go Android APK build. Published to S3 and updated staging versions endpoint" "$MESSAGE"
+    notify_slack "Successful Expo Go Android APK build. Run \`et eas android-apk-upload\` to upload to GitHub" "$MESSAGE"
   elif [[ "$EAS_BUILD_PLATFORM" == "ios" ]]; then
-    et eas ios-simulator-publish
-    notify_slack "Successful Expo Go iOS simulator build. Published to S3 and updated staging versions endpoint" "$MESSAGE"
+    notify_slack "Successful Expo Go iOS simulator build. Run \`et eas ios-simulator-upload\` to upload to GitHub" "$MESSAGE"
   fi
 fi

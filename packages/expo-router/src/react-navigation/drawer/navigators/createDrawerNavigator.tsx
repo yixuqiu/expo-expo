@@ -1,0 +1,106 @@
+'use client';
+// TODO: Rename this file to `createStandardDrawerNavigator.tsx` in a follow-up.
+import { createStandardNavigator } from 'standard-navigation';
+
+import type { StandardNavigatorContentProps } from '../../../standard-navigation/types';
+import { useNonStackAnchorWarning } from '../../../standard-navigation/useNonStackAnchorWarning';
+import { usePreloadPlaceholderRoutes } from '../../../standard-navigation/usePreloadPlaceholderRoutes';
+import { useReconcileTabHistory } from '../../../standard-navigation/useReconcileTabHistory';
+import { useVisibleTabsWithRedirect } from '../../../standard-navigation/useVisibleTabsWithRedirect';
+import type { DrawerNavigationState, DrawerRouterOptions, ParamListBase } from '../../native';
+import type {
+  DrawerDescriptorMap,
+  DrawerNavigationConfig,
+  DrawerNavigationEventMap,
+  DrawerNavigationHelpers,
+  DrawerNavigationOptions,
+} from '../types';
+import { DrawerView } from '../views/DrawerView';
+
+export interface DrawerNavigatorCreateProps {
+  isPreloaded: (key: string) => boolean;
+  isRemovalPrevented: (key: string) => boolean;
+  drawerState: DrawerNavigationState<ParamListBase>;
+  navigation: DrawerNavigationHelpers;
+  preload: (name: string) => void;
+}
+
+export interface DrawerNavigatorConfig extends DrawerNavigationConfig {
+  defaultStatus?: 'open' | 'closed';
+}
+
+export type DrawerNavigatorContentProps = DrawerNavigatorConfig & DrawerNavigatorCreateProps;
+
+export type StandardDrawerNavigationEventMap = {
+  [Event in keyof DrawerNavigationEventMap]: DrawerNavigationEventMap[Event] & {
+    canPreventDefault: Event extends 'drawerItemPress' ? true : false;
+  };
+};
+
+type ContentArgs = StandardNavigatorContentProps<
+  DrawerNavigationOptions,
+  StandardDrawerNavigationEventMap,
+  // Router options are forwarded to the content too.
+  DrawerNavigatorContentProps & Pick<DrawerRouterOptions, 'backBehavior'>
+>;
+
+function DrawerNavigatorContent({
+  descriptors,
+  drawerState,
+  navigation,
+  isPreloaded: _isPreloaded,
+  isRemovalPrevented: _isRemovalPrevented,
+  preload,
+  defaultStatus = 'closed',
+  drawerContent,
+  detachInactiveScreens,
+  backBehavior,
+}: ContentArgs) {
+  useNonStackAnchorWarning(backBehavior);
+  useReconcileTabHistory();
+  const { visibleRoutes, focusedIndex, focusedFallbackRoute } = useVisibleTabsWithRedirect({
+    routes: drawerState.routes,
+    routeNames: drawerState.routeNames,
+    focusedRouteKey: drawerState.routes[drawerState.index]?.key,
+    descriptors,
+  });
+  // TODO(@ubax): SDK-58: Try to remove the casting from here to ensure type safety
+  // Integration supplies full descriptors, including preload placeholders; standard types omit route/navigation.
+  const drawerDescriptors = descriptors as unknown as DrawerDescriptorMap;
+
+  usePreloadPlaceholderRoutes({
+    routes: visibleRoutes,
+    descriptors: drawerDescriptors,
+    preload,
+    lazyByDefault: true,
+  });
+
+  if (focusedFallbackRoute) {
+    return descriptors[focusedFallbackRoute.key]?.render() ?? null;
+  }
+
+  if (visibleRoutes.length === 0 || focusedIndex < 0) {
+    return null;
+  }
+
+  return (
+    <DrawerView
+      state={{
+        ...drawerState,
+        routes: visibleRoutes,
+        index: focusedIndex,
+      }}
+      navigation={navigation}
+      descriptors={drawerDescriptors}
+      defaultStatus={defaultStatus}
+      drawerContent={drawerContent}
+      detachInactiveScreens={detachInactiveScreens}
+    />
+  );
+}
+
+export const createStandardDrawerNavigator = createStandardNavigator<
+  DrawerNavigationOptions,
+  StandardDrawerNavigationEventMap,
+  DrawerNavigatorContentProps
+>(DrawerNavigatorContent);

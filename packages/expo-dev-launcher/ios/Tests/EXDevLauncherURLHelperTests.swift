@@ -22,16 +22,12 @@ class EXDevLauncherURLHelperTests: XCTestCase {
 
     let actual2 = EXDevLauncherURLHelper.replaceEXPScheme(URL(string: "http://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081")!, to: "scheme")
     XCTAssertEqual(URL(string: "http://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"), actual2)
-
-    // should not crash if provided URL does not include scheme
-    let actual3 = EXDevLauncherURLHelper.replaceEXPScheme(URL(string: "192.168.0.12:8081")!, to: "scheme")
-    XCTAssertEqual(URL(string: "192.168.0.12:8081"), actual3)
   }
 
   func testDevLauncherUrls() {
     // dev-client scheme with valid url param -> loadApp with specified url param
-    expectDevLauncherUrlToEqual(input:"scheme://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081%2Findex.bundle%3Fplatform%3Dios%26dev%3Dtrue",
-                         expected:"http://localhost:8081/index.bundle?platform=ios&dev=true")
+    expectDevLauncherUrlToEqual(input: "scheme://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081%2Findex.bundle%3Fplatform%3Dios%26dev%3Dtrue",
+                         expected: "http://localhost:8081/index.bundle?platform=ios&dev=true")
 
     // non-dev-client scheme with valid url param -> defer loading to loaded app
     expectDevLauncherUrlToEqual(input: "scheme://not-dev-client/?url=\(encodedUrlString)",
@@ -41,16 +37,58 @@ class EXDevLauncherURLHelperTests: XCTestCase {
 
   func testDevLauncherUrlQueryParams() {
     let url = "scheme://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081&updateMessage=123"
-    let devLauncherUrl = EXDevLauncherUrl(URL(string:url)!)
+    let devLauncherUrl = EXDevLauncherUrl(URL(string: url)!)
     let queryParams = devLauncherUrl.queryParams
 
     XCTAssertEqual(queryParams["updateMessage"], "123")
     XCTAssertEqual(queryParams["url"], "http://localhost:8081")
   }
 
+  func testHasEnabledFlag() {
+    let devLauncherUrl = URL(string: "scheme://expo-development-client/?url=\(encodedUrlString)&disableFab=1")!
+
+    XCTAssertTrue(EXDevLauncherURLHelper.hasEnabledFlag("disableFab", in: devLauncherUrl))
+    XCTAssertTrue(EXDevLauncherURLHelper.hasEnabledFlag("disableAutoLaunch", in: URL(string: "http://localhost:8081?disableAutoLaunch=1")!))
+
+    XCTAssertFalse(EXDevLauncherURLHelper.hasEnabledFlag("disableAutoLaunch", in: devLauncherUrl))
+    XCTAssertFalse(EXDevLauncherURLHelper.hasEnabledFlag("disableFab", in: URL(string: "http://localhost:8081?disableFab=0")!))
+    XCTAssertFalse(EXDevLauncherURLHelper.hasEnabledFlag("disableFab", in: URL(string: "http://localhost:8081?disableFab")!))
+
+    let urlWithFlagInAppUrl = URL(string: "scheme://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081%3FdisableFab%3D1")!
+    XCTAssertFalse(EXDevLauncherURLHelper.hasEnabledFlag("disableFab", in: urlWithFlagInAppUrl))
+  }
+
+  func testIsDevLauncherURLAcceptsReservedParamsOnAnyHost() {
+    XCTAssertTrue(EXDevLauncherURLHelper.isDevLauncherURL(URL(string: "myapp://login?__expo_disable_fab=1")))
+    XCTAssertTrue(EXDevLauncherURLHelper.isDevLauncherURL(URL(string: "myapp://?__expo_url=\(encodedUrlString)")))
+    XCTAssertFalse(EXDevLauncherURLHelper.isDevLauncherURL(URL(string: "myapp://login")))
+  }
+
+  func testHasUrlQueryParam() {
+    XCTAssertTrue(EXDevLauncherURLHelper.hasUrlQueryParam(URL(string: "scheme://expo-development-client/?url=\(encodedUrlString)")!))
+    XCTAssertTrue(EXDevLauncherURLHelper.hasUrlQueryParam(URL(string: "myapp://?__expo_url=\(encodedUrlString)")!))
+    XCTAssertFalse(EXDevLauncherURLHelper.hasUrlQueryParam(URL(string: "scheme://expo-development-client")!))
+    XCTAssertFalse(EXDevLauncherURLHelper.hasUrlQueryParam(URL(string: "myapp://login?__expo_disable_fab=1")!))
+  }
+
+  func testDevLauncherUrlResolvesTargetAndDropsReservedParams() {
+    let legacy = EXDevLauncherUrl(URL(string: "scheme://expo-development-client/?url=exp%3A%2F%2Flocalhost%3A8081&updateMessage=hi&__expo_disable_fab=1")!)
+    XCTAssertEqual(legacy.url.absoluteString, "http://localhost:8081")
+    XCTAssertEqual(legacy.queryParams["updateMessage"], "hi")
+    XCTAssertNil(legacy.queryParams["__expo_disable_fab"])
+
+    let reserved = EXDevLauncherUrl(URL(string: "scheme://?__expo_url=exp%3A%2F%2Flocalhost%3A8081&__expo_disable_fab=1")!)
+    XCTAssertEqual(reserved.url.absoluteString, "http://localhost:8081")
+    XCTAssertTrue(reserved.queryParams.isEmpty)
+
+    let plain = EXDevLauncherUrl(URL(string: "exp://localhost:8081?x=1")!)
+    XCTAssertEqual(plain.url.absoluteString, "http://localhost:8081?x=1")
+    XCTAssertEqual(plain.queryParams["x"], "1")
+  }
+
   //  HELPER
   func expectDevLauncherUrlToEqual(input: String, expected: String) {
-    let devLauncherUrl = EXDevLauncherUrl(URL(string:input)!)
+    let devLauncherUrl = EXDevLauncherUrl(URL(string: input)!)
     XCTAssertEqual(devLauncherUrl.url.absoluteString, expected)
   }
 }

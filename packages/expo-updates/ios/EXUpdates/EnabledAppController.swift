@@ -1,20 +1,38 @@
 //  Copyright © 2019 650 Industries. All rights reserved.
 
-// swiftlint:disable force_unwrapping
-
 import SwiftUI
 import ExpoModulesCore
+import EXUpdatesInterface
+
+internal class EnabledUpdatesStateChangeSubscription: UpdatesStateChangeSubscription {
+  private let subscriptionId: String
+
+  required init(_ subscriptionId: String) {
+    self.subscriptionId = subscriptionId
+  }
+
+  func remove() {
+    if let updatesController = AppController.sharedInstance as? EnabledAppController {
+      updatesController.unsubscribeFromUpdatesStateChanges(subscriptionId)
+    }
+  }
+
+  func getContext() -> Any? {
+    if let updatesController = AppController.sharedInstance as? EnabledAppController {
+      return updatesController.getNativeInterfaceContext()
+    }
+    return nil
+  }
+}
 
 /**
  * Updates controller for applications that have updates enabled and properly-configured.
  */
-public class EnabledAppController: UpdatesStateChangeDelegate, InternalAppControllerInterface, StartupProcedureDelegate {
-  private static let ErrorDomain = "EXUpdatesAppController"
-
+public class EnabledAppController: InternalAppControllerInterface, UpdatesInterface, StartupProcedureDelegate {
   public weak var delegate: AppControllerDelegate?
-  public weak var appContext: AppContext?
+  public var reloadScreenManager: Reloadable? = ReloadScreenManager()
 
-  internal let config: UpdatesConfig
+  internal var config: UpdatesConfig
   private let database: UpdatesDatabase
 
   public let updatesDirectory: URL? // internal for E2E test
@@ -22,29 +40,41 @@ public class EnabledAppController: UpdatesStateChangeDelegate, InternalAppContro
   private let controllerQueue = DispatchQueue(label: "expo.controller.ControllerQueue")
   public let isActiveController = true
   public private(set) var isStarted = false
+  private var startupStartTime: DispatchTime?
+  private var startupEndTime: DispatchTime?
 
-  public var shouldEmitJsEvents = false {
-    didSet {
-      if shouldEmitJsEvents == true {
-        sendQueuedEventsToAppContext()
+  private var launchDuration: Double? {
+    return startupStartTime.let({ start in
+      startupEndTime.let { end in
+        Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
       }
-    }
+    })
   }
 
-  private var eventsToSendToJS: [[String: Any?]] = []
+  private let stateMachine: UpdatesStateMachine
 
-  private let stateMachine = UpdatesStateMachine(validUpdatesStateValues: Set(UpdatesStateValue.allCases))
-
-  private let selectionPolicy: SelectionPolicy
+  private var selectionPolicy: SelectionPolicy {
+    return SelectionPolicyFactory.filterAwarePolicy(
+      withRuntimeVersion: config.runtimeVersion,
+      config: config,
+      embeddedUpdateId: getEmbeddedUpdate()?.updateId
+    )
+  }
 
   private let logger = UpdatesLogger()
 
-  // swiftlint:disable implicitly_unwrapped_optional
-  private var startupProcedure: StartupProcedure!
-  // swiftlint:enable implicitly_unwrapped_optional
+  public let eventManager: UpdatesEventManager
+
+  // Assigned on the main thread in `start()` and read from whatever thread a native consumer of
+  // `UpdatesInterface` happens to be on, so the reference is synchronized, not just nil-checked.
+  private let startupProcedureStorage = Mutex<StartupProcedure?>(nil)
+  private var startupProcedure: StartupProcedure? {
+    get { startupProcedureStorage.withLock { $0 } }
+    set { startupProcedureStorage.withLock { $0 = newValue } }
+  }
 
   public func launchAssetUrl() -> URL? {
-    return startupProcedure.launchAssetUrl()
+    return startupProcedure?.launchAssetUrl()
   }
 
   required init(config: UpdatesConfig, database: UpdatesDatabase, updatesDirectory: URL) {
@@ -52,24 +82,24 @@ public class EnabledAppController: UpdatesStateChangeDelegate, InternalAppContro
     self.database = database
     self.updatesDirectoryInternal = updatesDirectory
     self.updatesDirectory = updatesDirectory
-    self.selectionPolicy = SelectionPolicyFactory.filterAwarePolicy(
-      withRuntimeVersion: self.config.runtimeVersion
-    )
     self.logger.info(message: "AppController sharedInstance created")
-
-    self.stateMachine.changeEventDelegate = self
+    self.eventManager = QueueUpdatesEventManager(logger: logger)
+    self.stateMachine = UpdatesStateMachine(logger: self.logger, eventManager: self.eventManager, validUpdatesStateValues: Set(UpdatesStateValue.allCases))
   }
 
   public func start() {
     precondition(!isStarted, "AppController:start should only be called once per instance")
 
     isStarted = true
+    startupStartTime = DispatchTime.now()
 
     purgeUpdatesLogsOlderThanOneDay()
 
-    UpdatesBuildData.ensureBuildDataIsConsistentAsync(database: database, config: config)
+    if !self.config.hasUpdatesOverride {
+      UpdatesBuildData.ensureBuildDataIsConsistentAsync(database: database, config: self.config, logger: logger)
+    }
 
-    startupProcedure = StartupProcedure(
+    let procedure = StartupProcedure(
       database: self.database,
       config: self.config,
       selectionPolicy: self.selectionPolicy,
@@ -77,57 +107,24 @@ public class EnabledAppController: UpdatesStateChangeDelegate, InternalAppContro
       updatesDirectory: self.updatesDirectoryInternal,
       logger: self.logger
     )
-    startupProcedure.delegate = self
-    stateMachine.queueExecution(stateMachineProcedure: startupProcedure)
+    procedure.delegate = self
+    startupProcedure = procedure
+    stateMachine.queueExecution(stateMachineProcedure: procedure)
   }
 
-  /**
-   Starts the update process to launch a previously-loaded update and (if configured to do so)
-   check for a new update from the server. This method should be called as early as possible in
-   the application's lifecycle.
-
-   Note that iOS may stop showing the app's splash screen in case the update is taking a while
-   to load. This method will attempt to find `LaunchScreen.xib` and load it into view while the
-   update is loading.
-   */
-  public func startAndShowLaunchScreen(_ window: UIWindow) {
-    var view: UIView?
-    let mainBundle = Bundle.main
-    let launchScreen = mainBundle.object(forInfoDictionaryKey: "UILaunchStoryboardName") as? String ?? "LaunchScreen"
-
-    if mainBundle.path(forResource: launchScreen, ofType: "nib") != nil {
-      let views = mainBundle.loadNibNamed(launchScreen, owner: self)
-      view = views?.first as? UIView
-      view?.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-    } else if mainBundle.path(forResource: launchScreen, ofType: "storyboard") != nil ||
-      mainBundle.path(forResource: launchScreen, ofType: "storyboardc") != nil {
-      let launchScreenStoryboard = UIStoryboard(name: launchScreen, bundle: nil)
-      let viewController = launchScreenStoryboard.instantiateInitialViewController()
-      view = viewController?.view
-      viewController?.view = nil
-    } else {
-      NSLog("Launch screen could not be loaded from a .xib or .storyboard. Unexpected loading behavior may occur.")
-      view = UIView()
-      view?.backgroundColor = .white
-    }
-
-    if window.rootViewController == nil {
-      window.rootViewController = UIViewController()
-    }
-    window.rootViewController!.view = view
-    window.makeKeyAndVisible()
-
-    start()
+  public func onEventListenerStartObserving() {
+    stateMachine.sendContextToJS()
   }
 
   // MARK: - StartupProcedureDelegate
 
   func startupProcedureDidLaunch(_ startupProcedure: StartupProcedure) {
+    startupEndTime = DispatchTime.now()
+
     delegate.let { _ in
       DispatchQueue.main.async { [weak self] in
         if let strongSelf = self {
-          strongSelf.delegate?.appController(strongSelf, didStartWithSuccess: strongSelf.startupProcedure.launchAssetUrl() != nil)
-          strongSelf.sendQueuedEventsToAppContext()
+          strongSelf.delegate?.appController(strongSelf, didStartWithSuccess: strongSelf.startupProcedure?.launchAssetUrl() != nil)
         }
       }
     }
@@ -142,13 +139,14 @@ public class EnabledAppController: UpdatesStateChangeDelegate, InternalAppContro
       updatesDirectory: self.updatesDirectoryInternal,
       logger: self.logger,
       shouldRunReaper: false,
-      triggerReloadCommandListenersReason: "Relaunch after fatal error"
+      triggerReloadCommandListenersReason: "Relaunch after fatal error",
+      reloadScreenManager: self.reloadScreenManager
     ) {
-      return self.startupProcedure.launchedUpdate()
+      return self.startupProcedure?.launchedUpdate()
     } setLauncher: { newLauncher in
-      self.startupProcedure.setLauncher(newLauncher)
+      self.startupProcedure?.setLauncher(newLauncher)
     } requestStartErrorMonitoring: {
-      self.startupProcedure.requestStartErrorMonitoring()
+      self.startupProcedure?.requestStartErrorMonitoring()
     } successBlock: {
       completion(nil, true)
     } errorBlock: { error in
@@ -170,13 +168,14 @@ public class EnabledAppController: UpdatesStateChangeDelegate, InternalAppContro
       updatesDirectory: self.updatesDirectoryInternal,
       logger: self.logger,
       shouldRunReaper: true,
-      triggerReloadCommandListenersReason: "Requested by JavaScript - Updates.reloadAsync()"
+      triggerReloadCommandListenersReason: "Requested by JavaScript - Updates.reloadAsync()",
+      reloadScreenManager: self.reloadScreenManager
     ) {
-      return self.startupProcedure.launchedUpdate()
+      return self.startupProcedure?.launchedUpdate()
     } setLauncher: { newLauncher in
-      self.startupProcedure.setLauncher(newLauncher)
+      self.startupProcedure?.setLauncher(newLauncher)
     } requestStartErrorMonitoring: {
-      self.startupProcedure.requestStartErrorMonitoring()
+      self.startupProcedure?.requestStartErrorMonitoring()
     } successBlock: {
       successBlockArg()
     } errorBlock: { error in
@@ -186,68 +185,82 @@ public class EnabledAppController: UpdatesStateChangeDelegate, InternalAppContro
     stateMachine.queueExecution(stateMachineProcedure: procedure)
   }
 
+  // MARK: - UpdatesInterface
+
+  // Subscribed from the module-registry thread, iterated on the state machine's queue. Listeners are
+  // notified off a snapshot, so one must stay safe to call after it unsubscribes.
+  private let stateChangeListeners = Mutex<[String: any UpdatesStateChangeListener]>([:])
+
+  public func subscribeToUpdatesStateChanges(_ listener: any UpdatesStateChangeListener) -> UpdatesStateChangeSubscription {
+    let subscriptionId = UUID().uuidString
+    let subscription = EnabledUpdatesStateChangeSubscription(subscriptionId)
+
+    stateChangeListeners.withLock { $0[subscriptionId] = listener }
+    return subscription
+  }
+
+  internal func unsubscribeFromUpdatesStateChanges(_ subscriptionId: String) {
+    stateChangeListeners.withLock { $0.removeValue(forKey: subscriptionId) }
+  }
+
+  internal func stateChangeListenersSnapshot() -> [any UpdatesStateChangeListener] {
+    return stateChangeListeners.withLock { Array($0.values) }
+  }
+
+  internal func getNativeInterfaceContext() -> UpdatesNativeInterfaceStateContext {
+    return stateMachine.context.nativeInterfaceContext
+  }
+
+  public var runtimeVersion: String? {
+    return config.runtimeVersion
+  }
+
+  public var updateURL: URL? {
+    return config.updateUrl
+  }
+
+  public var requestHeaders: [String : String]? {
+    return config.requestHeaders
+  }
+
+  // The controller is registered before `start()` assigns `startupProcedure`, so a native consumer
+  // can read this first. `isStarted` can't guard it — that is set before the assignment.
+  public var launchedUpdateId: UUID? {
+    return startupProcedure?.launchedUpdate()?.updateId
+  }
+
+  public var embeddedUpdateId: UUID? {
+    return getEmbeddedUpdate()?.updateId
+  }
+
+  public var launchAssetPath: String? {
+    return startupProcedure?.launchAssetUrl()?.relativePath
+  }
+
+  public var isEnabled: Bool = true
+
   // MARK: - Internal
 
   private func purgeUpdatesLogsOlderThanOneDay() {
-    UpdatesUtils.purgeUpdatesLogsOlderThanOneDay()
-  }
-
-  // MARK: - Send events to JS
-
-  internal func sendUpdateStateChangeEventToAppContext(_ eventType: UpdatesStateEventType, body: [String: Any?]) {
-    logger.info(message: "sendUpdateStateChangeEventToAppContext(): type = \(eventType)")
-    sendEventToAppContext(EXUpdatesStateChangeEventName, "\(eventType)", body: body)
-  }
-
-  private func sendEventToAppContext(_ eventName: String, _ eventType: String, body: [String: Any?]) {
-    var mutableBody = body
-    mutableBody["type"] = eventType
-
-    guard let appContext = appContext,
-      let eventEmitter = appContext.eventEmitter,
-      shouldEmitJsEvents == true else {
-      eventsToSendToJS.append([
-        "eventName": eventName,
-        "mutableBody": mutableBody
-      ])
-      logger.warn(message: "EXUpdates: Could not emit event: name = \(eventName), type = \(eventType). Event will be emitted when the appContext is available", code: .jsRuntimeError)
-      return
-    }
-    logger.debug(message: "sendEventToAppContext: \(eventName), \(mutableBody)")
-    eventEmitter.sendEvent(withName: eventName, body: mutableBody)
-  }
-
-  internal func sendQueuedEventsToAppContext() {
-    guard let appContext = appContext,
-      let eventEmitter = appContext.eventEmitter,
-      shouldEmitJsEvents == true else {
-      return
-    }
-    eventsToSendToJS.forEach { event in
-      guard let eventName = event["eventName"] as? String,
-        let mutableBody = event["mutableBody"] as? [String: Any?] else {
-        return
-      }
-      logger.debug(message: "sendEventToAppContext: \(eventName), \(mutableBody)")
-      eventEmitter.sendEvent(withName: eventName, body: mutableBody)
-    }
-    eventsToSendToJS = []
+    UpdatesUtils.purgeUpdatesLogsOlderThanOneDay(logger: logger)
   }
 
   // MARK: - JS API
 
   public func getConstantsForModule() -> UpdatesModuleConstants {
     return UpdatesModuleConstants(
-      launchedUpdate: startupProcedure.launchedUpdate(),
+      launchedUpdate: startupProcedure?.launchedUpdate(),
+      launchDuration: launchDuration,
       embeddedUpdate: getEmbeddedUpdate(),
-      emergencyLaunchException: startupProcedure.emergencyLaunchException,
+      emergencyLaunchException: startupProcedure?.emergencyLaunchException,
       isEnabled: true,
-      isUsingEmbeddedAssets: startupProcedure.isUsingEmbeddedAssets(),
+      isUsingEmbeddedAssets: startupProcedure?.isUsingEmbeddedAssets() ?? true,
       runtimeVersion: self.config.runtimeVersion,
       checkOnLaunch: self.config.checkOnLaunch,
       requestHeaders: self.config.requestHeaders,
-      assetFilesMap: startupProcedure.assetFilesMap(),
-      shouldDeferToNativeForAPIMethodAvailabilityInDevelopment: false
+      assetFilesMap: startupProcedure?.assetFilesMap(),
+      shouldDeferToNativeForAPIMethodAvailabilityInDevelopment: false,
+      initialContext: stateMachine.context
     )
   }
 
@@ -259,9 +272,10 @@ public class EnabledAppController: UpdatesStateChangeDelegate, InternalAppContro
       database: self.database,
       config: self.config,
       selectionPolicy: self.selectionPolicy,
-      logger: self.logger
+      logger: self.logger,
+      updatesDirectory: self.updatesDirectoryInternal
     ) {
-      return self.startupProcedure.launchedUpdate()
+      return self.startupProcedure?.launchedUpdate()
     } successBlock: { checkForUpdateResult in
       successBlockArg(checkForUpdateResult)
     } errorBlock: { error in
@@ -282,20 +296,13 @@ public class EnabledAppController: UpdatesStateChangeDelegate, InternalAppContro
       updatesDirectory: self.updatesDirectoryInternal,
       logger: self.logger
     ) {
-      return self.startupProcedure.launchedUpdate()
+      return self.startupProcedure?.launchedUpdate()
     } successBlock: { fetchUpdateResult in
       successBlockArg(fetchUpdateResult)
     } errorBlock: { error in
       errorBlockArg(error)
     }
     self.stateMachine.queueExecution(stateMachineProcedure: procedure)
-  }
-
-  public func getNativeStateMachineContext(
-    success successBlockArg: @escaping (_ stateMachineContext: UpdatesStateContext) -> Void,
-    error errorBlockArg: @escaping (_ error: Exception) -> Void
-  ) {
-    successBlockArg(self.stateMachine.context)
   }
 
   public func getExtraParams(
@@ -330,6 +337,23 @@ public class EnabledAppController: UpdatesStateChangeDelegate, InternalAppContro
   public func getEmbeddedUpdate() -> Update? {
     return EmbeddedAppLoader.embeddedManifest(withConfig: self.config, database: self.database)
   }
-}
 
-// swiftlint:enable force_unwrapping
+  public func setUpdateURLAndRequestHeadersOverride(_ configOverride: UpdatesConfigOverride?) throws {
+    if !config.disableAntiBrickingMeasures {
+      throw NotAllowedAntiBrickingMeasuresException()
+    }
+    UpdatesConfigOverride.save(configOverride: configOverride)
+    self.config = try UpdatesConfig.config(fromConfig: self.config, configOverride: configOverride)
+  }
+
+  public func setUpdateRequestHeadersOverride(_ requestHeaders: [String: String]?) throws {
+    if !UpdatesConfig.isValidRequestHeadersOverride(
+      originalEmbeddedRequestHeaders: config.originalEmbeddedRequestHeaders,
+      requestHeadersOverride: requestHeaders
+    ) {
+      throw InvalidRequestHeadersOverrideException(requestHeaders)
+    }
+    let configOverride = UpdatesConfigOverride.save(requestHeaders: requestHeaders)
+    self.config = try UpdatesConfig.config(fromConfig: self.config, configOverride: configOverride)
+  }
+}

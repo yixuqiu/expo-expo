@@ -6,7 +6,6 @@ import android.view.WindowManager
 import expo.modules.core.errors.InvalidArgumentException
 import expo.modules.interfaces.permissions.Permissions
 import expo.modules.kotlin.Promise
-import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -16,7 +15,7 @@ const val brightnessChangeEvent = "Expo.brightnessDidChange"
 
 class BrightnessModule : Module() {
   private val currentActivity
-    get() = appContext.currentActivity ?: throw Exceptions.MissingActivity()
+    get() = appContext.throwingActivity
 
   override fun definition() = ModuleDefinition {
     Name("ExpoBrightness")
@@ -66,10 +65,12 @@ class BrightnessModule : Module() {
         Settings.System.SCREEN_BRIGHTNESS_MODE,
         Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
       )
+      // Android's SCREEN_BRIGHTNESS accepts values from 1 to 255 (not 0 to 255)
+      // Map input range [0, 1] to Android's valid range [1, 255]
       Settings.System.putInt(
         currentActivity.contentResolver,
         Settings.System.SCREEN_BRIGHTNESS,
-        (brightnessValue * 255).roundToInt()
+        (brightnessValue * 254 + 1).roundToInt()
       )
     }
 
@@ -123,7 +124,8 @@ class BrightnessModule : Module() {
         currentActivity.contentResolver,
         Settings.System.SCREEN_BRIGHTNESS
       )
-      brightness.toInt() / 255f
+      // Map Android's range [1, 255] back to [0, 1]
+      (brightness.toInt() - 1) / 254f
     }
   }
 

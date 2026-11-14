@@ -1,5 +1,5 @@
-import ExpoModulesCore
 import AdSupport
+import ExpoModulesCore
 
 public class TrackingTransparencyModule: Module {
   public func definition() -> ModuleDefinition {
@@ -7,10 +7,17 @@ public class TrackingTransparencyModule: Module {
     Name("ExpoTrackingTransparency")
 
     OnCreate {
-      EXPermissionsMethodsDelegate.register([TrackingTransparencyPermissionRequester()], withPermissionsManager: self.appContext?.permissions)
+      EXPermissionsMethodsDelegate.register(
+        [TrackingTransparencyPermissionRequester()],
+        withPermissionsManager: self.appContext?.permissions
+      )
     }
 
     Function("getAdvertisingId") { () -> String in
+      return ASIdentifierManager.shared().advertisingIdentifier.uuidString
+    }
+
+    AsyncFunction("getAdvertisingIdAsync") { () -> String in
       return ASIdentifierManager.shared().advertisingIdentifier.uuidString
     }
 
@@ -18,7 +25,7 @@ public class TrackingTransparencyModule: Module {
       EXPermissionsMethodsDelegate.getPermissionWithPermissionsManager(
         self.appContext?.permissions,
         withRequester: TrackingTransparencyPermissionRequester.self,
-        resolve: promise.resolver,
+        resolve: promise.legacyResolver,
         reject: promise.legacyRejecter
       )
     }
@@ -28,7 +35,7 @@ public class TrackingTransparencyModule: Module {
       EXPermissionsMethodsDelegate.askForPermission(
         withPermissionsManager: self.appContext?.permissions,
         withRequester: TrackingTransparencyPermissionRequester.self,
-        resolve: promise.resolver,
+        resolve: promise.legacyResolver,
         reject: promise.legacyRejecter
       )
     }

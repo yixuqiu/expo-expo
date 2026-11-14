@@ -1,10 +1,10 @@
 import { createHash } from 'crypto';
 import { vol } from 'memfs';
-import pLimit from 'p-limit';
 import path from 'path';
 
-import { HashSource } from '../../Fingerprint.types';
+import type { DebugInfoDir, HashSource } from '../../Fingerprint.types';
 import { normalizeOptionsAsync } from '../../Options';
+import { createLimiter } from '../../utils/Concurrency';
 import {
   createContentsHashResultsAsync,
   createDirHashResultsAsync,
@@ -16,6 +16,7 @@ import {
 
 jest.mock('fs');
 jest.mock('fs/promises');
+jest.mock('../../ProjectWorkflow');
 
 describe(createFingerprintFromSourcesAsync, () => {
   afterEach(() => {
@@ -91,7 +92,7 @@ describe(createFingerprintSourceAsync, () => {
     expect(
       await createFingerprintSourceAsync(
         source,
-        pLimit(1),
+        createLimiter(1),
         '/app',
         await normalizeOptionsAsync('/app', { debug: true })
       )
@@ -112,7 +113,7 @@ describe(createFingerprintSourceAsync, () => {
     expect(
       await createFingerprintSourceAsync(
         source,
-        pLimit(1),
+        createLimiter(1),
         '/app',
         await normalizeOptionsAsync('/app')
       )
@@ -149,7 +150,7 @@ describe(createFileHashResultsAsync, () => {
   it('should return {id, hex} result', async () => {
     const filePath = 'assets/icon.png';
     const contents = '{}';
-    const limiter = pLimit(1);
+    const limiter = createLimiter(1);
     const options = await normalizeOptionsAsync('/app', { debug: true });
     vol.mkdirSync('/app');
     vol.mkdirSync('/app/assets');
@@ -165,9 +166,8 @@ describe(createFileHashResultsAsync, () => {
   it('should ignore file if it is in options.ignorePaths', async () => {
     const filePath = 'app.json';
     const contents = '{}';
-    const limiter = pLimit(1);
-    const options = await normalizeOptionsAsync('/app', { debug: true });
-    options.ignorePaths = ['*.json'];
+    const limiter = createLimiter(1);
+    const options = await normalizeOptionsAsync('/app', { debug: true, ignorePaths: ['*.json'] });
     vol.mkdirSync('/app');
     vol.writeFileSync(path.join('/app', filePath), contents);
 
@@ -182,7 +182,7 @@ describe(createDirHashResultsAsync, () => {
   });
 
   it('should return {id, hex} result', async () => {
-    const limiter = pLimit(3);
+    const limiter = createLimiter(3);
     const options = await normalizeOptionsAsync('/app', { debug: true });
     const volJSON = {
       '/app/ios/Podfile': '...',
@@ -197,10 +197,55 @@ describe(createDirHashResultsAsync, () => {
     expect(result?.hex).not.toBe('');
   });
 
-  it('should ignore dir if it is in options.ignorePaths', async () => {
-    const limiter = pLimit(3);
+  it('should skip a nested node_modules directory when hashing a package dir', async () => {
+    const limiter = createLimiter(3);
     const options = await normalizeOptionsAsync('/app', { debug: true });
-    options.ignorePaths = ['ios/**/*', 'android/**/*'];
+    vol.fromJSON({
+      '/app/pkg/index.js': 'export default 1',
+      '/app/pkg/android/build.gradle': 'android',
+      '/app/pkg/node_modules/nested/index.js': 'should be ignored',
+    });
+
+    const withNested = await createDirHashResultsAsync('pkg', limiter, '/app', options);
+
+    vol.reset();
+    vol.fromJSON({
+      '/app/pkg/index.js': 'export default 1',
+      '/app/pkg/android/build.gradle': 'android',
+    });
+    const withoutNested = await createDirHashResultsAsync('pkg', limiter, '/app', options);
+
+    expect(withNested?.hex).toBe(withoutNested?.hex);
+    expect(withNested?.hex).toBeTruthy();
+  });
+
+  it('should hash a package dir in a virtual store', async () => {
+    const limiter = createLimiter(3);
+    const options = await normalizeOptionsAsync('/app', { debug: true });
+    vol.fromJSON({
+      '/app/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/index.js': 'export default 1',
+      '/app/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/android/build.gradle': 'android',
+      '/app/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/node_modules/nested/index.js':
+        'should be ignored',
+    });
+
+    const result = await createDirHashResultsAsync(
+      'node_modules/.pnpm/pkg@1.0.0/node_modules/pkg',
+      limiter,
+      '/app',
+      options
+    );
+
+    expect(result?.hex).toBeTruthy();
+    expect(JSON.stringify(result?.debugInfo)).not.toContain('nested');
+  });
+
+  it('should ignore dir if it is in options.ignorePaths', async () => {
+    const limiter = createLimiter(3);
+    const options = await normalizeOptionsAsync('/app', {
+      debug: true,
+      ignorePaths: ['ios/**/*', 'android/**/*'],
+    });
     const volJSON = {
       '/app/ios/Podfile': '...',
       '/app/eas.json': '{}',
@@ -221,8 +266,32 @@ describe(createDirHashResultsAsync, () => {
     expect(fingerprint1).toEqual(fingerprint2);
   });
 
+  it('should partially ignore dir if it is in options.ignorePaths but using negated pattern to include some files', async () => {
+    const limiter = createLimiter(3);
+    const options = await normalizeOptionsAsync('/app', {
+      debug: true,
+      ignorePaths: ['ios/**/*', '!ios/Podfile', 'android/**/*'],
+    });
+    const volJSON = {
+      '/app/ios/Podfile': '...',
+      '/app/ios/HelloWorld/AppDelegate.mm': '...',
+      '/app/eas.json': '{}',
+      '/app/app.json': '{}',
+      '/app/android/build.gradle': '...',
+    };
+    vol.fromJSON(volJSON);
+
+    const fingerprint1 = await createDirHashResultsAsync('.', limiter, '/app', options);
+    const iosDir = fingerprint1?.debugInfo?.children.find(
+      (child) => (child as DebugInfoDir)?.children != null && child?.path === 'ios'
+    ) as DebugInfoDir;
+    expect(iosDir).toBeDefined();
+    expect(iosDir.children.length).toBe(1);
+    expect(iosDir.children[0]?.path).toBe('ios/Podfile');
+  });
+
   it('should return stable result from sorted files', async () => {
-    const limiter = pLimit(3);
+    const limiter = createLimiter(3);
     const options = await normalizeOptionsAsync('/app', { debug: true });
     const volJSON = {
       '/app/ios/Podfile': '...',
@@ -269,5 +338,23 @@ describe(createSourceId, () => {
       reasons: ['foo'],
     };
     expect(createSourceId(source)).toBe('foo');
+  });
+
+  it(`should use override hash key for file or dir`, () => {
+    const fileSource: HashSource = {
+      type: 'file',
+      filePath: '/app/app.json',
+      reasons: ['expoConfig'],
+      overrideHashKey: 'overrideKey',
+    };
+    expect(createSourceId(fileSource)).toBe('overrideKey');
+
+    const dirSource: HashSource = {
+      type: 'dir',
+      filePath: '/app/ios',
+      reasons: ['bareNativeDir'],
+      overrideHashKey: 'overrideKey',
+    };
+    expect(createSourceId(dirSource)).toBe('overrideKey');
   });
 });

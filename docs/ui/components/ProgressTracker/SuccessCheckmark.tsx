@@ -1,5 +1,5 @@
 import { mergeClasses } from '@expo/styleguide';
-import { CheckIcon } from '@expo/styleguide-icons';
+import { CheckIcon } from '@expo/styleguide-icons/outline/CheckIcon';
 
 type Props = {
   className?: string;
@@ -16,10 +16,11 @@ export function SuccessCheckmark({ size = 'md', className }: Props) {
         className
       )}>
       <CheckIcon
+        aria-hidden="true"
         className={mergeClasses(
           'text-success',
           size === 'md' && 'size-10',
-          size === 'sm' && 'size-[30px]'
+          size === 'sm' && 'size-7.5'
         )}
       />
     </div>

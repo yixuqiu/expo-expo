@@ -1,35 +1,37 @@
+/* eslint-env node */
 // Learn more https://docs.expo.dev/guides/customizing-metro/
 const { getDefaultConfig } = require('expo/metro-config');
-const path = require('path');
 
-const monorepoRoot = path.join(__dirname, '../..');
+/** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
 config.resolver.assetExts.push(
-  'kml' // See: ../native-component-list/assets/expo-maps/sample_kml.kml
+  'kml', // See: ../native-component-list/assets/expo-maps/sample_kml.kml
+  'wasm' // For expo-sqlite on web
 );
 
-config.resolver.blockList = [
-  // Exclude react-native-lab from haste map.
-  // Because react-native versions may be different between node_modules/react-native and react-native-lab,
-  // we should use the one from node_modules for bare-expo.
-  /\breact-native-lab\b/,
+// TODO(gabrieldonadel): Remove this when bumping react-native-macos to 0.83.0
+const upstream = config.server?.rewriteRequestUrl;
+config.server.rewriteRequestUrl = function rewriteRequestUrl(url) {
+  let next = upstream ? upstream(url) : url;
+  if (!next.includes('platform=macos')) return next;
 
-  // Copied from expo-yarn-workspaces
-  /\/__tests__\//,
-  /\/android\/React(Android|Common)\//,
-  /\/versioned-react-native\//,
-];
+  // Hermes V1 is not supported on macOS yet and setting engine=hermes causes
+  // the transformer to fail with "SyntaxError: 36642:5:private properties are not supported"
+  return next.replace('&transform.engine=hermes', '');
+};
 
-// Minimize the "watched" folders that Metro crawls through to speed up Metro in big monorepos.
-// Note, omitting folders disables Metro from resolving files within these folders
-// This also happens when symlinks falls within these folders, but the real location doesn't.
-config.watchFolders = [
-  __dirname, // Allow Metro to resolve all files within this project
-  path.join(monorepoRoot, 'apps/native-component-list'), // Allow Metro to resolve all files within NCL
-  path.join(monorepoRoot, 'apps/test-suite'), // Allow Metro to resolve all files within test-suite
-  path.join(monorepoRoot, 'packages'), // Allow Metro to resolve all workspace files of the monorepo
-  path.join(monorepoRoot, 'node_modules'), // Allow Metro to resolve "shared" `node_modules` of the monorepo
-];
+// writing a screenshot otherwise shows a metro refresh banner at the top of the screen which can interfere with another screenshot
+config.resolver.blockList.push(/^e2e/);
+
+// `expo-sqlite` uses `SharedArrayBuffer` on web, which requires explicit COOP and COEP headers
+// See: https://github.com/expo/expo/pull/35208
+config.server.enhanceMiddleware = (middleware) => {
+  return (req, res, next) => {
+    res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    middleware(req, res, next);
+  };
+};
 
 module.exports = config;

@@ -1,6 +1,7 @@
-import { getAssetByID } from '@react-native/assets-registry/registry';
+import { AssetRegistry } from 'react-native';
 
-import AssetSourceResolver, { ResolvedAssetSource } from './AssetSourceResolver';
+import type { ResolvedAssetSource } from './AssetSourceResolver';
+import AssetSourceResolver from './AssetSourceResolver';
 
 let _customSourceTransformer: (resolver: AssetSourceResolver) => ResolvedAssetSource;
 
@@ -10,16 +11,23 @@ export function setCustomSourceTransformer(
   _customSourceTransformer = transformer;
 }
 
+interface resolveAssetSource {
+  (source: any): ResolvedAssetSource | null;
+  setCustomSourceTransformer(
+    transformer: (resolver: AssetSourceResolver) => ResolvedAssetSource
+  ): ResolvedAssetSource;
+}
+
 /**
  * `source` is either a number (opaque type returned by require('./foo.png'))
  * or an `ImageSource` like { uri: '<http location || file path>' }
  */
-export default function resolveAssetSource(source: any): ResolvedAssetSource | null {
+function resolveAssetSource(source: any): ResolvedAssetSource | null {
   if (typeof source === 'object') {
     return source;
   }
 
-  const asset = getAssetByID(source);
+  const asset = AssetRegistry.getAssetByID(source);
   if (!asset) {
     return null;
   }
@@ -41,5 +49,7 @@ Object.defineProperty(resolveAssetSource, 'setCustomSourceTransformer', {
     return setCustomSourceTransformer;
   },
 });
+
+export default resolveAssetSource as resolveAssetSource;
 
 export const { pickScale } = AssetSourceResolver;

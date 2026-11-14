@@ -1,10 +1,14 @@
 {
-  "name": "expo-sqlite",
-  "platforms": ["ios", "android"],
-  "ios": {
-    "modules": ["SQLiteModule", "SQLiteModuleNext"]
-  },
+  "platforms": ["apple", "android", "devtools"],
   "android": {
-    "modules": ["expo.modules.sqlite.SQLiteModule", "expo.modules.sqlite.SQLiteModuleNext"]
+    "shouldUsePublicationScriptPath": "android/shouldUsePublication.groovy",
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.sqlite",
+      "repository": "local-maven-repo"
+    }
+  },
+  "devtools": {
+    "webpageRoot": "dev-plugin-dist"
   }
 }

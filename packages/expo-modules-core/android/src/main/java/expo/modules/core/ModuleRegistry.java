@@ -3,6 +3,7 @@ package expo.modules.core;
 import expo.modules.core.interfaces.InternalModule;
 import expo.modules.core.interfaces.RegistryLifecycleListener;
 import expo.modules.core.interfaces.SingletonModule;
+import expo.modules.kotlin.AppContext;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -16,6 +17,16 @@ public class ModuleRegistry {
   private final Map<String, SingletonModule> mSingletonModulesMap = new HashMap<>();
   private final List<WeakReference<RegistryLifecycleListener>> mExtraRegistryLifecycleListeners = new ArrayList<>();
   private volatile boolean mIsInitialized = false;
+
+  private WeakReference<AppContext> mAppContextHolder = new WeakReference<>(null);
+
+  public void setAppContext(AppContext appContext) {
+    mAppContextHolder = new WeakReference<>(appContext);
+  }
+
+  public AppContext getAppContext() {
+    return mAppContextHolder.get();
+  }
 
   public ModuleRegistry(
     Collection<InternalModule> internalModules,
@@ -40,6 +51,7 @@ public class ModuleRegistry {
     return (T) mInternalModulesMap.get(interfaceClass);
   }
 
+  @SuppressWarnings("unchecked")
   public <T> T getSingletonModule(String singletonName, Class<T> singletonClass) {
     return (T) mSingletonModulesMap.get(singletonName);
   }
@@ -76,7 +88,7 @@ public class ModuleRegistry {
    *******************************************************/
 
   /**
-   * Register a {@link ModuleRegistryConsumer} as interested of
+   * Register a {@link ModuleRegistryConsumer} as interested in
    * when {@link ModuleRegistry} will be ready, i.e. will have
    * all the {@link InternalModule} instances registered.
    */
@@ -97,8 +109,9 @@ public class ModuleRegistry {
     List<RegistryLifecycleListener> lifecycleListeners = new ArrayList<>(mInternalModulesMap.values());
 
     for (WeakReference<RegistryLifecycleListener> ref : mExtraRegistryLifecycleListeners) {
-      if (ref.get() != null) {
-        lifecycleListeners.add(ref.get());
+      RegistryLifecycleListener listener = ref.get();
+      if (listener != null) {
+        lifecycleListeners.add(listener);
       }
     }
 
@@ -111,8 +124,9 @@ public class ModuleRegistry {
     List<RegistryLifecycleListener> lifecycleListeners = new ArrayList<>(mInternalModulesMap.values());
 
     for (WeakReference<RegistryLifecycleListener> ref : mExtraRegistryLifecycleListeners) {
-      if (ref.get() != null) {
-        lifecycleListeners.add(ref.get());
+      RegistryLifecycleListener listener = ref.get();
+      if (listener != null) {
+        lifecycleListeners.add(listener);
       }
     }
 

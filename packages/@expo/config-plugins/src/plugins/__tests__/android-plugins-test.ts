@@ -1,12 +1,12 @@
-import { ExpoConfig } from '@expo/config';
+import type { ExpoConfig } from '@expo/config-types';
 import fs from 'fs';
 import { vol } from 'memfs';
 import path from 'path';
 
-import rnFixture from './fixtures/react-native-project';
 import { withGradleProperties } from '../android-plugins';
 import { evalModsAsync } from '../mod-compiler';
 import { getAndroidModFileProviders, withAndroidBaseMods } from '../withAndroidBaseMods';
+import rnFixture from './fixtures/react-native-project';
 
 jest.mock('fs');
 

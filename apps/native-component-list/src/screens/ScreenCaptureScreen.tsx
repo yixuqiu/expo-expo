@@ -1,7 +1,8 @@
 import * as ScreenCapture from 'expo-screen-capture';
 import React from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Platform, StyleSheet, View } from 'react-native';
 
+import { BodyText } from '../components/BodyText';
 import HeadingText from '../components/HeadingText';
 import MonoText from '../components/MonoText';
 import TitleSwitch from '../components/TitledSwitch';
@@ -33,6 +34,7 @@ function useScreenCapture(onCapture: () => void) {
 
 export default function ScreenCaptureScreen() {
   const [isEnabled, setEnabled] = React.useState(true);
+  const [isAppSwitcherProtectionEnabled, setAppSwitcherProtectionEnabled] = React.useState(false);
   const [timestamps, setTimestamps] = React.useState<Date[]>([]);
 
   React.useEffect(() => {
@@ -43,20 +45,59 @@ export default function ScreenCaptureScreen() {
     }
   }, [isEnabled]);
 
+  React.useEffect(() => {
+    if (Platform.OS === 'ios') {
+      if (isAppSwitcherProtectionEnabled) {
+        ScreenCapture.enableAppSwitcherProtectionAsync();
+      } else {
+        ScreenCapture.disableAppSwitcherProtectionAsync();
+      }
+    }
+  }, [isAppSwitcherProtectionEnabled]);
+
+  // Clean up on unmount: allow screen capture on all platforms, disable app switcher protection on iOS
+  React.useEffect(() => {
+    return () => {
+      ScreenCapture.allowScreenCaptureAsync();
+      if (Platform.OS === 'ios') {
+        ScreenCapture.disableAppSwitcherProtectionAsync();
+      }
+    };
+  }, []);
+
   useScreenCapture(() => setTimestamps((timestamps) => timestamps.concat([new Date()])));
 
   return (
     <View style={styles.container}>
       <TitleSwitch title="Screen Capture Allowed" value={isEnabled} setValue={setEnabled} />
-      <Text style={{ padding: 8 }}>
+      <BodyText style={styles.description}>
         Take a screenshot or attempt to record the screen to test that the image is/isn't obscured.
-      </Text>
-      <HeadingText>Capture Timestamps</HeadingText>
-      <Text>Take a screenshot to test if the listener works.</Text>
+      </BodyText>
+
+      {Platform.OS === 'ios' && (
+        <>
+          <TitleSwitch
+            title="App Switcher Protection"
+            value={isAppSwitcherProtectionEnabled}
+            setValue={setAppSwitcherProtectionEnabled}
+            style={styles.switchSpacing}
+          />
+          <BodyText style={styles.description}>
+            When enabled, shows blur overlay when app is not in focus.{'\n'}
+            Test by opening app switcher or going to background.
+          </BodyText>
+        </>
+      )}
+
+      <HeadingText style={styles.heading}>Screenshot Timestamps</HeadingText>
+      <BodyText style={styles.timestampDescription}>
+        Take a screenshot to test if the listener works.
+      </BodyText>
       <FlatList
         data={timestamps}
         keyExtractor={(item) => item.getTime() + '-'}
         renderItem={({ item }) => <MonoText>{item.toLocaleTimeString()}</MonoText>}
+        style={styles.timestampList}
       />
     </View>
   );
@@ -65,7 +106,28 @@ export default function ScreenCaptureScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    padding: 16,
     alignItems: 'center',
-    justifyContent: 'center',
+  },
+  description: {
+    padding: 8,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  switchSpacing: {
+    marginTop: 16,
+  },
+  heading: {
+    marginTop: 24,
+    marginBottom: 8,
+  },
+  timestampDescription: {
+    textAlign: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  timestampList: {
+    maxHeight: 200,
+    width: '100%',
   },
 });

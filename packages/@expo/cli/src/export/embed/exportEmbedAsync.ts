@@ -5,72 +5,174 @@
  * LICENSE file in the root directory of this source tree.
  */
 import { getConfig } from '@expo/config';
+import { convertEntryPointToRelative } from '@expo/config/paths';
+import getMetroAssets from '@expo/metro-config/build/transform-worker/getAssets';
+import Server from '@expo/metro/metro/Server';
+import splitBundleOptions from '@expo/metro/metro/lib/splitBundleOptions';
+import * as output from '@expo/metro/metro/shared/output/bundle';
+import type { BundleOptions } from '@expo/metro/metro/shared/types';
+import { isAppleTargetPlatform } from '@expo/platforms';
+import assert from 'assert';
 import fs from 'fs';
-import { sync as globSync } from 'glob';
-import Server from 'metro/src/Server';
-import output from 'metro/src/shared/output/bundle';
-import type { BundleOptions } from 'metro/src/shared/types';
 import path from 'path';
 
-import { Options } from './resolveOptions';
-import { isExecutingFromXcodebuild, logMetroErrorInXcode } from './xcodeCompilerLogger';
 import { Log } from '../../log';
+import { DevServerManager } from '../../start/server/DevServerManager';
+import { MetroBundlerDevServer } from '../../start/server/metro/MetroBundlerDevServer';
+import { replaceMetroFileMap } from '../../start/server/metro/createFileMap-fork';
 import { loadMetroConfigAsync } from '../../start/server/metro/instantiateMetro';
+import { isApiRoutesEnabled } from '../../start/server/metro/router';
+import {
+  patchGetDeltaForCacheVary,
+  patchTransformFileForCacheVary,
+} from '../../start/server/metro/withMetroCacheVary';
+import { DOM_COMPONENTS_BUNDLE_DIR } from '../../start/server/middleware/DomComponentsMiddleware';
 import { getMetroDirectBundleOptionsForExpoConfig } from '../../start/server/middleware/metroOptions';
 import { stripAnsi } from '../../utils/ansi';
-import { removeAsync } from '../../utils/dir';
-import { setNodeEnv } from '../../utils/nodeEnv';
-import { profile } from '../../utils/profile';
+import { copyAsync, fileExistsAsync, removeAsync } from '../../utils/dir';
+import { env } from '../../utils/env';
+import { ensureProcessExitsAfterDelay } from '../../utils/exit';
+import { compileHermesArtifactsAsync } from '../compileHermesArtifacts';
+import { debugEvent } from '../events';
+import { exportDomComponentAsync } from '../exportDomComponents';
 import { isEnableHermesManaged } from '../exportHermes';
-import { getAssets } from '../fork-bundleAsync';
 import { persistMetroAssetsAsync } from '../persistMetroAssets';
+import { copyPublicFolderAsync, getPublicFolderPath } from '../publicFolder';
+import type { BundleAssetWithFileHashes, ExportAssetMap } from '../saveAssets';
+import { persistMetroFilesAsync } from '../saveAssets';
+import { exportStandaloneServerAsync } from './exportServer';
+import type { Options } from './resolveOptions';
+import { deserializeEagerKey, getExportEmbedOptionsKey } from './resolveOptions';
+import { isExecutingFromXcodebuild, logMetroErrorInXcode } from './xcodeCompilerLogger';
 
-const debug = require('debug')('expo:export:embed');
-
-function guessCopiedAppleBundlePath(bundleOutput: string) {
+async function guessCopiedAppleBundlePath(bundleOutput: string) {
   // Ensure the path is familiar before guessing.
-  if (!bundleOutput.match(/\/Xcode\/DerivedData\/.*\/Build\/Products\//)) {
-    debug('Bundling to non-standard location:', bundleOutput);
+  if (
+    !bundleOutput.match(/\/Xcode\/DerivedData\/.*\/Build\/Products\//) &&
+    !bundleOutput.match(/\/CoreSimulator\/Devices\/.*\/data\/Containers\/Bundle\/Application\//)
+  ) {
+    debugEvent('embed:nonstandard_location', { bundleOutput });
     return false;
   }
   const bundleName = path.basename(bundleOutput);
   const bundleParent = path.dirname(bundleOutput);
-  const possiblePath = globSync(path.join(bundleParent, `*.app/${bundleName}`), {
-    // bundle identifiers can start with dots.
-    dot: true,
-  })[0];
-  debug('Possible path for previous bundle:', possiblePath);
+  let appNames: string[];
+  try {
+    appNames = await fs.promises.readdir(bundleParent);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
+    appNames = [];
+  }
+  let possiblePath: string | undefined;
+  // NOTE(@kitten): Check bundle paths directly to avoid crawling app resources.
+  for (const name of appNames
+    .filter((name) => name.endsWith('.app'))
+    .sort()
+    .reverse()) {
+    const file = path.join(bundleParent, name, bundleName);
+    if (await fileExistsAsync(file)) {
+      possiblePath = file;
+      break;
+    }
+  }
+  debugEvent('embed:possible_previous_bundle', { possiblePath: possiblePath ?? '' });
   return possiblePath;
 }
 
 export async function exportEmbedAsync(projectRoot: string, options: Options) {
-  setNodeEnv(options.dev ? 'development' : 'production');
-  require('@expo/env').load(projectRoot);
+  // The React Native build scripts always enable the cache reset but we shouldn't need this in CI environments.
+  // By disabling it, we can eagerly bundle code before the build and reuse the cached artifacts in subsequent builds.
+  if (env.CI && options.resetCache) {
+    options.resetCache = false;
+  }
 
+  // This is an optimized codepath that can occur during `npx expo run` and does not occur during builds from Xcode or Android Studio.
+  // Here we reconcile a bundle pass that was run before the native build process. This order can fail faster and is show better errors since the logs won't be obscured by Xcode and Android Studio.
+  // This path is also used for automatically deploying server bundles to a remote host.
+  const eagerBundleOptions = env.__EXPO_EAGER_BUNDLE_OPTIONS
+    ? deserializeEagerKey(env.__EXPO_EAGER_BUNDLE_OPTIONS)
+    : null;
+  if (eagerBundleOptions) {
+    // Get the cache key for the current process to compare against the eager key.
+    const inputKey = getExportEmbedOptionsKey(options);
+
+    // If the app was bundled previously in the same process, then we should reuse the Metro cache.
+    options.resetCache = false;
+
+    if (eagerBundleOptions.key === inputKey) {
+      // Copy the eager bundleOutput and assets to the new locations.
+      await removeAsync(options.bundleOutput);
+
+      await copyAsync(eagerBundleOptions.options.bundleOutput, options.bundleOutput);
+
+      if (eagerBundleOptions.options.assetsDest && options.assetsDest) {
+        await copyAsync(eagerBundleOptions.options.assetsDest, options.assetsDest);
+      }
+
+      console.log('info: Copied output to binary:', options.bundleOutput);
+      return;
+    }
+    // TODO: sourcemapOutput is set on Android but not during eager. This is tolerable since it doesn't invalidate the Metro cache.
+    console.log('  Eager key:', eagerBundleOptions.key);
+    console.log('Request key:', inputKey);
+
+    // TODO: We may want an analytic event here in the future to understand when this happens.
+    console.warn('warning: Eager bundle does not match new options, bundling again.');
+  }
+
+  await exportEmbedInternalAsync(projectRoot, options);
+
+  // Ensure the process closes after bundling
+  ensureProcessExitsAfterDelay();
+}
+
+// Apple platforms (ios/tvos/macos) all build via Xcode and share the same bundle output and
+// error-reporting handling.
+const isApplePlatform = isAppleTargetPlatform;
+
+export async function exportEmbedInternalAsync(projectRoot: string, options: Options) {
   // Ensure we delete the old bundle to trigger a failure if the bundle cannot be created.
   await removeAsync(options.bundleOutput);
 
   // The iOS bundle is copied in to the Xcode project, so we need to remove the old one
   // to prevent Xcode from loading the old one after a build failure.
-  if (options.platform === 'ios') {
-    const previousPath = guessCopiedAppleBundlePath(options.bundleOutput);
-    if (previousPath && fs.existsSync(previousPath)) {
-      debug('Removing previous iOS bundle:', previousPath);
+  if (isApplePlatform(options.platform)) {
+    const previousPath = await guessCopiedAppleBundlePath(options.bundleOutput);
+    if (previousPath) {
+      debugEvent('embed:removing_previous_bundle', { previousPath });
       await removeAsync(previousPath);
     }
   }
 
-  const { bundle, assets } = await exportEmbedBundleAndAssetsAsync(projectRoot, options);
+  const { bundle, assets, files } = await exportEmbedBundleAndAssetsAsync(projectRoot, options);
 
   fs.mkdirSync(path.dirname(options.bundleOutput), { recursive: true, mode: 0o755 });
+
+  // On Android, dom components proxy files should write to the assets directory instead of the res directory.
+  // We use the bundleOutput directory to get the assets directory.
+  const domComponentProxyOutputDir =
+    options.platform === 'android' ? path.dirname(options.bundleOutput) : options.assetsDest;
+  const hasDomComponents = domComponentProxyOutputDir && files.size > 0;
 
   // Persist bundle and source maps.
   await Promise.all([
     output.save(bundle, options, Log.log),
+
+    // Write dom components proxy files.
+    hasDomComponents ? persistMetroFilesAsync(files, domComponentProxyOutputDir) : null,
+    // Copy public folder for dom components only if
+    hasDomComponents
+      ? copyPublicFolderAsync(
+          getPublicFolderPath(projectRoot),
+          path.join(domComponentProxyOutputDir, DOM_COMPONENTS_BUNDLE_DIR)
+        )
+      : null,
+
     // NOTE(EvanBacon): This may need to be adjusted in the future if want to support baseUrl on native
     // platforms when doing production embeds (unlikely).
     options.assetsDest
-      ? persistMetroAssetsAsync(assets, {
+      ? persistMetroAssetsAsync(projectRoot, assets, {
           platform: options.platform,
           outputDirectory: options.assetsDest,
           iosAssetCatalogDirectory: options.assetCatalogDest,
@@ -79,6 +181,153 @@ export async function exportEmbedAsync(projectRoot: string, options: Options) {
   ]);
 }
 
+export async function exportEmbedBundleAndAssetsAsync(
+  projectRoot: string,
+  options: Options
+): Promise<{
+  bundle: Awaited<ReturnType<Server['build']>>;
+  assets: readonly BundleAssetWithFileHashes[];
+  files: ExportAssetMap;
+}> {
+  const devServerManager = await DevServerManager.startMetroAsync(projectRoot, {
+    minify: options.minify,
+    mode: options.dev ? 'development' : 'production',
+    port: 8081,
+    isExporting: true,
+    location: {},
+    resetDevServer: options.resetCache,
+    maxWorkers: options.maxWorkers,
+  });
+
+  const devServer = devServerManager.getDefaultDevServer();
+  assert(devServer instanceof MetroBundlerDevServer);
+
+  const { exp, pkg } = getConfig(projectRoot, { skipSDKVersionRequirement: true });
+  const isHermes = isEnableHermesManaged(exp, options.platform);
+
+  let sourceMapUrl = options.sourcemapOutput;
+  if (sourceMapUrl && !options.sourcemapUseAbsolutePath) {
+    sourceMapUrl = path.basename(sourceMapUrl);
+  }
+
+  const files: ExportAssetMap = new Map();
+
+  try {
+    const bundles = await devServer.nativeExportBundleAsync(
+      exp,
+      {
+        // TODO: Re-enable when we get bytecode chunk splitting working again.
+        splitChunks: false, //devServer.isReactServerComponentsEnabled,
+        mainModuleName: convertEntryPointToRelative(projectRoot, options.entryFile),
+        platform: options.platform,
+        minify: options.minify,
+        mode: options.dev ? 'development' : 'production',
+        engine: isHermes ? 'hermes' : undefined,
+        serializerIncludeMaps: !!sourceMapUrl,
+        bytecode: options.bytecode ?? false,
+        // source map inline
+        reactCompiler: !!exp.experiments?.reactCompiler,
+      },
+      files,
+      {
+        sourceMapUrl,
+        unstable_transformProfile: (options.unstableTransformProfile ||
+          (isHermes ? 'hermes-stable' : 'default')) as BundleOptions['unstable_transformProfile'],
+      }
+    );
+
+    // We optimistically build the server-side API routes code here, to ensure they're
+    // valid or to enable parallel deployment in the future (TBD). This is disabled using
+    // the explicit `--skip-server` flag.
+    const apiRoutesEnabled = devServer.isReactServerComponentsEnabled || isApiRoutesEnabled(exp);
+    if (!options.skipServer && apiRoutesEnabled) {
+      await exportStandaloneServerAsync(projectRoot, devServer, {
+        exp,
+        pkg,
+        files,
+        options,
+      });
+    }
+
+    const expoDomComponentReferences = [
+      ...new Set(
+        bundles.artifacts
+          .map((artifact) =>
+            Array.isArray(artifact.metadata.expoDomComponentReferences)
+              ? artifact.metadata.expoDomComponentReferences
+              : []
+          )
+          .flat()
+      ),
+    ];
+    if (expoDomComponentReferences.length > 0) {
+      await Promise.all(
+        // TODO: Make a version of this which uses `this.metro.getBundler().buildGraphForEntries([])` to bundle all the DOM components at once.
+        expoDomComponentReferences.map(async (filePath) => {
+          const { bundle } = await exportDomComponentAsync({
+            filePath,
+            projectRoot,
+            dev: options.dev,
+            devServer,
+            isHermes,
+            // don't ship sourcemap in the www.bundle
+            includeSourceMaps: false,
+            exp,
+            files,
+          });
+
+          if (options.assetsDest) {
+            // Save assets like a typical bundler, preserving the file paths on web.
+            // This is saving web-style inside of a native app's binary.
+            await persistMetroAssetsAsync(
+              projectRoot,
+              bundle.assets.map((asset) => ({
+                ...asset,
+                httpServerLocation: path.join(DOM_COMPONENTS_BUNDLE_DIR, asset.httpServerLocation),
+              })),
+              {
+                files,
+                platform: 'web',
+                outputDirectory: options.assetsDest,
+              }
+            );
+          }
+        })
+      );
+    }
+
+    if (options.bytecode && isHermes && !options.dev) {
+      await compileHermesArtifactsAsync(projectRoot, bundles.artifacts);
+    }
+
+    return {
+      files,
+      bundle: {
+        code: bundles.artifacts.filter((a: any) => a.type === 'js')[0]?.source!,
+        // Can be optional when source maps aren't enabled.
+        map: bundles.artifacts.filter((a: any) => a.type === 'map')[0]?.source.toString()!,
+      },
+      assets: bundles.assets,
+    };
+  } catch (error: any) {
+    if (isError(error)) {
+      // Log using Xcode error format so the errors are picked up by xcodebuild.
+      // https://developer.apple.com/documentation/xcode/running-custom-scripts-during-a-build#Log-errors-and-warnings-from-your-script
+      if (isApplePlatform(options.platform)) {
+        // If the error is about to be presented in Xcode, strip the ansi characters from the message.
+        if ('message' in error && isExecutingFromXcodebuild()) {
+          error.message = stripAnsi(error.message) as string;
+        }
+        logMetroErrorInXcode(projectRoot, error);
+      }
+    }
+    throw error;
+  } finally {
+    devServerManager.stopAsync();
+  }
+}
+
+// Exports for expo-updates
 export async function createMetroServerAndBundleRequestAsync(
   projectRoot: string,
   options: Pick<
@@ -103,15 +352,13 @@ export async function createMetroServerAndBundleRequestAsync(
     {
       // TODO: This is always enabled in the native script and there's no way to disable it.
       resetCache: options.resetCache,
-
       maxWorkers: options.maxWorkers,
-      config: options.config,
     },
     {
       exp,
       isExporting: true,
       getMetroBundler() {
-        return server.getBundler().getBundler();
+        return metro.getBundler().getBundler();
       },
     }
   );
@@ -123,79 +370,46 @@ export async function createMetroServerAndBundleRequestAsync(
     sourceMapUrl = path.basename(sourceMapUrl);
   }
 
-  const bundleRequest = {
+  const directBundleOptions = getMetroDirectBundleOptionsForExpoConfig(projectRoot, exp, {
+    splitChunks: false,
+    // TODO(@kitten): This currently has to match a filename exactly
+    mainModuleName: convertEntryPointToRelative(projectRoot, options.entryFile, null),
+    platform: options.platform,
+    minify: options.minify,
+    mode: options.dev ? 'development' : 'production',
+    engine: isHermes ? 'hermes' : undefined,
+    isExporting: true,
+    // Never output bytecode in the exported bundle since that is hardcoded in the native run script.
+    bytecode: false,
+    hosted: false,
+  });
+
+  // TODO(cedric): check if we can use the proper `bundleType=bundle` and `entryPoint=mainModuleName` properties
+  const bundleRequest: BundleOptions = {
     ...Server.DEFAULT_BUNDLE_OPTIONS,
-    ...getMetroDirectBundleOptionsForExpoConfig(projectRoot, exp, {
-      splitChunks: false,
-      mainModuleName: options.entryFile,
-      platform: options.platform,
-      minify: options.minify,
-      mode: options.dev ? 'development' : 'production',
-      engine: isHermes ? 'hermes' : undefined,
-      bytecode: isHermes,
-      isExporting: true,
-    }),
+    ...directBundleOptions,
+
+    // NOTE(@kitten): Cast non-optional defaults
+    lazy: directBundleOptions.lazy ?? Server.DEFAULT_BUNDLE_OPTIONS.lazy,
+    modulesOnly: directBundleOptions.modulesOnly ?? Server.DEFAULT_BUNDLE_OPTIONS.modulesOnly,
+    runModule: directBundleOptions.runModule ?? Server.DEFAULT_BUNDLE_OPTIONS.runModule,
+
     sourceMapUrl,
     unstable_transformProfile: (options.unstableTransformProfile ||
       (isHermes ? 'hermes-stable' : 'default')) as BundleOptions['unstable_transformProfile'],
   };
 
-  const server = new Server(config, {
-    watch: false,
-  });
+  const { metro } = await replaceMetroFileMap(() => ({
+    metro: new Server(config, {
+      watch: false,
+    }),
+  }));
 
-  return { server, bundleRequest };
-}
+  // Make ambient-value (cache-vary) staleness visible to the graph and delta layers.
+  patchTransformFileForCacheVary(metro.getBundler().getBundler());
+  patchGetDeltaForCacheVary();
 
-export async function exportEmbedBundleAndAssetsAsync(
-  projectRoot: string,
-  options: Options
-): Promise<{
-  bundle: Awaited<ReturnType<Server['build']>>;
-  assets: Awaited<ReturnType<typeof getAssets>>;
-}> {
-  const { server, bundleRequest } = await createMetroServerAndBundleRequestAsync(
-    projectRoot,
-    options
-  );
-
-  try {
-    const bundle = await exportEmbedBundleAsync(server, bundleRequest, projectRoot, options);
-    const assets = await exportEmbedAssetsAsync(server, bundleRequest, projectRoot, options);
-    return { bundle, assets };
-  } finally {
-    server.end();
-  }
-}
-
-export async function exportEmbedBundleAsync(
-  server: Server,
-  bundleRequest: BundleOptions,
-  projectRoot: string,
-  options: Pick<Options, 'platform'>
-) {
-  try {
-    return await profile(
-      server.build.bind(server),
-      'metro-bundle'
-    )({
-      ...bundleRequest,
-      bundleType: 'bundle',
-    });
-  } catch (error: any) {
-    if (isError(error)) {
-      // Log using Xcode error format so the errors are picked up by xcodebuild.
-      // https://developer.apple.com/documentation/xcode/running-custom-scripts-during-a-build#Log-errors-and-warnings-from-your-script
-      if (options.platform === 'ios') {
-        // If the error is about to be presented in Xcode, strip the ansi characters from the message.
-        if ('message' in error && isExecutingFromXcodebuild()) {
-          error.message = stripAnsi(error.message) as string;
-        }
-        logMetroErrorInXcode(projectRoot, error);
-      }
-    }
-    throw error;
-  }
+  return { server: metro, bundleRequest };
 }
 
 export async function exportEmbedAssetsAsync(
@@ -205,15 +419,38 @@ export async function exportEmbedAssetsAsync(
   options: Pick<Options, 'platform'>
 ) {
   try {
-    return await getAssets(server, {
+    const { entryFile, onProgress, resolverOptions, transformOptions } = splitBundleOptions({
       ...bundleRequest,
+      // @ts-ignore-error TODO(@kitten): Very unclear why this is here. Remove?
       bundleType: 'todo',
+    });
+
+    const dependencies = await server._bundler.getDependencies(
+      // NOTE(@kitten): This isn't an `entryFile`, but instead a `mainModuleName`, that's been renamed
+      // in `getMetroDirectBundleOptions`, where we've passed the already converted name
+      [entryFile],
+      transformOptions,
+      resolverOptions,
+      { onProgress, shallow: false, lazy: false }
+    );
+
+    const config = server._config;
+
+    return getMetroAssets(dependencies, {
+      processModuleFilter: config.serializer.processModuleFilter,
+      assetPlugins: config.transformer.assetPlugins,
+      platform: transformOptions.platform!,
+      // Forked out of Metro because the `this._getServerRootDir()` doesn't match the development
+      // behavior.
+      projectRoot: config.projectRoot, // this._getServerRootDir(),
+      publicPath: config.transformer.publicPath,
+      isHosted: false,
     });
   } catch (error: any) {
     if (isError(error)) {
       // Log using Xcode error format so the errors are picked up by xcodebuild.
       // https://developer.apple.com/documentation/xcode/running-custom-scripts-during-a-build#Log-errors-and-warnings-from-your-script
-      if (options.platform === 'ios') {
+      if (isApplePlatform(options.platform)) {
         // If the error is about to be presented in Xcode, strip the ansi characters from the message.
         if ('message' in error && isExecutingFromXcodebuild()) {
           error.message = stripAnsi(error.message) as string;

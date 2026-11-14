@@ -1,86 +1,171 @@
+import chalk from 'chalk';
+import fs from 'fs';
 import path from 'path';
 
-import { resolveInstallApkNameAsync } from './resolveInstallApkName';
-import { Options, ResolvedOptions, resolveOptionsAsync } from './resolveOptions';
+import { exportEagerAsync } from '../../export/embed/exportEager';
 import { Log } from '../../log';
 import { assembleAsync, installAsync } from '../../start/platforms/android/gradle';
-import { setNodeEnv } from '../../utils/nodeEnv';
+import { resolveBuildCache, uploadBuildCache } from '../../utils/build-cache-providers';
+import { CommandError } from '../../utils/errors';
+import { loadEnvFiles } from '../../utils/nodeEnv';
 import { ensurePortAvailabilityAsync } from '../../utils/port';
 import { getSchemesForAndroidAsync } from '../../utils/scheme';
 import { ensureNativeProjectAsync } from '../ensureNativeProject';
+import { event, debugEvent } from '../events';
 import { logProjectLogsLocation } from '../hints';
 import { startBundlerAsync } from '../startBundler';
-
-const debug = require('debug')('expo:run:android');
+import { resolveInstallApkNameAsync } from './resolveInstallApkName';
+import type { Options, ResolvedOptions } from './resolveOptions';
+import { resolveOptionsAsync } from './resolveOptions';
 
 export async function runAndroidAsync(projectRoot: string, { install, ...options }: Options) {
-  // NOTE: This is a guess, the developer can overwrite with `NODE_ENV`.
-  setNodeEnv(options.variant === 'release' ? 'production' : 'development');
-  require('@expo/env').load(projectRoot);
+  // Guess the mode from the selected native build variant.
+  const isProduction = !['debug', 'debugoptimized'].includes(
+    (options.variant ?? 'debug').toLowerCase()
+  );
+  const mode = isProduction ? 'production' : 'development';
+  loadEnvFiles(projectRoot, {
+    mode,
+  });
 
   await ensureNativeProjectAsync(projectRoot, { platform: 'android', install });
 
   const props = await resolveOptionsAsync(projectRoot, options);
 
-  debug('Package name: ' + props.packageName);
+  event('device:selected', {
+    platform: 'android',
+    name: props.device.device.name,
+    id: props.device.device.pid ?? props.device.device.name,
+    os: null,
+    type: props.device.device.type,
+  });
+
+  if (!options.binary && props.buildCacheProvider) {
+    const localPath = await resolveBuildCache({
+      projectRoot,
+      platform: 'android',
+      provider: props.buildCacheProvider,
+      runOptions: options,
+    });
+    if (localPath) {
+      options.binary = localPath;
+    }
+  }
+
+  debugEvent('android:package_name', { name: props.packageName });
   Log.log('› Building app...');
 
   const androidProjectRoot = path.join(projectRoot, 'android');
 
-  await assembleAsync(androidProjectRoot, {
-    variant: props.variant,
-    port: props.port,
-    appName: props.appName,
-    buildCache: props.buildCache,
-    architectures: props.architectures,
-  });
+  let shouldUpdateBuildCache = false;
+  if (!options.binary) {
+    let eagerBundleOptions: string | undefined;
 
-  // Ensure the port hasn't become busy during the build.
-  if (props.shouldStartBundler && !(await ensurePortAvailabilityAsync(projectRoot, props))) {
-    props.shouldStartBundler = false;
+    if (isProduction) {
+      eagerBundleOptions = JSON.stringify(
+        await exportEagerAsync(projectRoot, {
+          dev: false,
+          platform: 'android',
+        })
+      );
+    }
+
+    const done = event.span();
+    try {
+      await assembleAsync(androidProjectRoot, {
+        variant: props.variant,
+        port: props.port,
+        appName: props.appName,
+        buildCache: props.buildCache,
+        architectures: props.architectures,
+        eagerBundleOptions,
+      });
+    } catch (error) {
+      event('build:failed', { platform: 'android', error: event.error(error as Error) });
+      throw error;
+    }
+    done('build:done', {
+      platform: 'android',
+      scheme: props.variant,
+      configuration: props.variant,
+      deviceId: props.device.device.pid ?? null,
+    });
+    shouldUpdateBuildCache = true;
+
+    // Ensure the port hasn't become busy during the build.
+    if (props.shouldStartBundler && !(await ensurePortAvailabilityAsync(projectRoot, props))) {
+      props.shouldStartBundler = false;
+    }
   }
 
   const manager = await startBundlerAsync(projectRoot, {
     port: props.port,
+    mode,
     // If a scheme is specified then use that instead of the package name.
     scheme: (await getSchemesForAndroidAsync(projectRoot))?.[0],
     headless: !props.shouldStartBundler,
   });
 
-  await installAppAsync(androidProjectRoot, props);
+  if (!options.binary) {
+    // Find the APK file path
+    const apkFile = await resolveInstallApkNameAsync(props.device.device, props);
+    if (apkFile) {
+      // Attempt to install the APK from the file path
+      options.binary = path.join(props.apkVariantDirectory, apkFile);
+    }
+  }
+
+  const doneInstall = event.span();
+  if (options.binary) {
+    // Attempt to install the APK from the file path
+    const binaryPath = path.join(options.binary);
+
+    if (!fs.existsSync(binaryPath)) {
+      throw new CommandError(`The path to the custom Android binary does not exist: ${binaryPath}`);
+    }
+    Log.log(chalk.gray`\u203A Installing ${binaryPath}`);
+    await props.device.installAppAsync(binaryPath);
+  } else {
+    await installAppAsync(androidProjectRoot, props);
+  }
+  doneInstall('install', { platform: 'android', appId: props.packageName });
 
   await manager.getDefaultDevServer().openCustomRuntimeAsync(
     'emulator',
     {
       applicationId: props.packageName,
+      customAppId: props.customAppId,
+      launchActivity: props.launchActivity,
     },
     { device: props.device.device }
   );
+
+  event('launch', { platform: 'android', appId: props.packageName });
 
   if (props.shouldStartBundler) {
     logProjectLogsLocation();
   } else {
     await manager.stopAsync();
   }
+
+  if (options.binary && shouldUpdateBuildCache && props.buildCacheProvider) {
+    await uploadBuildCache({
+      projectRoot,
+      platform: 'android',
+      provider: props.buildCacheProvider,
+      buildPath: options.binary,
+      runOptions: options,
+    });
+  }
 }
 
 async function installAppAsync(androidProjectRoot: string, props: ResolvedOptions) {
-  // Find the APK file path
-  const apkFile = await resolveInstallApkNameAsync(props.device.device, props);
-
-  if (apkFile) {
-    // Attempt to install the APK from the file path
-    const binaryPath = path.join(props.apkVariantDirectory, apkFile);
-    debug('Installing:', binaryPath);
-    await props.device.installAppAsync(binaryPath);
-  } else {
-    // If we cannot resolve the APK file path then we can attempt to install using Gradle.
-    // This offers more advanced resolution that we may not have first class support for.
-    Log.log('› Failed to locate binary file, installing with Gradle...');
-    await installAsync(androidProjectRoot, {
-      variant: props.variant ?? 'debug',
-      appName: props.appName ?? 'app',
-      port: props.port,
-    });
-  }
+  // If we cannot resolve the APK file path then we can attempt to install using Gradle.
+  // This offers more advanced resolution that we may not have first class support for.
+  Log.log('› Failed to locate binary file, installing with Gradle...');
+  await installAsync(androidProjectRoot, {
+    variant: props.variant ?? 'debug',
+    appName: props.appName ?? 'app',
+    port: props.port,
+  });
 }

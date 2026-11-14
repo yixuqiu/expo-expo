@@ -3,18 +3,23 @@ title: Camera
 description: A React component that renders a preview for the device's front or back camera.
 sourceCodeUrl: 'https://github.com/expo/expo/tree/main/packages/expo-camera'
 packageName: 'expo-camera'
+exampleName: 'with-camera'
 iconUrl: '/static/images/packages/expo-camera.png'
-platforms: ['android*', 'ios*', 'web']
+platforms: ['android*', 'ios*', 'web', 'expo-go']
 ---
+
+import { GithubIcon } from '@expo/styleguide-icons/custom/GithubIcon';
 
 import APISection from '~/components/plugins/APISection';
 import { APIInstallSection } from '~/components/plugins/InstallSection';
+import { AndroidPermissions, IOSPermissions } from '~/components/plugins/permissions';
+import { BoxLink } from '~/ui/components/BoxLink';
 import {
   ConfigReactNative,
   ConfigPluginExample,
   ConfigPluginProperties,
-} from '~/components/plugins/ConfigSection';
-import { AndroidPermissions, IOSPermissions } from '~/components/plugins/permissions';
+} from '~/ui/components/ConfigSection';
+import { SnackInline } from '~/ui/components/Snippet';
 
 `expo-camera` provides a React component that renders a preview of the device's front or back camera. The camera's parameters such as zoom, torch, and flash mode are adjustable. Using `CameraView`, you can take photos and record videos that are saved to the app's cache. The component is also capable of detecting bar codes appearing in the preview. Run the [example](#usage) on your device to see all these features working together.
 
@@ -22,9 +27,9 @@ import { AndroidPermissions, IOSPermissions } from '~/components/plugins/permiss
 
 <APIInstallSection />
 
-## Configuration in app.json/app.config.js
+## Configuration in app config
 
-You can configure `expo-camera` using its built-in [config plugin](/config-plugins/introduction/) if you use config plugins in your project ([EAS Build](/build/introduction) or `npx expo run:[android|ios]`). The plugin allows you to configure various properties that cannot be set at runtime and require building a new app binary to take effect.
+You can configure `expo-camera` using its built-in [config plugin](/config-plugins/introduction/) if you use config plugins in your project ([Continuous Native Generation (CNG)](/workflow/continuous-native-generation/)). The plugin allows you to configure various properties that cannot be set at runtime and require building a new app binary to take effect. If your app does **not** use CNG, then you'll need to manually configure the library.
 
 <ConfigPluginExample>
 
@@ -37,7 +42,8 @@ You can configure `expo-camera` using its built-in [config plugin](/config-plugi
         {
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera",
           "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone",
-          "recordAudioAndroid": true
+          "recordAudioAndroid": true,
+          "barcodeScannerEnabled": true
         }
       ]
     ]
@@ -68,12 +74,58 @@ You can configure `expo-camera` using its built-in [config plugin](/config-plugi
         'A boolean that determines whether to enable the `RECORD_AUDIO` permission on Android.',
       default: 'true',
     },
+    {
+      name: 'barcodeScannerEnabled',
+      description:
+        'A boolean that determines whether to enable barcode scanning support. Disabling this reduces app size when barcode scanning is not needed. On Android, this option only takes effect when `expo-camera` builds from source. [Prebuilt modules](/guides/prebuilt-expo-modules/) already include the barcode scanning libraries. To make this option apply, add `expo-camera` to `buildFromSource` in **package.json**.',
+      default: 'true',
+    },
   ]}
 />
 
+To localize the iOS camera or microphone permission message, add `NSCameraUsageDescription` or `NSMicrophoneUsageDescription` to the `ios` object in each [locale file](/guides/localization/#translating-app-metadata). Keep `cameraPermission` and `microphonePermission` as the default values. Expo writes the localized values to **InfoPlist.strings** during prebuild.
+
 <ConfigReactNative>
 
-Learn how to configure the native projects in the [installation instructions in the `expo-camera` repository](https://github.com/expo/expo/tree/main/packages/expo-camera#installation-in-bare-react-native-projects).
+If you're not using Continuous Native Generation ([CNG](/workflow/continuous-native-generation/)) (you're using native **android** and **ios** projects manually), then you need to configure following permissions in your native projects:
+
+**Android**
+
+- `expo-camera` automatically adds `android.permission.CAMERA` permission to your project's **android/app/src/main/AndroidManifest.xml**. If you want to record videos with audio, include `RECORD_AUDIO` permission:
+
+  ```xml
+  <!-- Added permission -->
+  <uses-permission android:name="android.permission.CAMERA" />
+
+  <!-- Only add when recording videos with audio -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  ```
+
+- Then, adjust the **android/build.gradle** file to add new maven block after all other repositories as show below:
+
+  ```groovy
+  allprojects {
+    repositories {
+        // * Your other repositories here *
+        // * Add a new maven block after other repositories / blocks *
+        maven {
+            // expo-camera bundles a custom com.google.android:cameraview
+            url "$rootDir/../node_modules/expo-camera/android/maven"
+        }
+    }
+  }
+  ```
+
+**iOS**
+
+- Add `NSCameraUsageDescription` and `NSMicrophoneUsageDescription` keys to your project's **ios/[app]/Info.plist**:
+
+  ```xml
+  <key>NSCameraUsageDescription</key>
+  <string>Allow $(PRODUCT_NAME) to access your camera</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+  ```
 
 </ConfigReactNative>
 
@@ -81,13 +133,15 @@ Learn how to configure the native projects in the [installation instructions in 
 
 > **warning** Only one Camera preview can be active at any given time. If you have multiple screens in your app, you should unmount `Camera` components whenever a screen is unfocused.
 
-```jsx
-import { CameraView, useCameraPermissions } from 'expo-camera';
+<SnackInline label='Basic Camera usage' dependencies={['expo-camera']}>
+
+```tsx
+import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useState } from 'react';
 import { Button, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function App() {
-  const [facing, setFacing] = useState('back');
+  const [facing, setFacing] = useState<CameraType>('back');
   const [permission, requestPermission] = useCameraPermissions();
 
   if (!permission) {
@@ -99,7 +153,7 @@ export default function App() {
     // Camera permissions are not granted yet.
     return (
       <View style={styles.container}>
-        <Text style={{ textAlign: 'center' }}>We need your permission to show the camera</Text>
+        <Text style={styles.message}>We need your permission to show the camera</Text>
         <Button onPress={requestPermission} title="grant permission" />
       </View>
     );
@@ -111,13 +165,12 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <CameraView style={styles.camera} facing={facing}>
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.button} onPress={toggleCameraFacing}>
-            <Text style={styles.text}>Flip Camera</Text>
-          </TouchableOpacity>
-        </View>
-      </CameraView>
+      <CameraView style={styles.camera} facing={facing} />
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.button} onPress={toggleCameraFacing}>
+          <Text style={styles.text}>Flip Camera</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -127,18 +180,23 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
+  message: {
+    textAlign: 'center',
+    paddingBottom: 10,
+  },
   camera: {
     flex: 1,
   },
   buttonContainer: {
-    flex: 1,
+    position: 'absolute',
+    bottom: 64,
     flexDirection: 'row',
     backgroundColor: 'transparent',
-    margin: 64,
+    width: '100%',
+    paddingHorizontal: 64,
   },
   button: {
     flex: 1,
-    alignSelf: 'flex-end',
     alignItems: 'center',
   },
   text: {
@@ -148,6 +206,17 @@ const styles = StyleSheet.create({
   },
 });
 ```
+
+</SnackInline>
+
+### Advanced usage
+
+<BoxLink
+  title="Camera app example"
+  description="A complete example that shows how to take a picture and display it. Written in TypeScript."
+  Icon={GithubIcon}
+  href="https://github.com/expo/examples/tree/master/with-camera"
+/>
 
 ## Web support
 
@@ -169,13 +238,13 @@ When using **Chrome versions 64+**, if you try to use a web camera in a cross-or
 import { CameraView } from 'expo-camera';
 ```
 
-<APISection packageName="expo-camera" apiName="Camera" exposeAllClassPropsInSidebar={true} />
+<APISection packageName="expo-camera" apiName="Camera" exposeAllClassPropsInSidebar />
 
 ## Permissions
 
 ### Android
 
-This package automatically adds the `CAMERA` permission to your app. If you want to record videos with audio, you have to include the `RECORD_AUDIO` in your **app.json** inside the [`expo.android.permissions`](/versions/latest/config/app/#permissions) array.
+This package automatically adds the `CAMERA` permission to your app. If you want to record videos with audio, you have to include the `RECORD_AUDIO` in your **app.json** inside the [`expo.android.permissions`](../config/app/#permissions) array.
 
 <AndroidPermissions permissions={['CAMERA', 'RECORD_AUDIO']} />
 

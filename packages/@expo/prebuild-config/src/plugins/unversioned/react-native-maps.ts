@@ -1,5 +1,6 @@
-import { AndroidConfig, ConfigPlugin, IOSConfig, withInfoPlist } from '@expo/config-plugins';
-import resolveFrom from 'resolve-from';
+import type { ConfigPlugin } from '@expo/config-plugins';
+import { AndroidConfig, IOSConfig, withInfoPlist } from '@expo/config-plugins';
+import { resolveFrom } from '@expo/require-utils';
 
 import { createLegacyPlugin } from './createLegacyPlugin';
 
@@ -14,7 +15,7 @@ const withDefaultLocationPermissions: ConfigPlugin = (config) => {
   // Only add location permissions if react-native-maps is installed.
   if (
     config._internal?.projectRoot &&
-    resolveFrom.silent(config._internal.projectRoot, 'react-native-maps') &&
+    resolveFrom(config._internal.projectRoot, 'react-native-maps/package.json') &&
     isLinked
   ) {
     config = withInfoPlist(config, (config) => {

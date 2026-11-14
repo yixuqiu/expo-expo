@@ -1,7 +1,8 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-  kotlin("jvm") version "1.9.23"
+  kotlin("jvm") version "2.2.21"
   id("java-gradle-plugin")
 }
 
@@ -12,7 +13,8 @@ repositories {
 
 dependencies {
   implementation(gradleApi())
-  compileOnly("com.android.tools.build:gradle:8.2.1")
+  compileOnly("com.android.tools.build:gradle:8.5.0")
+  implementation("com.facebook.react:react-native-gradle-plugin")
 }
 
 java {
@@ -21,8 +23,8 @@ java {
 }
 
 tasks.withType<KotlinCompile> {
-  kotlinOptions {
-    jvmTarget = JavaVersion.VERSION_11.toString()
+  compilerOptions {
+    jvmTarget.set(JvmTarget.JVM_11)
   }
 }
 

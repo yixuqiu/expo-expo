@@ -3,14 +3,33 @@ import { vol } from 'memfs';
 import { startInterfaceAsync } from '../../start/interface/startInterface';
 import { startBundlerAsync } from '../startBundler';
 
-jest.mock('../../start/server/DevServerManager', () => ({
-  DevServerManager: jest.fn(() => ({
+jest.mock('../../start/server/DevServerManager', () => {
+  const DevServerManager = jest.fn(() => ({
     startAsync: jest.fn(),
     getDefaultDevServer: jest.fn(),
     bootstrapTypeScriptAsync: jest.fn(),
     watchEnvironmentVariables: jest.fn(),
-  })),
-}));
+  }));
+
+  // @ts-expect-error
+  DevServerManager.startMetroAsync = async (projectRoot, startOptions) => {
+    // @ts-expect-error
+    const devServerManager = new DevServerManager(projectRoot, startOptions);
+
+    await devServerManager.startAsync([
+      {
+        type: 'metro',
+        options: startOptions,
+      },
+    ]);
+
+    return devServerManager;
+  };
+
+  return {
+    DevServerManager,
+  };
+});
 
 jest.mock('../../utils/interactive', () => ({
   isInteractive: jest.fn(() => true),
@@ -34,6 +53,7 @@ describe(startBundlerAsync, () => {
   it(`starts in headless mode`, async () => {
     const manager = await startBundlerAsync('/', {
       headless: true,
+      mode: 'production',
       port: 3000,
     });
 
@@ -44,17 +64,19 @@ describe(startBundlerAsync, () => {
           headless: true,
           location: {},
           minify: false,
+          mode: 'production',
           port: 3000,
         },
         type: 'metro',
       },
     ]);
-    expect(manager.getDefaultDevServer).toBeCalled();
+    expect(manager.getDefaultDevServer).toHaveBeenCalled();
   });
 
   it(`starts a server`, async () => {
     const manager = await startBundlerAsync('/', {
       headless: false,
+      mode: 'development',
       port: 3000,
     });
 
@@ -65,12 +87,13 @@ describe(startBundlerAsync, () => {
           headless: false,
           location: {},
           minify: false,
+          mode: 'development',
           port: 3000,
         },
         type: 'metro',
       },
     ]);
-    expect(startInterfaceAsync).toBeCalled();
-    expect(manager.getDefaultDevServer).not.toBeCalled();
+    expect(startInterfaceAsync).toHaveBeenCalled();
+    expect(manager.getDefaultDevServer).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { PermissionResponse } from 'expo-modules-core';
+import type { PermissionResponse } from 'expo';
 
 // @needsAudit
 /**
@@ -58,7 +58,7 @@ export enum LocationActivityType {
   /**
    * Intended for airborne activities. Fall backs to `ActivityType.Other` if
    * unsupported.
-   * @platform ios 12+
+   * @platform ios
    */
   Airborne = 5,
 }
@@ -106,6 +106,8 @@ export type LocationOptions = {
    * Location manager accuracy. Pass one of `Accuracy` enum values.
    * For low-accuracies the implementation can avoid geolocation providers
    * that consume a significant amount of power (such as GPS).
+   *
+   * @default LocationAccuracy.Balanced
    */
   accuracy?: LocationAccuracy;
   /**
@@ -154,7 +156,7 @@ export type LocationTaskOptions = LocationOptions & {
    * A boolean indicating whether the status bar changes its appearance when
    * location services are used in the background.
    * @default false
-   * @platform ios 11+
+   * @platform ios
    */
   showsBackgroundLocationIndicator?: boolean;
   /**
@@ -188,6 +190,21 @@ export type LocationTaskOptions = LocationOptions & {
    * @platform ios
    */
   pausesUpdatesAutomatically?: boolean;
+  foregroundService?: LocationTaskServiceOptions;
+};
+
+// @needsAudit
+/**
+ * Type representing background motion activity task options.
+ */
+export type MotionActivityTaskOptions = {
+  /**
+   * Configuration for running motion activity updates through a foreground service, the same
+   * way `LocationTaskOptions.foregroundService` keeps background location updates running. When
+   * omitted, updates are only guaranteed to be delivered while the OS happens to keep the app
+   * process alive.
+   * @platform android
+   */
   foregroundService?: LocationTaskServiceOptions;
 };
 
@@ -263,8 +280,11 @@ export type LocationObject = {
    */
   timestamp: number;
   /**
-   * Whether the location coordinates is mocked or not.
+   * Whether the location coordinates is mocked or not. On Android, this is `true` when the location
+   * comes from a mock provider. On iOS, it is `true` when the location is simulated by software
+   * (for example, by Xcode or a location-spoofing tool).
    * @platform android
+   * @platform ios
    */
   mocked?: boolean;
 };
@@ -312,6 +332,11 @@ export type LocationObjectCoords = {
  */
 export type LocationCallback = (location: LocationObject) => any;
 
+/**
+ * Error callback for location methods.
+ */
+export type LocationErrorCallback = (reason: string) => void;
+
 // @needsAudit
 /**
  * Represents the object containing details about location provider.
@@ -358,12 +383,35 @@ export type LocationHeadingObject = {
    */
   magHeading: number;
   /**
-   * Level of calibration of compass.
-   * - `3`: high accuracy, `2`: medium accuracy, `1`: low accuracy, `0`: none
+   * Level of calibration of compass:
+   * - `3`: high accuracy
+   * - `2`: medium accuracy
+   * - `1`: low accuracy
+   * - `0`: none
+   *
    * Reference for iOS:
-   * - `3`: < 20 degrees uncertainty, `2`: < 35 degrees, `1`: < 50 degrees, `0`: > 50 degrees
+   * - `3`: < 20 degrees uncertainty
+   * - `2`: < 35 degrees
+   * - `1`: < 50 degrees
+   * - `0`: > 50 degrees
    */
   accuracy: number;
+  /**
+   * Heading accuracy in degrees, or `null` when the reading is invalid.
+   * @platform ios
+   */
+  headingAccuracy?: number | null;
+};
+
+/**
+ * Type representing options object that can be passed to `watchHeadingAsync`.
+ */
+export type LocationHeadingOptions = {
+  /**
+   * Minimum heading change, in degrees, between updates. Pass `0` to receive every reading.
+   * @default `1` on iOS, about `2` on Android
+   */
+  headingFilter?: number;
 };
 
 // @needsAudit
@@ -371,18 +419,6 @@ export type LocationHeadingObject = {
  * Represents `watchHeadingAsync` callback.
  */
 export type LocationHeadingCallback = (location: LocationHeadingObject) => any;
-
-// @needsAudit
-/**
- * An object of options for forward and reverse geocoding.
- */
-export type LocationGeocodingOptions = {
-  /**
-   * Whether to force using Google Maps API instead of the native implementation.
-   * Used by default only on Web platform. Requires providing an API key by `setGoogleApiKey`.
-   */
-  useGoogleMaps?: boolean;
-};
 
 // @needsAudit
 /**
@@ -482,14 +518,17 @@ export type PermissionDetailsLocationIOS = {
    * The scope of granted permission. Indicates when it's possible to use location.
    */
   scope: 'whenInUse' | 'always' | 'none';
+  /**
+   * The accuracy authorization granted by the user.
+   * `'full'` means the user has granted precise location access, `'reduced'` means the app
+   * can only access approximate location. Below iOS 14 always returns `'full'`.
+   * @platform ios 14+
+   */
+  accuracy: 'full' | 'reduced';
 };
 
 // @needsAudit
 export type PermissionDetailsLocationAndroid = {
-  /**
-   * @deprecated Use `accuracy` field instead.
-   */
-  scope: 'fine' | 'coarse' | 'none';
   /**
    * Indicates the type of location provider.
    */
@@ -498,7 +537,7 @@ export type PermissionDetailsLocationAndroid = {
 
 // @needsAudit
 /**
- * `LocationPermissionResponse` extends [PermissionResponse](#permissionresponse)
+ * `LocationPermissionResponse` extends [`PermissionResponse`](#permissionresponse)
  * type exported by `expo-modules-core` and contains additional platform-specific fields.
  */
 export type LocationPermissionResponse = PermissionResponse & {
@@ -507,3 +546,103 @@ export type LocationPermissionResponse = PermissionResponse & {
 };
 
 export type { PermissionResponse };
+
+/**
+ * Confidence level for motion activity detection. On Android, the raw `DetectedActivity` confidence (0-
+ * 100) is bucketed into these three levels. On iOS, maps directly to `CMMotionActivityConfidence`.
+ */
+export enum MotionActivityConfidence {
+  /**
+   * The activity determination has low confidence.
+   */
+  Low = 0,
+  /**
+   * The activity determination has medium confidence.
+   */
+  Medium = 1,
+  /**
+   * The activity determination has high confidence.
+   */
+  High = 2,
+}
+
+/**
+ * The type of physical activity the user is currently performing.
+ *
+ * On Android it maps to `DetectedActivity` constants from Google Play Services.
+ * On iOS this maps to the boolean properties of `CMMotionActivity` (the highest-priority
+ * truthy property wins).
+ */
+export enum MotionActivityType {
+  /**
+   * The device is in a motorized vehicle (car, bus, train, and so on).
+   */
+  Automotive = 'automotive',
+  /**
+   * The user is riding a bicycle.
+   */
+  Cycling = 'cycling',
+  /**
+   * The user is running.
+   */
+  Running = 'running',
+  /**
+   * The user is walking.
+   */
+  Walking = 'walking',
+  /**
+   * The device is not moving.
+   */
+  Stationary = 'stationary',
+  /**
+   * The activity cannot be determined.
+   */
+  Unknown = 'unknown',
+}
+
+/**
+ * Detection state for a single activity type.
+ * When `detected` is `false`, `confidence` is always `Low`.
+ */
+export type MotionActivityState = {
+  /**
+   * Whether this activity was detected.
+   */
+  detected: boolean;
+  /**
+   * Confidence level of the detection.
+   * On Android, each activity type has its own confidence derived from the
+   * `DetectedActivity` probability value. On iOS, this is the overall reading confidence from
+   * `CMMotionActivityConfidence`, shared by all detected activities.
+   */
+  confidence: MotionActivityConfidence;
+};
+
+/**
+ * Type returned by `getMotionActivityAsync` and the `watchMotionActivityAsync` callback.
+ * Contains one entry per `MotionActivityType` so callers can inspect each activity
+ * independently without searching through an array.
+ *
+ * @example
+ * ```ts
+ * const { activities } = await Location.getMotionActivityAsync();
+ * if (activities.automotive.detected) {
+ *   console.log('driving, confidence:', activities.automotive.confidence);
+ * }
+ * ```
+ */
+export type MotionActivityObject = {
+  /**
+   * An object keyed by `MotionActivityType`, each value being a `MotionActivityState`.
+   */
+  activities: Record<MotionActivityType, MotionActivityState>;
+  /**
+   * The time at which the activity snapshot was taken, in milliseconds since Unix epoch.
+   */
+  timestamp: number;
+};
+
+/**
+ * Represents the `watchMotionActivityAsync` callback.
+ */
+export type MotionActivityCallback = (activity: MotionActivityObject) => any;

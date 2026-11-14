@@ -1,13 +1,12 @@
 // copied from https://github.com/expo/expo-cli/blob/d00319aae4fdcacf1a335af5a8428c45b62fc4d7/packages/xdl/src/project/Doctor.ts
 // minor naming changes only
 
-import { ExpoConfig } from '@expo/config';
-import Schemer, { SchemerError, ValidationError } from '@expo/schemer';
-
-import { learnMore } from './TerminalLink';
+import type { ExpoConfig } from '@expo/config';
+import type { ValidationError } from '@expo/schemer';
+import Schemer, { SchemerError } from '@expo/schemer';
 
 function formatValidationError(validationError: ValidationError) {
-  return `\n • ${validationError.fieldPath ? 'Field: ' + validationError.fieldPath + ' - ' : ''}${
+  return `\n ${validationError.fieldPath ? 'Field: ' + validationError.fieldPath + ' - ' : ''}${
     validationError.message
   }.`;
 }
@@ -32,11 +31,9 @@ export async function validateWithSchemaAsync(
     await validator.validateSchemaAsync(exp);
   } catch (e: any) {
     if (e instanceof SchemerError) {
-      schemaErrorMessage = `Error: Problem${
+      schemaErrorMessage = `Error${
         e.errors.length > 1 ? 's' : ''
-      } validating fields in ${configName}. ${learnMore(
-        'https://docs.expo.dev/workflow/configuration/'
-      )}`;
+      } validating fields in ${configName}:`;
       schemaErrorMessage += e.errors.map(formatValidationError).join('');
     }
   }
@@ -46,9 +43,9 @@ export async function validateWithSchemaAsync(
       await validator.validateAssetsAsync(exp);
     } catch (e: any) {
       if (e instanceof SchemerError) {
-        assetsErrorMessage = `Error: Problem${
+        assetsErrorMessage = `Error${
           e.errors.length > 1 ? '' : 's'
-        } validating asset fields in ${configName}. ${learnMore('https://docs.expo.dev/')}`;
+        } validating asset fields in ${configName}:`;
         assetsErrorMessage += e.errors.map(formatValidationError).join('');
       }
     }

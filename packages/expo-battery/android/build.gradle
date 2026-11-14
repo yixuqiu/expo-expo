@@ -1,28 +1,23 @@
-apply plugin: 'com.android.library'
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
 
 group = 'host.exp.exponent'
-version = '8.0.1'
+version = '58.0.3'
 
-def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
-apply from: expoModulesCorePlugin
-applyKotlinExpoModulesCorePlugin()
-useCoreDependencies()
-useDefaultAndroidSdkVersions()
-useExpoPublishing()
+expoModule {
+  v2 true
+}
 
 android {
   namespace "expo.modules.battery"
   defaultConfig {
     versionCode 11
-    versionName '8.0.1'
+    versionName '58.0.3'
   }
 }
 
 dependencies {
-  api "androidx.legacy:legacy-support-v4:1.0.0"
-
-  if (project.findProject(':expo-modules-test-core')) {
-    testImplementation project(':expo-modules-test-core')
-  }
-  testImplementation "org.robolectric:robolectric:4.10"
+  implementation 'com.facebook.react:react-android'
 }

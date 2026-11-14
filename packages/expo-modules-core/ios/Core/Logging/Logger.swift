@@ -10,14 +10,20 @@ public typealias LoggerTimerFormatterBlock = (_ duration: Double) -> String
  Native iOS logging class for Expo, with options to direct logs
  to different destinations.
  */
-public class Logger {
+public class Logger: @unchecked Sendable {
   public static let EXPO_MODULES_LOG_SUBSYSTEM = "dev.expo.modules"
   public static let EXPO_LOG_CATEGORY = "expo"
 
+  /**
+   The least severe log type this logger passes to its handlers. Defaults to `.trace` in debug builds
+   and `.info` in release builds. Apps can raise it, for example with `log.minLevel = .error` before
+   the React Native host starts, to keep less severe logs of the shared `log` instance out of the
+   device log. Set it once at launch: changes are not synchronized with logging on other threads.
+   */
   #if DEBUG || EXPO_CONFIGURATION_DEBUG
-  private var minLevel: LogType = .trace
+  public var minLevel: LogType = .trace
   #else
-  private var minLevel: LogType = .info
+  public var minLevel: LogType = .info
   #endif
 
   private let logHandlers: [LogHandler]
@@ -111,8 +117,9 @@ public class Logger {
     let startTime = DispatchTime.now()
     return LoggerTimer {
       let endTime = DispatchTime.now()
-      let diff = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
-      self.log(type: .timer, formatterBlock(diff))
+      let diffMs = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
+      self.log(type: .timer, formatterBlock(diffMs))
+      return diffMs
     }
   }
 

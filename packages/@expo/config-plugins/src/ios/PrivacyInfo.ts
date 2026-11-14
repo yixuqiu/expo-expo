@@ -1,11 +1,12 @@
-import { ExpoConfig } from '@expo/config-types';
+import type { ExpoConfig } from '@expo/config-types';
 import plist from '@expo/plist';
 import fs from 'fs';
 import path from 'path';
 import type { XcodeProject } from 'xcode';
 
+import type { ExportedConfigWithProps } from '../Plugin.types';
+import { withXcodeProject } from '../plugins/ios-plugins';
 import { addResourceFileToGroup, getProjectName } from './utils/Xcodeproj';
-import { ExportedConfigWithProps, withXcodeProject } from '..';
 
 export type PrivacyInfo = {
   NSPrivacyAccessedAPITypes: {

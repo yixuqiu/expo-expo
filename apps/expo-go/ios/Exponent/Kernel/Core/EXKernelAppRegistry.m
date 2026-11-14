@@ -2,7 +2,6 @@
 
 #import "EXKernelAppRegistry.h"
 #import "EXAbstractLoader.h"
-#import "EXEnvironment.h"
 #import "EXReactAppManager.h"
 #import "EXKernel.h"
 
@@ -11,7 +10,6 @@
 @interface EXKernelAppRegistry ()
 
 @property (nonatomic, strong) NSMutableDictionary *appRegistry;
-@property (nonatomic, strong) EXKernelAppRecord *homeAppRecord;
 
 @end
 
@@ -32,11 +30,7 @@
   EXKernelAppRecord *newRecord = [[EXKernelAppRecord alloc] initWithManifestUrl:manifestUrl initialProps:initialProps];
   NSString *recordId = [[NSUUID UUID] UUIDString];
   [_appRegistry setObject:newRecord forKey:recordId];
-  
-  if (_delegate) {
-    [_delegate appRegistry:self didRegisterAppRecord:newRecord];
-  }
-  
+
   return recordId;
 }
 
@@ -44,9 +38,6 @@
 {
   EXKernelAppRecord *record = [_appRegistry objectForKey:recordId];
   if (record) {
-    if (_delegate) {
-      [_delegate appRegistry:self willUnregisterAppRecord:record];
-    }
     [record.appManager invalidate];
     [_appRegistry removeObjectForKey:recordId];
   }
@@ -58,21 +49,6 @@
   if (recordIds.count > 0) {
     [self unregisterAppWithRecordId:recordIds[0]];
   }
-}
-
-- (void)registerHomeAppRecord:(EXKernelAppRecord *)homeRecord
-{
-  _homeAppRecord = homeRecord;
-}
-
-- (void)unregisterHomeAppRecord
-{
-  _homeAppRecord = nil;
-}
-
-- (EXKernelAppRecord *)homeAppRecord
-{
-  return _homeAppRecord;
 }
 
 - (EXKernelAppRecord *)recordForId:(NSString *)recordId

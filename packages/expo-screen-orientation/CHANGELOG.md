@@ -1,14 +1,266 @@
 # Changelog
 
-## Unpublished
+## 58.0.3
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Fix a crash on iOS (`EXC_BAD_ACCESS` in libobjc) caused by a data race on `ScreenOrientationRegistry.currentTraitCollection`, which is written on the main thread and read on the background queue that notifies orientation listeners. ([#51232](https://github.com/expo/expo/pull/51232) by [@stumbaumr](https://github.com/stumbaumr))
+
+## 58.0.2
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.1
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.0 — 2026-09-10
 
 ### 🐛 Bug fixes
 
+- [iOS] Fixed a main-thread deadlock when notifying screen orientation listeners. ([#49367](https://github.com/expo/expo/pull/49367) by [@ryan-saffer](https://github.com/ryan-saffer))
+- [iOS] Added a development warning when the system refuses an orientation lock request, and switched to reading interface orientation from the scene's effective geometry. ([#48173](https://github.com/expo/expo/pull/48173) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.4 — 2026-05-13
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed `EXC_BAD_ACCESS` crash from recursive `supportedInterfaceOrientations` when `react-native-screens` per-screen orientation is set. ([#45733](https://github.com/expo/expo/pull/45733) by [@rayabelcode](https://github.com/rayabelcode))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed `lockAsync` silently failing when flipping between previously-applied masks. ([#45239](https://github.com/expo/expo/pull/45239) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 55.0.14 - 2026-05-04
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed per-screen orientation not working with expo-dev-client by searching child VCs for react-native-screens orientation when an intermediate VC blocks the traversal. ([#44181](https://github.com/expo/expo/pull/44181) by [@vonovak](https://github.com/vonovak))
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
 ### 💡 Others
+
+- [iOS] Added explicit `import React` for xcframework compatibility. ([#44248](https://github.com/expo/expo/pull/44248) by [@chrfalch](https://github.com/chrfalch))
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+### 🐛 Bug fixes
+
+- [iOS] [New Architecture] Restore orientationMask after app transition from background to foreground ([#42536](https://github.com/expo/expo/pull/42536) by [@LongyuW](https://github.com/LongyuW))
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+### 💡 Others
+
+- mark `removeOrientationChangeListeners` and `removeOrientationChangeListener` calls as deprecated ([#42098](https://github.com/expo/expo/pull/42098) by [@vonovak](https://github.com/vonovak))
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🐛 Bug fixes
+
+- [web] fix undeclared `listener` reference ([#41441](https://github.com/expo/expo/pull/41441) by [@vonovak](https://github.com/vonovak))
+- [iOS] Remove use of deprecated API `UIApplication.shared.windows`. ([#40881](https://github.com/expo/expo/pull/40881) by [@bwallberg](https://github.com/bwallberg))
+
+## 9.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 8.1.7 - 2025-06-04
+
+### 🐛 Bug fixes
+
+- [iOS] Call `createRootViewController` from the `ExpoReactNativeFactoryDelegate`. ([#36787](https://github.com/expo/expo/pull/36787) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 8.1.6 — 2025-05-06
+
+### 🐛 Bug fixes
+
+- [iOS] Fix the app becoming unresponsive when the orientation listener is used in `Split View` on iPad. ([#36667](https://github.com/expo/expo/pull/36667) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 8.1.5 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 8.1.4 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 8.1.3 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 8.1.2 — 2025-04-11
+
+_This version does not introduce any user-facing changes._
+
+## 8.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 8.1.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+- Standardize platform key ordering in `expo-module.config.json`. ([#35003](https://github.com/expo/expo/pull/35003) by [@reichhartd](https://github.com/reichhartd))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35288](https://github.com/expo/expo/pull/35288) by [@behenate](https://github.com/behenate)), ([#35428](https://github.com/expo/expo/pull/35428) by [@behenate](https://github.com/behenate))
+
+## 8.0.4 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.3 - 2025-01-08
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed ScreenOrientation.addOrientationChangeListener() Freezes iOS Devices in Expo SDK 52, issue 33853 ([#33867](https://github.com/expo/expo/pull/33867) by [@pjdemers](https://github.com/pjdemers)
+
+## 8.0.2 - 2024-12-19
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed crash when multiple threads access same member in swift ([#33572](https://github.com/expo/expo/pull/33572) by [@chrfalch](https://github.com/chrfalch))
+
+## 8.0.1 - 2024-12-05
+
+### 🐛 Bug fixes
+
+- Fixed event listeners on web. ([#33361](https://github.com/expo/expo/pull/33361) by [@aleqsio](https://github.com/aleqsio))
+
+## 8.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Add missing `react-native` peer dependencies for isolated modules. ([#30481](https://github.com/expo/expo/pull/30481) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Removed redundant usage of `EventEmitter` instance. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
+- Removed all `NativeModulesProxy` occurrences. ([#31496](https://github.com/expo/expo/pull/31496) by [@reichhartd](https://github.com/reichhartd))
+
+## 7.0.5 — 2024-05-14
+
+### 🐛 Bug fixes
+
+- [Android] Fixed screen orientation change listener not firing. ([#28832](https://github.com/expo/expo/pull/28832) by [@lukmccall](https://github.com/lukmccall))
 
 ## 7.0.4 — 2024-05-09
 

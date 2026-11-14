@@ -10,8 +10,6 @@
 #define EX_EXTERN_C_END
 #endif
 
-EX_EXTERN_C_BEGIN
-
 #define EX_EXPORTED_METHODS_PREFIX __ex_export__
 #define EX_PROPSETTERS_PREFIX __ex_set__
 
@@ -93,22 +91,5 @@ typedef struct EXModuleInfo {
 } EXModuleInfo;
 
 typedef void (^EXDirectEventBlock)(NSDictionary *body);
-typedef void (^EXPromiseResolveBlock)(id result);
-typedef void (^EXPromiseRejectBlock)(NSString *code, NSString *message, NSError *error);
-
-#pragma mark - Externs
-
-// These should be defined by the concrete platform adapter
-EX_EXTERN void EXLogInfo(NSString *format, ...);
-EX_EXTERN void EXLogWarn(NSString *format, ...);
-EX_EXTERN void EXLogError(NSString *format, ...);
-EX_EXTERN void EXFatal(NSError *);
-EX_EXTERN NSError * EXErrorWithMessage(NSString *);
-
-#if TARGET_OS_OSX
-EX_EXTERN NSApplication *EXSharedApplication(void);
-#else
-EX_EXTERN UIApplication *EXSharedApplication(void);
-#endif
-
-EX_EXTERN_C_END
+typedef void (NS_SWIFT_SENDABLE ^EXPromiseResolveBlock)(id result);
+typedef void (NS_SWIFT_SENDABLE ^EXPromiseRejectBlock)(NSString *code, NSString *message, NSError *error);

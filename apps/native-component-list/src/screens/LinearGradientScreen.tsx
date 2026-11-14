@@ -1,7 +1,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect } from 'react';
-import { Image, Platform, Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Animated, ScrollView, StyleSheet, View } from 'react-native';
 
+import { BodyText } from '../components/BodyText';
 import MonoText from '../components/MonoText';
 
 // https://github.com/expo/expo/issues/10599
@@ -31,7 +32,8 @@ export default function LinearGradientScreen() {
   }, []);
 
   const location = Math.sin(count / 100) * 0.5;
-  const position = Math.sin(count / 100);
+  const position = Math.abs(Math.sin(count / 100));
+
   return (
     <ScrollView
       style={{ flex: 1 }}
@@ -57,7 +59,7 @@ const Container: React.FunctionComponent<{ title: string; children?: React.React
   children,
 }) => (
   <View style={styles.container}>
-    <Text style={styles.containerTitle}>{title}</Text>
+    <BodyText style={styles.containerTitle}>{title}</BodyText>
     {children}
   </View>
 );
@@ -83,7 +85,7 @@ const SnapshotTest = () => (
         style={{ width: 100, height: 200, marginVertical: 20 }}
       />
     </View>
-    <Text style={{ marginHorizontal: 20 }}>The gradients above should look the same.</Text>
+    <BodyText style={{ marginHorizontal: 20 }}>The gradients above should look the same.</BodyText>
   </Container>
 );
 
@@ -112,7 +114,7 @@ const ControlPointTest: React.FunctionComponent<{
   );
 };
 
-const ColorsTest = ({ colors }: { colors: string[] }) => {
+const ColorsTest = ({ colors }: { colors: [string, string, ...string[]] }) => {
   const info = colors.map((value) => `"${value}"`).join(', ');
   return (
     <Container title="Colors">
@@ -122,7 +124,9 @@ const ColorsTest = ({ colors }: { colors: string[] }) => {
   );
 };
 
-const LocationsTest: React.FunctionComponent<{ locations: number[] }> = ({ locations }) => {
+const LocationsTest: React.FunctionComponent<{ locations: [number, number, ...number[]] }> = ({
+  locations,
+}) => {
   const locationsInfo = locations.map((location) => +location.toFixed(2)).join(', ');
   return (
     <Container title="Locations">

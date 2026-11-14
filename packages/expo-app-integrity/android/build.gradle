@@ -1,0 +1,23 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.integrity'
+version = '58.0.2'
+
+android {
+  namespace 'expo.modules.integrity'
+  defaultConfig {
+    versionCode 1
+    versionName "58.0.2"
+  }
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  implementation("com.google.android.play:integrity:1.4.0")
+}

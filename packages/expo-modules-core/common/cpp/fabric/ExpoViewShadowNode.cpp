@@ -2,8 +2,10 @@
 
 #include "ExpoViewShadowNode.h"
 
+namespace react = facebook::react;
+
 namespace expo {
 
-  extern const char ExpoViewComponentName[] = "ExpoFabricView";
+extern const char ExpoViewComponentName[] = "ExpoFabricView";
 
 } // namespace expo

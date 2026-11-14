@@ -1,119 +1,133 @@
 package expo.modules.updates.procedures
 
 import android.content.Context
-import android.os.AsyncTask
+import expo.modules.core.logging.localizedMessageWithCauseLocalizedMessage
 import expo.modules.updates.IUpdatesController
 import expo.modules.updates.UpdatesConfiguration
-import expo.modules.updates.db.DatabaseHolder
-import expo.modules.updates.db.entity.AssetEntity
+import expo.modules.updates.db.UpdatesDatabase
 import expo.modules.updates.db.entity.UpdateEntity
+import expo.modules.updates.loader.AssetsFailedToLoadException
 import expo.modules.updates.loader.FileDownloader
 import expo.modules.updates.loader.Loader
 import expo.modules.updates.loader.RemoteLoader
 import expo.modules.updates.loader.UpdateDirective
-import expo.modules.updates.loader.UpdateResponse
+import expo.modules.updates.logging.UpdatesLogger
+import expo.modules.updatesinterface.UpdatesLogMessage
 import expo.modules.updates.selectionpolicy.SelectionPolicy
 import expo.modules.updates.statemachine.UpdatesStateEvent
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import java.io.File
 
 class FetchUpdateProcedure(
   private val context: Context,
   private val updatesConfiguration: UpdatesConfiguration,
-  private val databaseHolder: DatabaseHolder,
+  private val logger: UpdatesLogger,
+  private val database: UpdatesDatabase,
   private val updatesDirectory: File,
   private val fileDownloader: FileDownloader,
   private val selectionPolicy: SelectionPolicy,
-  private val launchedUpdate: UpdateEntity?,
+  private val getLaunchedUpdate: () -> UpdateEntity?,
+  private val scope: CoroutineScope,
   private val callback: (IUpdatesController.FetchUpdateResult) -> Unit
 ) : StateMachineProcedure() {
   override val loggerTimerLabel = "timer-fetch-update"
 
-  override fun run(procedureContext: ProcedureContext) {
+  override suspend fun run(procedureContext: ProcedureContext) {
     procedureContext.processStateEvent(UpdatesStateEvent.Download())
+    val launchedUpdate = getLaunchedUpdate()
 
-    AsyncTask.execute {
-      val database = databaseHolder.database
-      RemoteLoader(
-        context,
-        updatesConfiguration,
-        database,
-        fileDownloader,
-        updatesDirectory,
-        launchedUpdate
+    try {
+      val loaderResult = startRemoteLoader(database, procedureContext, launchedUpdate)
+      processSuccessLoaderResult(loaderResult, procedureContext, launchedUpdate)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      val message = "Failed to download new update: ${e.localizedMessageWithCauseLocalizedMessage()}"
+      logger.errorForLoadFailure(
+        UpdatesLogMessage.RemoteFetchFailed,
+        UpdatesLogMessage.RemoteFetchUnreachable,
+        e,
+        AssetsFailedToLoadException.failureGroups(e)
       )
-        .start(
-          object : Loader.LoaderCallback {
-            override fun onFailure(e: Exception) {
-              databaseHolder.releaseDatabase()
-              callback(IUpdatesController.FetchUpdateResult.ErrorResult(e))
-              procedureContext.processStateEvent(
-                UpdatesStateEvent.DownloadError("Failed to download new update: ${e.message}")
-              )
-              procedureContext.onComplete()
+      procedureContext.processStateEvent(UpdatesStateEvent.DownloadError(message))
+      callback(IUpdatesController.FetchUpdateResult.ErrorResult(e))
+    } finally {
+      procedureContext.onComplete()
+    }
+  }
+
+  private suspend fun startRemoteLoader(database: UpdatesDatabase, procedureContext: ProcedureContext, launchedUpdate: UpdateEntity?): Loader.LoaderResult {
+    val remoteLoader = RemoteLoader(
+      context,
+      updatesConfiguration,
+      logger,
+      database,
+      fileDownloader,
+      updatesDirectory,
+      launchedUpdate,
+      scope
+    )
+
+    remoteLoader.assetLoadProgressBlock = { progress ->
+      procedureContext.processStateEvent(UpdatesStateEvent.DownloadProgress(progress))
+    }
+
+    try {
+      val result = remoteLoader.load { updateResponse ->
+        val updateDirective = updateResponse.directiveUpdateResponsePart?.updateDirective
+        if (updateDirective != null) {
+          return@load Loader.OnUpdateResponseLoadedResult(
+            shouldDownloadManifestIfPresentInResponse = when (updateDirective) {
+              is UpdateDirective.RollBackToEmbeddedUpdateDirective -> false
+              is UpdateDirective.NoUpdateAvailableUpdateDirective -> false
             }
+          )
+        }
 
-            override fun onAssetLoaded(
-              asset: AssetEntity,
-              successfulAssetCount: Int,
-              failedAssetCount: Int,
-              totalAssetCount: Int
-            ) {
-            }
+        val update = updateResponse.manifestUpdateResponsePart?.update
+          ?: return@load Loader.OnUpdateResponseLoadedResult(shouldDownloadManifestIfPresentInResponse = false)
 
-            override fun onUpdateResponseLoaded(updateResponse: UpdateResponse): Loader.OnUpdateResponseLoadedResult {
-              val updateDirective = updateResponse.directiveUpdateResponsePart?.updateDirective
-              if (updateDirective != null) {
-                return Loader.OnUpdateResponseLoadedResult(
-                  shouldDownloadManifestIfPresentInResponse = when (updateDirective) {
-                    is UpdateDirective.RollBackToEmbeddedUpdateDirective -> false
-                    is UpdateDirective.NoUpdateAvailableUpdateDirective -> false
-                  }
-                )
-              }
-
-              val update = updateResponse.manifestUpdateResponsePart?.update
-                ?: return Loader.OnUpdateResponseLoadedResult(shouldDownloadManifestIfPresentInResponse = false)
-
-              return Loader.OnUpdateResponseLoadedResult(
-                shouldDownloadManifestIfPresentInResponse = selectionPolicy.shouldLoadNewUpdate(
-                  update.updateEntity,
-                  launchedUpdate,
-                  updateResponse.responseHeaderData?.manifestFilters
-                )
-              )
-            }
-
-            override fun onSuccess(loaderResult: Loader.LoaderResult) {
-              RemoteLoader.processSuccessLoaderResult(
-                context,
-                updatesConfiguration,
-                database,
-                selectionPolicy,
-                updatesDirectory,
-                launchedUpdate,
-                loaderResult
-              ) { availableUpdate, didRollBackToEmbedded ->
-                databaseHolder.releaseDatabase()
-
-                if (didRollBackToEmbedded) {
-                  callback(IUpdatesController.FetchUpdateResult.RollBackToEmbedded())
-                  procedureContext.processStateEvent(UpdatesStateEvent.DownloadCompleteWithRollback())
-                  procedureContext.onComplete()
-                } else {
-                  if (availableUpdate == null) {
-                    callback(IUpdatesController.FetchUpdateResult.Failure())
-                    procedureContext.processStateEvent(UpdatesStateEvent.DownloadComplete())
-                    procedureContext.onComplete()
-                  } else {
-                    callback(IUpdatesController.FetchUpdateResult.Success(availableUpdate))
-                    procedureContext.processStateEvent(UpdatesStateEvent.DownloadCompleteWithUpdate(availableUpdate.manifest))
-                    procedureContext.onComplete()
-                  }
-                }
-              }
-            }
-          }
+        Loader.OnUpdateResponseLoadedResult(
+          shouldDownloadManifestIfPresentInResponse = selectionPolicy.shouldLoadNewUpdate(
+            update.updateEntity,
+            launchedUpdate,
+            updateResponse.responseHeaderData?.manifestFilters
+          )
         )
+      }
+
+      return result
+    } catch (e: CancellationException) {
+      logger.info("Remote loader cancelled during fetch update procedure")
+      throw e
+    }
+  }
+
+  private suspend fun processSuccessLoaderResult(loaderResult: Loader.LoaderResult, procedureContext: ProcedureContext, launchedUpdate: UpdateEntity?) {
+    val result = RemoteLoader.processSuccessLoaderResult(
+      context,
+      updatesConfiguration,
+      logger,
+      database,
+      selectionPolicy,
+      updatesDirectory,
+      launchedUpdate,
+      loaderResult
+    )
+    val (availableUpdate, didRollBackToEmbedded) = result
+
+    if (didRollBackToEmbedded) {
+      procedureContext.processStateEvent(UpdatesStateEvent.DownloadCompleteWithRollback())
+      callback(IUpdatesController.FetchUpdateResult.RollBackToEmbedded())
+    } else {
+      if (availableUpdate == null) {
+        procedureContext.processStateEvent(UpdatesStateEvent.DownloadCompleteUnavailable())
+        callback(IUpdatesController.FetchUpdateResult.Failure())
+      } else {
+        procedureContext.processStateEvent(UpdatesStateEvent.DownloadCompleteWithUpdate(availableUpdate.manifest))
+        callback(IUpdatesController.FetchUpdateResult.Success(availableUpdate))
+      }
     }
   }
 }

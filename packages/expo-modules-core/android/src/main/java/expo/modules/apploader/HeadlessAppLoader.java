@@ -5,23 +5,15 @@ import android.content.Context;
 import expo.modules.core.interfaces.Consumer;
 
 public interface HeadlessAppLoader {
-
-  class AppConfigurationError extends Exception {
-
-    public AppConfigurationError(String message) {
-      super(message);
-    }
-
-    public AppConfigurationError(String message, Exception cause) {
-      super(message, cause);
-    }
-  }
-
-  void loadApp(Context context, Params params, Runnable alreadyRunning, Consumer<Boolean> callback) throws AppConfigurationError;
+  void loadApp(Context context, Params params, Runnable alreadyRunning, Consumer<Boolean> callback);
 
   boolean invalidateApp(String appScopeKey);
 
-  boolean isRunning(String appScopeKey);
+  /**
+   * Returns whether the app with the given appScopeKey is running in headless mode right now,
+   * which means it is loaded and no Activity is attached to it.
+   */
+  boolean isRunningInHeadlessMode(String appScopeKey);
 
   final class Params {
     private final String appScopeKey;
@@ -39,7 +31,5 @@ public interface HeadlessAppLoader {
     public String getAppUrl() {
       return appUrl;
     }
-
   }
-
 }

@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+import { consumeConfigEnvMode, loadProjectEnv } from '@expo/env';
 import chalk from 'chalk';
 
 import { Command } from './cli';
 import { requireArg, assertArgs, getProjectRoot } from './utils/args';
 import { CommandError } from './utils/errors';
 import * as Log from './utils/log';
+import { withConsoleDisabledAsync } from './utils/withConsoleDisabledAsync';
 
 export const resolveRuntimeVersion: Command = async (argv) => {
   const args = assertArgs(
@@ -39,9 +41,8 @@ Resolve expo-updates runtime version
     );
   }
 
-  const { resolveRuntimeVersionAsync } = await import(
-    '../../utils/build/resolveRuntimeVersionAsync.js'
-  );
+  const { resolveRuntimeVersionAsync } =
+    await import('../../utils/build/resolveRuntimeVersionAsync.js');
 
   const platform = requireArg(args, '--platform');
   if (!['ios', 'android'].includes(platform)) {
@@ -57,21 +58,25 @@ Resolve expo-updates runtime version
 
   const debug = args['--debug'];
 
-  let runtimeVersionInfo;
-  try {
-    runtimeVersionInfo = await resolveRuntimeVersionAsync(
-      getProjectRoot(args),
-      platform,
-      {
-        silent: true,
-        debug,
-      },
-      {
-        workflowOverride: workflow,
-      }
-    );
-  } catch (e: any) {
-    throw new CommandError(e.message);
-  }
+  const runtimeVersionInfo = await withConsoleDisabledAsync(async () => {
+    try {
+      const projectRoot = getProjectRoot(args);
+      loadProjectEnv(projectRoot, { mode: consumeConfigEnvMode() ?? 'production' });
+      return await resolveRuntimeVersionAsync(
+        projectRoot,
+        platform,
+        {
+          silent: true,
+          debug,
+        },
+        {
+          workflowOverride: workflow,
+        }
+      );
+    } catch (e: any) {
+      throw new CommandError(e.message);
+    }
+  });
+
   console.log(JSON.stringify(runtimeVersionInfo));
 };

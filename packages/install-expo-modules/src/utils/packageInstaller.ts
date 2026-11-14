@@ -1,4 +1,5 @@
 import * as PackageManager from '@expo/package-manager';
+import spawnAsync from '@expo/spawn-async';
 import path from 'path';
 import semver from 'semver';
 
@@ -21,6 +22,12 @@ async function installPackageNonInteractiveAsync(projectRoot: string, pkg: strin
   return manager.addAsync([pkg]);
 }
 
+export async function installBabelPresetExpoNonInteractiveAsync(projectRoot: string) {
+  await spawnAsync('npx', ['expo', 'install', '--dev', 'babel-preset-expo'], {
+    cwd: projectRoot,
+  });
+}
+
 /**
  * Install the `expo` package
  *
@@ -29,16 +36,21 @@ async function installPackageNonInteractiveAsync(projectRoot: string, pkg: strin
  */
 export async function installExpoPackageAsync(projectRoot: string, sdkVersion: string) {
   try {
-    // First try to install from released versions, e.g. `expo@^45.0.0`
-    await installPackageNonInteractiveAsync(projectRoot, `expo@^${sdkVersion}`);
-  } catch {
-    // Fallback to install from prerelease versions,
-    // e.g. `expo@>=45.0.0-0 <46.0.0`, this will cover prerelease version for beta testing.
-    await installPackageNonInteractiveAsync(
-      projectRoot,
-      `expo@>=${sdkVersion}-0 <${semver.inc(sdkVersion, 'major')}`
-    );
+    // First try to install from released versions, e.g. `expo@~45.0.0`
+    await installPackageNonInteractiveAsync(projectRoot, `expo@${sdkVersion}`);
+    return;
+  } catch {}
+
+  // Fallback to install from prerelease versions,
+  // e.g. `expo@>=45.0.0-0 <46.0.0`, this will cover prerelease version for beta testing.
+  const majorVersion = semver.minVersion(sdkVersion)?.major;
+  if (!majorVersion) {
+    throw new Error('Invalid SDK version');
   }
+  await installPackageNonInteractiveAsync(
+    projectRoot,
+    `expo@>=${majorVersion}.0.0-0 <${majorVersion + 1}.0.0`
+  );
 }
 
 /**

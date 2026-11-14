@@ -8,7 +8,7 @@ describe(shouldMinify, () => {
         minify: true,
         customTransformOptions: {
           __proto__: null,
-          bytecode: true,
+          bytecode: '1',
         },
       })
     ).toBe(false);
@@ -18,7 +18,7 @@ describe(shouldMinify, () => {
         minify: true,
         customTransformOptions: {
           __proto__: null,
-          bytecode: 'true',
+          bytecode: '1',
         },
       })
     ).toBe(false);
@@ -49,7 +49,9 @@ describe(shouldMinify, () => {
         minify: true,
         customTransformOptions: {
           __proto__: null,
-          bytecode: false,
+          // A non-`'1'` value must not enable bytecode; the augmented type only models the
+          // enabled state (`'1'`), so cast to exercise the strict equality check at runtime.
+          bytecode: false as unknown as '1',
         },
       })
     ).toBe(true);

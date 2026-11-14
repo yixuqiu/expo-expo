@@ -1,6 +1,5 @@
 package expo.modules.webbrowser
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.browser.customtabs.CustomTabsIntent
 import expo.modules.kotlin.exception.CodedException
@@ -13,7 +12,6 @@ import io.mockk.slot
 import io.mockk.verify
 import junit.framework.ComparisonFailure
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,7 +30,9 @@ private fun assertStringValueNull(bundle: Bundle, key: String) {
 }
 
 private fun assertListsEqual(first: List<*>?, second: List<*>?, message: String = "") {
-  if (first == second) return
+  if (first == second) {
+    return
+  }
 
   if (first == null || second == null) {
     throw throw ComparisonFailure(message, first.toString(), second.toString())
@@ -52,8 +52,6 @@ private interface WebBrowserModuleTestInterface {
   fun warmUpAsync(browserPackage: String?): Bundle
 
   fun coolDownAsync(browserPackage: String?): Bundle
-
-  fun mayInitWithUrlAsync(url: String, browserPackage: String?): Bundle
 }
 
 private inline fun withWebBrowserMock(
@@ -124,33 +122,7 @@ internal class WebBrowserModuleTest {
   @Test
   fun testArgumentsCorrectlyPassedToIntent() = withWebBrowserMock {
     // given
-    val intentSlot = slot<Intent>()
-    val mock = mockkCustomTabsActivitiesHelper(defaultCanResolveIntent = true, startIntentSlot = intentSlot)
-    initialize(moduleSpy, customTabsActivitiesHelper = mock)
-
-    // when
-    module.openBrowserAsync(
-      "http://expo.io",
-      OpenBrowserOptions(
-        toolbarColor = 0,
-        browserPackage = "com.browser.package",
-        enableBarCollapsing = true,
-        enableDefaultShareMenuItem = true,
-        showInRecents = true,
-        shouldCreateTask = true,
-        showTitle = true
-      )
-    )
-
-    intentSlot.captured.let {
-      assertEquals("com.browser.package", it.`package`)
-    }
-  }
-
-  @Test
-  fun testTrueFlagsCorrectlyPassedToIntent() = withWebBrowserMock {
-    // given
-    val intentSlot = slot<Intent>()
+    val intentSlot = slot<CustomTabsIntent>()
     val mock = mockkCustomTabsActivitiesHelper(defaultCanResolveIntent = true, startIntentSlot = intentSlot)
     initialize(moduleSpy, customTabsActivitiesHelper = mock)
 
@@ -167,19 +139,51 @@ internal class WebBrowserModuleTest {
       )
     )
 
-    intentSlot.captured.let {
-      assertTrue(it.hasExtra(CustomTabsIntent.EXTRA_ENABLE_URLBAR_HIDING))
-      assertTrue(it.getBooleanExtra(CustomTabsIntent.EXTRA_ENABLE_URLBAR_HIDING, false))
-      assertTrue((it.flags and Intent.FLAG_ACTIVITY_NEW_TASK) > 0)
-      assertFalse((it.flags and Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS) > 0)
-      assertFalse((it.flags and Intent.FLAG_ACTIVITY_NO_HISTORY) > 0)
-    }
+    assertEquals("com.browser.package", intentSlot.captured.intent.`package`)
   }
 
   @Test
-  fun testFalseFlagsCorrectlyPassedToIntent() = withWebBrowserMock {
+  fun `test intent is pinned to preferred browser when no package given`() = withWebBrowserMock {
     // given
-    val intentSlot = slot<Intent>()
+    val intentSlot = slot<CustomTabsIntent>()
+    val mock = mockkCustomTabsActivitiesHelper(
+      preferredActivity = "com.preferred.browser",
+      startIntentSlot = intentSlot,
+      defaultCanResolveIntent = true
+    )
+    initialize(moduleSpy, customTabsActivitiesHelper = mock)
+
+    // when
+    module.openBrowserAsync("http://expo.io", OpenBrowserOptions())
+
+    // then
+    assertEquals("com.preferred.browser", intentSlot.captured.intent.`package`)
+  }
+
+  @Test
+  fun `test explicit package is not overridden by preferred browser`() = withWebBrowserMock {
+    // given
+    val intentSlot = slot<CustomTabsIntent>()
+    val mock = mockkCustomTabsActivitiesHelper(
+      preferredActivity = "com.preferred.browser",
+      startIntentSlot = intentSlot,
+      defaultCanResolveIntent = true
+    )
+    initialize(moduleSpy, customTabsActivitiesHelper = mock)
+
+    // when
+    module.openBrowserAsync("http://expo.io", OpenBrowserOptions(browserPackage = "com.browser.package"))
+
+    // then
+    assertEquals("com.browser.package", intentSlot.captured.intent.`package`)
+  }
+
+  @Test
+  fun testToolbarColorsCorrectlyPassedToIntent() = withWebBrowserMock {
+    // given
+    val toolbarColor = 0xFF361030.toInt()
+    val secondaryToolbarColor = 0xFF1B5E20.toInt()
+    val intentSlot = slot<CustomTabsIntent>()
     val mock = mockkCustomTabsActivitiesHelper(defaultCanResolveIntent = true, startIntentSlot = intentSlot)
     initialize(moduleSpy, customTabsActivitiesHelper = mock)
 
@@ -187,45 +191,18 @@ internal class WebBrowserModuleTest {
     module.openBrowserAsync(
       "http://expo.io",
       OpenBrowserOptions(
-        toolbarColor = 0,
-        browserPackage = "com.browser.package",
-        enableBarCollapsing = false,
-        enableDefaultShareMenuItem = false,
-        showInRecents = false,
-        showTitle = false
+        toolbarColor = toolbarColor,
+        secondaryToolbarColor = secondaryToolbarColor
       )
     )
 
-    intentSlot.captured.let {
-      assertFalse(it.getBooleanExtra(CustomTabsIntent.EXTRA_ENABLE_URLBAR_HIDING, true))
-      assertTrue((it.flags and Intent.FLAG_ACTIVITY_NEW_TASK) > 0)
-      assertTrue((it.flags and Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS) > 0)
-      assertTrue((it.flags and Intent.FLAG_ACTIVITY_NO_HISTORY) > 0)
-    }
-  }
-
-  @Test
-  fun testCreateTaskFalseCorrectlyPassedToIntent() = withWebBrowserMock {
-    // given
-    val intentSlot = slot<Intent>()
-    val mock = mockkCustomTabsActivitiesHelper(defaultCanResolveIntent = true, startIntentSlot = intentSlot)
-    initialize(moduleSpy, customTabsActivitiesHelper = mock)
-
-    // when
-    module.openBrowserAsync(
-      "http://expo.io",
-      OpenBrowserOptions(
-        toolbarColor = 0,
-        browserPackage = "com.browser.package",
-        shouldCreateTask = false
-      )
+    // then
+    val colorSchemeParams = CustomTabsIntent.getColorSchemeParams(
+      intentSlot.captured.intent,
+      CustomTabsIntent.COLOR_SCHEME_LIGHT
     )
-
-    intentSlot.captured.let {
-      assertFalse((it.flags and Intent.FLAG_ACTIVITY_NEW_TASK) > 0)
-      assertFalse((it.flags and Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS) > 0)
-      assertFalse((it.flags and Intent.FLAG_ACTIVITY_NO_HISTORY) > 0)
-    }
+    assertEquals(toolbarColor, colorSchemeParams.toolbarColor)
+    assertEquals(secondaryToolbarColor, colorSchemeParams.secondaryToolbarColor)
   }
 
   @Test

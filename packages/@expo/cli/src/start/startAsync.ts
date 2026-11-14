@@ -1,31 +1,36 @@
-import { ExpoConfig, getConfig } from '@expo/config';
+import { getConfig } from '@expo/config';
 import chalk from 'chalk';
 
+import * as Log from '../log';
+import { env } from '../utils/env';
+import { isInteractive, shouldReduceLogs } from '../utils/interactive';
+import { profile } from '../utils/profile';
+import {
+  checkDependencies,
+  printDependencyCheckResult,
+  type DependencyCheckRef,
+} from './checkDependenciesOnStart';
 import { SimulatorAppPrerequisite } from './doctor/apple/SimulatorAppPrerequisite';
 import { getXcodeVersionAsync } from './doctor/apple/XcodePrerequisite';
-import { validateDependenciesVersionsAsync } from './doctor/dependencies/validateDependenciesVersions';
 import { WebSupportProjectPrerequisite } from './doctor/web/WebSupportProjectPrerequisite';
+import { printDevToolsPluginCliBannersAsync } from './interface/interactiveActions';
 import { startInterfaceAsync } from './interface/startInterface';
-import { Options, resolvePortsAsync } from './resolveOptions';
-import { BundlerStartOptions } from './server/BundlerDevServer';
-import { DevServerManager, MultiBundlerStartOptions } from './server/DevServerManager';
+import type { Options } from './resolveOptions';
+import { resolvePortsAsync } from './resolveOptions';
+import type { BundlerStartOptions } from './server/BundlerDevServer';
+import type { MultiBundlerStartOptions } from './server/DevServerManager';
+import { DevServerManager } from './server/DevServerManager';
+import { maybeCreateMCPServerAsync } from './server/mcp/MCP';
 import { openPlatformsAsync } from './server/openPlatforms';
-import { getPlatformBundlers, PlatformBundlers } from './server/platformBundlers';
-import * as Log from '../log';
-import getDevClientProperties from '../utils/analytics/getDevClientProperties';
-import { env } from '../utils/env';
-import { installExitHooks } from '../utils/exit';
-import { isInteractive } from '../utils/interactive';
-import { setNodeEnv } from '../utils/nodeEnv';
-import { profile } from '../utils/profile';
-import { logEventAsync } from '../utils/telemetry';
+import type { PlatformBundlers } from './server/platformBundlers';
+import { getPlatformBundlers } from './server/platformBundlers';
 
-async function getMultiBundlerStartOptions(
+/** Exported for testing. `startAsync` is the entry point. */
+export async function _getMultiBundlerStartOptions(
   projectRoot: string,
   options: Options,
-  settings: { webOnly?: boolean },
   platformBundlers: PlatformBundlers
-): Promise<[BundlerStartOptions, MultiBundlerStartOptions]> {
+): Promise<[BundlerStartOptions, MultiBundlerStartOptions, number | undefined]> {
   const commonOptions: BundlerStartOptions = {
     mode: options.dev ? 'development' : 'production',
     devClient: options.devClient,
@@ -34,13 +39,12 @@ async function getMultiBundlerStartOptions(
     maxWorkers: options.maxWorkers,
     resetDevServer: options.clear,
     minify: options.minify,
+    tunnelProvider: options.tunnelProvider ?? undefined,
     location: {
       hostType: options.host,
       scheme: options.scheme,
     },
   };
-  const multiBundlerSettings = await resolvePortsAsync(projectRoot, options, settings);
-
   const optionalBundlers: Partial<PlatformBundlers> = { ...platformBundlers };
   // In the default case, we don't want to start multiple bundlers since this is
   // a bit slower. Our priority (for legacy) is native platforms.
@@ -49,6 +53,11 @@ async function getMultiBundlerStartOptions(
   }
 
   const bundlers = [...new Set(Object.values(optionalBundlers))];
+  // Resolve ports for every bundler, not just the ones starting now, so a bundler that
+  // starts interactively already has a port when it's asked for.
+  const allBundlers = [...new Set(Object.values(platformBundlers))];
+  const multiBundlerSettings = await resolvePortsAsync(projectRoot, options, allBundlers);
+
   const multiBundlerStartOptions = bundlers.map((bundler) => {
     const port =
       bundler === 'webpack' ? multiBundlerSettings.webpackPort : multiBundlerSettings.metroPort;
@@ -61,7 +70,7 @@ async function getMultiBundlerStartOptions(
     };
   });
 
-  return [commonOptions, multiBundlerStartOptions];
+  return [commonOptions, multiBundlerStartOptions, multiBundlerSettings.webpackPort];
 }
 
 export async function startAsync(
@@ -69,11 +78,18 @@ export async function startAsync(
   options: Options,
   settings: { webOnly?: boolean }
 ) {
-  Log.log(chalk.gray(`Starting project at ${projectRoot}`));
+  if (!shouldReduceLogs()) {
+    Log.log(chalk.gray(`Starting project at ${projectRoot}`));
+  }
 
-  setNodeEnv(options.dev ? 'development' : 'production');
-  require('@expo/env').load(projectRoot);
   const { exp, pkg } = profile(getConfig)(projectRoot);
+
+  // Start dependency version check in the background as early as possible (non-blocking).
+  // The result will be displayed in the TUI once it resolves.
+  let dependencyCheckRef: DependencyCheckRef | undefined;
+  if (!env.EXPO_OFFLINE && !env.EXPO_NO_DEPENDENCY_VALIDATION && !settings.webOnly) {
+    dependencyCheckRef = checkDependencies(projectRoot, exp, pkg);
+  }
 
   if (exp.platforms?.includes('ios') && process.platform !== 'win32') {
     // If Xcode could potentially be used, then we should eagerly perform the
@@ -86,14 +102,13 @@ export async function startAsync(
 
   const platformBundlers = getPlatformBundlers(projectRoot, exp);
 
-  const [defaultOptions, startOptions] = await getMultiBundlerStartOptions(
+  const [defaultOptions, startOptions, webPort] = await _getMultiBundlerStartOptions(
     projectRoot,
     options,
-    settings,
     platformBundlers
   );
 
-  const devServerManager = new DevServerManager(projectRoot, defaultOptions);
+  const devServerManager = new DevServerManager(projectRoot, defaultOptions, webPort);
 
   // Validations
 
@@ -111,34 +126,42 @@ export async function startAsync(
     await devServerManager.bootstrapTypeScriptAsync();
   }
 
-  if (!settings.webOnly && !options.devClient) {
-    await profile(validateDependenciesVersionsAsync)(projectRoot, exp, pkg);
-  }
-
-  // Some tracking thing
-
-  if (options.devClient) {
-    await trackAsync(projectRoot, exp);
-  }
-
   // Open project on devices.
   await profile(openPlatformsAsync)(devServerManager, options);
+
+  const defaultServerUrl = devServerManager.getDefaultDevServer()?.getDevServerUrl() ?? '';
+  const mcpServer =
+    (await profile(maybeCreateMCPServerAsync)({
+      devServerManager,
+      devServerUrl: defaultServerUrl,
+    })) ?? undefined;
 
   // Present the Terminal UI.
   if (isInteractive()) {
     await profile(startInterfaceAsync)(devServerManager, {
       platforms: exp.platforms ?? ['ios', 'android', 'web'],
+      mcpServer,
+      dependencyCheckRef,
     });
   } else {
     // Display the server location in CI...
-    const url = devServerManager.getDefaultDevServer()?.getDevServerUrl();
-    if (url) {
+    if (defaultServerUrl) {
       if (env.__EXPO_E2E_TEST) {
         // Print the URL to stdout for tests
-        console.info(`[__EXPO_E2E_TEST:server] ${JSON.stringify({ url })}`);
+        console.info(`[__EXPO_E2E_TEST:server] ${JSON.stringify({ url: defaultServerUrl })}`);
       }
-      Log.log(chalk`Waiting on {underline ${url}}`);
+      Log.log(chalk`Waiting on {underline ${defaultServerUrl}}`);
+      Log.log();
+      await printDevToolsPluginCliBannersAsync(devServerManager);
     }
+    // In non-interactive mode, print the check outside of an interface, if it's available
+    if (dependencyCheckRef?.result) {
+      printDependencyCheckResult(dependencyCheckRef.result);
+    }
+  }
+
+  if (mcpServer) {
+    mcpServer.start();
   }
 
   // Final note about closing the server.
@@ -148,18 +171,4 @@ export async function startAsync(
       isInteractive() ? chalk.dim(` Press Ctrl+C to exit.`) : ''
     }`
   );
-}
-
-async function trackAsync(projectRoot: string, exp: ExpoConfig): Promise<void> {
-  await logEventAsync('dev client start command', {
-    status: 'started',
-    ...getDevClientProperties(projectRoot, exp),
-  });
-  installExitHooks(async () => {
-    await logEventAsync('dev client start command', {
-      status: 'finished',
-      ...getDevClientProperties(projectRoot, exp),
-    });
-    // UnifiedAnalytics.flush();
-  });
 }

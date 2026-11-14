@@ -1,14 +1,179 @@
 # Changelog
 
-## Unpublished
+## 1.14.2
 
-### 🛠 Breaking changes
+### Patch Changes
+
+- Drop legacy Node `url` usage in favor of `URL` ([#51602](https://github.com/expo/expo/pull/51602) by [@byCedric](https://github.com/byCedric))
+
+## 1.14.1
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762))
+  - @expo/json-file@11.2.1
+
+## 1.14.0 — 2026-09-10
 
 ### 🎉 New features
 
-### 🐛 Bug fixes
+- Add [nub](https://nubjs.com/) package manager support ([#48060](https://github.com/expo/expo/pull/48060) by [@colinhacks](https://github.com/colinhacks))
+
+## 1.13.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 1.13.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 1.12.1 - 2026-05-29
+
+### 🎉 New features
+
+- Support Bundler-managed CocoaPods installations ([#43605](https://github.com/expo/expo/pull/43605) by [@tiwari91](https://github.com/tiwari91), [@kitten](https://github.com/kitten))
+
+## 1.12.0 — 2026-05-20
 
 ### 💡 Others
+
+- Bump to `@expo/spawn-async@^1.8.0` ([#45999](https://github.com/expo/expo/pull/45999) by [@kitten](https://github.com/kitten))
+
+## 1.11.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 1.11.0 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 1.10.5 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 1.10.4 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 1.10.3 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 1.10.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 1.10.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 1.10.0 — 2026-01-21
+
+### 🐛 Bug fixes
+
+- BunPackageManager supports text lock file `bun.lock` ([#42049](https://github.com/expo/expo/pull/42049) by [@AbbanMustafa](https://github.com/AbbanMustafa))
+
+## 1.9.9 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 1.9.8 — 2025-09-16
+
+### 🐛 Bug fixes
+
+- Sort dependencies when installing a dependency with expo-cli and NPM ([#39660](https://github.com/expo/expo/pull/39660) by [@blazejkustra](https://github.com/blazejkustra))
+
+## 1.9.7 — 2025-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 1.9.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 1.9.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 1.9.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 1.9.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 1.9.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 1.9.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 1.9.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 1.8.6 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 1.8.5 - 2025-07-01
+
+### 💡 Others
+
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+
+## 1.8.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 1.8.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 1.8.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 1.8.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 1.8.0 — 2025-04-04
+
+### 💡 Others
+
+- Remove unused `sudo-prompt` dependency ([#34559](https://github.com/expo/expo/pull/34559) by [@kitten](https://github.com/kitten))
+- Remove unused dependencies. ([#35038](https://github.com/expo/expo/pull/35038) by [@kitten](https://github.com/kitten))
+
+## 1.7.2 - 2025-02-14
+
+_This version does not introduce any user-facing changes._
+
+## 1.7.1 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 1.7.0 - 2025-01-07
+
+### 🎉 New features
+
+- Add support for Bun's text-based lock file format `bun.lock` ([#33825](https://github.com/expo/expo/pull/33825) by [@tharakadesilva](https://github.com/tharakadesilva))
+
+## 1.6.1 — 2024-11-13
+
+_This version does not introduce any user-facing changes._
+
+## 1.6.0 — 2024-10-22
+
+### 💡 Others
+
+- Remove file that causes expo repo to not be clonable on windows machines ([#31720](https://github.com/expo/expo/pull/31720) by [@acoates-ms](https://github.com/acoates-ms))
+- Update `npm-package-arg@^7` to `npm-package-arg@^11`. ([#30842](https://github.com/expo/expo/pull/30842) by [@kitten](https://github.com/kitten))
+- Simplify workspace root detection with `resolve-workspace-root`. ([#31124](https://github.com/expo/expo/pull/31124) by [@byCedric](https://github.com/byCedric))
 
 ## 1.5.2 — 2024-04-23
 

@@ -1,9 +1,11 @@
 {
-  "platforms": ["ios", "android"],
-  "ios": {
-    "modulesClassNames": ["WebBrowserModule"]
-  },
+  "platforms": ["apple", "android"],
   "android": {
-    "modulesClassNames": ["expo.modules.webbrowser.WebBrowserModule"]
+    "modules": ["expo.modules.webbrowser.WebBrowserModule"],
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.webbrowser",
+      "repository": "local-maven-repo"
+    }
   }
 }

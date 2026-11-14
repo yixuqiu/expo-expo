@@ -1,17 +1,23 @@
 package versioned.host.exp.exponent.core.modules
 
 import android.content.Context
-import android.os.AsyncTask
 import android.os.Bundle
+import android.util.Log
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.updates.IUpdatesController
 import expo.modules.updates.logging.UpdatesLogEntry
 import expo.modules.updates.logging.UpdatesLogReader
+import expo.modules.updates.reloadscreen.ReloadScreenOptions
 import expo.modules.updates.statemachine.UpdatesStateContext
 import host.exp.exponent.kernel.KernelConstants
 import host.exp.exponent.kernel.KernelProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.util.Date
 
 class ExpoGoUpdatesModule(experienceProperties: Map<String, Any?>) : Module() {
@@ -22,58 +28,33 @@ class ExpoGoUpdatesModule(experienceProperties: Map<String, Any?>) : Module() {
   val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
 
+  private val moduleScope = CoroutineScope(Dispatchers.IO)
+
   override fun definition() = ModuleDefinition {
     Name("ExpoUpdates")
 
     Constants {
-      val appLoaderLocal = appLoader
-      if (appLoaderLocal == null) {
-        mapOf()
-      } else {
-        val constants = mutableMapOf<String, Any?>()
-        val configuration = appLoaderLocal.updatesConfiguration
-
-        // keep these keys in sync with UpdatesModule
-        constants["isEmergencyLaunch"] = false
-        constants["emergencyLaunchReason"] = null
-        constants["isEmbeddedLaunch"] = false
-        constants["isEnabled"] = true
-        constants["isUsingEmbeddedAssets"] = false
-        constants["runtimeVersion"] = configuration.runtimeVersionRaw ?: ""
-        constants["checkAutomatically"] = configuration.checkOnLaunch.toJSString()
-        constants["channel"] = configuration.requestHeaders["expo-channel-name"] ?: ""
-        constants["nativeDebug"] = false
-        constants["shouldDeferToNativeForAPIMethodAvailabilityInDevelopment"] = true
-
-        val launchedUpdate = appLoaderLocal.launcher.launchedUpdate
-        if (launchedUpdate != null) {
-          constants["updateId"] = launchedUpdate.id.toString()
-          constants["commitTime"] = launchedUpdate.commitTime.time
-          constants["manifestString"] = launchedUpdate.manifest.toString()
-        }
-        val localAssetFiles = appLoaderLocal.launcher.localAssetFiles
-        if (localAssetFiles != null) {
-          val localAssets = mutableMapOf<String, String>()
-          for (asset in localAssetFiles.keys) {
-            if (asset.key != null) {
-              localAssets[asset.key!!] = localAssetFiles[asset]!!
-            }
-          }
-          constants["localAssets"] = localAssets
-        }
-        constants
-      }
+      appLoader?.let { appLoaderLocal ->
+        IUpdatesController.UpdatesModuleConstants(
+          emergencyLaunchException = null,
+          embeddedUpdate = null,
+          isEnabled = true,
+          isUsingEmbeddedAssets = false,
+          runtimeVersion = appLoaderLocal.updatesConfiguration.runtimeVersionRaw ?: "",
+          checkOnLaunch = appLoaderLocal.updatesConfiguration.checkOnLaunch,
+          requestHeaders = appLoaderLocal.updatesConfiguration.requestHeaders,
+          shouldDeferToNativeForAPIMethodAvailabilityInDevelopment = true,
+          launchedUpdate = appLoaderLocal.launcher.launchedUpdate,
+          localAssetFiles = appLoaderLocal.launcher.localAssetFiles,
+          launchDuration = appLoaderLocal.launchDuration,
+          initialContext = UpdatesStateContext()
+        ).toModuleConstantsMap()
+      } ?: mapOf()
     }
 
-    AsyncFunction("reload") { promise: Promise ->
+    AsyncFunction("reload") { options: ReloadScreenOptions?, promise: Promise ->
       KernelProvider.instance.reloadVisibleExperience(manifestUrl!!, true)
       promise.resolve(null)
-    }
-
-    // Used internally by useUpdates() to get its initial state
-    AsyncFunction("getNativeStateMachineContextAsync") { promise: Promise ->
-      val context = UpdatesStateContext()
-      promise.resolve(context.bundle)
     }
 
     AsyncFunction("checkForUpdateAsync") { promise: Promise ->
@@ -109,8 +90,8 @@ class ExpoGoUpdatesModule(experienceProperties: Map<String, Any?>) : Module() {
     }
 
     AsyncFunction("readLogEntriesAsync") { maxAge: Int, promise: Promise ->
-      AsyncTask.execute {
-        val reader = UpdatesLogReader(context)
+      moduleScope.launch {
+        val reader = UpdatesLogReader(context.filesDir)
         val date = Date()
         val epoch = Date(date.time - maxAge)
         val results = reader.getLogEntries(epoch)
@@ -137,8 +118,8 @@ class ExpoGoUpdatesModule(experienceProperties: Map<String, Any?>) : Module() {
     }
 
     AsyncFunction("clearLogEntriesAsync") { promise: Promise ->
-      AsyncTask.execute {
-        val reader = UpdatesLogReader(context)
+      moduleScope.launch {
+        val reader = UpdatesLogReader(context.filesDir)
         reader.purgeLogEntries(
           olderThan = Date()
         ) { error ->
@@ -152,6 +133,14 @@ class ExpoGoUpdatesModule(experienceProperties: Map<String, Any?>) : Module() {
             promise.resolve(null)
           }
         }
+      }
+    }
+
+    OnDestroy {
+      try {
+        moduleScope.cancel()
+      } catch (_: IllegalStateException) {
+        Log.e(ExpoGoUpdatesModule::class.java.simpleName, "The scope does not have a job in it")
       }
     }
   }

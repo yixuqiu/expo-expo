@@ -1,9 +1,13 @@
+import nodeFs from 'fs';
 import { vol } from 'memfs';
+// eslint-disable-next-line no-restricted-imports
 import path from 'path';
 import resolveFrom from 'resolve-from';
 
 import * as Log from '../../../../log';
 import {
+  getVersionedDependenciesAsync,
+  isDependencyVersionIncorrect,
   logIncorrectDependencies,
   validateDependenciesVersionsAsync,
 } from '../validateDependenciesVersions';
@@ -14,6 +18,7 @@ jest.mock('../bundledNativeModules', () => ({
     'expo-splash-screen': '~1.2.3',
     'expo-updates': '~2.3.4',
     firebase: '9.1.0',
+    'react-native': '0.85.3',
   }),
 }));
 jest.mock('../getVersionedPackages', () => ({
@@ -22,6 +27,7 @@ jest.mock('../getVersionedPackages', () => ({
     'expo-updates': '~2.3.4',
     firebase: '9.1.0',
     expo: '49.0.7',
+    'react-native': '0.85.3',
   })),
 }));
 
@@ -192,6 +198,50 @@ describe(validateDependenciesVersionsAsync, () => {
     expect(Log.warn).not.toHaveBeenCalledWith(expect.stringContaining('expo-splash-screen'));
   });
 
+  it('supports npm package args for excluded packages', async () => {
+    jest.mocked(Log.warn).mockReset();
+    vol.fromJSON(
+      {
+        'node_modules/expo/package.json': JSON.stringify({
+          version: '41.0.0',
+        }),
+        'node_modules/expo-splash-screen/package.json': JSON.stringify({
+          version: '0.2.3',
+        }),
+        'node_modules/expo-updates/package.json': JSON.stringify({
+          version: '1.3.4',
+        }),
+        'node_modules/firebase/package.json': JSON.stringify({
+          version: '10.0.0',
+        }),
+      },
+      projectRoot
+    );
+    const exp = {
+      sdkVersion: '41.0.0',
+    };
+    const pkg = {
+      dependencies: {
+        'expo-splash-screen': '~0.2.3',
+        'expo-updates': '~1.3.4',
+        firebase: '~10.0.0',
+      },
+      // "Don't validate this for me for me as long as you plan to recommend @~0.2.3 - I don't want that version"
+      expo: { install: { exclude: ['expo-splash-screen@~1.2.3', 'firebase@9.1.0'] } },
+    };
+
+    await expect(validateDependenciesVersionsAsync(projectRoot, exp as any, pkg)).resolves.toBe(
+      false
+    );
+    expect(Log.warn).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('The following packages should be updated for best compatibility')
+    );
+    expect(Log.warn).toHaveBeenCalledWith(expect.stringContaining('expo-updates'));
+    expect(Log.warn).not.toHaveBeenCalledWith(expect.stringContaining('expo-splash-screen'));
+    expect(Log.warn).not.toHaveBeenCalledWith(expect.stringContaining('firebase'));
+  });
+
   it('resolves to true when installed package uses "exports"', async () => {
     const packageJsonPath = path.join(projectRoot, 'node_modules/firebase/package.json');
 
@@ -246,5 +296,152 @@ describe(validateDependenciesVersionsAsync, () => {
     await expect(
       validateDependenciesVersionsAsync(projectRoot, exp as any, pkg)
     ).resolves.toBeNull();
+  });
+});
+
+describe('getVersionedDependenciesAsync (TV)', () => {
+  const projectRoot = '/test-project';
+
+  beforeEach(() => {
+    vol.reset();
+    // Reset to flush any queued `mockImplementationOnce` from earlier tests in
+    // this file, then re-install a memfs-backed implementation matching the
+    // manual mock at `__mocks__/resolve-from.ts`.
+    // `resolveFrom.silent` is a separate `jest.fn` in the manual mock, so we
+    // have to re-implement it alongside the main function. We use the `fs`
+    // imported at the top of this file so we share the same memfs instance as
+    // `vol` — re-requiring `fs` inside this closure can return a fresh memfs
+    // after earlier tests' `jest.resetModules()`.
+    const resolveSilent = (fromDirectory: string, request: string): string | undefined => {
+      const candidate = path.join(fromDirectory, 'node_modules', request);
+      return nodeFs.existsSync(candidate) ? candidate : undefined;
+    };
+    jest.mocked(resolveFrom).mockReset();
+    jest.mocked(resolveFrom).mockImplementation((fromDirectory, request) => {
+      const result = resolveSilent(fromDirectory, request);
+      if (!result) {
+        const err: any = new Error(`Cannot find module '${request}'`);
+        err.code = 'MODULE_NOT_FOUND';
+        throw err;
+      }
+      return result;
+    });
+    const silentMock = jest.mocked(resolveFrom).silent as unknown as jest.Mock;
+    silentMock.mockReset();
+    silentMock.mockImplementation(resolveSilent);
+    delete process.env.EXPO_OFFLINE;
+  });
+
+  it('flags react-native in TV projects whose minor lags the bundled react-native', async () => {
+    // For TV projects the alias is `react-native: npm:react-native-tvos@<version>`, and the
+    // file at `node_modules/react-native/package.json` is the upstream react-native-tvos
+    // package, so the installed version reads as a plain version string.
+    vol.fromJSON(
+      {
+        'node_modules/expo/package.json': JSON.stringify({ version: '55.0.0' }),
+        'node_modules/react-native/package.json': JSON.stringify({
+          name: 'react-native-tvos',
+          version: '0.83.0-0',
+        }),
+      },
+      projectRoot
+    );
+    const exp = { sdkVersion: '55.0.0' };
+    const pkg = {
+      dependencies: { 'react-native': 'npm:react-native-tvos@0.83.0-0' },
+    };
+
+    const incorrect = await getVersionedDependenciesAsync(projectRoot, exp as any, pkg);
+
+    expect(incorrect).toEqual([
+      {
+        packageName: 'react-native',
+        packageType: 'dependencies',
+        expectedVersionOrRange: 'npm:react-native-tvos@0.85-stable',
+        actualVersion: '0.83.0-0',
+      },
+    ]);
+  });
+
+  it('does not flag react-native when the TV project shares the bundled minor', async () => {
+    vol.fromJSON(
+      {
+        'node_modules/expo/package.json': JSON.stringify({ version: '55.0.0' }),
+        'node_modules/react-native/package.json': JSON.stringify({
+          name: 'react-native-tvos',
+          version: '0.85.2-0',
+        }),
+      },
+      projectRoot
+    );
+    const exp = { sdkVersion: '55.0.0' };
+    const pkg = {
+      dependencies: { 'react-native': 'npm:react-native-tvos@0.85-stable' },
+    };
+
+    const incorrect = await getVersionedDependenciesAsync(projectRoot, exp as any, pkg);
+    expect(incorrect).toEqual([]);
+  });
+
+  it('leaves the expected version untouched for non-TV projects with an outdated react-native', async () => {
+    vol.fromJSON(
+      {
+        'node_modules/expo/package.json': JSON.stringify({ version: '55.0.0' }),
+        'node_modules/react-native/package.json': JSON.stringify({
+          name: 'react-native',
+          version: '0.84.0',
+        }),
+      },
+      projectRoot
+    );
+    const exp = { sdkVersion: '55.0.0' };
+    const pkg = {
+      dependencies: { 'react-native': '0.84.0' },
+    };
+
+    const incorrect = await getVersionedDependenciesAsync(projectRoot, exp as any, pkg);
+    expect(incorrect).toEqual([
+      {
+        packageName: 'react-native',
+        packageType: 'dependencies',
+        expectedVersionOrRange: '0.85.3',
+        actualVersion: '0.84.0',
+      },
+    ]);
+  });
+});
+
+describe(isDependencyVersionIncorrect, () => {
+  const testCases = [
+    ['3.9.0-rc.1', '~3.9.0-rc.1', false, 'prerelease with tilde range'],
+    ['3.9.0-rc.1', '~3.9.1', true, 'different prerelease with tilde range'],
+    ['3.9.0-rc.1', '^3.9.0-rc.1', false, 'prerelease with caret range'],
+    ['3.9.0-rc.1', '3.9.0-rc.1', false, 'exact prerelease match'],
+    ['3.9.0', '^3.9.0', false, 'regular version with caret range'],
+    ['3.9.0', '~3.9.1', true, 'different regular version with tilde range'],
+    ['3.9.0', '~3.9.0', false, 'same regular version with tilde range'],
+    ['3.9.0', '>=3.9.0', false, 'same version with greater than or equal range'],
+    ['3.9.0', '>=4.0.0', true, 'version less than minimum'],
+    ['3.9.3', '>=3.9.0 <4.0.0', false, 'version within range'],
+    ['3.8.3', '>=3.9.0 <4.0.0', true, 'version outside range'],
+    ['4.0.0', '>=3.9.0 <=4.0.0', false, 'version equal to maximum'],
+    ['3.9.0-rc.1', '>=4.0.0-rc.1', true, 'prerelease less than minimum'],
+    ['4.0.0-preview.1', '>=4.0.0-preview.1', false, 'prerelease version equal to maximum'],
+    ['3.9.0-rc.1', '3.9.0', true, 'prerelease should be updated to stable version'],
+    ['1.2.3-rc.1', '^1.2.3', true, 'prerelease should not satisfy stable range'],
+    ['2.0.0', '>=2.0.0-beta.1 <2.0.0-beta.5', true, 'stable should not satisfy prerelease range'],
+    ['2.0.x', '>=1.0.0 <3.0.0', true, 'invalid version string'],
+  ];
+
+  testCases.forEach(([actual, expected, result, description]) => {
+    it(`returns ${result} evaluating ${actual} against ${expected} - ${description}`, () => {
+      expect(
+        isDependencyVersionIncorrect(
+          'react-native-reanimated',
+          actual as string,
+          expected as string
+        )
+      ).toBe(result);
+    });
   });
 });

@@ -2,35 +2,12 @@ import CoreTelephony
 import ExpoModulesCore
 
 public class CellularModule: Module {
+
   public func definition() -> ModuleDefinition {
     Name("ExpoCellular")
 
-    Constants {
-      Self.getCurrentCellularInfo()
-    }
-
     AsyncFunction("getCellularGenerationAsync") { () -> Int in
       Self.currentCellularGeneration().rawValue
-    }
-
-    AsyncFunction("allowsVoipAsync") { () -> Bool? in
-      Self.currentCarrier()?.allowsVOIP
-    }
-
-    AsyncFunction("getIsoCountryCodeAsync") { () -> String? in
-      Self.currentCarrier()?.isoCountryCode
-    }
-
-    AsyncFunction("getCarrierNameAsync") { () -> String? in
-      Self.currentCarrier()?.carrierName
-    }
-
-    AsyncFunction("getMobileCountryCodeAsync") { () -> String? in
-      Self.currentCarrier()?.mobileCountryCode
-    }
-
-    AsyncFunction("getMobileNetworkCodeAsync") { () -> String? in
-      Self.currentCarrier()?.mobileNetworkCode
     }
   }
 
@@ -52,23 +29,22 @@ public class CellularModule: Module {
 
     switch radioAccessTechnology {
     case CTRadioAccessTechnologyGPRS,
-         CTRadioAccessTechnologyEdge,
-         CTRadioAccessTechnologyCDMA1x:
+      CTRadioAccessTechnologyEdge,
+      CTRadioAccessTechnologyCDMA1x:
       return .cellular2G
     case CTRadioAccessTechnologyWCDMA,
-         CTRadioAccessTechnologyHSDPA,
-         CTRadioAccessTechnologyHSUPA,
-         CTRadioAccessTechnologyCDMAEVDORev0,
-         CTRadioAccessTechnologyCDMAEVDORevA,
-         CTRadioAccessTechnologyCDMAEVDORevB,
-         CTRadioAccessTechnologyeHRPD:
+      CTRadioAccessTechnologyHSDPA,
+      CTRadioAccessTechnologyHSUPA,
+      CTRadioAccessTechnologyCDMAEVDORev0,
+      CTRadioAccessTechnologyCDMAEVDORevA,
+      CTRadioAccessTechnologyCDMAEVDORevB,
+      CTRadioAccessTechnologyeHRPD:
       return .cellular3G
     case CTRadioAccessTechnologyLTE:
       return .cellular4G
     default:
       if #available(iOS 14.1, *) {
-        if radioAccessTechnology == CTRadioAccessTechnologyNRNSA ||
-            radioAccessTechnology == CTRadioAccessTechnologyNR {
+        if radioAccessTechnology == CTRadioAccessTechnologyNRNSA || radioAccessTechnology == CTRadioAccessTechnologyNR {
           return .cellular5G
         }
       }
@@ -76,39 +52,9 @@ public class CellularModule: Module {
     }
   }
 
-  static func getCurrentCellularInfo() -> [String: Any?] {
-    let carrier = Self.currentCarrier()
-    let generation = Self.currentCellularGeneration()
-
-    return [
-      "allowsVoip": carrier?.allowsVOIP,
-      "carrier": carrier?.carrierName,
-      "isoCountryCode": carrier?.isoCountryCode,
-      "mobileCountryCode": carrier?.mobileCountryCode,
-      "mobileNetworkCode": carrier?.mobileNetworkCode,
-      "generation": generation.rawValue
-    ]
-  }
-
   static func currentRadioAccessTechnology() -> String? {
     let netinfo = CTTelephonyNetworkInfo()
-
-    if #available(iOS 12.0, *) {
-      return netinfo.serviceCurrentRadioAccessTechnology?.values.first
-    } else {
-      return netinfo.currentRadioAccessTechnology
-    }
+    return netinfo.serviceCurrentRadioAccessTechnology?.values.first
   }
 
-  static func currentCarrier() -> CTCarrier? {
-    let netinfo = CTTelephonyNetworkInfo()
-
-    if #available(iOS 12.0, *), let providers = netinfo.serviceSubscriberCellularProviders {
-      for carrier in providers.values where carrier.carrierName != nil {
-        return carrier
-      }
-      return providers.values.first
-    }
-    return netinfo.subscriberCellularProvider
-  }
 }

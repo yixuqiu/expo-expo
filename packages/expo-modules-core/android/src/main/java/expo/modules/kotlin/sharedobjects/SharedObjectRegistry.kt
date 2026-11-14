@@ -1,21 +1,32 @@
 package expo.modules.kotlin.sharedobjects
 
-import expo.modules.kotlin.AppContext
+import com.facebook.react.modules.core.ReactChoreographer
+import expo.modules.kotlin.runtime.Runtime
 import expo.modules.kotlin.exception.Exceptions
+import expo.modules.kotlin.exception.InvalidSharedObjectIdException
+import expo.modules.kotlin.exception.UsingReleasedSharedObjectException
 import expo.modules.kotlin.jni.JavaScriptObject
 import expo.modules.kotlin.jni.JavaScriptWeakObject
-import java.lang.ref.WeakReference
+import expo.modules.kotlin.weak
 
 @JvmInline
 value class SharedObjectId(val value: Int) {
-
-  fun toNativeObject(appContext: AppContext): SharedObject? {
-    return appContext.sharedObjectRegistry.toNativeObject(this)
+  fun toNativeObject(runtime: Runtime): SharedObject {
+    return runtime.sharedObjectRegistry.toNativeObject(this)
   }
 
-  fun toJavaScriptObject(appContext: AppContext): JavaScriptObject? {
-    val nativeObject = toNativeObject(appContext) ?: return null
-    return appContext.sharedObjectRegistry.toJavaScriptObject(nativeObject)
+  fun toNativeObjectOrNull(runtime: Runtime): SharedObject? {
+    return runtime.sharedObjectRegistry.toNativeObjectOrNull(this)
+  }
+
+  fun toJavaScriptObjectNull(runtime: Runtime): JavaScriptObject? {
+    val nativeObject = toNativeObjectOrNull(runtime) ?: return null
+    return runtime.sharedObjectRegistry.toJavaScriptObjectOrNull(nativeObject)
+  }
+
+  fun toWeakJavaScriptObjectNull(runtime: Runtime): JavaScriptWeakObject? {
+    val nativeObject = toNativeObjectOrNull(runtime) ?: return null
+    return runtime.sharedObjectRegistry.toWeakJavaScriptObjectOrNull(nativeObject)
   }
 }
 
@@ -23,8 +34,8 @@ typealias SharedObjectPair = Pair<SharedObject, JavaScriptWeakObject>
 
 const val sharedObjectIdPropertyName = "__expo_shared_object_id__"
 
-class SharedObjectRegistry(appContext: AppContext) {
-  private val appContextHolder = WeakReference(appContext)
+class SharedObjectRegistry(runtime: Runtime) {
+  private val runtimeContextHolder = runtime.weak()
 
   private var currentId: SharedObjectId = SharedObjectId(1)
 
@@ -45,40 +56,69 @@ class SharedObjectRegistry(appContext: AppContext) {
     // but with the current implementation it's possible to use a raw object for registration.
     js.defineProperty(sharedObjectIdPropertyName, id.value)
 
-    val appContext = appContextHolder.get() ?: throw Exceptions.AppContextLost()
+    val runtimeContext = runtimeContextHolder.get() ?: throw Exceptions.AppContextLost()
 
-    appContext
-      .jsiInterop
+    runtimeContext
+      .jsiContext
       .setNativeStateForSharedObject(id.value, js)
+
+    val size = native.getAdditionalMemoryPressure()
+    // If the size is less or equal to 0, it means that the object doesn't require additional memory pressure.
+    // We can skip the call to the JSI method.
+    if (size > 0) {
+      js.setExternalMemoryPressure(size)
+    }
+
+    if (native is SharedRef<*>) {
+      js.defineProperty("nativeRefType", native.nativeRefType)
+    }
 
     val jsWeakObject = js.createWeak()
     synchronized(this) {
       pairs[id] = native to jsWeakObject
     }
 
-    if (native.appContextHolder.get() == null) {
-      native.appContextHolder = WeakReference(appContext)
+    if (native.runtimeContextHolder.get() == null) {
+      native.runtimeContextHolder = runtimeContext.weak()
     }
 
     return id
   }
 
   internal fun delete(id: SharedObjectId) {
+    val native = synchronized(this) { pairs[id]?.first } ?: return
+    if (native.releasesAfterPendingViewUpdates) {
+      val choreographer = runCatching { ReactChoreographer.getInstance() }.getOrNull()
+      if (choreographer != null) {
+        // Runs after Fabric's `DISPATCH_UI` callback, which applies the queued view updates.
+        choreographer.postFrameCallback(ReactChoreographer.CallbackType.IDLE_EVENT) { remove(id) }
+        return
+      }
+    }
+    remove(id)
+  }
+
+  private fun remove(id: SharedObjectId) {
     synchronized(this) {
       pairs.remove(id)
     }?.let { (native, _) ->
       native.sharedObjectId = SharedObjectId(0)
-      native.deallocate()
+      native.sharedObjectDidRelease()
     }
   }
 
-  internal fun toNativeObject(id: SharedObjectId): SharedObject? {
+  internal fun toNativeObject(id: SharedObjectId): SharedObject {
+    val native = pairs[id.ensureWasNotRelease()]?.first
+    return native ?: throw InvalidSharedObjectIdException()
+  }
+
+  internal fun toNativeObjectOrNull(id: SharedObjectId): SharedObject? {
     return synchronized(this) {
       pairs[id]?.first
     }
   }
 
-  internal fun toNativeObject(js: JavaScriptObject): SharedObject? {
+  internal fun toNativeObjectOrNull(js: JavaScriptObject): SharedObject? {
     if (!js.hasProperty(sharedObjectIdPropertyName)) {
       return null
     }
@@ -87,9 +127,21 @@ class SharedObjectRegistry(appContext: AppContext) {
     return pairs[id]?.first
   }
 
-  internal fun toJavaScriptObject(native: SharedObject): JavaScriptObject? {
+  internal fun toJavaScriptObjectOrNull(native: SharedObject): JavaScriptObject? {
     return synchronized(this) {
       pairs[native.sharedObjectId]?.second?.lock()
+    }
+  }
+
+  internal fun toWeakJavaScriptObjectOrNull(nativeObject: SharedObject): JavaScriptWeakObject? {
+    return synchronized(this) {
+      pairs[nativeObject.sharedObjectId]?.second
+    }
+  }
+
+  private fun SharedObjectId.ensureWasNotRelease() = apply {
+    if (!pairs.contains(this) && value != 0 && value < currentId.value) {
+      throw UsingReleasedSharedObjectException()
     }
   }
 }

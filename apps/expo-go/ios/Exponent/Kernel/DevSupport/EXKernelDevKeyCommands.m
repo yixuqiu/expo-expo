@@ -1,10 +1,10 @@
 // Copyright 2015-present 650 Industries. All rights reserved.
 
-#import "EXEnvironment.h"
 #import "EXKernelDevKeyCommands.h"
 #import "EXKernel.h"
 #import "EXKernelAppRegistry.h"
 #import "EXReactAppManager.h"
+#import "Expo_Go-Swift.h"
 
 #import <React/RCTDefines.h>
 #import <React/RCTUtils.h>
@@ -72,6 +72,19 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
 
 @end
 
+static BOOL EXIsWebContentView(UIResponder *responder)
+{
+  static Class WKContentView;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    // this is a runtime header that is not publicly exported from the Webkit.framework
+    // obfuscating selector WKContentView
+    NSArray<NSString *> *webViewClass = @[ @"WKCo", @"ntentVi", @"ew"];
+    WKContentView = NSClassFromString([webViewClass componentsJoinedByString:@""]);
+  });
+  return WKContentView != nil && [responder isKindOfClass:WKContentView];
+}
+
 #if TARGET_IPHONE_SIMULATOR
 @interface UIEvent (UIPhysicalKeyboardEvent)
 
@@ -106,14 +119,8 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
     
     if (firstResponder) {
       BOOL isTextField = [firstResponder isKindOfClass: [UITextField class]] || [firstResponder isKindOfClass: [UITextView class]];
-      
-      // this is a runtime header that is not publicly exported from the Webkit.framework
-      // obfuscating selector WKContentView
-      NSArray<NSString *> *webViewClass = @[ @"WKCo", @"ntentVi", @"ew"];
-      Class WKContentView = NSClassFromString([webViewClass componentsJoinedByString:@""]);
-      
-      BOOL isWebView = [firstResponder isKindOfClass:[WKContentView class]];
-      
+      BOOL isWebView = EXIsWebContentView(firstResponder);
+
       if (!isTextField && !isWebView) {
         [EXKernelDevKeyCommands handleKeyboardEvent:event];
       }
@@ -132,7 +139,11 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
     return @[];
   }
   NSSet<EXKeyCommand *> *commands = [EXKernelDevKeyCommands sharedInstance].commands;
-  return [[commands valueForKeyPath:@"keyCommand"] allObjects];
+  NSArray<UIKeyCommand *> *keyCommands = [[commands valueForKeyPath:@"keyCommand"] allObjects];
+  if (EXIsWebContentView([RCTKeyWindow() valueForKey:@"firstResponder"])) {
+    return [keyCommands filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"modifierFlags != 0"]];
+  }
+  return keyCommands;
 }
 
 - (void)EX_handleKeyCommand:(UIKeyCommand *)key
@@ -223,52 +234,45 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
                              action:^(__unused UIKeyCommand *_) {
                                [weakSelf _handleMenuCommand];
                              }];
+  [self registerKeyCommandWithInput:@"d"
+                      modifierFlags:UIKeyModifierControl
+                             action:^(__unused UIKeyCommand *_) {
+                               [weakSelf _handleMenuCommand];
+                             }];
+  [self registerKeyCommandWithInput:@"d"
+                      modifierFlags:0
+                             action:^(__unused UIKeyCommand *_) {
+                               [weakSelf _handleMenuCommand];
+                             }];
   [self registerKeyCommandWithInput:@"r"
-                      modifierFlags:UIKeyModifierCommand
+                      modifierFlags:0
                              action:^(__unused UIKeyCommand *_) {
                                [weakSelf _handleRefreshCommand];
-                             }];
-  [self registerKeyCommandWithInput:@"n"
-                      modifierFlags:UIKeyModifierCommand
-                             action:^(__unused UIKeyCommand *_) {
-                               [weakSelf _handleDisableDebuggingCommand];
                              }];
   [self registerKeyCommandWithInput:@"i"
                       modifierFlags:UIKeyModifierCommand
                              action:^(__unused UIKeyCommand *_) {
                                [weakSelf _handleToggleInspectorCommand];
                              }];
+  [self registerKeyCommandWithInput:@"p"
+                      modifierFlags:UIKeyModifierCommand
+                             action:^(__unused UIKeyCommand *_) {
+                               [weakSelf _handleTogglePerformanceMonitorCommand];
+                             }];
   [self registerKeyCommandWithInput:@"k"
                       modifierFlags:UIKeyModifierCommand | UIKeyModifierControl
                              action:^(__unused UIKeyCommand *_) {
                                [weakSelf _handleKernelMenuCommand];
                              }];
-
 }
 
 - (void)_handleMenuCommand
 {
-  [[EXKernel sharedInstance] switchTasks];
+  [[DevMenuManager shared] toggleMenu];
 }
 
 - (void)_handleRefreshCommand
 {
-  // This reloads only JS
-  //  [[EXKernel sharedInstance].visibleApp.appManager reloadBridge];
-
-  // This reloads manifest and JS
-  [[EXKernel sharedInstance] reloadVisibleApp];
-}
-
-- (void)_handleDisableDebuggingCommand
-{
-  [[EXKernel sharedInstance].visibleApp.appManager disableRemoteDebugging];
-}
-
-- (void)_handleToggleRemoteDebuggingCommand
-{
-  [[EXKernel sharedInstance].visibleApp.appManager toggleRemoteDebugging];
-  // This reloads manifest and JS
   [[EXKernel sharedInstance] reloadVisibleApp];
 }
 
@@ -284,9 +288,6 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
 
 - (void)_handleKernelMenuCommand
 {
-  if ([EXKernel sharedInstance].visibleApp == [EXKernel sharedInstance].appRegistry.homeAppRecord) {
-    [[EXKernel sharedInstance].appRegistry.homeAppRecord.appManager showDevMenu];
-  }
 }
 
 #pragma mark - managing list of commands

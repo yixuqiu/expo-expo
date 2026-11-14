@@ -1,13 +1,15 @@
 import { CameraView, ScanningResult, ScanningOptions } from 'expo-camera';
 import Checkbox from 'expo-checkbox';
 import { useEffect, useState } from 'react';
-import { View, Button, Platform, Text, StyleSheet } from 'react-native';
+import { View, Button, StyleSheet } from 'react-native';
+
+import { BodyText } from '../../components/BodyText';
 
 export default function CameraScreenNextBarcode() {
   const [result, setResult] = useState<ScanningResult | null>(null);
   const [options, setOptions] = useState<ScanningOptions>({
     isGuidanceEnabled: false,
-    barcodeTypes: ['qr'],
+    barcodeTypes: [],
     isHighlightingEnabled: false,
     isPinchToZoomEnabled: false,
   });
@@ -25,16 +27,12 @@ export default function CameraScreenNextBarcode() {
 
   async function launchScanner() {
     if (CameraView.isModernBarcodeScannerAvailable) {
-      await CameraView.launchScanner(options);
+      try {
+        await CameraView.launchScanner(options);
+      } catch (error) {
+        console.error('Error launching scanner:', error);
+      }
     }
-  }
-
-  if (Platform.OS === 'android') {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ fontSize: 22, fontWeight: 'bold' }}>This API is unavailable on Android</Text>
-      </View>
-    );
   }
 
   return (
@@ -42,7 +40,7 @@ export default function CameraScreenNextBarcode() {
       <View style={{ gap: 20 }}>
         <Button title="Launch Scanner" onPress={launchScanner} />
         <View style={styles.optionRow}>
-          <Text style={styles.optionsText}>Guidance Enabled</Text>
+          <BodyText style={styles.optionsText}>Guidance Enabled</BodyText>
           <Checkbox
             value={options.isGuidanceEnabled}
             onValueChange={() =>
@@ -51,7 +49,7 @@ export default function CameraScreenNextBarcode() {
           />
         </View>
         <View style={styles.optionRow}>
-          <Text style={styles.optionsText}>Highlight Enabled</Text>
+          <BodyText style={styles.optionsText}>Highlight Enabled</BodyText>
           <Checkbox
             value={options.isHighlightingEnabled}
             onValueChange={() =>
@@ -63,7 +61,7 @@ export default function CameraScreenNextBarcode() {
           />
         </View>
         <View style={styles.optionRow}>
-          <Text style={styles.optionsText}>Pinch to zoom Enabled</Text>
+          <BodyText style={styles.optionsText}>Pinch to zoom Enabled</BodyText>
           <Checkbox
             value={options.isPinchToZoomEnabled}
             onValueChange={() =>
@@ -74,8 +72,22 @@ export default function CameraScreenNextBarcode() {
             }
           />
         </View>
+        <View style={styles.optionRow}>
+          <BodyText style={styles.optionsText}>Only scan QR codes</BodyText>
+          <Checkbox
+            value={options.barcodeTypes.includes('qr')}
+            onValueChange={() =>
+              setOptions((opts) => ({
+                ...opts,
+                barcodeTypes: opts.barcodeTypes.includes('qr')
+                  ? opts.barcodeTypes.filter((type) => type !== 'qr')
+                  : [...opts.barcodeTypes, 'qr'],
+              }))
+            }
+          />
+        </View>
       </View>
-      {result && <Text>{JSON.stringify(result, null, 2)}</Text>}
+      {result && <BodyText>{JSON.stringify(result, null, 2)}</BodyText>}
     </View>
   );
 }

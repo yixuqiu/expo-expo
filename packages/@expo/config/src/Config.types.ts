@@ -1,7 +1,15 @@
-import { ModConfig } from '@expo/config-plugins';
-import { ExpoConfig } from '@expo/config-types';
+import type { ModConfig } from '@expo/config-plugins';
+import type { ExpoConfig } from '@expo/config-types';
+import type { PlatformName } from '@expo/platforms';
 
-export { ExpoConfig };
+export type {
+  ExpoConfig,
+  Web as ExpoConfigWeb,
+  Android as ExpoConfigAndroid,
+  IOS as ExpoConfigIOS,
+  IOSIcons as ExpoConfigIOSIcons,
+  AndroidIntentFiltersData as ExpoConfigAndroidIntentFiltersData,
+} from '@expo/config-types';
 
 export type PackageJSONConfig = { dependencies?: Record<string, string>; [key: string]: any };
 
@@ -75,10 +83,6 @@ export type HookArguments = {
 
 export type ExpoGoConfig = {
   mainModuleName: string;
-  // A string that flipper checks to determine if Metro bundler is running
-  // by adding it to the manifest, we can trick Flipper into working properly.
-  // https://github.com/facebook/flipper/blob/9ca8bee208b7bfe2b8c0dab8eb4b79688a0c84bc/desktop/app/src/dispatcher/metroDevice.tsx#L37
-  __flipperHack: 'React Native packager is running';
   debuggerHost: string;
   developer: {
     tool: string | null;
@@ -87,6 +91,7 @@ export type ExpoGoConfig = {
   packagerOpts: {
     [key: string]: any;
   };
+  username?: string;
 };
 
 export type EASConfig = {
@@ -135,7 +140,8 @@ export enum ProjectPrivacy {
   UNLISTED = 'unlisted',
 }
 
-export type Platform = 'android' | 'ios' | 'web';
+export type Platform = PlatformName;
+export type NativePlatform = Exclude<Platform, 'web'>;
 export type ProjectTarget = 'managed' | 'bare';
 
 export type ConfigErrorCode =

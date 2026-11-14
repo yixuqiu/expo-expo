@@ -1,7 +1,15 @@
 {
-  "name": "expo-task-manager",
-  "platforms": ["ios", "android"],
+  "platforms": ["apple", "android"],
+  "ios": {
+    "modules": ["TaskManagerModule"],
+    "appDelegateSubscribers": ["TaskManagerAppDelegateSubscriber"]
+  },
   "android": {
-    "modules": ["expo.modules.taskManager.TaskManagerModule"]
+    "modules": ["expo.modules.taskmanager.TaskManagerModule"],
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.taskmanager",
+      "repository": "local-maven-repo"
+    }
   }
 }

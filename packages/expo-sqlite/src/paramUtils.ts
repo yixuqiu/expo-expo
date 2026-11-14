@@ -1,10 +1,10 @@
-import {
+import type {
   SQLiteBindBlobParams,
   SQLiteBindParams,
   SQLiteBindPrimitiveParams,
   SQLiteBindValue,
-  type SQLiteColumnNames,
-  type SQLiteColumnValues,
+  SQLiteColumnNames,
+  SQLiteColumnValues,
 } from './NativeStatement';
 
 /**
@@ -38,10 +38,12 @@ export function normalizeParams(
   const blobParams: SQLiteBindBlobParams = {};
   for (const key in bindParams) {
     const value = bindParams[key];
-    if (value instanceof Uint8Array) {
+    if (value instanceof Uint8Array || value instanceof ArrayBuffer) {
       blobParams[key] = value;
+    } else if (typeof value === 'boolean') {
+      primitiveParams[key] = value ? 1 : 0;
     } else {
-      primitiveParams[key] = value;
+      primitiveParams[key] = value ?? null;
     }
   }
 
@@ -53,14 +55,18 @@ export function normalizeParams(
  * @hidden
  */
 export function composeRow<T>(columnNames: SQLiteColumnNames, columnValues: SQLiteColumnValues): T {
-  const row = {};
+  // TODO(cedric): make these types more generic and tighten the returned object type based on provided column names/values
+  const row: { [key in SQLiteColumnNames[number]]: SQLiteColumnValues[number] } = {};
   if (columnNames.length !== columnValues.length) {
     throw new Error(
       `Column names and values count mismatch. Names: ${columnNames.length}, Values: ${columnValues.length}`
     );
   }
   for (let i = 0; i < columnNames.length; i++) {
-    row[columnNames[i]] = columnValues[i];
+    const columnName = columnNames[i];
+    if (columnName != null) {
+      row[columnName] = columnValues[i];
+    }
   }
   return row as T;
 }
@@ -73,22 +79,49 @@ export function composeRows<T>(
   columnNames: SQLiteColumnNames,
   columnValuesList: SQLiteColumnValues[]
 ): T[] {
-  if (columnValuesList.length === 0) {
+  const columnValues = columnValuesList[0];
+  if (columnValues == null) {
     return [];
   }
-  if (columnNames.length !== columnValuesList[0].length) {
+  if (columnNames.length !== columnValues.length) {
     // We only check the first row because SQLite returns the same column count for all rows.
     throw new Error(
-      `Column names and values count mismatch. Names: ${columnNames.length}, Values: ${columnValuesList[0].length}`
+      `Column names and values count mismatch. Names: ${columnNames.length}, Values: ${columnValues.length}`
     );
   }
   const results: T[] = [];
   for (const columnValues of columnValuesList) {
-    const row = {};
+    // TODO(cedric): make these types more generic and tighten the returned object type based on provided column names/values
+    const row: { [key in SQLiteColumnNames[number]]: SQLiteColumnValues[number] } = {};
     for (let i = 0; i < columnNames.length; i++) {
-      row[columnNames[i]] = columnValues[i];
+      const columnName = columnNames[i];
+      if (columnName != null) {
+        row[columnName] = columnValues[i];
+      }
     }
     results.push(row as T);
   }
   return results;
+}
+
+/**
+ * Normalize the index for the Storage.getKeyByIndexSync and Storage.getKeyByIndexAsync methods.
+ * @returns The normalized index or `null` if the index is out of bounds.
+ * @hidden
+ */
+export function normalizeStorageIndex(index: any): number | null {
+  const value = Math.floor(Number(index));
+
+  // Boundary checks
+  if (Object.is(value, -0)) {
+    return 0;
+  }
+  if (!Number.isSafeInteger(value)) {
+    // Chromium uses zero index when the index is out of bounds
+    return 0;
+  }
+  if (value < 0) {
+    return null;
+  }
+  return value;
 }

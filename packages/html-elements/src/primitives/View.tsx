@@ -1,8 +1,15 @@
-import { ClassAttributes, ComponentProps, ComponentType } from 'react';
-import { StyleProp, View as NativeView, ViewStyle as NativeViewStyle } from 'react-native';
+import type { ClassAttributes, ComponentProps, ComponentType } from 'react';
+import {
+  type StyleProp,
+  type ViewStyle as NativeViewStyle,
+  type BoxShadowValue,
+  type FilterFunction,
+  type ColorValue,
+  View as NativeView,
+} from 'react-native';
 
-import { createDevView } from './createDevView';
 import { createSafeStyledView } from '../css/createSafeStyledView';
+import { createDevView } from './createDevView';
 
 // https://github.com/necolas/react-native-web/issues/832
 
@@ -37,17 +44,17 @@ export interface WebViewStyle {
   /** @platform web */
   backgroundClip?: string;
   /** @platform web */
-  backgroundImage?: string;
+  backgroundImage?: NativeViewStyle['backgroundImage'] | string;
   /** @platform web */
   backgroundOrigin?: 'border-box' | 'content-box' | 'padding-box';
   /** @platform web */
-  backgroundPosition?: string;
+  backgroundPosition?: NativeViewStyle['backgroundPosition'] | string;
   /** @platform web */
-  backgroundRepeat?: string;
+  backgroundRepeat?: NativeViewStyle['backgroundRepeat'] | string;
   /** @platform web */
-  backgroundSize?: string;
+  backgroundSize?: NativeViewStyle['backgroundSize'] | string;
   /** @platform web */
-  boxShadow?: string;
+  boxShadow?: string | readonly BoxShadowValue[];
   /** @platform web */
   boxSizing?: string;
   /** @platform web */
@@ -55,7 +62,7 @@ export interface WebViewStyle {
   /** @platform web */
   cursor?: string;
   /** @platform web */
-  filter?: string;
+  filter?: string | readonly FilterFunction[];
   /** @platform web */
   gridAutoColumns?: string;
   /** @platform web */
@@ -83,7 +90,7 @@ export interface WebViewStyle {
   /** @platform web */
   outline?: string;
   /** @platform web */
-  outlineColor?: string;
+  outlineColor?: ColorValue;
   /** @platform web */
   overflowX?: string;
   /** @platform web */

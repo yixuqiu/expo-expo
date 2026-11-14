@@ -1,11 +1,14 @@
-/* eslint-env jest */
-import execa from 'execa';
-import { constants as fsConstants } from 'fs';
-import fs from 'fs-extra';
-import klawSync from 'klaw-sync';
+import fs from 'fs';
 import path from 'path';
 
-import { execute, projectRoot, getLoadedModulesAsync, setupTestProjectAsync, bin } from './utils';
+import { executeExpoAsync } from '../utils/expo';
+import { executeAsync } from '../utils/process';
+import {
+  projectRoot,
+  getLoadedModulesAsync,
+  setupTestProjectWithOptionsAsync,
+  findProjectFiles,
+} from './utils';
 
 const originalForceColor = process.env.FORCE_COLOR;
 const originalCI = process.env.CI;
@@ -14,7 +17,7 @@ const originalUseTypedRoutes = process.env._EXPO_E2E_USE_TYPED_ROUTES;
 const generatedFiles = ['tsconfig.json', 'expo-env.d.ts', '.expo/types/router.d.ts', '.gitignore'];
 
 beforeAll(async () => {
-  await fs.mkdir(projectRoot, { recursive: true });
+  await fs.promises.mkdir(projectRoot, { recursive: true });
   process.env.FORCE_COLOR = '0';
   process.env.CI = '1';
   process.env._EXPO_E2E_USE_TYPED_ROUTES = '1';
@@ -43,7 +46,7 @@ it('loads expected modules by default', async () => {
 });
 
 it('runs `npx expo customize --help`', async () => {
-  const results = await execute('customize', '--help');
+  const results = await executeExpoAsync(projectRoot, ['customize', '--help']);
   expect(results.stdout).toMatchInlineSnapshot(`
     "
       Info
@@ -60,99 +63,97 @@ it('runs `npx expo customize --help`', async () => {
   `);
 });
 
-it(
-  'runs `npx expo customize`',
-  async () => {
-    const projectRoot = await setupTestProjectAsync('basic-customize', 'with-blank');
-    // `npx expo customize index.html serve.json babel.config.js`
-    await execa(
-      'node',
-      [bin, 'customize', 'public/index.html', 'public/serve.json', 'babel.config.js'],
-      {
-        cwd: projectRoot,
-      }
-    );
+it('runs `npx expo customize`', async () => {
+  const projectRoot = await setupTestProjectWithOptionsAsync('basic-customize', 'with-blank', {
+    reuseExisting: false,
+  });
 
-    const files = klawSync(projectRoot)
-      .map((entry) => {
-        if (entry.path.includes('node_modules') || !entry.stats.isFile()) {
-          return null;
-        }
-        return path.posix.relative(projectRoot, entry.path);
-      })
-      .filter(Boolean);
+  // `npx expo customize index.html babel.config.js`
+  await executeExpoAsync(projectRoot, ['customize', 'public/index.html', 'babel.config.js']);
 
-    expect(files).toEqual([
-      'App.js',
-      'app.json',
-      'babel.config.js',
-      'bun.lockb',
-      'package.json',
-      'public/index.html',
-      'public/serve.json',
-    ]);
-  },
-  // Could take 45s depending on how fast npm installs
-  120 * 1000
-);
+  expect(findProjectFiles(projectRoot)).toEqual([
+    'App.js',
+    'app.json',
+    'babel.config.js',
+    'index.js',
+    'metro.config.js',
+    'package.json',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    'public/index.html',
+  ]);
+});
 
-it(
-  'runs `npx expo customize tsconfig.json`',
-  async () => {
-    const projectRoot = await setupTestProjectAsync('expo-typescript', 'with-router', '49.0.0');
-
-    // `npx expo typescript
-    await execa('node', [bin, 'customize', 'tsconfig.json'], {
-      cwd: projectRoot,
-      // env: { NODE_OPTIONS: '--inspect-brk' },
-    });
-
-    // Expect them to exist with correct access controls
-    for (const file of generatedFiles) {
-      await expect(
-        fs.promises.access(path.join(projectRoot, file), fsConstants.F_OK)
-      ).resolves.toBeUndefined();
+it('runs `npx expo customize tsconfig.json`', async () => {
+  const projectRoot = await setupTestProjectWithOptionsAsync(
+    'expo-customize-typescript',
+    'with-router',
+    {
+      reuseExisting: false,
+      linkExpoPackages: ['expo-router'],
     }
-  },
-  // Could take 45s depending on how fast npm installs
-  120 * 1000
-);
+  );
 
-it(
-  'runs `npx expo customize tsconfig.json` on a partially setup project',
-  async () => {
-    const projectRoot = await setupTestProjectAsync('expo-typescript', 'with-router', '49.0.0');
+  // `npx expo customize tsconfig.json`
+  await executeExpoAsync(projectRoot, ['customize', 'tsconfig.json']);
 
-    const existingTsConfig = {
-      extends: 'custom-package',
-      compilerOptions: {
-        strict: true,
-      },
-      customOption: true,
-      include: ['custom'],
-    };
+  // Expect them to exist with correct access controls
+  for (const file of generatedFiles) {
+    await expect(
+      fs.promises.access(path.join(projectRoot, file), fs.constants.F_OK)
+    ).resolves.toBeUndefined();
+  }
+});
 
-    // Write a tsconfig with partial data
-    await fs.promises.writeFile(
-      path.join(projectRoot, 'tsconfig.json'),
-      JSON.stringify(existingTsConfig)
-    );
+it('runs `npx expo customize tsconfig.json` on a partially setup project', async () => {
+  const projectRoot = await setupTestProjectWithOptionsAsync(
+    'expo-customize-typescript-partial',
+    'with-router',
+    {
+      reuseExisting: false,
+      linkExpoPackages: ['expo-router'],
+    }
+  );
 
-    // `npx expo typescript
-    const a = await execa('node', [bin, 'customize', 'tsconfig.json'], {
-      cwd: projectRoot,
-    });
+  const existingTsConfig = {
+    extends: 'custom-package',
+    compilerOptions: {
+      strict: true,
+    },
+    customOption: true,
+    include: ['custom'],
+  };
 
-    const newTsconfig = await fs.promises.readFile(
-      path.join(projectRoot, 'tsconfig.json'),
-      'utf-8'
-    );
+  // Write a tsconfig with partial data
+  await fs.promises.writeFile(
+    path.join(projectRoot, 'tsconfig.json'),
+    JSON.stringify(existingTsConfig)
+  );
 
-    expect(JSON.parse(newTsconfig)).toEqual({
-      ...existingTsConfig,
-      include: ['custom', '.expo/types/**/*.ts', 'expo-env.d.ts'],
-    });
-  },
-  // Could take 45s depending on how fast npm installs
-  120 * 1000
-);
+  // `npx expo customize tsconfig.json`
+  await executeExpoAsync(projectRoot, ['customize', 'tsconfig.json']);
+
+  const newTsconfig = await fs.promises.readFile(path.join(projectRoot, 'tsconfig.json'), 'utf-8');
+
+  expect(JSON.parse(newTsconfig)).toEqual({
+    ...existingTsConfig,
+    include: ['custom', '.expo/types/**/*.ts', 'expo-env.d.ts'],
+  });
+});
+
+it('runs `npx expo customize tsconfig.json` sets up typed routes', async () => {
+  const projectRoot = await setupTestProjectWithOptionsAsync(
+    'expo-customize-typed-routes',
+    'with-router-typed-routes',
+    {
+      reuseExisting: false,
+      linkExpoPackages: ['expo-router'],
+    }
+  );
+
+  // `npx expo customize tsconfig.json`
+  await executeExpoAsync(projectRoot, ['customize', 'tsconfig.json']);
+
+  // Ensure no typescript errors are found
+  await executeAsync(projectRoot, ['node', require.resolve('typescript/bin/tsc')]);
+});

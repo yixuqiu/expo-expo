@@ -6,7 +6,7 @@ import path from 'path';
 import * as Cache from './Cache';
 import * as Download from './Download';
 import * as Ico from './Ico';
-import { ImageOptions } from './Image.types';
+import type { ImageOptions } from './Image.types';
 import { env } from './env';
 import * as Jimp from './jimp';
 import * as Sharp from './sharp';
@@ -22,7 +22,7 @@ async function resizeImagesAsync(buffer: Buffer, sizes: number[]): Promise<Buffe
 }
 
 async function resizeAsync(imageOptions: ImageOptions): Promise<Buffer> {
-  const sharp: any = await getSharpAsync();
+  const sharp = await getSharpAsync();
   const { width, height, backgroundColor, resizeMode } = imageOptions;
   if (!sharp) {
     const inputOptions: any = { input: imageOptions.src, quality: 100 };
@@ -46,6 +46,7 @@ async function resizeAsync(imageOptions: ImageOptions): Promise<Buffer> {
   }
   try {
     let sharpBuffer = sharp(imageOptions.src)
+      .keepIccProfile()
       .ensureAlpha()
       .resize(width, height, { fit: resizeMode, background: 'transparent' });
 
@@ -92,10 +93,12 @@ async function resizeAsync(imageOptions: ImageOptions): Promise<Buffer> {
   }
 }
 
-async function getSharpAsync(): Promise<any> {
-  let sharp: any;
-  if (await Sharp.isAvailableAsync()) sharp = await Sharp.findSharpInstanceAsync();
-  return sharp;
+async function getSharpAsync() {
+  if (await Sharp.isAvailableAsync()) {
+    return await Sharp.findSharpInstanceAsync();
+  }
+
+  return null;
 }
 
 function getDimensionsId(imageOptions: Pick<ImageOptions, 'width' | 'height'>): string {
@@ -105,7 +108,10 @@ function getDimensionsId(imageOptions: Pick<ImageOptions, 'width' | 'height'>): 
 }
 
 async function maybeWarnAboutInstallingSharpAsync() {
-  // Putting the warning here will prevent the warning from showing if all images were reused from the cache
+  if (env.EXPO_IMAGE_UTILS_NO_SHARP) {
+    return;
+  }
+
   if (env.EXPO_IMAGE_UTILS_DEBUG && !hasWarned && !(await Sharp.isAvailableAsync())) {
     hasWarned = true;
     console.warn(
@@ -141,7 +147,7 @@ export function getMimeType(srcPath: string): string | null {
     srcPath = url.pathname;
   } catch {}
 
-  const ext = path.extname(srcPath).replace(/^\./, '');
+  const ext = path.extname(srcPath).replace(/^\./, '').toLowerCase();
   return types[ext] ?? null;
 }
 
@@ -166,6 +172,50 @@ async function ensureImageOptionsAsync(imageOptions: ImageOptions): Promise<Imag
   }
 
   return icon;
+}
+
+export async function generateImageBackgroundAsync(
+  imageOptions: Omit<ImageOptions, 'src'>
+): Promise<Buffer> {
+  const { width, height, backgroundColor, borderRadius } = imageOptions;
+  const sharp = await getSharpAsync();
+  if (!sharp) {
+    const jimp = await Jimp.createSquareAsync({
+      size: width,
+      color: backgroundColor,
+    });
+
+    if (borderRadius) {
+      const image = await Jimp.getJimpImageAsync(jimp);
+      // TODO: support setting border radius with Jimp. Currently only support making the image a circle
+      return await Jimp.circleAsync(image);
+    }
+    return jimp;
+  }
+  const sharpBuffer = sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      // TODO(cedric): this background color has to be defined for Sharp, but it's optionally typed here
+      // When we rework `@expo/image-utils`, this needs to be taken into account.
+      background: backgroundColor!,
+    },
+  });
+
+  if (imageOptions.borderRadius) {
+    const mask = Buffer.from(
+      `<svg><rect x="0" y="0" width="${width}" height="${height}"
+      rx="${borderRadius}" ry="${borderRadius}"
+      fill="${
+        backgroundColor && backgroundColor !== 'transparent' ? backgroundColor : 'none'
+      }" /></svg>`
+    );
+
+    sharpBuffer.composite([{ input: mask, blend: 'dest-in' }]);
+  }
+
+  return await sharpBuffer.png().toBuffer();
 }
 
 export async function generateImageAsync(
@@ -224,7 +274,7 @@ export async function compositeImagesAsync({
   x?: number;
   y?: number;
 }): Promise<Buffer> {
-  const sharp: any = await getSharpAsync();
+  const sharp = await getSharpAsync();
   if (!sharp) {
     const image = (await Jimp.getJimpImageAsync(background)).composite(
       await Jimp.getJimpImageAsync(foreground),
@@ -234,6 +284,7 @@ export async function compositeImagesAsync({
     return await image.getBufferAsync(image.getMIME());
   }
   return await sharp(background)
+    .keepIccProfile()
     .composite([{ input: foreground, left: x, top: y }])
     .toBuffer();
 }

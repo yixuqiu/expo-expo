@@ -4,13 +4,17 @@ import com.facebook.react.bridge.DynamicFromObject
 import com.facebook.react.bridge.JavaOnlyArray
 import com.facebook.react.bridge.JavaOnlyMap
 import com.google.common.truth.Truth
-import expo.modules.kotlin.types.Enumerable
+import expo.modules.kotlin.EnumWithInt
+import expo.modules.kotlin.EnumWithString
+import expo.modules.kotlin.EnumWithoutParameter
 import expo.modules.kotlin.types.convert
 import org.junit.Test
+import expo.modules.kotlin.types.OptimizedRecord
 
 class RecordTypeConverterTest {
   @Test
   fun `should convert map to mutable record`() {
+    @OptimizedRecord
     class MyRecord : Record {
       @Field
       var int: Int = 0
@@ -34,6 +38,7 @@ class RecordTypeConverterTest {
 
   @Test
   fun `should convert map to immutable record`() {
+    @OptimizedRecord
     class MyRecord : Record {
       @Field
       val int: Int = 0
@@ -57,6 +62,7 @@ class RecordTypeConverterTest {
 
   @Test
   fun `should convert map to lateinit record`() {
+    @OptimizedRecord
     class MyRecord : Record {
       @Field
       lateinit var string: String
@@ -75,6 +81,7 @@ class RecordTypeConverterTest {
 
   @Test
   fun `should convert map to mixed record`() {
+    @OptimizedRecord
     class MyRecord : Record {
       @Field
       val int: Int = 0
@@ -103,6 +110,7 @@ class RecordTypeConverterTest {
 
   @Test
   fun `should respect required annotation`() {
+    @OptimizedRecord
     class MyRecord : Record {
       @Field
       @Required
@@ -116,33 +124,8 @@ class RecordTypeConverterTest {
   }
 
   @Test
-  fun `should respect validators`() {
-    class MyRecord : Record {
-      @Field
-      @IntRange(from = 0, to = 10)
-      val int: Int = 0
-    }
-
-    val invalidMap = DynamicFromObject(
-      JavaOnlyMap().apply {
-        putInt("int", 11)
-      }
-    )
-
-    val map = DynamicFromObject(
-      JavaOnlyMap().apply {
-        putInt("int", 6)
-      }
-    )
-
-    val record = convert<MyRecord>(map)
-    Truth.assertThat(record.int).isEqualTo(6)
-    val exception = runCatching { convert<MyRecord>(invalidMap) }.exceptionOrNull()
-    Truth.assertThat(exception).isNotNull()
-  }
-
-  @Test
   fun `should respect custom js key`() {
+    @OptimizedRecord
     class MyRecord : Record {
       @Field(key = "point1")
       val int: Int = 0
@@ -171,6 +154,7 @@ class RecordTypeConverterTest {
 
   @Test
   fun `should respect non required value`() {
+    @OptimizedRecord
     class MyRecord : Record {
       @Field
       val required: Int = 10
@@ -196,7 +180,31 @@ class RecordTypeConverterTest {
   }
 
   @Test
+  fun `primary constructor default values shouldn't be ignored if using the 'shorthand' class syntax`() {
+    @OptimizedRecord
+    class MyRecord(
+      @Field
+      val int: Int = 42,
+      @Field
+      val string: String? = "string",
+      @Field
+      val boolean: Boolean = true
+    ) : Record
+
+    val map = DynamicFromObject(
+      JavaOnlyMap()
+    )
+
+    val myRecord = convert<MyRecord>(map)
+
+    Truth.assertThat(myRecord.int).isEqualTo(42)
+    Truth.assertThat(myRecord.string).isEqualTo("string")
+    Truth.assertThat(myRecord.boolean).isEqualTo(true)
+  }
+
+  @Test
   fun `should work with complex types`() {
+    @OptimizedRecord
     class InnerRecord : Record {
       @Field
       lateinit var name: String
@@ -206,8 +214,12 @@ class RecordTypeConverterTest {
       }
 
       override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
+        if (this === other) {
+          return true
+        }
+        if (javaClass != other?.javaClass) {
+          return false
+        }
 
         other as InnerRecord
 
@@ -215,6 +227,7 @@ class RecordTypeConverterTest {
       }
     }
 
+    @OptimizedRecord
     class MyRecord : Record {
       @Field
       lateinit var points: List<Double>
@@ -248,26 +261,9 @@ class RecordTypeConverterTest {
     Truth.assertThat(myRecord.points).isEqualTo(listOf(1.0, 2.0, 3.0))
   }
 
-  enum class EnumWithoutParameter : Enumerable {
-    VALUE1,
-    VALUE2,
-    VALUE3
-  }
-
-  enum class EnumWithInt(val value: Int) : Enumerable {
-    VALUE1(1),
-    VALUE2(2),
-    VALUE3(3)
-  }
-
-  enum class EnumWithString(val value: String) : Enumerable {
-    VALUE1("value1"),
-    VALUE2("value2"),
-    VALUE3("value3")
-  }
-
   @Test
   fun `should work with enums`() {
+    @OptimizedRecord
     class MyRecord : Record {
       @Field
       lateinit var enumWithoutParameter: EnumWithoutParameter

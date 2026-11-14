@@ -1,14 +1,297 @@
 # Changelog
 
-## Unpublished
+## 58.0.6
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Export `app.plugin.js` from `package.json:exports` so tools that resolve config plugins through Node's package exports, such as the config fallback in EAS CLI, find the config plugin again instead of failing with "Unable to resolve a valid config plugin". ([#51059](https://github.com/expo/expo/pull/51059) by [@huntie](https://github.com/huntie))
+
+## 58.0.5
+
+### Patch Changes
+
+- Restored the `./plugin` subpath export so typed config plugins can be imported from `<package>/plugin` again. ([#50965](https://github.com/expo/expo/pull/50965) by [@Titozzz](https://github.com/Titozzz))
+
+## 58.0.4
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.3
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.2 — 2026-09-22
 
 ### 🐛 Bug fixes
 
+- [iOS] Anchored the browser popover on every regular-width display, not only iPad, so it presents correctly on iPhone Duo. ([#50437](https://github.com/expo/expo/pull/50437) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.1 — 2026-09-21
+
+### 🐛 Bug fixes
+
+- [iOS] Resolve the presenting window from the foregrounded scene instead of the deprecated `UIApplication.keyWindow`, so `openBrowserAsync` and `openAuthSessionAsync` keep working in apps that use the UIScene life cycle. ([#50368](https://github.com/expo/expo/pull/50368) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.0 — 2026-09-10
+
+### 🐛 Bug fixes
+
+- [Android] Fixed `toolbarColor` being applied as the secondary toolbar color, and being discarded entirely when `secondaryToolbarColor` was also set. ([#48900](https://github.com/expo/expo/issues/48900) by [@MUSE-CODE-SPACE](https://github.com/MUSE-CODE-SPACE))
+- [iOS] Fixed a failed presentation leaving the module locked, with every later `openBrowserAsync` resolving `{ type: 'locked' }` until `dismissBrowser` was called or the app restarted. The promise of the failed call now resolves instead of hanging. ([#49756](https://github.com/expo/expo/pull/49756) by [@LizunovSergey](https://github.com/LizunovSergey))
+
+## 57.0.2 - 2026-07-22
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed `openAuthSessionAsync` hanging forever when the authentication session fails to start. ([#47653](https://github.com/expo/expo/issues/47653)) ([#47896](https://github.com/expo/expo/pull/47896) by [@HubertBer](https://github.com/HubertBer))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.4 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
 ### 💡 Others
+
+- [Android] Bring back the `experimentalLauncherActivity` config plugin option. ([#44073](https://github.com/expo/expo/pull/44073) by [@lukmccall](https://github.com/lukmccall))
+
+## 55.0.15 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+### 🐛 Bug fixes
+
+- Fixed `openAuthSessionAsync` silently failing on iOS 17.4+ when using `https://` redirect URLs without Associated Domains entitlements. The HTTPS universal link callback API is now opt-in via the `preferUniversalLinks` option. ([#44452](https://github.com/expo/expo/pull/44452) by [@vonovak](https://github.com/vonovak))
+
+## 55.0.10 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 — 2026-02-25
+
+### 🎉 New features
+
+- Add support for auth universal links callback ([#42695](https://github.com/expo/expo/pull/42695) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 55.0.8 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+### 💡 Others
+
+- Fixed missing word in `warmUpAsync` JSDoc. ([#42944](https://github.com/expo/expo/pull/42944) by [@brentvatne](https://github.com/brentvatne))
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🐛 Bug fixes
+
+- [Android] Fix the browser closing after the app is backgrounded by adding a new option to use a proxy activity to launch custom tabs. ([#41457](https://github.com/expo/expo/pull/41457) by [@lukmccall](https://github.com/lukmccall))
+
+### 💡 Others
+
+- [Android] Remove `experimentalLauncherActivity` config plugin option as it was replaced with the `useProxyActivity` option on `openBrowserAsync` and `openAuthSessionAsync` methods. ([#41535](https://github.com/expo/expo/pull/41535) by [@lukmccall](https://github.com/lukmccall))
+
+## 15.0.10 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.9 - 2025-11-03
+
+### 🐛 Bug fixes
+
+- [iOS] Fix `dismissBrowser` hanging when called with no browser open. ([#40799](https://github.com/expo/expo/pull/40799) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 15.0.8 - 2025-10-01
+
+### 🐛 Bug fixes
+
+- [Android] Fix multiple runs of prebuild repeatedly adding generated code. ([#39702](https://github.com/expo/expo/pull/39702) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 15.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 14.2.0 - 2025-06-11
+
+### 🎉 New features
+
+- Add experimental macOS support ([#37352](https://github.com/expo/expo/pull/37352) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 14.1.6 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.5 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.4 — 2025-04-21
+
+### 🐛 Bug fixes
+
+- Fixed `openBrowserAsync` doesn't surface exceptions. ([#36182](https://github.com/expo/expo/pull/36182) by [@lukmccall](https://github.com/lukmccall))
+
+## 14.1.3 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.2 — 2025-04-11
+
+### 💡 Others
+
+- Update doc comment about `--https` flag. ([#36083](https://github.com/expo/expo/pull/36083) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 14.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.0 — 2025-04-04
+
+### 🎉 New features
+
+- Add config plugin to enable correct behavior on android.([#34160](https://github.com/expo/expo/pull/34160) by [@alanjhughes](https://github.com/alanjhughes))
+
+### 🐛 Bug fixes
+
+- [iOS] Fix an issue where the app will crash when using the popover presentation style on iPad. ([#33996](https://github.com/expo/expo/pull/33996) by [@jblarriviere](https://github.com/jblarriviere))
+- [Android] Fix an issue where the browser would close when returning from the background.([#34160](https://github.com/expo/expo/pull/34160) by [@alanjhughes](https://github.com/alanjhughes))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+
+## 14.0.2 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.1 — 2024-11-14
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840), [#30864](https://github.com/expo/expo/pull/30864) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- [iOS] `dismissBrowser` function updated to return a promise. ([#31210](https://github.com/expo/expo/pull/31210) by [@nishan](https://github.com/intergalacticspacehighway))
+
+### 🐛 Bug fixes
+
+- Add missing `react-native` peer dependencies for isolated modules. ([#30490](https://github.com/expo/expo/pull/30490) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Removed old `Platform.Version` checks. ([#31557](https://github.com/expo/expo/pull/31557) by [@reichhartd](https://github.com/reichhartd))
 
 ## 13.0.3 — 2024-04-29
 
@@ -236,7 +519,7 @@ _This version does not introduce any user-facing changes._
 
 ### 🐛 Bug fixes
 
-- Removed unncecessary Android dependencies. ([#9538](https://github.com/expo/expo/pull/9538) by [@barthap](https://github.com/barthap))
+- Removed unnecessary Android dependencies. ([#9538](https://github.com/expo/expo/pull/9538) by [@barthap](https://github.com/barthap))
 - Fixed `openAuthSessionAsync` crashing when cancelled on iOS. ([#9722](https://github.com/expo/expo/pull/9722) by [@barthap](https://github.com/barthap))
 
 ## 8.4.0 — 2020-07-29

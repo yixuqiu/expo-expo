@@ -2,58 +2,75 @@ package expo.modules.kotlin.types
 
 import com.facebook.react.bridge.Dynamic
 import com.facebook.react.bridge.ReadableArray
+import com.facebook.react.bridge.ReadableType
 import expo.modules.kotlin.exception.CollectionElementCastException
+import expo.modules.kotlin.exception.DynamicCastException
 import expo.modules.kotlin.exception.exceptionDecorator
 import expo.modules.kotlin.jni.ExpectedType
 import expo.modules.kotlin.recycle
-import kotlin.reflect.KType
+import expo.modules.kotlin.types.descriptors.TypeDescriptor
 
 class ListTypeConverter(
   converterProvider: TypeConverterProvider,
-  private val listType: KType
-) : DynamicAwareTypeConverters<List<*>>(listType.isMarkedNullable) {
+  private val listType: TypeDescriptor
+) : DynamicAwareTypeConverters<List<*>>() {
   private val elementConverter = converterProvider.obtainTypeConverter(
-    requireNotNull(listType.arguments.first().type) {
+    requireNotNull(listType.params.first()) {
       "The list type should contain the type of elements."
     }
   )
 
-  override fun convertFromDynamic(value: Dynamic): List<*> {
-    val jsArray = value.asArray()
-    return convertFromReadableArray(jsArray)
+  override fun convertFromDynamic(value: Dynamic, context: ConverterContext, forceConversion: Boolean): List<*> {
+    if (value.type != ReadableType.Array) {
+      return listOf(
+        exceptionDecorator({ cause ->
+          CollectionElementCastException(
+            listType,
+            listType.params.first(),
+            value::class,
+            cause
+          )
+        }) {
+          elementConverter.convert(value, context, forceConversion)
+        }
+      )
+    }
+
+    val jsArray = value.asArray() ?: throw DynamicCastException(ReadableArray::class)
+    return convertFromReadableArray(jsArray, context, forceConversion)
   }
 
-  override fun convertFromAny(value: Any): List<*> {
-    return if (elementConverter.isTrivial()) {
+  override fun convertFromAny(value: Any, context: ConverterContext, forceConversion: Boolean): List<*> {
+    return if (elementConverter.isTrivial() && !forceConversion) {
       value as List<*>
     } else {
       (value as List<*>).map {
         exceptionDecorator({ cause ->
           CollectionElementCastException(
             listType,
-            listType.arguments.first().type!!,
+            listType.params.first(),
             it!!::class,
             cause
           )
         }) {
-          elementConverter.convert(it)
+          elementConverter.convert(it, context, forceConversion)
         }
       }
     }
   }
 
-  private fun convertFromReadableArray(jsArray: ReadableArray): List<*> {
+  private fun convertFromReadableArray(jsArray: ReadableArray, context: ConverterContext, forceConversion: Boolean): List<*> {
     return List(jsArray.size()) { index ->
       jsArray.getDynamic(index).recycle {
         exceptionDecorator({ cause ->
           CollectionElementCastException(
             listType,
-            listType.arguments.first().type!!,
+            listType.params.first(),
             type,
             cause
           )
         }) {
-          elementConverter.convert(this)
+          elementConverter.convert(this, context, forceConversion)
         }
       }
     }

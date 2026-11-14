@@ -1,11 +1,12 @@
-import { ConfigPlugin, createRunOncePlugin } from 'expo/config-plugins';
+import { type ConfigPlugin, createRunOncePlugin } from 'expo/config-plugins';
 
 import { withAssetsAndroid } from './withAssetsAndroid';
 import { withAssetsIos } from './withAssetsIos';
 
-const pkg = require('expo-asset/package.json');
+const pkg = require('../../package.json');
 
 export type AssetProps = {
+  /** An array of asset files or directories to link to the native project, relative to the project root. */
   assets?: string[];
 };
 

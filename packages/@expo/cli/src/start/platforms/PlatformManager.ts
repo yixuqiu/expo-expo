@@ -1,15 +1,22 @@
+import { events } from '2g';
 import { getConfig } from '@expo/config';
 import assert from 'assert';
 import chalk from 'chalk';
 
-import { AppIdResolver } from './AppIdResolver';
-import { DeviceManager } from './DeviceManager';
 import { Log } from '../../log';
 import { CommandError, UnimplementedError } from '../../utils/errors';
 import { learnMore } from '../../utils/link';
-import { logEventAsync } from '../../utils/telemetry';
+import type { AppIdResolver } from './AppIdResolver';
+import type { DeviceManager } from './DeviceManager';
+import { event as debugEvent } from './events';
 
-const debug = require('debug')('expo:start:platforms:platformManager') as typeof console.log;
+declare module '2g' {
+  interface EventRegistry {
+    'platform:open': { platform: 'ios' | 'android'; target: 'expo-go' | 'custom'; appId: string };
+  }
+}
+
+const event = events('platform');
 
 export interface BaseOpenInCustomProps {
   scheme?: string;
@@ -80,7 +87,7 @@ export class PlatformManager<
         );
       }
       if (applicationId) {
-        debug(`Resolving launch URL: (appId: ${applicationId}, redirect URL: ${redirectUrl})`);
+        debugEvent('open_launch_url', { appId: applicationId, redirectUrl });
         // NOTE(EvanBacon): This adds considerable amount of time to the command, we should consider removing or memoizing it.
         // Finally determine if the target device has a custom dev client installed.
         if (
@@ -116,32 +123,34 @@ export class PlatformManager<
     const { exp } = getConfig(this.projectRoot);
     const sdkVersion = exp.sdkVersion;
     assert(sdkVersion, 'sdkVersion should be resolved by getConfig');
-    const installedExpo = await deviceManager.ensureExpoGoAsync(sdkVersion);
+    await deviceManager.ensureExpoGoAsync(sdkVersion);
 
     deviceManager.activateWindowAsync();
-    await deviceManager.openUrlAsync(url);
+    await deviceManager.openUrlAsync(url, { appId: deviceManager.getExpoGoAppId() });
 
-    await logEventAsync('Open Url on Device', {
+    event('open', {
       platform: this.props.platform,
-      installedExpo,
+      target: 'expo-go',
+      appId: deviceManager.getExpoGoAppId(),
     });
 
     return { url };
   }
 
-  private async openProjectInCustomRuntimeAsync(
+  protected async openProjectInCustomRuntimeAsync(
     resolveSettings: Partial<IResolveDeviceProps> = {},
     props: Partial<IOpenInCustomProps> = {}
   ): Promise<{ url: string }> {
-    debug(
-      `open custom (${Object.entries(props)
+    debugEvent('open_custom', {
+      props: Object.entries(props)
         .map(([k, v]) => `${k}: ${v}`)
-        .join(', ')})`
-    );
+        .join(', '),
+    });
 
     let url = this.props.getCustomRuntimeUrl({ scheme: props.scheme });
-    debug(`Opening project in custom runtime: ${url} -- %O`, props);
+    debugEvent('open_custom_url', { url, props: JSON.stringify(props) });
     // TODO: It's unclear why we do application id validation when opening with a URL
+    // NOTE: But having it enables us to allow the deep link to directly open on iOS simulators without the modal.
     const applicationId = props.applicationId ?? (await this._getAppIdResolver().getAppIdAsync());
 
     const deviceManager = await this.props.resolveDeviceAsync(resolveSettings);
@@ -149,17 +158,11 @@ export class PlatformManager<
     if (!(await deviceManager.isAppInstalledAndIfSoReturnContainerPathForIOSAsync(applicationId))) {
       throw new CommandError(
         `No development build (${applicationId}) for this project is installed. ` +
-          `Please make and install a development build on the device first.\n${learnMore(
+          `Install a development build on the target device and try again.\n${learnMore(
             'https://docs.expo.dev/development/build/'
           )}`
       );
     }
-
-    // TODO: Rethink analytics
-    await logEventAsync('Open Url on Device', {
-      platform: this.props.platform,
-      installedExpo: false,
-    });
 
     if (!url) {
       url = this._resolveAlternativeLaunchUrl(applicationId, props);
@@ -167,7 +170,12 @@ export class PlatformManager<
 
     deviceManager.logOpeningUrl(url);
     await deviceManager.activateWindowAsync();
-    await deviceManager.openUrlAsync(url);
+
+    await deviceManager.openUrlAsync(url, {
+      appId: applicationId,
+    });
+
+    event('open', { platform: this.props.platform, target: 'custom', appId: applicationId });
 
     return {
       url,
@@ -186,10 +194,11 @@ export class PlatformManager<
         },
     resolveSettings: Partial<IResolveDeviceProps> = {}
   ): Promise<{ url: string }> {
-    debug(
-      `open (runtime: ${options.runtime}, platform: ${this.props.platform}, device: %O, shouldPrompt: ${resolveSettings.shouldPrompt})`,
-      resolveSettings.device
-    );
+    debugEvent('open_async', {
+      runtime: options.runtime,
+      platform: this.props.platform,
+      shouldPrompt: resolveSettings.shouldPrompt,
+    });
     if (options.runtime === 'expo') {
       return this.openProjectInExpoGoAsync(resolveSettings);
     } else if (options.runtime === 'web') {
@@ -201,7 +210,7 @@ export class PlatformManager<
     }
   }
 
-  /** Open the current web project (Webpack) in a device . */
+  /** Open the current web project (Webpack) in a device. */
   private async openWebProjectAsync(resolveSettings: Partial<IResolveDeviceProps> = {}): Promise<{
     url: string;
   }> {

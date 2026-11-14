@@ -3,11 +3,13 @@
 #import <ExpoModulesCore/EXDefines.h>
 #import <ExpoModulesCore/EXTaskConsumerInterface.h>
 
-#import <EXTaskManager/EXTask.h>
-#import <EXTaskManager/EXTaskService.h>
+#import <ExpoTaskManager/EXTask.h>
+#import <ExpoTaskManager/EXTaskService.h>
 
 #import <UMAppLoader/UMAppLoaderProvider.h>
 #import <UMAppLoader/UMAppRecordInterface.h>
+
+#import <React/RCTLog.h>
 
 @interface EXTaskService ()
 
@@ -33,11 +35,24 @@
 // Storing events per app. Schema: { "<appId>": [<eventIds...>] }
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *events;
 
+// Synchronization token guarding the collections above against concurrent access from different
+// React instances' JS threads and OS callbacks. @synchronized is recursive and releases on exception unwind.
+@property (nonatomic, strong) NSObject *lockTarget;
+
 @end
 
 @implementation EXTaskService
 
-EX_REGISTER_SINGLETON_MODULE(TaskService)
++ (nonnull EXTaskService *)shared
+{
+  static EXTaskService *sharedInstance = nil;
+  static dispatch_once_t onceToken;
+
+  dispatch_once(&onceToken, ^{
+    sharedInstance = [[EXTaskService alloc] init];
+  });
+  return sharedInstance;
+}
 
 - (instancetype)init
 {
@@ -49,6 +64,7 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
     _headlessTaskManagers = [NSMapTable strongToWeakObjectsMapTable];
     _eventsQueues = [NSMutableDictionary new];
     _events = [NSMutableDictionary new];
+    _lockTarget = [NSObject new];
   }
   return self;
 }
@@ -102,6 +118,42 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
   [self _addTaskToConfig:task];
 }
 
+- (id<EXTaskInterface>)registerTaskIfAbsentWithName:(NSString *)taskName
+                                              appId:(NSString *)appId
+                                             appUrl:(nullable NSString *)appUrl
+                                      consumerClass:(Class)consumerClass
+                                            options:(nullable NSDictionary *)options
+{
+  Class unversionedConsumerClass = [self _unversionedClassFromClass:consumerClass];
+
+  if (![unversionedConsumerClass conformsToProtocol:@protocol(EXTaskConsumerInterface)]) {
+    NSString *reason = @"Invalid `consumer` argument. It must be a class that conforms to EXTaskConsumerInterface protocol.";
+    @throw [NSException exceptionWithName:@"E_INVALID_TASK_CONSUMER" reason:reason userInfo:nil];
+  }
+
+  EXTask *task;
+  // The check and the insert share the lock that every insert takes, so this never replaces a task.
+  @synchronized (_lockTarget) {
+    id<EXTaskInterface> existingTask = _tasks[appId][taskName];
+    if (existingTask) {
+      return existingTask;
+    }
+    task = [[EXTask alloc] initWithName:taskName
+                                  appId:appId
+                                 appUrl:appUrl
+                          consumerClass:unversionedConsumerClass
+                                options:options
+                               delegate:self];
+    NSMutableDictionary *appTasks = [_tasks[appId] mutableCopy] ?: [NSMutableDictionary new];
+    [appTasks setObject:task forKey:taskName];
+    [_tasks setObject:appTasks forKey:appId];
+  }
+
+  [task.consumer didRegisterTask:task];
+  [self _addTaskToConfig:task];
+  return task;
+}
+
 /**
  *  Unregisters task with given name and for given appId. Also removes the task from the config.
  */
@@ -113,24 +165,28 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
   
   if (!task) {
     NSString *reason = [NSString stringWithFormat:@"Task '%@' not found for app ID '%@'.", taskName, appId];
-    @throw [NSException exceptionWithName:@"E_TASK_NOT_FOUND" reason:reason userInfo:nil];
+    NSDictionary<NSString *, id> *errorInfo = @{NSLocalizedDescriptionKey: reason};
+    @throw [NSException exceptionWithName:@"E_TASK_NOT_FOUND" reason:reason userInfo:errorInfo];
   }
   
   if (consumerClass != nil && ![task.consumer isMemberOfClass:[self _unversionedClassFromClass:consumerClass]]) {
     NSString *reason = [NSString stringWithFormat:@"Invalid task consumer. Cannot unregister task with name '%@' because it is associated with different consumer class.", taskName];
-    @throw [NSException exceptionWithName:@"E_INVALID_TASK_CONSUMER" reason:reason userInfo:nil];
+    NSDictionary<NSString *, id> *errorInfo = @{NSLocalizedDescriptionKey: reason};
+    @throw [NSException exceptionWithName:@"E_INVALID_TASK_CONSUMER" reason:reason userInfo:errorInfo];
   }
   
-  NSMutableDictionary *appTasks = [[self _getTasksForAppId:appId] mutableCopy];
-  
-  [appTasks removeObjectForKey:taskName];
-  
-  if (appTasks.count == 0) {
-    [_tasks removeObjectForKey:appId];
-  } else {
-    [_tasks setObject:appTasks forKey:appId];
+  @synchronized (_lockTarget) {
+    NSMutableDictionary *appTasks = [[self _getTasksForAppId:appId] mutableCopy];
+
+    [appTasks removeObjectForKey:taskName];
+
+    if (appTasks.count == 0) {
+      [_tasks removeObjectForKey:appId];
+    } else {
+      [_tasks setObject:appTasks forKey:appId];
+    }
   }
-  
+
   if ([task.consumer respondsToSelector:@selector(didUnregister)]) {
     [task.consumer didUnregister];
   }
@@ -142,8 +198,11 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
  */
 - (void)unregisterAllTasksForAppId:(NSString *)appId
 {
-  NSDictionary *appTasks = _tasks[appId];
-  
+  NSDictionary *appTasks;
+  @synchronized (_lockTarget) {
+    appTasks = _tasks[appId];
+  }
+
   if (appTasks) {
     // Call `didUnregister` on task consumers
     for (EXTask *task in [appTasks allValues]) {
@@ -151,9 +210,11 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
         [task.consumer didUnregister];
       }
     }
-    
-    [_tasks removeObjectForKey:appId];
-    
+
+    @synchronized (_lockTarget) {
+      [_tasks removeObjectForKey:appId];
+    }
+
     // Remove the app from the config in user defaults.
     [self _removeFromConfigAppWithId:appId];
   }
@@ -187,7 +248,7 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
       [results addObject:@{
         @"taskName": taskName,
         @"taskType": task.consumer.taskType,
-        @"options": task.options,
+        @"options": EXNullIfNil(task.options),
       }];
     }
   }
@@ -208,30 +269,49 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
   if ([task.consumer respondsToSelector:@selector(didFinish)]) {
     [task.consumer didFinish];
   }
+  if ([task.consumer conformsToProtocol:@protocol(EXTaskResponseConsumer)]) {
+    [(id<EXTaskResponseConsumer>)task.consumer didFinishEventWithResponse:response];
+  }
   
   // Inform requests about finished tasks
-  for (EXTaskExecutionRequest *request in [_requests copy]) {
+  NSArray<EXTaskExecutionRequest *> *requests;
+  @synchronized (_lockTarget) {
+    requests = [_requests copy];
+  }
+
+  for (EXTaskExecutionRequest *request in requests) {
     if ([request isIncludingTask:task]) {
       [request task:task didFinishWithResult:result];
     }
   }
-  
+
   // Remove event and maybe invalidate related app record
-  NSMutableArray *appEvents = _events[appId];
-  
-  if (appEvents) {
-    [appEvents removeObject:eventId];
-    
-    if (appEvents.count == 0) {
-      [self->_events removeObjectForKey:appId];
-      
-      // Invalidate app record but after 1 seconds delay so we can still take batched events.
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (!self->_events[appId]) {
-          [self _invalidateAppWithId:appId];
-        }
-      });
+  BOOL shouldMaybeInvalidate = NO;
+  @synchronized (_lockTarget) {
+    NSMutableArray *appEvents = _events[appId];
+
+    if (appEvents) {
+      [appEvents removeObject:eventId];
+
+      if (appEvents.count == 0) {
+        [self->_events removeObjectForKey:appId];
+        shouldMaybeInvalidate = YES;
+      }
     }
+  }
+
+  if (shouldMaybeInvalidate) {
+    // Invalidate app record but after 1 second delay so we can still take batched events.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      BOOL stillEmpty;
+      @synchronized (self->_lockTarget) {
+        stillEmpty = self->_events[appId] == nil;
+      }
+
+      if (stillEmpty) {
+        [self _invalidateAppWithId:appId];
+      }
+    });
   }
 }
 
@@ -243,23 +323,24 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
   // Having two tables for them is to prevent race condition problems,
   // when both foreground and background apps are launching at the same time.
   BOOL isHeadless = [taskManager isRunningInHeadlessMode];
-  NSMapTable *taskManagersTable = isHeadless ? _headlessTaskManagers : _taskManagers;
-  
-  // Set task manager in appropriate table.
-  [taskManagersTable setObject:taskManager forKey:appId];
-  
-  // Execute events waiting for the task manager.
-  NSMutableArray *appEventQueue = _eventsQueues[appId];
-  
-  if (appEventQueue) {
-    for (NSDictionary *body in appEventQueue) {
-      [taskManager executeWithBody:body];
-    }
+
+  NSArray<NSDictionary *> *appEventQueue;
+  @synchronized (_lockTarget) {
+    NSMapTable *taskManagersTable = isHeadless ? _headlessTaskManagers : _taskManagers;
+
+    // Set task manager in appropriate table.
+    [taskManagersTable setObject:taskManager forKey:appId];
+
+    // Snapshot events waiting for the task manager and remove the queue for that app.
+    appEventQueue = [_eventsQueues[appId] copy];
+    [_eventsQueues removeObjectForKey:appId];
   }
-  
-  // Remove events queue for that app.
-  [_eventsQueues removeObjectForKey:appId];
-  
+
+  // Execute events waiting for the task manager.
+  for (NSDictionary *body in appEventQueue) {
+    [taskManager executeWithBody:body];
+  }
+
   if (!isHeadless) {
     // Maybe update app url in user defaults. It might change only in non-headless mode.
     [self _maybeUpdateAppUrl:appUrl forAppId:appId];
@@ -268,9 +349,9 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
 
 # pragma mark - EXTaskDelegate
 
-- (void)executeTask:(nonnull id<EXTaskInterface>)task
-           withData:(nullable NSDictionary *)data
-          withError:(nullable NSError *)error
+- (nonnull NSString *)executeTask:(nonnull id<EXTaskInterface>)task
+                         withData:(nullable NSDictionary *)data
+                        withError:(nullable NSError *)error
 {
   id<EXTaskManagerInterface> taskManager = [self _taskManagerForAppId:task.appId];
   NSDictionary *executionInfo = [self _executionInfoForTask:task];
@@ -283,27 +364,36 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
   NSLog(@"EXTaskService: Executing task '%@' for app '%@'.", task.name, task.appId);
   
   // Save an event so we can keep tracking events for this app
-  NSMutableArray *appEvents = _events[task.appId] ?: [NSMutableArray new];
-  [appEvents addObject:executionInfo[@"eventId"]];
-  [_events setObject:appEvents forKey:task.appId];
-  
+  @synchronized (_lockTarget) {
+    NSMutableArray *appEvents = _events[task.appId] ?: [NSMutableArray new];
+    [appEvents addObject:executionInfo[@"eventId"]];
+    [_events setObject:appEvents forKey:task.appId];
+  }
+
   if (taskManager != nil) {
     // Task manager is initialized and can execute events
     [taskManager executeWithBody:body];
-    return;
+    return executionInfo[@"eventId"];
   }
-  
-  if (_appRecords[task.appId] == nil) {
+
+  BOOL hasAppRecord;
+  @synchronized (_lockTarget) {
+    hasAppRecord = _appRecords[task.appId] != nil;
+  }
+
+  if (!hasAppRecord) {
     // No app record yet - let's spin it up!
     [self _loadAppWithId:task.appId appUrl:task.appUrl];
   }
-  
+
   // App record for that app exists, but it's not fully loaded as its task manager is not there yet.
   // We need to add event's body to the queue from which events will be executed once the task manager is ready.
-  NSMutableArray *appEventsQueue = _eventsQueues[task.appId] ?: [NSMutableArray new];
-  [appEventsQueue addObject:body];
-  [_eventsQueues setObject:appEventsQueue forKey:task.appId];
-  return;
+  @synchronized (_lockTarget) {
+    NSMutableArray *appEventsQueue = _eventsQueues[task.appId] ?: [NSMutableArray new];
+    [appEventsQueue addObject:body];
+    [_eventsQueues setObject:appEventsQueue forKey:task.appId];
+  }
+  return executionInfo[@"eventId"];
 }
 
 # pragma mark - statics
@@ -369,7 +459,11 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
  */
 - (NSDictionary<NSString *, EXTask *> *)_getTasksForAppId:(NSString *)appId
 {
-  return _tasks[appId];
+  NSDictionary<NSString *, EXTask *> *appTasks;
+  @synchronized (_lockTarget) {
+    appTasks = _tasks[appId];
+  }
+  return appTasks;
 }
 
 /**
@@ -381,16 +475,26 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
                             consumerClass:(Class)consumerClass
                                   options:(nullable NSDictionary *)options
 {
-  NSMutableDictionary *appTasks = [[self _getTasksForAppId:appId] mutableCopy] ?: [NSMutableDictionary new];
   EXTask *task = [[EXTask alloc] initWithName:taskName
                                         appId:appId
                                        appUrl:appUrl
                                 consumerClass:consumerClass
                                       options:options
                                      delegate:self];
-  
-  [appTasks setObject:task forKey:task.name];
-  [_tasks setObject:appTasks forKey:appId];
+
+  id<EXTaskInterface> replacedTask;
+  @synchronized (_lockTarget) {
+    NSMutableDictionary *appTasks = [[self _getTasksForAppId:appId] mutableCopy] ?: [NSMutableDictionary new];
+    replacedTask = appTasks[task.name];
+    [appTasks setObject:task forKey:task.name];
+    [_tasks setObject:appTasks forKey:appId];
+  }
+
+  // Read under the lock, so the consumer that is told is the one that was really replaced, even when
+  // another registration of the name happened since the caller looked it up.
+  if ([replacedTask.consumer respondsToSelector:@selector(didUnregister)]) {
+    [replacedTask.consumer didUnregister];
+  }
   [task.consumer didRegisterTask:task];
   return task;
 }
@@ -453,17 +557,23 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
 {
   // Uses required reason API based on the following reason: CA92.1
   NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
-  [userDefaults setObject:dict forKey:NSStringFromClass([self class])];
+  [userDefaults setObject:[self sanitizeDictForUserDefaults:dict] forKey:NSStringFromClass([self class])];
   [userDefaults synchronize];
 }
 
 - (void)_iterateTasksUsingBlock:(void(^)(id<EXTaskInterface> task))block
 {
-  for (NSString *appId in _tasks) {
-    NSDictionary *appTasks = [self _getTasksForAppId:appId];
-    
+  // Snapshot so we can call out to task consumers below without holding the lock.
+  NSDictionary<NSString *, NSDictionary *> *tasksSnapshot;
+  @synchronized (_lockTarget) {
+    tasksSnapshot = [_tasks copy];
+  }
+
+  for (NSString *appId in tasksSnapshot) {
+    NSDictionary *appTasks = tasksSnapshot[appId];
+
     for (NSString *taskName in appTasks) {
-      id<EXTaskInterface> task = [self _getTaskWithName:taskName forAppId:appId];
+      id<EXTaskInterface> task = appTasks[taskName];
       block(task);
     }
   }
@@ -515,12 +625,16 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
       callback(results);
     }
     
-    [self->_requests removeObject:request];
+    @synchronized (self->_lockTarget) {
+      [self->_requests removeObject:request];
+    }
     request = nil;
   }];
-  
-  [_requests addObject:request];
-  
+
+  @synchronized (_lockTarget) {
+    [_requests addObject:request];
+  }
+
   [self _iterateTasksUsingBlock:^(id<EXTaskInterface> task) {
     if ([task.consumer.class respondsToSelector:@selector(supportsLaunchReason:)] && [task.consumer.class supportsLaunchReason:launchReason]) {
       [self _addTask:task toRequest:request withInfo:userInfo];
@@ -544,16 +658,20 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
     appRecord = [appLoader loadAppWithUrl:appUrl options:nil callback:^(BOOL success, NSError *error) {
       if (!success) {
         NSLog(@"EXTaskService: Loading app '%@' from url '%@' failed. Error description: %@", appId, appUrl, error.description);
-        [self->_events removeObjectForKey:appId];
-        [self->_eventsQueues removeObjectForKey:appId];
-        [self->_appRecords removeObjectForKey:appId];
-        
+        @synchronized (self->_lockTarget) {
+          [self->_events removeObjectForKey:appId];
+          [self->_eventsQueues removeObjectForKey:appId];
+          [self->_appRecords removeObjectForKey:appId];
+        }
+
         // Host unreachable? Unregister all tasks for that app.
         [self unregisterAllTasksForAppId:appId];
       }
     }];
-    
-    [_appRecords setObject:appRecord forKey:appId];
+
+    @synchronized (_lockTarget) {
+      [_appRecords setObject:appRecord forKey:appId];
+    }
   }
 }
 
@@ -562,8 +680,11 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
  */
 - (id<EXTaskManagerInterface>)_taskManagerForAppId:(NSString *)appId
 {
-  id<EXTaskManagerInterface> taskManager = [_taskManagers objectForKey:appId];
-  return taskManager ?: [_headlessTaskManagers objectForKey:appId];
+  id<EXTaskManagerInterface> taskManager;
+  @synchronized (_lockTarget) {
+    taskManager = [_taskManagers objectForKey:appId] ?: [_headlessTaskManagers objectForKey:appId];
+  }
+  return taskManager;
 }
 
 /**
@@ -613,7 +734,7 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
                                   consumerClass:consumerClass
                                         options:taskConfig[@"options"]];
           } else {
-            EXLogWarn(
+            RCTLogWarn(
                       @"EXTaskService: Task consumer '%@' has version '%d' that is not compatible with the saved version '%d'.",
                       consumerClassName,
                       currentConsumerVersion,
@@ -622,7 +743,7 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
             [self _removeTaskFromConfig:taskName appId:appId];
           }
         } else {
-          EXLogWarn(@"EXTaskService: Cannot restore task '%@' because consumer class doesn't exist.", taskName);
+          RCTLogWarn(@"EXTaskService: Cannot restore task '%@' because consumer class doesn't exist.", taskName);
           [self _removeTaskFromConfig:taskName appId:appId];
         }
       }
@@ -654,12 +775,18 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
 
 - (void)_invalidateAppWithId:(NSString *)appId
 {
-  id<UMAppRecordInterface> appRecord = _appRecords[appId];
-  
+  id<UMAppRecordInterface> appRecord;
+  @synchronized (_lockTarget) {
+    appRecord = _appRecords[appId];
+  }
+
   if (appRecord) {
     [appRecord invalidate];
-    [_appRecords removeObjectForKey:appId];
-    [_headlessTaskManagers removeObjectForKey:appId];
+
+    @synchronized (_lockTarget) {
+      [_appRecords removeObjectForKey:appId];
+      [_headlessTaskManagers removeObjectForKey:appId];
+    }
   }
 }
 
@@ -688,12 +815,14 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
   if (launchOptions[UIApplicationLaunchOptionsLocationKey]) {
     return EXTaskLaunchReasonLocation;
   }
+#if !TARGET_OS_TV
   if (launchOptions[UIApplicationLaunchOptionsNewsstandDownloadsKey]) {
     return EXTaskLaunchReasonNewsstandDownloads;
   }
   if (launchOptions[UIApplicationLaunchOptionsRemoteNotificationKey]) {
     return EXTaskLaunchReasonRemoteNotification;
   }
+#endif
   return EXTaskLaunchReasonUnrecognized;
 }
 
@@ -741,6 +870,64 @@ EX_REGISTER_SINGLETON_MODULE(TaskService)
 {
   NSString *unversionedClassName = [self _unversionedClassNameFromClass:versionedClass];
   return NSClassFromString(unversionedClassName);
+}
+
+/**
+ Cleans up an NSDictionary so that it is suitable for NSUserDefaults by removing NSNull values
+ The method will recurse into arrays and child dictionaries
+ */
+- (NSDictionary *)sanitizeDictForUserDefaults:(NSDictionary *)dict {
+  NSMutableDictionary *sanitized = [NSMutableDictionary dictionary];
+  
+  [dict enumerateKeysAndObjectsUsingBlock:^(id key, id value, BOOL *stop) {
+    if ([value isKindOfClass:[NSString class]] ||
+        [value isKindOfClass:[NSNumber class]] ||
+        [value isKindOfClass:[NSData class]] ||
+        [value isKindOfClass:[NSDate class]]) {
+      sanitized[key] = value;
+    } else if ([value isKindOfClass:[NSArray class]]) {
+      // Recurse into NSArray
+      sanitized[key] = [self sanitizeArrayForUserDefaults:value];
+    } else if ([value isKindOfClass:[NSDictionary class]]) {
+      // Recurse into NSDictionary
+      sanitized[key] = [self sanitizeDictForUserDefaults:value];
+    } else if ([value isKindOfClass:[NSNull class]]) {
+      // Skip NSNull
+    } else {
+      // Skip - Should never get here since all types should be handled
+    }
+  }];
+  
+  return [sanitized copy];
+}
+
+/**
+ Cleans up an NSArray so that it is suitable for NSUserDefaults by removing NSNull values
+ The method will recurse into arrays and child dictionaries
+ */
+- (NSArray *)sanitizeArrayForUserDefaults:(NSArray *)array {
+  NSMutableArray *sanitized = [NSMutableArray array];
+  
+  [array enumerateObjectsUsingBlock:^(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+    if ([obj isKindOfClass:[NSString class]] ||
+        [obj isKindOfClass:[NSNumber class]] ||
+        [obj isKindOfClass:[NSData class]] ||
+        [obj isKindOfClass:[NSDate class]]) {
+      [sanitized addObject:obj];
+    } else if ([obj isKindOfClass:[NSArray class]]) {
+      // Recurse into NSArray
+      [sanitized addObject:[self sanitizeArrayForUserDefaults:obj]];
+    } else if ([obj isKindOfClass:[NSDictionary class]]) {
+      // Recurse into NSDictionary
+      [sanitized addObject:[self sanitizeDictForUserDefaults:obj]];
+    } else if ([obj isKindOfClass:[NSNull class]]) {
+      // Skip NSNull
+    } else {
+      // Skip - Should never get here since all types should be handled
+    }
+  }];
+  
+  return [sanitized copy];
 }
 
 @end

@@ -2,17 +2,11 @@ package expo.modules.adapters.react.services;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.util.Log;
-import android.view.View;
-
-import androidx.annotation.Nullable;
 
 import com.facebook.react.bridge.ReactContext;
+import com.facebook.react.common.annotations.FrameworkAPI;
+import com.facebook.react.common.annotations.UnstableReactNativeAPI;
 import com.facebook.react.turbomodule.core.CallInvokerHolderImpl;
-import com.facebook.react.uimanager.IllegalViewOperationException;
-import com.facebook.react.uimanager.NativeViewHierarchyManager;
-import com.facebook.react.uimanager.UIManagerHelper;
-import com.facebook.react.uimanager.UIManagerModule;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -21,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
+import androidx.annotation.OptIn;
 import expo.modules.core.interfaces.ActivityEventListener;
 import expo.modules.core.interfaces.ActivityProvider;
 import expo.modules.core.interfaces.InternalModule;
@@ -28,6 +23,7 @@ import expo.modules.core.interfaces.JavaScriptContextProvider;
 import expo.modules.core.interfaces.LifecycleEventListener;
 import expo.modules.core.interfaces.services.UIManager;
 
+@OptIn(markerClass = UnstableReactNativeAPI.class)
 public class UIManagerModuleWrapper implements
   ActivityProvider,
   InternalModule,
@@ -55,64 +51,6 @@ public class UIManagerModuleWrapper implements
   }
 
   @Override
-  public <T> void addUIBlock(final int tag, final UIBlock<T> block, final Class<T> tClass) {
-    getContext().getNativeModule(UIManagerModule.class).addUIBlock(new com.facebook.react.uimanager.UIBlock() {
-      @Override
-      public void execute(NativeViewHierarchyManager nativeViewHierarchyManager) {
-        View view = nativeViewHierarchyManager.resolveView(tag);
-        if (view == null) {
-          block.reject(new IllegalArgumentException("Expected view for this tag not to be null."));
-        } else {
-          try {
-            if (tClass.isInstance(view)) {
-              block.resolve(tClass.cast(view));
-            } else {
-              block.reject(new IllegalStateException(
-                "Expected view to be of " + tClass + "; found " + view.getClass() + " instead"));
-            }
-          } catch (Exception e) {
-            block.reject(e);
-          }
-        }
-      }
-    });
-  }
-
-  @Override
-  public void addUIBlock(final GroupUIBlock block) {
-    getContext().getNativeModule(UIManagerModule.class).addUIBlock(new com.facebook.react.uimanager.UIBlock() {
-      @Override
-      public void execute(final NativeViewHierarchyManager nativeViewHierarchyManager) {
-        block.execute(new ViewHolder() {
-          @Override
-          public View get(Object key) {
-            if (key instanceof Number) {
-              try {
-                return nativeViewHierarchyManager.resolveView(((Number) key).intValue());
-              } catch (IllegalViewOperationException e) {
-                return null;
-              }
-            } else {
-              Log.w("E_INVALID_TAG", "Provided tag is of class " + key.getClass() + " whereas React expects tags to be integers. Are you sure you're providing proper argument to addUIBlock?");
-            }
-            return null;
-          }
-        });
-      }
-    });
-  }
-
-  @Nullable
-  @Override
-  public View resolveView(int viewTag) {
-    final com.facebook.react.bridge.UIManager uiManager = UIManagerHelper.getUIManagerForReactTag(getContext(), viewTag);
-    if (uiManager == null) {
-      return null;
-    }
-    return uiManager.resolveView(viewTag);
-  }
-
-  @Override
   public void runOnUiQueueThread(Runnable runnable) {
     if (getContext().isOnUiQueueThread()) {
       runnable.run();
@@ -129,15 +67,6 @@ public class UIManagerModuleWrapper implements
       getContext().runOnJSQueueThread(runnable);
     }
   }
-
-  public void runOnNativeModulesQueueThread(Runnable runnable) {
-    if (mReactContext.isOnNativeModulesQueueThread()) {
-      runnable.run();
-    } else {
-      mReactContext.runOnNativeModulesQueueThread(runnable);
-    }
-  }
-
 
   @Override
   public void registerLifecycleEventListener(final LifecycleEventListener listener) {
@@ -225,6 +154,8 @@ public class UIManagerModuleWrapper implements
     return mReactContext.getJavaScriptContextHolder().get();
   }
 
+  @androidx.annotation.OptIn(markerClass = FrameworkAPI.class)
+  @SuppressWarnings("deprecation")
   public CallInvokerHolderImpl getJSCallInvokerHolder() {
     return (CallInvokerHolderImpl) mReactContext.getCatalystInstance().getJSCallInvokerHolder();
   }

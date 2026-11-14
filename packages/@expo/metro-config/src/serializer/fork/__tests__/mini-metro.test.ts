@@ -1,5 +1,41 @@
 import { microBundle } from './mini-metro';
 
+it('resolves weak IDs without traversing weak-only targets', async () => {
+  const [, , graph] = await microBundle({
+    fs: {
+      'index.js': `require.resolveWeak('./weak');`,
+      'weak.js': `import './hidden';`,
+      'hidden.js': '',
+    },
+  });
+  expect([...graph.dependencies.keys()]).toEqual(['/app/index.js']);
+  expect([...graph.dependencies.get('/app/index.js')!.dependencies.values()][0]).toMatchObject({
+    absolutePath: '/app/weak.js',
+  });
+});
+
+it('resolves every edge to a previously visited module, including nested cycles', async () => {
+  const [, , graph] = await microBundle({
+    fs: {
+      'index.js': `import './nested/a'; import './nested/b';`,
+      'nested/a.js': `import './b';`,
+      'nested/b.js': `import './a';`,
+    },
+  });
+  expect(
+    [...graph.dependencies].map(([modulePath, module]) => [
+      modulePath,
+      [...module.dependencies.values()].map((dependency) =>
+        'absolutePath' in dependency ? dependency.absolutePath : undefined
+      ),
+    ])
+  ).toEqual([
+    ['/app/index.js', ['/app/nested/a.js', '/app/nested/b.js']],
+    ['/app/nested/a.js', ['/app/nested/b.js']],
+    ['/app/nested/b.js', ['/app/nested/a.js']],
+  ]);
+});
+
 const fs = {
   'index.js': `
     import { foo } from './foo';
@@ -10,8 +46,8 @@ const fs = {
   `,
 };
 
-it(`can create a micro Metro graph fixture`, () => {
-  expect(microBundle({ fs })).toMatchInlineSnapshot(`
+it(`can create a micro Metro graph fixture`, async () => {
+  expect(await microBundle({ fs })).toMatchInlineSnapshot(`
     [
       "/app/index.js",
       [],
@@ -19,22 +55,27 @@ it(`can create a micro Metro graph fixture`, () => {
         "dependencies": Map {
           "/app/index.js" => {
             "dependencies": Map {
-              "BMmp2IBk5bHEtqZLRWIvwl1M4ck=" => {
+              "w3xsnP8GGa/kB56APw6c+VOi8X0=" => {
                 "absolutePath": "/app/foo.js",
                 "data": {
                   "data": {
                     "asyncType": null,
-                    "key": "BMmp2IBk5bHEtqZLRWIvwl1M4ck=",
+                    "exportNames": [
+                      "*",
+                    ],
+                    "imports": 1,
+                    "isESMImport": true,
+                    "key": "w3xsnP8GGa/kB56APw6c+VOi8X0=",
                     "locs": [
-                      {
-                        "end": {
+                      SourceLocation {
+                        "end": Position {
                           "column": 32,
                           "index": 33,
                           "line": 2,
                         },
                         "filename": undefined,
                         "identifierName": undefined,
-                        "start": {
+                        "start": Position {
                           "column": 4,
                           "index": 5,
                           "line": 2,
@@ -51,11 +92,36 @@ it(`can create a micro Metro graph fixture`, () => {
             "output": [
               {
                 "data": {
-                  "code": "__d(function (global, _$$_REQUIRE, _$$_IMPORT_DEFAULT, _$$_IMPORT_ALL, module, exports, dependencyMap) {
-      var foo = _$$_REQUIRE(dependencyMap[0], "./foo").foo;
-      console.log(foo);
+                  "code": "__d(function (global, require, _$$_IMPORT_DEFAULT, _$$_IMPORT_ALL, module, exports, _dependencyMap) {
+      "use strict";
+
+      var _foo = require(_dependencyMap[0], "./foo");
+      console.log(_foo.foo);
     });",
-                  "lineCount": 4,
+                  "expoCacheVary": undefined,
+                  "expoDomComponentReference": undefined,
+                  "functionMap": {
+                    "mappings": "AAA",
+                    "names": [
+                      "<global>",
+                    ],
+                  },
+                  "hasCjsExports": false,
+                  "lineCount": 6,
+                  "loaderReference": undefined,
+                  "map": {
+                    "mappings": ";;;EACI,IAAAA,IAAA,GAAAC,OAAA,CAAAC,cAAA;EACAC,OAAO,CAACC,GAAG,CAACC,IAAG,CAAAA,GAAA,CAAC;AAAC,G",
+                    "names": [
+                      "_foo",
+                      "require",
+                      "_dependencyMap",
+                      "console",
+                      "log",
+                      "foo",
+                    ],
+                  },
+                  "reactClientReference": undefined,
+                  "reactServerReference": undefined,
                 },
                 "type": "js/module",
               },
@@ -71,14 +137,44 @@ it(`can create a micro Metro graph fixture`, () => {
             "output": [
               {
                 "data": {
-                  "code": "__d(function (global, _$$_REQUIRE, _$$_IMPORT_DEFAULT, _$$_IMPORT_ALL, module, exports, dependencyMap) {
+                  "code": "__d(function (global, require, _$$_IMPORT_DEFAULT, _$$_IMPORT_ALL, module, exports, _dependencyMap) {
+      "use strict";
+
       Object.defineProperty(exports, '__esModule', {
         value: true
       });
+      Object.defineProperty(exports, "foo", {
+        enumerable: true,
+        get: function () {
+          return foo;
+        }
+      });
       const foo = 'foo';
-      exports.foo = foo;
     });",
-                  "lineCount": 7,
+                  "expoCacheVary": undefined,
+                  "expoDomComponentReference": undefined,
+                  "functionMap": {
+                    "mappings": "AAA",
+                    "names": [
+                      "<global>",
+                    ],
+                  },
+                  "hasCjsExports": false,
+                  "lineCount": 14,
+                  "loaderReference": undefined,
+                  "map": {
+                    "mappings": ";;;;;;EACIA,MAAA,CAAAC,cAAA,CAAAC,OAAA;IAAAC,UAAA;IAAAC,GAAA,WAAAA,CAAA;MAAA,OAAAC,GAAA;IAAA;EAAA;EAAO,MAAMA,GAAG,GAAG,KAAK;AAAC,G",
+                    "names": [
+                      "Object",
+                      "defineProperty",
+                      "exports",
+                      "enumerable",
+                      "get",
+                      "foo",
+                    ],
+                  },
+                  "reactClientReference": undefined,
+                  "reactServerReference": undefined,
                 },
                 "type": "js/module",
               },
@@ -94,9 +190,13 @@ it(`can create a micro Metro graph fixture`, () => {
             "baseUrl": undefined,
             "bytecode": undefined,
             "engine": undefined,
+            "environment": undefined,
+            "optimize": undefined,
+            "reactCompiler": undefined,
           },
           "dev": true,
-          "hot": false,
+          "experimentalImportSupport": true,
+          "inlineRequires": false,
           "minify": false,
           "platform": "web",
           "type": "module",
@@ -104,6 +204,7 @@ it(`can create a micro Metro graph fixture`, () => {
         },
       },
       {
+        "_test_getPackageJson": [Function],
         "asyncRequireModulePath": "expo-mock/async-require",
         "createModuleId": [Function],
         "dev": true,
@@ -112,13 +213,14 @@ it(`can create a micro Metro graph fixture`, () => {
         "inlineSourceMap": undefined,
         "modulesOnly": false,
         "processModuleFilter": [Function],
-        "projectRoot": "/app/",
+        "projectRoot": "/app",
         "runBeforeMainModule": [],
         "runModule": true,
         "serializerOptions": undefined,
-        "serverRoot": "/app/",
+        "serverRoot": "/app",
         "shouldAddToIgnoreList": [Function],
         "sourceMapUrl": undefined,
+        "sourceUrl": undefined,
       },
     ]
   `);

@@ -1,16 +1,24 @@
-export { VideoView, isPictureInPictureSupported } from './VideoView';
+export {
+  isPictureInPictureSupported,
+  clearVideoCacheAsync,
+  setVideoCacheSizeAsync,
+  getCurrentVideoCacheSize,
+} from './VideoModule';
+export { VideoView } from './VideoView';
 export { useVideoPlayer } from './VideoPlayer';
 
-export { VideoContentFit, VideoViewProps } from './VideoView.types';
+export type {
+  VideoContentFit,
+  VideoViewProps,
+  SurfaceType,
+  ButtonOptions,
+} from './VideoView.types';
+export type { VideoThumbnail } from './VideoThumbnail';
 
-export {
-  VideoPlayer,
-  VideoPlayerEvents,
-  VideoPlayerStatus,
-  VideoSource,
-  PlayerError,
-  VolumeEvent,
-  VideoMetadata,
-  DRMType,
-  DRMOptions,
-} from './VideoPlayer.types';
+export { createVideoPlayer } from './VideoPlayer';
+export { default as VideoAirPlayButton } from './VideoAirPlayButton';
+
+export type * from './VideoPlayer.types';
+
+export type * from './VideoPlayerEvents.types';
+export type * from './VideoAirPlayButton.types';

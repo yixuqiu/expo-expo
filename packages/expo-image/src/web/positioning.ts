@@ -1,4 +1,4 @@
-import { ImageContentPositionObject, ImageContentPositionValue } from '../Image.types';
+import type { ImageContentPositionObject, ImageContentPositionValue } from '../Image.types';
 
 export function ensureValueIsWebUnits(value: string | number) {
   const trimmedValue = String(value).trim();
@@ -36,7 +36,7 @@ export function getObjectPositionFromContentPositionObject(
   }
 
   return (
-    ['top', 'bottom', 'left', 'right']
+    (['top', 'bottom', 'left', 'right'] as const)
       .map((key) => {
         if (key in resolvedPosition) {
           return `${key} ${ensureValueIsWebUnits(resolvedPosition[key])}`;

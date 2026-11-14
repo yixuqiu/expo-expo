@@ -1,7 +1,7 @@
-import { DoctorCheck, DoctorCheckParams, DoctorCheckResult } from './checks.types';
 import { getDeepDependenciesWarningAsync } from '../utils/explainDependencies';
 import { getRemoteVersionsForSdkAsync } from '../utils/getRemoteVersionsForSdkAsync';
 import { joinWithCommasAnd } from '../utils/strings';
+import type { DoctorCheck, DoctorCheckParams, DoctorCheckResult } from './checks.types';
 
 async function getDeepDependenciesWarningWithPackageNameAsync(
   packageName: string,
@@ -22,7 +22,7 @@ export class SupportPackageVersionCheck implements DoctorCheck {
   description =
     'Check that native modules use compatible support package versions for installed Expo SDK';
 
-  sdkVersionRange = '>=45.0.0';
+  sdkVersionRange = '>=45.0.0 <54.0.0';
 
   async runAsync({ exp, pkg, projectRoot }: DoctorCheckParams): Promise<DoctorCheckResult> {
     let issues: string[] = [];
@@ -40,13 +40,13 @@ export class SupportPackageVersionCheck implements DoctorCheck {
       'metro',
     ]
       .filter((packageName) => versionsForSdk[packageName])
-      .map((packageName) => ({ packageName, version: versionsForSdk[packageName] }));
+      .map((packageName) => ({ packageName, version: versionsForSdk[packageName] ?? '' }));
 
     // if metro is present in versions API, add check additional key metro packages, which should use some version
     if (supportPackagesToValidate.find((p) => p.packageName === 'metro')) {
       supportPackagesToValidate.push(
-        { packageName: 'metro-resolver', version: versionsForSdk['metro'] },
-        { packageName: 'metro-config', version: versionsForSdk['metro'] }
+        { packageName: 'metro-resolver', version: versionsForSdk['metro'] ?? '' },
+        { packageName: 'metro-config', version: versionsForSdk['metro'] ?? '' }
       );
     }
 
@@ -69,13 +69,16 @@ export class SupportPackageVersionCheck implements DoctorCheck {
       isSuccessful: issues.length === 0,
       issues,
       advice: issues.length
-        ? 'Upgrade dependencies that are using the invalid package versions' +
-          (supportPackagesPinnedByResolution.length &&
-            ` and remove resolutions from package.json that are pinning ${joinWithCommasAnd(
-              supportPackagesPinnedByResolution
-            )} to an invalid version`) +
-          '.'
-        : undefined,
+        ? [
+            'Upgrade dependencies that are using the invalid package versions' +
+              (supportPackagesPinnedByResolution.length
+                ? ` and remove resolutions from package.json that are pinning ${joinWithCommasAnd(
+                    supportPackagesPinnedByResolution
+                  )} to an invalid version`
+                : '') +
+              '.',
+          ]
+        : [],
     };
   }
 }

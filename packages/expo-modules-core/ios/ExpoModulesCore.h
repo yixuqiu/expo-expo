@@ -1,13 +1,58 @@
-// Copyright 2015-present 650 Industries. All rights reserved.
+@class RCTBundleURLProvider;
 
-// Uncomment this to temporarily disable Fabric.
-// Also make sure to change `RCT_NEW_ARCH_ENABLED` C++ flag in Pods project's build settings.
-//#undef RN_FABRIC_ENABLED
-
-// Some headers needs to be imported from Objective-C code too.
-// Otherwise they won't be visible in `ExpoModulesCore-Swift.h`.
-#import <React/RCTView.h>
-
-#if __has_include(<ExpoModulesCore/ExpoModulesCore-umbrella.h>)
-#import <ExpoModulesCore/ExpoModulesCore-umbrella.h>
-#endif
+#import <ExpoModulesCore/CoreModuleHelper.h>
+#import <ExpoModulesCore/SwiftUIViewProps.h>
+#import <ExpoModulesCore/SwiftUIVirtualViewObjC.h>
+#import <ExpoModulesCore/SwiftUIVirtualViewObjCDev.h>
+#import <ExpoModulesCore/EXAppDefines.h>
+#import <ExpoModulesCore/EXDefines.h>
+#import <ExpoModulesCore/ExpoFabricViewObjC.h>
+#import <ExpoModulesCore/EXViewPropsDecoding.h>
+#import <ExpoModulesCore/ExpoNativeViewObjC.h>
+#import <ExpoModulesCore/EXAppContextProtocol.h>
+#import <ExpoModulesCore/EXReactDelegateProtocol.h>
+#import <ExpoModulesCore/EXCameraInterface.h>
+#import <ExpoModulesCore/EXConstantsInterface.h>
+#import <ExpoModulesCore/EXFaceDetectorManagerInterface.h>
+#import <ExpoModulesCore/EXFaceDetectorManagerProviderInterface.h>
+#import <ExpoModulesCore/EXFilePermissionModuleInterface.h>
+#import <ExpoModulesCore/EXFileSystemInterface.h>
+#import <ExpoModulesCore/EXImageLoaderInterface.h>
+#import <ExpoModulesCore/EXPermissionsInterface.h>
+#import <ExpoModulesCore/EXPermissionsMethodsDelegate.h>
+#import <ExpoModulesCore/EXUserNotificationCenterProxyInterface.h>
+#import <ExpoModulesCore/EXAccelerometerInterface.h>
+#import <ExpoModulesCore/EXBarometerInterface.h>
+#import <ExpoModulesCore/EXDeviceMotionInterface.h>
+#import <ExpoModulesCore/EXGyroscopeInterface.h>
+#import <ExpoModulesCore/EXMagnetometerInterface.h>
+#import <ExpoModulesCore/EXMagnetometerUncalibratedInterface.h>
+#import <ExpoModulesCore/EXTaskConsumerInterface.h>
+#import <ExpoModulesCore/EXTaskInterface.h>
+#import <ExpoModulesCore/EXTaskLaunchReason.h>
+#import <ExpoModulesCore/EXTaskManagerInterface.h>
+#import <ExpoModulesCore/EXTaskRunnerInterface.h>
+#import <ExpoModulesCore/EXTaskServiceInterface.h>
+#import <ExpoModulesCore/EXJSIInstaller.h>
+#import <ExpoModulesCore/EXSharedObjectUtils.h>
+#import <ExpoModulesCore/EXOptimizedFunctionUtils.h>
+#import <ExpoModulesCore/EXExportedModule.h>
+#import <ExpoModulesCore/EXSingletonModule.h>
+#import <ExpoModulesCore/EXUtilities.h>
+#import <ExpoModulesCore/EXModuleRegistry.h>
+#import <ExpoModulesCore/EXModuleRegistryDelegate.h>
+#import <ExpoModulesCore/EXModuleRegistryAdapter.h>
+#import <ExpoModulesCore/EXModuleRegistryHolderReactModule.h>
+#import <ExpoModulesCore/EXModuleRegistryProvider.h>
+#import <ExpoModulesCore/EXAppLifecycleListener.h>
+#import <ExpoModulesCore/EXAppLifecycleService.h>
+#import <ExpoModulesCore/EXInternalModule.h>
+#import <ExpoModulesCore/EXJavaScriptContextProvider.h>
+#import <ExpoModulesCore/EXModuleRegistryConsumer.h>
+#import <ExpoModulesCore/EXUIManager.h>
+#import <ExpoModulesCore/EXUtilitiesInterface.h>
+#import <ExpoModulesCore/EXReactNativeAdapter.h>
+#import <ExpoModulesCore/EXPermissionsService.h>
+#import <ExpoModulesCore/EXReactNativeUserNotificationCenterProxy.h>
+#import <ExpoModulesCore/Platform.h>
+#import <ExpoModulesCore/EXReactDelegateWrapper.h>

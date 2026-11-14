@@ -1,14 +1,15 @@
-import { ArrowUpRightIcon, Copy07Icon } from '@expo/styleguide-icons';
+import { ArrowUpRightIcon } from '@expo/styleguide-icons/outline/ArrowUpRightIcon';
+import { Copy07Icon } from '@expo/styleguide-icons/outline/Copy07Icon';
 import { useEffect, useState, PropsWithChildren } from 'react';
 import { parseDiff, Diff, Hunk } from 'react-diff-view';
+
+import { SettingsAction } from '~/ui/components/Snippet/actions/SettingsAction';
 
 import { PermalinkedSnippetHeader } from '../PermalinkedSnippetHeader';
 import { Snippet } from '../Snippet';
 import { SnippetAction } from '../SnippetAction';
 import { SnippetContent } from '../SnippetContent';
 import { SnippetHeader } from '../SnippetHeader';
-
-import { SettingsAction } from '~/ui/components/Snippet/actions/SettingsAction';
 
 const randomCommitHash = () => Math.random().toString(36).slice(2, 9);
 
@@ -32,6 +33,53 @@ type Props = PropsWithChildren<{
   SnippetHeaderComponent?: typeof SnippetHeader | typeof PermalinkedSnippetHeader;
 }>;
 
+const normalizeDiff = (text: string) => {
+  if (!text) {
+    return '';
+  }
+
+  let inHunk = false;
+
+  return text
+    .split('\n')
+    .map(line => {
+      if (line.startsWith('diff ')) {
+        inHunk = false;
+        return line;
+      }
+
+      if (line.startsWith('@@')) {
+        inHunk = true;
+        return line;
+      }
+
+      if (
+        line.startsWith('index ') ||
+        line.startsWith('--- ') ||
+        line.startsWith('+++ ') ||
+        line.startsWith('\\ No newline')
+      ) {
+        return line;
+      }
+
+      if (inHunk && !/^[ +-]/.test(line)) {
+        return ` ${line}`;
+      }
+
+      return line;
+    })
+    .join('\n');
+};
+
+const safeParseDiff = (text: string) => {
+  try {
+    return parseDiff(text);
+  } catch (error) {
+    console.warn('Failed to parse diff', error);
+    return null;
+  }
+};
+
 export const DiffBlock = ({
   source,
   raw,
@@ -41,16 +89,20 @@ export const DiffBlock = ({
   collapseDeletedFiles = false,
   SnippetHeaderComponent = SnippetHeader,
 }: Props) => {
-  const [diff, setDiff] = useState<RenderLine[] | null>(raw ? parseDiff(raw) : null);
+  const initialRaw = typeof raw === 'string' && raw.trim().length > 0 ? normalizeDiff(raw) : null;
+  const [diff, setDiff] = useState<RenderLine[] | null>(
+    initialRaw ? safeParseDiff(initialRaw) : null
+  );
   useEffect(() => {
     if (source) {
       const fetchDiffAsync = async () => {
         const response = await fetch(source);
         const result = await response.text();
-        setDiff(parseDiff(result));
+        const normalized = normalizeDiff(result);
+        setDiff(safeParseDiff(normalized));
       };
 
-      fetchDiffAsync();
+      void fetchDiffAsync();
     }
   }, [source]);
 
@@ -68,11 +120,11 @@ export const DiffBlock = ({
   }: RenderLine) => {
     // older SDK template-bare-minimum files (e.g, 46) generate a diff with no hunks and no paths
     // one example of this was a change to gradle-wrapper.jar
-    if (!hunks.length) {
+    if (hunks.length === 0) {
       return null;
     }
     return (
-      <Snippet key={oldRevision + '-' + newRevision}>
+      <Snippet key={oldRevision + '-' + newRevision} data-md="diff">
         <SnippetHeaderComponent
           title={`${filenameModifier(type === 'delete' ? oldPath : newPath)}`}
           Icon={Copy07Icon}
@@ -81,7 +133,12 @@ export const DiffBlock = ({
           float={collapseDeletedFiles && type === 'delete'}>
           {newPath && filenameToLinkUrl && type !== 'delete' ? (
             <SnippetAction
-              rightSlot={<ArrowUpRightIcon className="text-icon-secondary shrink-0 icon-sm" />}
+              rightSlot={
+                <ArrowUpRightIcon
+                  aria-hidden="true"
+                  className="icon-sm shrink-0 text-icon-secondary"
+                />
+              }
               onClick={() => {
                 window.open(filenameToLinkUrl(newPath), '_blank');
               }}>
@@ -91,7 +148,12 @@ export const DiffBlock = ({
           <SettingsAction />
         </SnippetHeaderComponent>
         {!collapseDeletedFiles || type !== 'delete' ? (
-          <SnippetContent className="p-0" hideOverflow>
+          <SnippetContent
+            ref={content => {
+              content?.querySelector('table.diff')?.setAttribute('role', 'presentation');
+            }}
+            className="p-0"
+            hideOverflow>
             <Diff viewType="unified" diffType={type} hunks={hunks}>
               {(hunks: any[]) => hunks.map(hunk => <Hunk key={hunk.content} hunk={hunk} />)}
             </Diff>

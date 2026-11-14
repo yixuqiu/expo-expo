@@ -1,17 +1,17 @@
+import { Image, ImageErrorEventData } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as MediaLibrary from 'expo-media-library';
-import { Platform } from 'expo-modules-core';
+import * as MediaLibrary from 'expo-media-library/legacy';
 import { useRef, useState } from 'react';
-import { Dimensions, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Dimensions, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { captureRef as takeSnapshotAsync, captureScreen } from 'react-native-view-shot';
 
 import Button from '../components/Button';
 
 // Source: https://codepen.io/zessx/pen/rDEAl <3
-const gradientColors = ['#90dffe', '#38a3d1'];
+const gradientColors = ['#90dffe', '#38a3d1'] as const;
 
 export default function ViewShotScreen() {
-  const view = useRef<View>();
+  const view = useRef<View>(null);
   const [image, setImage] = useState<string>();
   const [screenUri, setScreenUri] = useState<string>();
 
@@ -51,27 +51,35 @@ export default function ViewShotScreen() {
 
   const handleAddToMediaLibraryPress = async () => {
     if (screenUri) {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-
-      if (status === 'granted') {
-        await MediaLibrary.createAssetAsync(screenUri);
-        alert('Successfully added captured screen to media library');
-      } else {
-        alert('Media library permissions not granted');
+      try {
+        if (Platform.OS !== 'android' || Platform.Version < 29) {
+          const { granted } = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
+          if (!granted) {
+            Alert.alert('Media library permissions not granted');
+            return;
+          }
+        }
+        await MediaLibrary.saveToLibraryAsync(screenUri);
+        Alert.alert('Successfully added captured screen to media library');
+      } catch (error) {
+        Alert.alert('Could not save captured screen', String(error));
       }
     }
   };
 
-  const imageSource = { uri: image };
+  const onError = ({ error }: ImageErrorEventData) => {
+    Alert.alert('Failed to load snapshot ', error);
+  };
+
   return (
     <ScrollView contentContainerStyle={{ alignItems: 'center' }}>
-      <View
-        style={styles.snapshotContainer}
-        collapsable={false}
-        // @ts-expect-error
-        ref={view}>
+      <View style={styles.snapshotContainer} collapsable={false} ref={view}>
         <LinearGradient colors={gradientColors} style={styles.gradient} start={[0, 0]} end={[0, 1]}>
-          <Image style={styles.snapshot} source={imageSource} />
+          <Image
+            style={styles.snapshot}
+            source={{ uri: image }}
+            onError={image ? onError : undefined}
+          />
           <Text style={styles.text}>Snapshot will show above</Text>
         </LinearGradient>
       </View>
@@ -89,6 +97,7 @@ export default function ViewShotScreen() {
           borderWidth: 10,
         }}
         source={{ uri: screenUri }}
+        onError={screenUri ? onError : undefined}
       />
       <Button
         style={styles.button}

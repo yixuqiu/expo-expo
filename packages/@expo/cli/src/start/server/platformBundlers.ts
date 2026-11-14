@@ -1,8 +1,13 @@
-import { ExpoConfig, Platform } from '@expo/config';
+import type { ExpoConfig, ExpoConfigWeb, Platform } from '@expo/config';
+import type { OutOfTreePlatformName } from '@expo/platforms';
+import { OUT_OF_TREE_PLATFORMS } from '@expo/platforms';
 import resolveFrom from 'resolve-from';
 
 /** Which bundler each platform should use. */
 export type PlatformBundlers = Record<Platform, 'metro' | 'webpack'>;
+
+/** XDL-schema doesn't have `ios.bundler` and `android.bundler`, since this is technically deprecated */
+type WithBundlerConfig = Pick<ExpoConfigWeb, 'bundler'> | undefined | null;
 
 /** Get the platform bundlers mapping. */
 export function getPlatformBundlers(
@@ -19,10 +24,13 @@ export function getPlatformBundlers(
   }
 
   return {
-    // @ts-expect-error: not on type yet
-    ios: exp.ios?.bundler ?? 'metro',
-    // @ts-expect-error: not on type yet
-    android: exp.android?.bundler ?? 'metro',
+    ios: (exp.ios as WithBundlerConfig)?.bundler ?? 'metro',
+    android: (exp.android as WithBundlerConfig)?.bundler ?? 'metro',
     web,
+    // Out-of-tree platforms always bundle with Metro.
+    ...(Object.fromEntries(OUT_OF_TREE_PLATFORMS.map((platform) => [platform, 'metro'])) as Record<
+      OutOfTreePlatformName,
+      'metro'
+    >),
   };
 }

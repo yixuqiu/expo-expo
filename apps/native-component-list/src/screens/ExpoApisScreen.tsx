@@ -1,7 +1,9 @@
+import { memo } from 'react';
 import { Platform } from 'react-native';
 
-import ComponentListScreen from './ComponentListScreen';
 import ExpoAPIIcon from '../components/ExpoAPIIcon';
+import { SearchToolbar } from '../navigation/StackConfig';
+import ComponentListScreen, { type ListElement } from './ComponentListScreen';
 
 if (Platform.OS !== 'web') {
   // Optionally require expo-notifications as we cannot assume that the module is linked.
@@ -16,93 +18,24 @@ if (Platform.OS !== 'web') {
 
   Notifications?.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: true,
+      shouldShowList: true,
+      shouldShowBanner: true,
       shouldPlaySound: true,
       shouldSetBadge: true,
     }),
   });
 }
 
-const screens = [
-  'Accelerometer',
-  'ActionSheet',
-  'Alert',
-  'Appearance',
-  'AppleAuthentication',
-  'Audio (expo-av)',
-  'Audio (expo-audio)',
-  'AsyncStorage',
-  'AuthSession',
-  'BackgroundFetch',
-  'BackgroundLocation',
-  'Battery',
-  'Brightness',
-  'Calendars',
-  'Cellular',
-  'Clipboard',
-  'Constants',
-  'Contacts',
-  'Crypto',
-  'Device',
-  'DocumentPicker',
-  'FaceDetector',
-  'FileSystem',
-  'Font',
-  'Errors',
-  'ExpoCoreModule',
-  'ExpoModules',
-  'Geocoding',
-  'Haptics',
-  'ImageManipulator',
-  'ImagePicker',
-  'IntentLauncher',
-  'KeepAwake',
-  'Linking',
-  'LocalAuthentication',
-  'Localization',
-  'Location',
-  'MailComposer',
-  'MediaLibrary',
-  'Network',
-  'NetInfo',
-  'Notification',
-  'Pedometer',
-  'Permissions',
-  'Print',
-  'Random',
-  'Recording',
-  'SMS',
-  'NavigationBar',
-  'SafeAreaContext',
-  'ScreenOrientation',
-  'SecureStore',
-  'ScreenCapture',
-  'Sensor',
-  'Sharing',
-  'StatusBar',
-  'StoreReview',
-  'SystemUI',
-  'TaskManager',
-  'TextToSpeech',
-  'TrackingTransparency',
-  'ViewShot',
-  'WebBrowser',
-];
-
-export const ScreenItems = screens.map((name) => ({
-  name,
-  route: `/apis/${name.toLowerCase()}`,
-  // isAvailable: !!Screens[name],
-  isAvailable: true,
-}));
-
-export default function ExpoApisScreen() {
+export default memo(function ExpoApisScreen({ apis }: { apis: ListElement[] }) {
   return (
-    <ComponentListScreen
-      renderItemRight={({ name }: { name: string }) => (
-        <ExpoAPIIcon name={name} style={{ marginRight: 10, marginLeft: 6 }} />
-      )}
-      apis={ScreenItems}
-    />
+    <>
+      <SearchToolbar />
+      <ComponentListScreen
+        renderItemRight={({ name }: { name: string }) => (
+          <ExpoAPIIcon name={name} style={{ marginRight: 10, marginLeft: 6 }} />
+        )}
+        apis={apis}
+      />
+    </>
   );
-}
+});

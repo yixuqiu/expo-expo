@@ -3,7 +3,7 @@
 /**
  An enum that identifies lifecycle method types.
  */
-public enum ViewLifecycleMethodType {
+public enum ViewLifecycleMethodType: Sendable {
   case didUpdateProps
 }
 
@@ -19,30 +19,46 @@ internal protocol AnyViewLifecycleMethod: AnyDefinition {
   /**
    Calls the lifecycle method for the given view.
    */
-  func callAsFunction(_ view: UIView)
+  @MainActor
+  func callAsFunction(_ view: AppleView)
 }
 
 /**
  Element of the view definition that represents a lifecycle method, such as `OnViewDidUpdateProps`.
  */
-public final class ViewLifecycleMethod<ViewType: UIView>: AnyViewLifecycleMethod {
+public final class ViewLifecycleMethod<ViewType>: AnyViewLifecycleMethod {
+  public var _definitionClassification: DefinitionClassification {
+    return DefinitionClassification(kind: .viewLifecycle(self))
+  }
+
+  public typealias Closure = @MainActor (ViewType) -> Void
+
   /**
    The actual closure that gets called when the view signals an event in view's lifecycle.
    */
-  let closure: (ViewType) -> Void
+  let closure: Closure
 
   let type: ViewLifecycleMethodType
 
-  init(type: ViewLifecycleMethodType, closure: @escaping (ViewType) -> Void) {
+  init(type: ViewLifecycleMethodType, closure: @escaping Closure) {
     self.type = type
     self.closure = closure
   }
 
-  func callAsFunction(_ view: UIView) {
-    guard let view = view as? ViewType else {
-      log.warn("Cannot call lifecycle method '\(type)', given view is not of type '\(ViewType.self)'")
-      return
+  @MainActor
+  func callAsFunction(_ view: AppleView) {
+    switch view {
+    case .uikit(let view):
+      if let view = view as? ViewType {
+        closure(view)
+        return
+      }
+    case .swiftui(let view):
+      if let view = view as? ViewType {
+        closure(view)
+        return
+      }
     }
-    closure(view)
+    log.warn("Cannot call lifecycle method '\(type)', given view is not of type '\(ViewType.self)'")
   }
 }

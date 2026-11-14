@@ -1,4 +1,4 @@
-import path from 'path';
+import path from 'node:path';
 
 import linkRewrite from './remark-link-rewrite.js';
 
@@ -117,6 +117,32 @@ describe('from pages/versions/latest/sdk/app-auth.mdx', () => {
 
   it('resolves ../../../debugging/runtime-issue.md to /debugging/runtime-issue/', () => {
     expect(rewrite(file, '../../../debugging/runtime-issue.mdx')).toBe('/debugging/runtime-issue/');
+  });
+});
+
+describe('extensionless index links', () => {
+  const file = makeFile('versions/latest/sdk/router/color.mdx');
+
+  it('resolves ./index to the parent directory', () => {
+    expect(rewrite(file, './index')).toBe('/versions/latest/sdk/router/');
+  });
+
+  it('resolves index to the parent directory', () => {
+    expect(rewrite(file, 'index')).toBe('/versions/latest/sdk/router/');
+  });
+
+  it('resolves ../index to the grandparent directory', () => {
+    const nested = makeFile('push-notifications/overview.mdx');
+    expect(rewrite(nested, '../index')).toBe('/');
+  });
+
+  it('preserves hashes on ./index links', () => {
+    expect(rewrite(file, './index#usage')).toBe('/versions/latest/sdk/router/#usage');
+  });
+
+  it('does not collapse pages merely starting with index', () => {
+    const nested = makeFile('guides/overview.mdx');
+    expect(rewrite(nested, './indexing')).toBe('/guides/indexing');
   });
 });
 

@@ -1,16 +1,14 @@
-import { EventEmitter, Subscription } from 'expo-modules-core';
+import type { EventSubscription } from 'expo';
 import { useEffect, useState } from 'react';
 
 import {
-  BatteryLevelEvent,
+  type BatteryLevelEvent,
   BatteryState,
-  BatteryStateEvent,
-  PowerModeEvent,
-  PowerState,
+  type BatteryStateEvent,
+  type PowerModeEvent,
+  type PowerState,
 } from './Battery.types';
 import ExpoBattery from './ExpoBattery';
-
-const BatteryEventEmitter = new EventEmitter(ExpoBattery);
 
 // @needsAudit
 /**
@@ -46,7 +44,7 @@ export async function getBatteryLevelAsync(): Promise<number> {
 /**
  * Tells the battery's current state. On web, this always returns `BatteryState.UNKNOWN`.
  * @return Returns a `Promise` which fulfills with a [`Battery.BatteryState`](#batterystate) enum
- * value for whether the device is any of the four states.
+ * value for whether the device is any of the five states.
  * @example
  * ```ts
  * await Battery.getBatteryStateAsync();
@@ -149,14 +147,14 @@ export async function getPowerStateAsync(): Promise<PowerState> {
  */
 export function addBatteryLevelListener(
   listener: (event: BatteryLevelEvent) => void
-): Subscription {
-  return BatteryEventEmitter.addListener('Expo.batteryLevelDidChange', listener);
+): EventSubscription {
+  return ExpoBattery.addListener('Expo.batteryLevelDidChange', listener);
 }
 
 // @needsAudit
 /**
  * Subscribe to the battery state change updates to receive an object with a [`Battery.BatteryState`](#batterystate)
- * enum value for whether the device is any of the four states.
+ * enum value for whether the device is any of the five states.
  *
  * On web, the event never fires.
  * @param listener A callback that is invoked when battery state changes. The callback is provided a
@@ -165,8 +163,8 @@ export function addBatteryLevelListener(
  */
 export function addBatteryStateListener(
   listener: (event: BatteryStateEvent) => void
-): Subscription {
-  return BatteryEventEmitter.addListener('Expo.batteryStateDidChange', listener);
+): EventSubscription {
+  return ExpoBattery.addListener('Expo.batteryStateDidChange', listener);
 }
 
 // @needsAudit
@@ -179,8 +177,10 @@ export function addBatteryStateListener(
  * changes. The callback is provided a single argument that is an object with a `lowPowerMode` key.
  * @return A `Subscription` object on which you can call `remove()` to unsubscribe from the listener.
  */
-export function addLowPowerModeListener(listener: (event: PowerModeEvent) => void): Subscription {
-  return BatteryEventEmitter.addListener('Expo.powerModeDidChange', listener);
+export function addLowPowerModeListener(
+  listener: (event: PowerModeEvent) => void
+): EventSubscription {
+  return ExpoBattery.addListener('Expo.powerModeDidChange', listener);
 }
 
 // @needsAudit
@@ -286,10 +286,11 @@ export function usePowerState(): PowerState {
 }
 
 export {
-  BatteryLevelEvent,
+  type BatteryLevelEvent,
   BatteryState,
-  BatteryStateEvent,
-  PowerModeEvent,
-  PowerState,
-  Subscription,
-};
+  type BatteryStateEvent,
+  type PowerModeEvent,
+  type PowerState,
+} from './Battery.types';
+
+export type { EventSubscription as Subscription } from 'expo';

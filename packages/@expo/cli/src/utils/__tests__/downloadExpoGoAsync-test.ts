@@ -1,9 +1,14 @@
+import fs from 'fs/promises';
 import { vol } from 'memfs';
 import nock from 'nock';
 
 import { getExpoApiBaseUrl } from '../../api/endpoint';
 import { downloadAppAsync } from '../downloadAppAsync';
-import { downloadExpoGoAsync, getExpoGoVersionEntryAsync } from '../downloadExpoGoAsync';
+import {
+  cleanupOldExpoGoCacheEntriesAsync,
+  downloadExpoGoAsync,
+  getExpoGoVersionEntryAsync,
+} from '../downloadExpoGoAsync';
 import { extractAsync } from '../tar';
 
 jest.mock('../../log');
@@ -16,13 +21,20 @@ jest.mock(`../tar`, () => ({
   extractAsync: jest.fn(),
 }));
 
+const originalEnv = process.env;
+
+beforeAll(() => {
+  // Disable fetch caching for now, as it conflicts with `memfs.vol.reset`
+  process.env.EXPO_NO_CACHE = 'true';
+});
+
+afterAll(() => {
+  process.env = originalEnv;
+});
+
 describe(getExpoGoVersionEntryAsync, () => {
-  beforeEach(() => {
-    vol.fromJSON({ tmp: '' }, '/tmp');
-  });
-  afterEach(() => {
-    vol.reset();
-  });
+  beforeEach(() => vol.fromJSON({ tmp: '' }, '/tmp'));
+  afterAll(() => vol.reset());
 
   it(`returns the entry for a version`, async () => {
     const scope = nock(getExpoApiBaseUrl())
@@ -153,5 +165,30 @@ describe(downloadExpoGoAsync, () => {
 
     // FS was not modified
     expect(vol.toJSON()[generatedOutput]).not.toBeDefined();
+  });
+});
+
+describe(cleanupOldExpoGoCacheEntriesAsync, () => {
+  beforeEach(() => vol.reset());
+
+  it('removes cache entries older than maxAge', async () => {
+    const cacheDir = '/home/.expo/android-apk-cache';
+    const oldFile = `${cacheDir}/OldExponent-1.0.0.apk`;
+    const newFile = `${cacheDir}/NewExponent-2.0.0.apk`;
+
+    vol.fromJSON({
+      [oldFile]: 'old content',
+      [newFile]: 'new content',
+    });
+
+    // Set the old file's modified time to long ago
+    const eightMonthsAgo = new Date(Date.now() - 8 * 30 * 24 * 60 * 60 * 1000);
+    await fs.utimes(oldFile, eightMonthsAgo, eightMonthsAgo);
+
+    await cleanupOldExpoGoCacheEntriesAsync(cacheDir);
+
+    const files = vol.toJSON();
+    expect(files[oldFile]).toBeUndefined();
+    expect(files[newFile]).toBeDefined();
   });
 });

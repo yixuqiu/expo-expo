@@ -8,12 +8,12 @@ import android.util.Log
 import android.webkit.URLUtil
 import expo.modules.core.errors.ModuleDestroyedException
 import expo.modules.core.utilities.FileUtilities
-import expo.modules.interfaces.filesystem.Permission
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.services.FilePermissionService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -32,15 +32,19 @@ class VideoThumbnailsModule : Module() {
     Name("ExpoVideoThumbnails")
 
     AsyncFunction("getThumbnail") { sourceFilename: String, options: VideoThumbnailOptions, promise: Promise ->
-      if (URLUtil.isFileUrl(sourceFilename) && !isAllowedToRead(Uri.decode(sourceFilename).replace("file://", ""))) {
-        throw ThumbnailFileException()
-      }
-
       withModuleScope(promise) {
-        val thumbnail = GetThumbnail(sourceFilename, options, context).execute()
-          ?: throw GenerateThumbnailException()
-
         try {
+          if (!URLUtil.isValidUrl(sourceFilename)) {
+            throw InvalidSourceFilenameException()
+          }
+
+          if (URLUtil.isFileUrl(sourceFilename) && !isAllowedToRead(Uri.decode(sourceFilename).replace("file://", ""))) {
+            throw ThumbnailFileException()
+          }
+
+          val thumbnail = GetThumbnail(sourceFilename, options, context).execute()
+            ?: throw GenerateThumbnailException()
+
           val path = FileUtilities.generateOutputPath(context.cacheDir, "VideoThumbnails", "jpg")
           FileOutputStream(path).use { outputStream ->
             thumbnail.compress(Bitmap.CompressFormat.JPEG, (options.quality * 100).toInt(), outputStream)
@@ -69,30 +73,43 @@ class VideoThumbnailsModule : Module() {
     }
   }
 
-  private class GetThumbnail(private val sourceFilename: String, private val videoOptions: VideoThumbnailOptions, private val context: Context) {
+  private class GetThumbnail(
+    private val sourceFilename: String,
+    private val videoOptions: VideoThumbnailOptions,
+    private val context: Context
+  ) {
     fun execute(): Bitmap? {
       val retriever = MediaMetadataRetriever()
-
       try {
-        if (URLUtil.isFileUrl(sourceFilename)) {
-          retriever.setDataSource(Uri.decode(sourceFilename).replace("file://", ""))
-        } else if (URLUtil.isContentUrl(sourceFilename)) {
-          val fileUri = Uri.parse(sourceFilename)
-          context.contentResolver.openFileDescriptor(fileUri, "r")?.use { parcelFileDescriptor ->
-            FileInputStream(parcelFileDescriptor.fileDescriptor).use { inputStream ->
-              retriever.setDataSource(inputStream.fd)
+        try {
+          if (URLUtil.isFileUrl(sourceFilename)) {
+            retriever.setDataSource(Uri.decode(sourceFilename).replace("file://", ""))
+          } else if (URLUtil.isContentUrl(sourceFilename)) {
+            val fileUri = Uri.parse(sourceFilename)
+            context.contentResolver.openFileDescriptor(fileUri, "r")?.use { parcelFileDescriptor ->
+              FileInputStream(parcelFileDescriptor.fileDescriptor).use { inputStream ->
+                retriever.setDataSource(inputStream.fd)
+              }
             }
+          } else {
+            retriever.setDataSource(sourceFilename, videoOptions.headers)
           }
-        } else {
-          retriever.setDataSource(sourceFilename, videoOptions.headers)
-        }
 
-        return retriever.getFrameAtTime(
-          videoOptions.time.toLong() * 1000,
-          MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-        )
+          return retriever.getFrameAtTime(
+            videoOptions.time.toLong() * 1000,
+            MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+          )
+        } catch (e: Exception) {
+          Log.e(ERROR_TAG, "Unable to retrieve source file")
+          return null
+        }
       } finally {
-        retriever.release()
+        try {
+          retriever.release()
+        } catch (e: Exception) {
+          Log.e(ERROR_TAG, "Error releasing MediaMetadataRetriever for source file")
+          return null
+        }
       }
     }
   }
@@ -100,7 +117,8 @@ class VideoThumbnailsModule : Module() {
   private fun isAllowedToRead(url: String): Boolean {
     val permissionModuleInterface = appContext.filePermission
       ?: throw FilePermissionsModuleNotFound()
-    return permissionModuleInterface.getPathPermissions(context, url).contains(Permission.READ)
+    return permissionModuleInterface.getPathPermissions(context, url)
+      .contains(FilePermissionService.Permission.READ)
   }
 
   private inline fun withModuleScope(promise: Promise, crossinline block: () -> Unit) = moduleCoroutineScope.launch {

@@ -10,8 +10,33 @@ import ExpoModulesCore
 class VideoManager {
   static var shared = VideoManager()
 
+  private static var managerQueue = DispatchQueue(label: "com.expo.video.manager.managerQueue")
+  private var mediaServicesResetObserver: NSObjectProtocol?
   private var videoViews = NSHashTable<VideoView>.weakObjects()
-  private var videoPlayers = NSHashTable<VideoPlayer>.weakObjects()
+  private let videoPlayers = SynchronizedHashTable<VideoPlayer>(weakObjects: true)
+
+  var hasRegisteredPlayers: Bool {
+    return !videoPlayers.allObjects.isEmpty
+  }
+
+  private init() {
+    // When the system resets media services all audio/video objects become invalid. We have to
+    // re-establish the audio session and rebuild every player's item, otherwise they stay in a
+    // failed state and `AVPlayerViewController` keeps showing its broken-playback placeholder.
+    mediaServicesResetObserver = NotificationCenter.default.addObserver(
+      forName: AVAudioSession.mediaServicesWereResetNotification,
+      object: nil,
+      queue: nil
+    ) { [weak self] _ in
+      self?.onMediaServicesWereReset()
+    }
+  }
+
+  deinit {
+    if let mediaServicesResetObserver {
+      NotificationCenter.default.removeObserver(mediaServicesResetObserver)
+    }
+  }
 
   func register(videoPlayer: VideoPlayer) {
     videoPlayers.add(videoPlayer)
@@ -30,8 +55,29 @@ class VideoManager {
   }
 
   func onAppForegrounded() {
-    for videoPlayer in videoPlayers.allObjects {
-      videoPlayer.setTracksEnabled(true)
+    // While the app is backgrounded iOS can release the decode pipeline, leaving items in a
+    // `.failed` state once we come back.
+    reloadPlayers { $0.reloadIfFailed() }
+  }
+
+  private func onMediaServicesWereReset() {
+    setAppropriateAudioSessionOrWarn()
+    reloadPlayers { $0.reloadCurrentSource() }
+  }
+
+  private func reloadPlayers(_ reload: @escaping (VideoPlayer) -> Void) {
+    Self.managerQueue.async { [weak self] in
+      guard let self else {
+        return
+      }
+
+      let players = self.videoPlayers.allObjects
+
+      DispatchQueue.main.async {
+        for player in players {
+          reload(player)
+        }
+      }
     }
   }
 
@@ -41,54 +87,58 @@ class VideoManager {
         continue
       }
       if player.staysActiveInBackground == true {
-        player.setTracksEnabled(videoView.isInPictureInPicture)
-      } else if !videoView.isInPictureInPicture {
-        player.pointer.pause()
+        player.ref.audiovisualBackgroundPlaybackPolicy = .continuesIfPossible
+      } else if !videoView.playerViewController.isInPictureInPicture {
+        player.ref.audiovisualBackgroundPlaybackPolicy = .pauses
+        player.ref.pause()
       }
     }
   }
 
   // MARK: - Audio Session Management
 
+  // This function usually takes less than 5ms to execute, but in some cases (initial setup) it takes up to 70ms
+  // Because of this we dispatch it on another queue to minimize the load on main queue.
   internal func setAppropriateAudioSessionOrWarn() {
+    Self.managerQueue.async { [weak self] in
+      self?.setAudioSession()
+    }
+  }
+
+  private func setAudioSession() {
     let audioSession = AVAudioSession.sharedInstance()
-    var audioSessionCategoryOptions: AVAudioSession.CategoryOptions = []
+    // Compare the policy with these values, not with a new read. Another module can change the session
+    // in the meantime, and writing these values back would undo its change.
+    let category = audioSession.category
+    let mode = audioSession.mode
+    let options = audioSession.categoryOptions
+    let policy = AudioSessionPolicy.evaluate(
+      category: category,
+      mode: mode,
+      options: options,
+      players: videoPlayers.allObjects.map { player in
+        AudioSessionPolicy.PlayerState(
+          isPlaying: player.isPlaying,
+          isMuted: player.isMuted,
+          showNowPlayingNotification: player.showNowPlayingNotification,
+          audioMixingMode: player.audioMixingMode
+        )
+      }
+    )
 
-    let isAnyPlayerPlaying = videoPlayers.allObjects.contains { player in
-      player.isPlaying
-    }
-    let areAllPlayersMuted = videoPlayers.allObjects.allSatisfy { player in
-      player.isMuted
-    }
-    let needsPiPSupport = videoViews.allObjects.contains { view in
-      view.allowPictureInPicture
-    }
-    let anyPlayerShowsNotification = videoPlayers.allObjects.contains { player in
-      player.showNowPlayingNotification
-    }
-    // The notification won't be shown if we allow the audio to mix with others
-    let shouldAllowMixing = (!isAnyPlayerPlaying || areAllPlayersMuted) && !anyPlayerShowsNotification
-    let isOutputtingAudio = !areAllPlayersMuted && isAnyPlayerPlaying
-    let shouldUpdateToAllowMixing = !audioSession.categoryOptions.contains(.mixWithOthers) && shouldAllowMixing
-
-    if shouldAllowMixing {
-      audioSessionCategoryOptions.insert(.mixWithOthers)
-    }
-
-    if isOutputtingAudio || needsPiPSupport || shouldUpdateToAllowMixing || anyPlayerShowsNotification {
+    if options != policy.options || category != policy.category || mode != policy.mode {
       do {
-        try audioSession.setCategory(.playback, mode: .moviePlayback)
+        try audioSession.setCategory(policy.category, mode: policy.mode, options: policy.options)
       } catch {
-        log.warn("Failed to set audio session category. This might cause issues with audio playback and Picture in Picture. \(error.localizedDescription)")
+        log.warn("[expo-video] Failed to set audio session category. This might cause issues with audio playback and Picture in Picture. \(error.localizedDescription)")
       }
     }
 
-    // Make sure audio session is active if any video is playing
-    if isAnyPlayerPlaying {
+    if policy.shouldActivate {
       do {
         try audioSession.setActive(true)
       } catch {
-        log.warn("Failed to activate the audio session. This might cause issues with audio playback. \(error.localizedDescription)")
+        log.warn("[expo-video] Failed to activate the audio session. This might cause issues with audio playback. \(error.localizedDescription)")
       }
     }
   }

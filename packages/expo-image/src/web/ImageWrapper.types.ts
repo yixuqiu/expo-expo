@@ -1,7 +1,7 @@
-import { CSSProperties, SyntheticEvent } from 'react';
+import type { CSSProperties, SyntheticEvent } from 'react';
 
-import { SrcSetSource } from './useSourceSelection';
-import { ImageContentPositionObject, ImageProps, ImageSource } from '../Image.types';
+import type { ImageContentPositionObject, ImageProps, ImageSource } from '../Image.types';
+import type { SrcSetSource } from './useSourceSelection';
 
 export type OnErrorEvent =
   | (({ source }: { source: ImageSource | null }) => void)
@@ -13,12 +13,14 @@ export type OnLoadEvent =
   | null;
 export type OnTransitionEndEvent = (() => void) | undefined | null;
 export type OnMountEvent = (() => void) | undefined | null;
+export type OnDisplayEvent = (() => void) | undefined | null;
 
 export type ImageWrapperEvents = {
   onLoad?: OnLoadEvent[];
   onError?: OnErrorEvent[];
   onTransitionEnd?: OnTransitionEndEvent[];
   onMount?: OnMountEvent[];
+  onDisplay?: OnDisplayEvent[];
 };
 
 export type ImageWrapperProps = {
@@ -27,10 +29,12 @@ export type ImageWrapperProps = {
   contentPosition?: ImageContentPositionObject;
   hashPlaceholderContentPosition?: ImageContentPositionObject;
   priority?: string | null;
+  loading?: ImageProps['loading'];
   style: CSSProperties;
   tintColor?: string | null;
   hashPlaceholderStyle?: CSSProperties;
   className?: string;
   accessibilityLabel?: string;
   cachePolicy?: ImageProps['cachePolicy'];
+  draggable?: boolean;
 };

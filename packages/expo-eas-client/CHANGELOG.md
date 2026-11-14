@@ -1,14 +1,146 @@
 # Changelog
 
-## Unpublished
+## 58.0.2
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- [iOS] Add privacy manifest describing required reason API usage. ([#50734](https://github.com/expo/expo/pull/50734) by [@enavermate](https://github.com/enavermate))
+
+## 58.0.1
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.0 — 2026-09-10
 
 ### 🐛 Bug fixes
 
+- Fix `deterministicUniformValue` to return a uniformly distributed value over `[0, 1)`. ([#49182](https://github.com/expo/expo/pull/49182) by [@bjjeong](https://github.com/bjjeong))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.5 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 - 2026-03-27
+
+### 🎉 New features
+
+- Add `deterministicUniformValue` constant ([#44075](https://github.com/expo/expo/pull/44075) by [@Ubax](https://github.com/Ubax))
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+_This version does not introduce any user-facing changes._
+
+## 1.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 1.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 1.0.6 — 2025-09-02
+
 ### 💡 Others
+
+- Change Constants to Constant/Property. ([#38926](https://github.com/expo/expo/pull/38926) by [@jakex7](https://github.com/jakex7))
+
+## 1.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 1.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 1.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 1.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 1.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 1.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- Add support for macOS. ([#37629](https://github.com/expo/expo/pull/37629) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 0.14.4 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 0.14.3 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 0.14.2 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 0.14.1 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 0.14.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+
+## 0.13.3 - 2025-02-21
+
+_This version does not introduce any user-facing changes._
+
+## 0.13.2 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 0.13.1 — 2024-10-22
+
+_This version does not introduce any user-facing changes._
+
+## 0.13.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
 
 ## 0.12.0 — 2024-04-18
 

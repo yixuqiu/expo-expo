@@ -1,6 +1,7 @@
 // Copyright 2024-present 650 Industries. All rights reserved.
 
-public final class LegacyEventEmitterCompat: EXEventEmitterService {
+@available(*, deprecated, message: "Use `sendEvent` directly on the module instance instead")
+public final class LegacyEventEmitterCompat {
   internal weak var appContext: AppContext?
 
   init(appContext: AppContext) {
@@ -11,9 +12,12 @@ public final class LegacyEventEmitterCompat: EXEventEmitterService {
   // swiftlint:disable:next implicitly_unwrapped_optional
   public func sendEvent(withName name: String!, body: Any!) {
     guard let appContext, let runtime = try? appContext.runtime else {
-      log.warn("Unable to send an event '\(name)' because the runtime is not available")
+      log.warn("Unable to send an event '\(String(describing: name))' because the runtime is not available")
       return
     }
+
+    // `Any` is not sendable, so we must trick the compiler.
+    let eventArguments = NonisolatedUnsafeVar<[Any]>([body as Any])
 
     // Send the event to all modules that declare support for this particular event.
     // That's how it works in the device event emitter provided by React Native.
@@ -23,8 +27,12 @@ public final class LegacyEventEmitterCompat: EXEventEmitterService {
 
     runtime.schedule {
       for holder in moduleHoldersWithEvent {
-        if let jsObject = holder.javaScriptObject {
-          JSIUtils.emitEvent(name, to: jsObject, withArguments: [body], in: runtime)
+        if let jsModule = holder.getJavaScriptValue() {
+          runtime.withUnsafePointee { runtimePtr in
+            jsModule.withUnsafePointee { objectPtr in
+              JSUtils.emitEvent(name, runtimePointer: runtimePtr, objectPointer: objectPtr, withArguments: eventArguments.value)
+            }
+          }
         }
       }
     }

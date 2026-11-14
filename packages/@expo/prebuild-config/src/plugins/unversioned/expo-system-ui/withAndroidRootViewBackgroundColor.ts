@@ -1,13 +1,9 @@
-import {
-  AndroidConfig,
-  ConfigPlugin,
-  withAndroidColors,
-  withAndroidStyles,
-} from '@expo/config-plugins';
-import { ExpoConfig } from '@expo/config-types';
+import type { ConfigPlugin } from '@expo/config-plugins';
+import { AndroidConfig, withAndroidColors, withAndroidStyles } from '@expo/config-plugins';
+import type { ExpoConfig } from '@expo/config-types';
 
 const { assignColorValue } = AndroidConfig.Colors;
-const { assignStylesValue, getAppThemeLightNoActionBarGroup } = AndroidConfig.Styles;
+const { assignStylesValue, getAppThemeGroup } = AndroidConfig.Styles;
 
 const ANDROID_WINDOW_BACKGROUND = 'android:windowBackground';
 const WINDOW_BACKGROUND_COLOR = 'activityBackground';
@@ -32,7 +28,7 @@ export const withRootViewBackgroundColorStyles: ConfigPlugin = (config) => {
   return withAndroidStyles(config, async (config) => {
     config.modResults = assignStylesValue(config.modResults, {
       add: !!getRootViewBackgroundColor(config),
-      parent: getAppThemeLightNoActionBarGroup(),
+      parent: getAppThemeGroup(),
       name: ANDROID_WINDOW_BACKGROUND,
       value: `@color/${WINDOW_BACKGROUND_COLOR}`,
     });

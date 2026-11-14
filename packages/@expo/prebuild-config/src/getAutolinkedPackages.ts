@@ -1,7 +1,6 @@
-import { ModPlatform, StaticPlugin } from '@expo/config-plugins';
-import { ExpoConfig } from '@expo/config-types';
-
-import { importExpoModulesAutolinking } from './importExpoModulesAutolinking';
+import type { ModPlatform, StaticPlugin } from '@expo/config-plugins';
+import type { ExpoConfig } from '@expo/config-types';
+import { resolveFrom } from '@expo/require-utils';
 
 /**
  * Returns a list of packages that are autolinked to a project.
@@ -14,21 +13,44 @@ export async function getAutolinkedPackagesAsync(
   projectRoot: string,
   platforms: ModPlatform[] = ['ios', 'android']
 ) {
-  const autolinking = importExpoModulesAutolinking(projectRoot);
-  const searchPaths = await autolinking.resolveSearchPathsAsync(null, projectRoot);
-
-  const platformPaths = await Promise.all(
-    platforms.map((platform) =>
-      autolinking.findModulesAsync({
-        projectRoot,
-        platform,
-        searchPaths,
-        silent: true,
-      })
-    )
+  const autolinking = importAutolinkingExportsFromProject(projectRoot);
+  if (!autolinking) {
+    return [];
+  }
+  const { makeCachedDependenciesLinker, scanExpoModuleResolutionsForPlatform } = autolinking;
+  const linker = makeCachedDependenciesLinker({ projectRoot });
+  const dependenciesPerPlatform = await Promise.all(
+    platforms.map((platform) => {
+      return scanExpoModuleResolutionsForPlatform(linker, platform);
+    })
   );
+  return resolvePackagesList(dependenciesPerPlatform);
+}
 
-  return resolvePackagesList(platformPaths);
+/**
+ * Loads autolinking through the project's `expo` package, so we use the same
+ * `expo-modules-autolinking` version that `expo` uses instead of our own copy.
+ */
+function importAutolinkingExportsFromProject(
+  projectRoot: string
+): typeof import('expo-modules-autolinking/exports') | null {
+  const autolinkingExportsPath = resolveFrom(
+    projectRoot,
+    'expo/internal/unstable-autolinking-exports'
+  );
+  if (autolinkingExportsPath) {
+    return require(autolinkingExportsPath);
+  }
+  let fallbackPath: string;
+  try {
+    fallbackPath = require.resolve('expo/internal/unstable-autolinking-exports');
+  } catch (error: any) {
+    if ((error as NodeJS.ErrnoException).code !== 'MODULE_NOT_FOUND') {
+      throw error;
+    }
+    return null;
+  }
+  return require(fallbackPath);
 }
 
 export function resolvePackagesList(platformPaths: Record<string, any>[]) {

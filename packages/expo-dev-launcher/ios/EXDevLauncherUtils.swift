@@ -4,26 +4,6 @@ import Foundation
 
 class EXDevLauncherUtils {
   /**
-   Swizzles implementations of given selectors.
-   */
-  static func swizzle(selector selectorA: Selector, withSelector selectorB: Selector, forClass: AnyClass) {
-    if let methodA = class_getInstanceMethod(forClass, selectorA),
-      let methodB = class_getInstanceMethod(forClass, selectorB) {
-      let impA = method_getImplementation(methodA)
-      let argsTypeA = method_getTypeEncoding(methodA)
-
-      let impB = method_getImplementation(methodB)
-      let argsTypeB = method_getTypeEncoding(methodB)
-
-      if class_addMethod(forClass, selectorA, impB, argsTypeB) {
-        class_replaceMethod(forClass, selectorB, impA, argsTypeA)
-      } else {
-        method_exchangeImplementations(methodA, methodB)
-      }
-    }
-  }
-
-  /**
    Swizzles implementations of given class method selectors.
    This function will backup original selector implementation for `invokeOriginalClassMethod`.
    */
@@ -50,10 +30,10 @@ class EXDevLauncherUtils {
   /**
    Invokes the original implementation before swizzling for the given selector
    */
-  static func invokeOriginalClassMethod(selector: Selector, forClass: AnyClass, A0: Any) throws -> Any? {
+  static func invokeOriginalClassMethod(selector: Selector, forClass: AnyClass, a0: Any) throws -> Any? {
     typealias ClassMethod = @convention(c) (AnyObject, Selector, Any) -> Any
     let imp = try getOriginalClassMethodImp(selector: selector, forClass: forClass)
-    return unsafeBitCast(imp, to: ClassMethod.self)(self, selector, A0)
+    return unsafeBitCast(imp, to: ClassMethod.self)(self, selector, a0)
   }
 
   private static func getOriginalClassMethodImp(selector: Selector, forClass: AnyClass) throws -> IMP {
@@ -62,14 +42,5 @@ class EXDevLauncherUtils {
       fatalError("Backup selector does not exist - forClass[\(forClass)] backupSelector[\(NSStringFromSelector(backupSelector))]")
     }
     return method_getImplementation(method)
-  }
-
-  static func resourcesBundle() -> Bundle? {
-    let frameworkBundle = Bundle(for: EXDevLauncherUtils.self)
-
-    guard let resourcesBundleUrl = frameworkBundle.url(forResource: "EXDevLauncher", withExtension: "bundle") else {
-      return nil
-    }
-    return Bundle(url: resourcesBundleUrl)
   }
 }

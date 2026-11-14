@@ -1,0 +1,127 @@
+import { createContext } from 'react';
+
+import type { BottomTabNavigationOptions } from '../react-navigation/bottom-tabs';
+import type {
+  DefaultNavigatorOptions,
+  NavigationAction,
+  NavigationProp,
+  ParamListBase,
+  TabActionHelpers,
+  TabNavigationState,
+  TabRouterOptions,
+  useNavigationBuilder,
+} from '../react-navigation/native';
+import type { TriggerMap } from './common';
+
+export type ExpoTabsProps = ExpoTabsNavigatorOptions;
+
+export type ExpoTabsNavigatorScreenOptions = {
+  detachInactiveScreens?: boolean;
+  unmountOnBlur?: boolean;
+  // TODO(@ubax): Remove this prop
+  /**
+   * @deprecated This option has no effect in Expo Router.
+   */
+  freezeOnBlur?: boolean;
+  lazy?: boolean;
+};
+
+export type ExpoTabsNavigatorOptions = Omit<
+  DefaultNavigatorOptions<
+    ParamListBase,
+    string | undefined,
+    TabNavigationState<ParamListBase>,
+    ExpoTabsScreenOptions,
+    TabNavigationEventMap,
+    ExpoTabsNavigationProp<ParamListBase>
+  > &
+    TabRouterOptions &
+    ExpoTabsNavigatorScreenOptions,
+  // Should be set through `unstable_settings`
+  'initialRouteName'
+>;
+
+export type ExpoTabsNavigationProp<
+  ParamList extends ParamListBase,
+  RouteName extends keyof ParamList = keyof ParamList,
+  NavigatorID extends string | undefined = undefined,
+> = NavigationProp<
+  ParamList,
+  RouteName,
+  NavigatorID,
+  TabNavigationState<ParamListBase>,
+  ExpoTabsScreenOptions,
+  TabNavigationEventMap
+>;
+
+export type ExpoTabsScreenOptions = Pick<
+  BottomTabNavigationOptions,
+  'title' | 'lazy' | 'freezeOnBlur' | 'hidden'
+> & {
+  params?: object;
+  title: string;
+  action: NavigationAction;
+};
+
+export type TabNavigationEventMap = {
+  /**
+   * Event which fires on tapping on the tab in the tab bar.
+   */
+  tabPress: { data: undefined; canPreventDefault: true };
+  /**
+   * Event which fires on long press on the tab in the tab bar.
+   */
+  tabLongPress: { data: undefined };
+};
+
+/**
+ * The result of the tab navigation builder used by Expo Router's custom tabs.
+ *
+ * @see [Custom tabs](/router/advanced/custom-tabs/) for building a tab bar and
+ * [Custom navigators](/router/advanced/custom-navigators/) for navigator integration.
+ */
+export type TabsContextValue = ReturnType<
+  typeof useNavigationBuilder<
+    TabNavigationState<any>,
+    TabRouterOptions,
+    TabActionHelpers<ParamListBase>,
+    ExpoTabsNavigatorScreenOptions,
+    TabNavigationEventMap
+  >
+>;
+
+export type TabContextValue = TabsDescriptor['options'];
+
+export const TabContext = createContext<TabContextValue>({});
+/**
+ * @hidden
+ */
+export const TabTriggerMapContext = createContext<TriggerMap>({});
+/**
+ * @hidden
+ */
+export const TabNavigatorStatesContext = createContext<Record<string, TabNavigationState<any>>>({});
+/**
+ * @hidden
+ */
+export const TabsDescriptorsContext = createContext<TabsContextValue['descriptors']>({});
+/**
+ * @hidden
+ */
+export const TabsNavigatorContext = createContext<TabsContextValue['navigation'] | null>(null);
+/**
+ * @hidden
+ */
+export const TabsStateContext = createContext<TabsContextValue['state']>({
+  type: 'tab',
+  history: [],
+  index: -1,
+  key: '',
+  routeKeySeq: 0,
+  stale: false,
+  routeNames: [],
+  routes: [],
+});
+
+export type Route = TabNavigationState<ParamListBase>['routes'][number];
+export type TabsDescriptor = TabsContextValue['descriptors'][number];

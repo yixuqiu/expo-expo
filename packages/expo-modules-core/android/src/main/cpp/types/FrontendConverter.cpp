@@ -1,5 +1,6 @@
 // Copyright © 2021-present 650 Industries, Inc. (aka Expo)
 
+#include "../ExpoHeader.pch"
 #include "FrontendConverter.h"
 #include "ExpectedType.h"
 #include "FrontendConverterProvider.h"
@@ -8,13 +9,15 @@
 #include "../JavaScriptTypedArray.h"
 #include "../JSIContext.h"
 #include "../JavaScriptObject.h"
+#include "../ArrayBuffer.h"
+#include "../JavaScriptArrayBuffer.h"
+#include "../NativeArrayBuffer.h"
 #include "../JavaScriptValue.h"
 #include "../JavaScriptFunction.h"
 #include "../javaclasses/Collections.h"
 
 #include "react/jni/ReadableNativeMap.h"
 #include "react/jni/ReadableNativeArray.h"
-#include <jsi/JSIDynamic.h>
 
 #include <utility>
 #include <algorithm>
@@ -29,11 +32,12 @@ jobject IntegerFrontendConverter::convert(
   JNIEnv *env,
   const jsi::Value &value
 ) const {
-  auto &integerClass = JavaReferencesCache::instance()
-    ->getJClass("java/lang/Integer");
-  jmethodID integerConstructor = integerClass.getMethod("<init>", "(I)V");
-  return env->NewObject(integerClass.clazz, integerConstructor,
-                        static_cast<int>(value.asNumber()));
+  jvalue jValue{
+    .i = static_cast<int>(value.asNumber())
+  };
+
+  auto &integerClass = JCacheHolder::get().jInteger;
+  return env->NewObjectA(integerClass.clazz, integerClass.constructor, &jValue);
 }
 
 bool IntegerFrontendConverter::canConvert(jsi::Runtime &rt, const jsi::Value &value) const {
@@ -45,11 +49,12 @@ jobject LongFrontendConverter::convert(
   JNIEnv *env,
   const jsi::Value &value
 ) const {
-  auto &longClass = JavaReferencesCache::instance()
-    ->getJClass("java/lang/Long");
-  jmethodID longConstructor = longClass.getMethod("<init>", "(J)V");
-  return env->NewObject(longClass.clazz, longConstructor,
-                        static_cast<jlong>(value.asNumber()));
+  jvalue jValue{
+    .j = static_cast<jlong>(value.asNumber())
+  };
+
+  auto &longClass = JCacheHolder::get().jLong;
+  return env->NewObjectA(longClass.clazz, longClass.constructor, &jValue);
 }
 
 bool LongFrontendConverter::canConvert(jsi::Runtime &rt, const jsi::Value &value) const {
@@ -61,11 +66,12 @@ jobject FloatFrontendConverter::convert(
   JNIEnv *env,
   const jsi::Value &value
 ) const {
-  auto &floatClass = JavaReferencesCache::instance()
-    ->getJClass("java/lang/Float");
-  jmethodID floatConstructor = floatClass.getMethod("<init>", "(F)V");
-  return env->NewObject(floatClass.clazz, floatConstructor,
-                        static_cast<float>(value.asNumber()));
+  jvalue jValue{
+    .f = static_cast<float>(value.asNumber())
+  };
+
+  auto &floatClass = JCacheHolder::get().jFloat;
+  return env->NewObjectA(floatClass.clazz, floatClass.constructor, &jValue);
 }
 
 bool FloatFrontendConverter::canConvert(jsi::Runtime &rt, const jsi::Value &value) const {
@@ -77,10 +83,12 @@ jobject BooleanFrontendConverter::convert(
   JNIEnv *env,
   const jsi::Value &value
 ) const {
-  auto &booleanClass = JavaReferencesCache::instance()
-    ->getJClass("java/lang/Boolean");
-  jmethodID booleanConstructor = booleanClass.getMethod("<init>", "(Z)V");
-  return env->NewObject(booleanClass.clazz, booleanConstructor, value.asBool());
+  jvalue jValue{
+    .z = value.asBool()
+  };
+
+  auto &booleanClass = JCacheHolder::get().jBoolean;
+  return env->NewObjectA(booleanClass.clazz, booleanClass.constructor, &jValue);
 }
 
 bool BooleanFrontendConverter::canConvert(jsi::Runtime &rt, const jsi::Value &value) const {
@@ -92,22 +100,39 @@ jobject DoubleFrontendConverter::convert(
   JNIEnv *env,
   const jsi::Value &value
 ) const {
-  auto &doubleClass = JavaReferencesCache::instance()
-    ->getJClass("java/lang/Double");
-  jmethodID doubleConstructor = doubleClass.getMethod("<init>", "(D)V");
-  return env->NewObject(doubleClass.clazz, doubleConstructor, value.asNumber());
+  jvalue jValue{
+    .d = value.asNumber()
+  };
+
+  auto &doubleClass = JCacheHolder::get().jDouble;
+  return env->NewObjectA(doubleClass.clazz, doubleClass.constructor, &jValue);
 }
 
 bool DoubleFrontendConverter::canConvert(jsi::Runtime &rt, const jsi::Value &value) const {
   return value.isNumber();
 }
 
+namespace {
+
+/**
+ * Builds a Java string from UTF-16, which is what a Java string already stores, so the code units
+ * go straight to `NewString` with their length and no encoding step.
+ */
+jstring makeJavaString(JNIEnv *env, const std::u16string &utf16) {
+  if (utf16.empty()) {
+    return env->NewStringUTF("");
+  }
+  return static_cast<jstring>(jni::make_jstring(utf16).release());
+}
+
+} // namespace
+
 jobject StringFrontendConverter::convert(
   jsi::Runtime &rt,
   JNIEnv *env,
   const jsi::Value &value
 ) const {
-  return env->NewStringUTF(value.asString(rt).utf8(rt).c_str());
+  return makeJavaString(env, value.asString(rt).utf16(rt));
 }
 
 bool StringFrontendConverter::canConvert(jsi::Runtime &rt, const jsi::Value &value) const {
@@ -191,6 +216,70 @@ bool TypedArrayFrontendConverter::canConvert(
   return value.isObject();
 }
 
+jobject ArrayBufferFrontendConverter::convert(
+  jsi::Runtime &rt,
+  JNIEnv *env,
+  const jsi::Value &value
+) const {
+  JSIContext *jsiContext = getJSIContext(rt);
+  auto object = value.asObject(rt);
+
+  if (isTypedArray(rt, object)) {
+    auto typedArray = TypedArray(rt, object);
+    return ArrayBuffer::newInstance(jsiContext, rt, typedArray).release();
+  }
+
+  auto arrayBuffer = object.getArrayBuffer(rt);
+  return ArrayBuffer::newInstance(
+    jsiContext,
+    rt,
+    std::move(arrayBuffer)
+  ).release();
+}
+
+bool ArrayBufferFrontendConverter::canConvert(
+  jsi::Runtime &rt,
+  const jsi::Value &value
+) const {
+  if (value.isObject()) {
+    auto object = value.getObject(rt);
+    return object.isArrayBuffer(rt) || isTypedArray(rt, object);
+  }
+  return false;
+}
+
+jobject NativeArrayBufferFrontendConverter::convert(
+  jsi::Runtime &rt,
+  JNIEnv *env,
+  const jsi::Value &value
+) const {
+  JSIContext *jsiContext = getJSIContext(rt);
+  auto object = value.asObject(rt);
+
+  if (isTypedArray(rt, object)) {
+    auto typedArray = TypedArray(rt, object);
+    return NativeArrayBuffer::newInstance(jsiContext, rt, typedArray).release();
+  }
+
+  auto arrayBuffer = object.getArrayBuffer(rt);
+  return NativeArrayBuffer::newInstance(
+    jsiContext,
+    rt,
+    arrayBuffer
+  ).release();
+}
+
+bool NativeArrayBufferFrontendConverter::canConvert(
+  jsi::Runtime &rt,
+  const jsi::Value &value
+) const {
+  if (value.isObject()) {
+    auto object = value.getObject(rt);
+    return object.isArrayBuffer(rt) || isTypedArray(rt, object);
+  }
+  return false;
+}
+
 jobject JavaScriptValueFrontendConverter::convert(
   jsi::Runtime &rt,
   JNIEnv *env,
@@ -227,6 +316,34 @@ bool JavaScriptObjectFrontendConverter::canConvert(
   const jsi::Value &value
 ) const {
   return value.isObject();
+}
+
+jobject JavaScriptArrayBufferFrontendConverter::convert(
+  jsi::Runtime &rt,
+  JNIEnv *env,
+  const jsi::Value &value
+) const {
+  JSIContext *jsiContext = getJSIContext(rt);
+  auto object = value.asObject(rt);
+  auto arrayBuffer = isTypedArray(rt, object) ?
+    TypedArray(rt, object).getViewedBufferSlice(rt) :
+    object.getArrayBuffer(rt);
+  return JavaScriptArrayBuffer::newInstance(
+    jsiContext,
+    jsiContext->runtimeHolder->weak_from_this(),
+    std::make_shared<jsi::ArrayBuffer>(std::move(arrayBuffer))
+  ).release();
+}
+
+bool JavaScriptArrayBufferFrontendConverter::canConvert(
+  jsi::Runtime &rt,
+  const jsi::Value &value
+) const {
+  if (value.isObject()) {
+    auto object = value.getObject(rt);
+    return object.isArrayBuffer(rt) || isTypedArray(rt, object);
+  }
+  return false;
 }
 
 jobject JavaScriptFunctionFrontendConverter::convert(
@@ -377,7 +494,7 @@ jobject PrimitiveArrayFrontendConverter::convert(
   size_t size = jsArray.size(rt);
   auto result = env->NewObjectArray(
     size,
-    JavaReferencesCache::instance()->getOrLoadJClass(env, javaType).clazz,
+    JCacheHolder::get().getOrLoadJClass(env, javaType),
     nullptr
   );
   for (size_t i = 0; i < size; i++) {
@@ -394,6 +511,43 @@ bool PrimitiveArrayFrontendConverter::canConvert(jsi::Runtime &rt, const jsi::Va
   return value.isObject() && value.getObject(rt).isArray(rt);
 }
 
+ArrayFrontendConverter::ArrayFrontendConverter(
+  jni::local_ref<SingleType::javaobject> expectedType
+) {
+  auto parameterExpectedType = expectedType->getFirstParameterType();
+  parameterType = parameterExpectedType->getCombinedTypes();
+  parameterConverter = FrontendConverterProvider::instance()->obtainConverter(
+    parameterExpectedType
+  );
+  javaType = parameterExpectedType->getJClassString();
+}
+
+jobject ArrayFrontendConverter::convert(
+  jsi::Runtime &rt,
+  JNIEnv *env,
+  const jsi::Value &value
+) const {
+  auto jsArray = value.asObject(rt).asArray(rt);
+  size_t size = jsArray.size(rt);
+  auto result = env->NewObjectArray(
+    size,
+    JCacheHolder::get().getOrLoadJClass(env, javaType),
+    nullptr
+  );
+  for (size_t i = 0; i < size; i++) {
+    auto convertedElement = parameterConverter->convert(
+      rt, env, jsArray.getValueAtIndex(rt, i)
+    );
+    env->SetObjectArrayElement(result, i, convertedElement);
+    env->DeleteLocalRef(convertedElement);
+  }
+  return result;
+}
+
+bool ArrayFrontendConverter::canConvert(jsi::Runtime &rt, const jsi::Value &value) const {
+  return value.isObject() && value.getObject(rt).isArray(rt);
+}
+
 ListFrontendConverter::ListFrontendConverter(
   jni::local_ref<SingleType::javaobject> expectedType
 ) : parameterConverter(
@@ -407,19 +561,21 @@ jobject ListFrontendConverter::convert(
   JNIEnv *env,
   const jsi::Value &value
 ) const {
-  auto jsArray = value.asObject(rt).asArray(rt);
+  if (!value.isObject()) {
+    return convertSingleValue(rt, env, value);
+  }
+
+  auto valueObject = value.asObject(rt);
+  if (!valueObject.isArray(rt)) {
+    return convertSingleValue(rt, env, value);
+  }
+
+  auto jsArray = valueObject.asArray(rt);
   size_t size = jsArray.size(rt);
 
   auto arrayList = java::ArrayList<jobject>::create(size);
   for (size_t i = 0; i < size; i++) {
     auto jsValue = jsArray.getValueAtIndex(rt, i);
-
-    // TODO(@lukmccall): pass information to CPP if the underlying type is nullable or not.
-    if (jsValue.isNull() || jsValue.isUndefined()) {
-      arrayList->add(nullptr);
-      continue;
-    }
-
     auto convertedElement = parameterConverter->convert(
       rt, env, jsValue
     );
@@ -430,8 +586,19 @@ jobject ListFrontendConverter::convert(
   return arrayList.release();
 }
 
+jobject ListFrontendConverter::convertSingleValue(
+  jsi::Runtime &rt,
+  JNIEnv *env,
+  const jsi::Value &value
+) const {
+  auto result = java::ArrayList<jobject>::create(1);
+  result->add(parameterConverter->convert(rt, env, value));
+  return result.release();
+}
+
 bool ListFrontendConverter::canConvert(jsi::Runtime &rt, const jsi::Value &value) const {
-  return value.isObject() && value.getObject(rt).isArray(rt);
+  return (value.isObject() && value.getObject(rt).isArray(rt)) ||
+         parameterConverter->canConvert(rt, value);
 }
 
 MapFrontendConverter::MapFrontendConverter(
@@ -456,13 +623,7 @@ jobject MapFrontendConverter::convert(
     auto key = propertyNames.getValueAtIndex(rt, i).getString(rt);
     auto jsValue = jsObject.getProperty(rt, key);
 
-    auto convertedKey = env->NewStringUTF(key.utf8(rt).c_str());
-
-    // TODO(@lukmccall): pass information to CPP if the underlying type is nullable or not.
-    if (jsValue.isNull() || jsValue.isUndefined()) {
-      map->put(convertedKey, nullptr);
-      continue;
-    }
+    auto convertedKey = makeJavaString(env, key.utf16(rt));
 
     auto convertedValue = valueConverter->convert(
       rt, env, jsValue
@@ -495,10 +656,8 @@ jobject ViewTagFrontendConverter::convert(
   }
 
   auto viewTag = (int) nativeTag.getNumber();
-  auto &integerClass = JavaReferencesCache::instance()
-    ->getJClass("java/lang/Integer");
-  jmethodID integerConstructor = integerClass.getMethod("<init>", "(I)V");
-  return env->NewObject(integerClass.clazz, integerConstructor, viewTag);
+  auto &integerClass = JCacheHolder::get().jInteger;
+  return env->NewObject(integerClass.clazz, integerClass.constructor, viewTag);
 }
 
 bool ViewTagFrontendConverter::canConvert(jsi::Runtime &rt, const jsi::Value &value) const {
@@ -515,11 +674,9 @@ jobject SharedObjectIdConverter::convert(
     return nullptr;
   }
 
-  auto viewTag = (int) objectId.asNumber();
-  auto &integerClass = JavaReferencesCache::instance()
-    ->getJClass("java/lang/Integer");
-  jmethodID integerConstructor = integerClass.getMethod("<init>", "(I)V");
-  return env->NewObject(integerClass.clazz, integerConstructor, viewTag);
+  int id = (int) objectId.asNumber();
+  auto &integerClass = JCacheHolder::get().jInteger;
+  return env->NewObject(integerClass.clazz, integerClass.constructor, id);
 }
 
 bool SharedObjectIdConverter::canConvert(jsi::Runtime &rt, const jsi::Value &value) const {
@@ -531,10 +688,6 @@ jobject AnyFrontendConvert::convert(
   JNIEnv *env,
   const jsi::Value &value
 ) const {
-  if (value.isUndefined() || value.isNull()) {
-    return nullptr;
-  }
-
   if (booleanConverter.canConvert(rt, value)) {
     return booleanConverter.convert(rt, env, value);
   }
@@ -545,10 +698,6 @@ jobject AnyFrontendConvert::convert(
 
   if (stringConverter.canConvert(rt, value)) {
     return stringConverter.convert(rt, env, value);
-  }
-
-  if (!value.isObject()) {
-    return nullptr;
   }
 
   const jsi::Object &obj = value.asObject(rt);
@@ -580,7 +729,7 @@ jobject AnyFrontendConvert::convert(
     auto key = propertyNames.getValueAtIndex(rt, i).getString(rt);
     auto jsValue = obj.getProperty(rt, key);
 
-    auto convertedKey = env->NewStringUTF(key.utf8(rt).c_str());
+    auto convertedKey = makeJavaString(env, key.utf16(rt));
     auto convertedValue = this->convert(
       rt, env, jsValue
     );
@@ -597,4 +746,61 @@ jobject AnyFrontendConvert::convert(
 bool AnyFrontendConvert::canConvert(jsi::Runtime &rt, const jsi::Value &value) const {
   return true;
 }
+
+NullableFrontendConverter::NullableFrontendConverter(
+  jni::local_ref<SingleType::javaobject> expectedType
+) : parameterConverter(
+  FrontendConverterProvider::instance()->obtainConverter(
+    expectedType->getFirstParameterType()
+  )
+) {}
+
+bool NullableFrontendConverter::canConvert(
+  jsi::Runtime &rt,
+  const jsi::Value &value
+) const {
+  return value.isNull() || value.isUndefined() ||
+         parameterConverter->canConvert(rt, value);
+}
+
+jobject NullableFrontendConverter::convert(
+  jsi::Runtime &rt,
+  JNIEnv *env,
+  const jsi::Value &value
+) const {
+  if (value.isNull() || value.isUndefined()) {
+    return nullptr;
+  }
+
+  return parameterConverter->convert(rt, env, value);
+}
+
+ValueOrUndefinedFrontendConverter::ValueOrUndefinedFrontendConverter(
+  jni::local_ref<SingleType::javaobject> expectedType
+) : parameterConverter(
+  FrontendConverterProvider::instance()->obtainConverter(
+    expectedType->getFirstParameterType()
+  )
+) {}
+
+bool ValueOrUndefinedFrontendConverter::canConvert(
+  jsi::Runtime &rt,
+  const jsi::Value &value
+) const {
+  return value.isUndefined() ||
+         parameterConverter->canConvert(rt, value);
+}
+
+jobject ValueOrUndefinedFrontendConverter::convert(
+  jsi::Runtime &rt,
+  JNIEnv *env,
+  const jsi::Value &value
+) const {
+  if (value.isUndefined()) {
+    return env->NewLocalRef(JCacheHolder::get().jUndefined);
+  }
+
+  return parameterConverter->convert(rt, env, value);
+}
+
 } // namespace expo

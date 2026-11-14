@@ -2,9 +2,10 @@ import { jest } from '@jest/globals';
 import { render, screen } from '@testing-library/react';
 import { createRequire } from 'node:module';
 
-import APISection from './APISection';
+import { axe, renderWithHeadings } from '~/common/test-utilities';
+import { ApiDataProvider } from '~/providers/api-data';
 
-import { renderWithHeadings } from '~/common/test-utilities';
+import APISection from './APISection';
 
 const require = createRequire(import.meta.url);
 
@@ -21,6 +22,17 @@ describe('APISection', () => {
     expect(container).toMatchSnapshot();
   });
 
+  test('has no axe violations', async () => {
+    const { container } = renderWithHeadings(
+      <APISection
+        packageName="expo-apple-authentication"
+        forceVersion="unversioned"
+        testRequire={require}
+      />
+    );
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
   test('expo-apple-authentication', () => {
     const { container } = renderWithHeadings(
       <APISection
@@ -31,10 +43,11 @@ describe('APISection', () => {
     );
 
     expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(6);
-    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(25);
+    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(27);
     expect(screen.getAllByRole('table')).toHaveLength(11);
+    expect(screen.queryAllByText('Interfaces')).toHaveLength(1);
 
-    expect(screen.queryByText('Event Subscriptions'));
+    expect(screen.queryByText('Event subscriptions'));
     expect(screen.queryByText('Components'));
 
     expect(screen.queryByDisplayValue('AppleAuthenticationButton'));
@@ -43,34 +56,6 @@ describe('APISection', () => {
 
     expect(screen.queryAllByText('Constants')).toHaveLength(0);
     expect(screen.queryAllByText('Hooks')).toHaveLength(0);
-    expect(screen.queryAllByText('Interfaces')).toHaveLength(0);
-
-    expect(container).toMatchSnapshot();
-  });
-
-  test('expo-barcode-scanner', () => {
-    const { container } = renderWithHeadings(
-      <APISection
-        packageName="expo-barcode-scanner"
-        apiName="BarCodeScanner"
-        forceVersion="unversioned"
-        testRequire={require}
-      />
-    );
-
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(7);
-    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(19);
-
-    expect(screen.queryByText('Components'));
-    expect(screen.queryByText('Hooks'));
-
-    expect(screen.queryByDisplayValue('BarCodeEvent'));
-    expect(screen.queryByDisplayValue('BarCodeScannerProps'));
-    expect(screen.queryByDisplayValue('Subscription'));
-    expect(screen.queryByDisplayValue('usePermissions'));
-    expect(screen.queryByDisplayValue('Inherited Props'));
-
-    expect(screen.queryAllByText('Constants')).toHaveLength(0);
 
     expect(container).toMatchSnapshot();
   });
@@ -81,8 +66,8 @@ describe('APISection', () => {
     );
 
     expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(4);
-    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(11);
-    expect(screen.getAllByRole('table')).toHaveLength(6);
+    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(12);
+    expect(screen.getAllByRole('table')).toHaveLength(5);
 
     expect(screen.queryByText('Methods'));
     expect(screen.queryByText('Enums'));
@@ -93,7 +78,7 @@ describe('APISection', () => {
     expect(screen.queryByDisplayValue('PermissionStatus'));
 
     expect(screen.queryAllByText('Constants')).toHaveLength(0);
-    expect(screen.queryAllByText('Event Subscriptions')).toHaveLength(0);
+    expect(screen.queryAllByText('Event subscriptions')).toHaveLength(0);
     expect(screen.queryAllByText('Hooks')).toHaveLength(0);
 
     expect(container).toMatchSnapshot();
@@ -104,9 +89,9 @@ describe('APISection', () => {
       <APISection packageName="expo-asset" forceVersion="unversioned" testRequire={require} />
     );
 
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(3);
-    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(17);
-    expect(screen.getAllByRole('table')).toHaveLength(7);
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(4);
+    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(18);
+    expect(screen.getAllByRole('table')).toHaveLength(8);
 
     expect(screen.queryByText('Classes'));
     expect(screen.queryByText('Asset Properties'));
@@ -117,5 +102,44 @@ describe('APISection', () => {
 
     expect(screen.queryAllByText('Props')).toHaveLength(0);
     expect(screen.queryAllByText('Enums')).toHaveLength(0);
+  });
+
+  test('renders from provider data without testRequire', () => {
+    const { children } = require('~/public/static/data/unversioned/expo-pedometer.json');
+
+    renderWithHeadings(
+      <ApiDataProvider data={{ 'unversioned/expo-pedometer': children }}>
+        <APISection packageName="expo-pedometer" forceVersion="unversioned" />
+      </ApiDataProvider>
+    );
+
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(4);
+    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(12);
+    expect(screen.getAllByRole('table')).toHaveLength(5);
+  });
+
+  test('renders the fallback when provider data is missing', () => {
+    console.error = jest.fn();
+
+    render(<APISection packageName="expo-pedometer" forceVersion="unversioned" />);
+
+    expect(console.error).toHaveBeenCalled();
+    expect(screen.getAllByText('No API data file found, sorry!')).toHaveLength(1);
+  });
+
+  test('expo-router/native-tabs collapses huge mixed literal unions', () => {
+    const { container } = renderWithHeadings(
+      <APISection
+        packageName="expo-router/native-tabs"
+        forceVersion="unversioned"
+        testRequire={require}
+      />
+    );
+
+    expect(screen.queryAllByText(/See description for available values\./).length).toBeGreaterThan(
+      0
+    );
+    expect(container.innerHTML).not.toContain("'discover_tune'");
+    expect(container.innerHTML.length).toBeLessThan(600_000);
   });
 });

@@ -1,11 +1,18 @@
 import chalk from 'chalk';
+import semver from 'semver';
 
+import { getExpoConfigAsync } from '../ExpoConfig';
+import { resolveExpoAutolinkingVersion } from '../ExpoResolver';
+import type { HashSource, NormalizedOptions } from '../Fingerprint.types';
+import { profile } from '../utils/Profile';
 import {
   getBareAndroidSourcesAsync,
   getBareIosSourcesAsync,
   getPackageJsonScriptSourcesAsync,
   getGitIgnoreSourcesAsync,
-  getRncliAutolinkingSourcesAsync,
+  getCoreAutolinkingSourcesFromRncCliAsync,
+  getCoreAutolinkingSourcesFromExpoAndroid,
+  getCoreAutolinkingSourcesFromExpoIos,
 } from './Bare';
 import {
   getEasBuildSourcesAsync,
@@ -16,8 +23,6 @@ import {
 } from './Expo';
 import { getDefaultPackageSourcesAsync } from './Packages';
 import { getPatchPackageSourcesAsync } from './PatchPackage';
-import type { HashSource, NormalizedOptions } from '../Fingerprint.types';
-import { profile } from '../utils/Profile';
 
 const debug = require('debug')('expo:fingerprint:sourcer:Sourcer');
 
@@ -25,11 +30,30 @@ export async function getHashSourcesAsync(
   projectRoot: string,
   options: NormalizedOptions
 ): Promise<HashSource[]> {
+  const { config: expoConfig, loadedModules } = await getExpoConfigAsync(projectRoot, options);
+
+  const expoAutolinkingVersion = resolveExpoAutolinkingVersion(projectRoot) ?? '0.0.0';
+  const useRNCoreAutolinkingFromExpo =
+    // expo-modules-autolinking supports the `react-native-config` core autolinking from 1.11.2.
+    // To makes the `useRNCoreAutolinkingFromExpo` default to `true` for Expo SDK 52 and higher.
+    // We check the expo-modules-autolinking version from 1.12.0.
+    typeof options.useRNCoreAutolinkingFromExpo === 'boolean'
+      ? options.useRNCoreAutolinkingFromExpo
+      : semver.gte(expoAutolinkingVersion, '1.12.0');
+
   const results = await Promise.all([
     // expo
-    profile(options, getExpoAutolinkingAndroidSourcesAsync)(projectRoot, options),
-    profile(options, getExpoAutolinkingIosSourcesAsync)(projectRoot, options),
-    profile(options, getExpoConfigSourcesAsync)(projectRoot, options),
+    profile(options, getExpoAutolinkingAndroidSourcesAsync)(
+      projectRoot,
+      options,
+      expoAutolinkingVersion
+    ),
+    profile(options, getExpoAutolinkingIosSourcesAsync)(
+      projectRoot,
+      options,
+      expoAutolinkingVersion
+    ),
+    profile(options, getExpoConfigSourcesAsync)(projectRoot, expoConfig, loadedModules, options),
     profile(options, getEasBuildSourcesAsync)(projectRoot, options),
     profile(options, getExpoCNGPatchSourcesAsync)(projectRoot, options),
 
@@ -41,8 +65,22 @@ export async function getHashSourcesAsync(
     profile(options, getBareAndroidSourcesAsync)(projectRoot, options),
     profile(options, getBareIosSourcesAsync)(projectRoot, options),
 
-    // rn-cli autolinking
-    profile(options, getRncliAutolinkingSourcesAsync)(projectRoot, options),
+    // react-native core autolinking
+    profile(options, getCoreAutolinkingSourcesFromExpoAndroid)(
+      projectRoot,
+      options,
+      useRNCoreAutolinkingFromExpo
+    ),
+    profile(options, getCoreAutolinkingSourcesFromExpoIos)(
+      projectRoot,
+      options,
+      useRNCoreAutolinkingFromExpo
+    ),
+    profile(options, getCoreAutolinkingSourcesFromRncCliAsync)(
+      projectRoot,
+      options,
+      useRNCoreAutolinkingFromExpo
+    ),
 
     // patch-package
     profile(options, getPatchPackageSourcesAsync)(projectRoot, options),

@@ -1,29 +1,5 @@
-import { AuthError } from './Errors';
-import { TokenResponse } from './TokenRequest';
-
-// @needsAudit
-export type AuthSessionOptions = {
-  /**
-   * The URL that points to the sign in page that you would like to open the user to.
-   */
-  authUrl: string;
-  /**
-   * The URL to return to the application. In managed apps, it's optional and defaults to output of [`Linking.createURL('expo-auth-session', params)`](./linking/#linkingcreateurlpath-namedparameters)
-   * call with `scheme` and `queryParams` params. However, in the bare app, it's required - `AuthSession` needs to know where to wait for the response.
-   * Hence, this method will throw an exception, if you don't provide `returnUrl`.
-   */
-  returnUrl?: string;
-  /**
-   * A boolean determining whether browsed website should be shown as separate entry in Android recents/multitasking view.
-   * @default false
-   * @platform android
-   */
-  showInRecents?: boolean;
-  /**
-   * Project name to use for the `auth.expo.io` proxy.
-   */
-  projectNameForProxy?: string;
-};
+import type { AuthError } from './Errors';
+import type { TokenResponse } from './TokenRequest';
 
 // @needsAudit
 /**
@@ -98,8 +74,8 @@ export type AuthSessionRedirectUriOptions = {
    */
   preferLocalhost?: boolean;
   /**
-   * Manual scheme to use in Bare and Standalone native app contexts. Takes precedence over all other properties.
-   * You must define the URI scheme that will be used in a custom built native application or standalone Expo application.
+   * Manual scheme to use in existing React Native projects and production builds. Takes precedence over all other properties.
+   * You must define the URI scheme that will be used in a custom-built native application or production build.
    * The value should conform to your native app's URI schemes.
    * You can see conformance with `npx uri-scheme list`.
    */

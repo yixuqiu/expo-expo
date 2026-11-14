@@ -1,9 +1,11 @@
-import { ExpoRouter } from '../../types/expo-router';
+import type { UrlObject } from '../global-state/getRouteInfoFromState';
+import type { LinkToOptions } from '../global-state/routing';
+import type { Href } from '../types';
 
 /** Resolve an href object into a fully qualified, relative href. */
-export const resolveHref = (href: ExpoRouter.Href): string => {
+export const resolveHref = (href: Href | string): string => {
   if (typeof href === 'string') {
-    return resolveHref({ pathname: href });
+    return href;
   }
   const path = href.pathname ?? '';
   if (!href?.params) {
@@ -16,10 +18,52 @@ export const resolveHref = (href: ExpoRouter.Href): string => {
   return pathname + (paramsString ? `?${paramsString}` : '');
 };
 
+export function resolveHrefStringWithSegments(
+  href: string,
+  { segments = [], params = {} }: Partial<UrlObject> = {},
+  { relativeToDirectory }: LinkToOptions = {}
+) {
+  if (href.startsWith('.')) {
+    // Resolve base path by merging the current segments with the params
+    let base =
+      segments
+        ?.map((segment) => {
+          if (!segment.startsWith('[')) return segment;
+
+          if (segment.startsWith('[...')) {
+            segment = segment.slice(4, -1);
+            const param = params[segment];
+            if (Array.isArray(param)) {
+              return param.join('/');
+            } else {
+              return param?.split(',')?.join('/') ?? '';
+            }
+          } else {
+            segment = segment.slice(1, -1);
+            return params[segment];
+          }
+        })
+        .filter(Boolean)
+        .join('/') ?? '/';
+
+    if (relativeToDirectory) {
+      base = `${base}/`;
+    }
+
+    const url = new URL(href, `http://hostname/${base}`);
+    href = `${url.pathname}${url.search}`;
+  }
+
+  // Collapse leading slashes so a scheme-relative `//host/...` href — whether
+  // smuggled in directly or produced by URL resolution above — cannot route
+  // navigation cross-origin.
+  return href.replace(/^\/+/, '/');
+}
+
 function createQualifiedPathname(
   pathname: string,
   params: Record<string, any>
-): { pathname: string; params: ExpoRouter.UnknownInputParams } {
+): { pathname: string; params: any } {
   for (const [key, value = ''] of Object.entries(params)) {
     const dynamicKey = `[${key}]`;
     const deepDynamicKey = `[...${key}]`;

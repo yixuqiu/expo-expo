@@ -5,28 +5,29 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import com.facebook.react.modules.core.PermissionAwareActivity
 import com.facebook.react.modules.core.PermissionListener
-import expo.modules.interfaces.permissions.Permissions
-import expo.modules.interfaces.permissions.PermissionsResponse
-import expo.modules.interfaces.permissions.PermissionsResponseListener
-import expo.modules.interfaces.permissions.PermissionsStatus
 import expo.modules.core.ModuleRegistry
-import expo.modules.core.Promise
 import expo.modules.core.interfaces.ActivityProvider
 import expo.modules.core.interfaces.InternalModule
 import expo.modules.core.interfaces.LifecycleEventListener
 import expo.modules.core.interfaces.services.UIManager
-import java.util.*
-import kotlin.collections.HashMap
+import expo.modules.interfaces.permissions.Permissions
+import expo.modules.interfaces.permissions.PermissionsResponse
+import expo.modules.interfaces.permissions.PermissionsResponseListener
+import expo.modules.interfaces.permissions.PermissionsStatus
+import java.util.LinkedList
+import java.util.Queue
 
 private const val PERMISSIONS_REQUEST: Int = 13
 private const val PREFERENCE_FILENAME = "expo.modules.permissions.asked"
+private const val BLOCKED_PERMISSION_KEY_PREFIX = "blocked:"
 
 open class PermissionsService(val context: Context) : InternalModule, Permissions, LifecycleEventListener {
   private var mActivityProvider: ActivityProvider? = null
@@ -34,9 +35,9 @@ open class PermissionsService(val context: Context) : InternalModule, Permission
   // state holders for asking for writing permissions
   private var mWriteSettingsPermissionBeingAsked = false // change this directly before calling corresponding startActivity
   private var mAskAsyncListener: PermissionsResponseListener? = null
-  private var mAskAsyncRequestedPermissions: Array<out String>? = null
+  private var mAskAsyncRequestedPermissions: Array<String>? = null
 
-  private val mPendingPermissionCalls: Queue<Pair<Array<out String>, PermissionsResponseListener>> = LinkedList()
+  private val mPendingPermissionCalls: Queue<Pair<Array<String>, PermissionsResponseListener>> = LinkedList()
   private var mCurrentPermissionListener: PermissionsResponseListener? = null
 
   private lateinit var mAskedPermissionsCache: SharedPreferences
@@ -44,11 +45,46 @@ open class PermissionsService(val context: Context) : InternalModule, Permission
   private fun didAsk(permission: String): Boolean = mAskedPermissionsCache.getBoolean(permission, false)
 
   private fun addToAskedPermissionsCache(permissions: Array<out String>) {
-    with(mAskedPermissionsCache.edit()) {
+    mAskedPermissionsCache.edit(commit = true) {
       permissions.forEach { putBoolean(it, true) }
-      apply()
     }
   }
+
+  /**
+   * Android can't tell a permanently denied permission apart from a re-askable one ("Ask every time", or a revoked
+   * one-time grant) at query time, so we record it ourselves.
+   */
+  private fun isBlocked(permission: String): Boolean =
+    mAskedPermissionsCache.getBoolean(blockedPermissionKey(permission), false)
+
+  private fun setBlocked(permission: String, blocked: Boolean) {
+    mAskedPermissionsCache.edit(commit = true) {
+      putBoolean(blockedPermissionKey(permission), blocked)
+    }
+  }
+
+  private fun blockedPermissionKey(permission: String): String = "$BLOCKED_PERMISSION_KEY_PREFIX$permission"
+
+  /**
+   * Record whether each permission became permanently denied. A denied result with no rationale to show means the user blocked it.
+   * Anything else clears the flag. This is the only time the denied states are distinguishable,
+   * so we persist the result for later ``getPermissions` calls.
+   */
+  private fun withBlockedTracking(listener: PermissionsResponseListener): PermissionsResponseListener =
+    PermissionsResponseListener { result ->
+      listener.onResult(
+        result.mapValues { (permission, response) ->
+          if (response.status == PermissionsStatus.DENIED) {
+            val blocked = !shouldShowRequestPermissionRationale(permission)
+            setBlocked(permission, blocked)
+            PermissionsResponse(response.status, !blocked)
+          } else {
+            setBlocked(permission, false)
+            response
+          }
+        }
+      )
+    }
 
   override fun getExportedInterfaces(): List<Class<out Any>> = listOf(Permissions::class.java)
 
@@ -60,7 +96,12 @@ open class PermissionsService(val context: Context) : InternalModule, Permission
     mAskedPermissionsCache = context.applicationContext.getSharedPreferences(PREFERENCE_FILENAME, Context.MODE_PRIVATE)
   }
 
-  override fun getPermissionsWithPromise(promise: Promise, vararg permissions: String) {
+  override fun getPermissionsWithPromise(
+    promise:
+    @Suppress("DEPRECATION")
+    expo.modules.core.Promise,
+    vararg permissions: String
+  ) {
     getPermissions(
       PermissionsResponseListener { permissionsMap: MutableMap<String, PermissionsResponse> ->
         val areAllGranted = permissionsMap.all { (_, response) -> response.status == PermissionsStatus.GRANTED }
@@ -87,7 +128,12 @@ open class PermissionsService(val context: Context) : InternalModule, Permission
     )
   }
 
-  override fun askForPermissionsWithPromise(promise: Promise, vararg permissions: String) {
+  override fun askForPermissionsWithPromise(
+    promise:
+    @Suppress("DEPRECATION")
+    expo.modules.core.Promise,
+    vararg permissions: String
+  ) {
     askForPermissions(
       PermissionsResponseListener {
         getPermissionsWithPromise(promise, *permissions)
@@ -146,10 +192,10 @@ open class PermissionsService(val context: Context) : InternalModule, Permission
           newListener.onResult(mutableMapOf())
           return
         }
-        askForManifestPermissions(permissionsToAsk, newListener)
+        askForManifestPermissions(permissionsToAsk, withBlockedTracking(newListener))
       }
     } else {
-      askForManifestPermissions(permissions, responseListener)
+      askForManifestPermissions(permissions, withBlockedTracking(responseListener))
     }
   }
 
@@ -163,10 +209,10 @@ open class PermissionsService(val context: Context) : InternalModule, Permission
   override fun isPermissionPresentInManifest(permission: String): Boolean {
     try {
       context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)?.run {
-        return requestedPermissions.contains(permission)
+        return requestedPermissions!!.contains(permission)
       }
       return false
-    } catch (e: PackageManager.NameNotFoundException) {
+    } catch (_: PackageManager.NameNotFoundException) {
       return false
     }
   }
@@ -204,10 +250,10 @@ open class PermissionsService(val context: Context) : InternalModule, Permission
     return ContextCompat.checkSelfPermission(context, permission)
   }
 
-  private fun canAskAgain(permission: String): Boolean {
+  protected open fun shouldShowRequestPermissionRationale(permission: String): Boolean {
     return mActivityProvider?.currentActivity?.let {
       ActivityCompat.shouldShowRequestPermissionRationale(it, permission)
-    } ?: false
+    } == true
   }
 
   private fun parseNativeResult(permissionsString: Array<out String>, grantResults: IntArray): Map<String, PermissionsResponse> {
@@ -227,7 +273,7 @@ open class PermissionsService(val context: Context) : InternalModule, Permission
     return PermissionsResponse(
       status,
       if (status == PermissionsStatus.DENIED) {
-        canAskAgain(permission)
+        !isBlocked(permission)
       } else {
         true
       }
@@ -235,7 +281,7 @@ open class PermissionsService(val context: Context) : InternalModule, Permission
   }
 
   protected open fun askForManifestPermissions(permissions: Array<out String>, listener: PermissionsResponseListener) {
-    delegateRequestToActivity(permissions, listener)
+    delegateRequestToActivity(arrayOf(*permissions), listener)
   }
 
   /**
@@ -244,7 +290,7 @@ open class PermissionsService(val context: Context) : InternalModule, Permission
    *
    * @param permissions [android.Manifest.permission]
    */
-  protected fun delegateRequestToActivity(permissions: Array<out String>, listener: PermissionsResponseListener) {
+  protected fun delegateRequestToActivity(permissions: Array<String>, listener: PermissionsResponseListener) {
     addToAskedPermissionsCache(permissions)
 
     val currentActivity = mActivityProvider?.currentActivity
@@ -307,7 +353,7 @@ open class PermissionsService(val context: Context) : InternalModule, Permission
 
   private fun askForWriteSettingsPermissionFirst() {
     Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
-      data = Uri.parse("package:${context.packageName}")
+      data = "package:${context.packageName}".toUri()
       addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }.let {
       mWriteSettingsPermissionBeingAsked = true

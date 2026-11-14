@@ -1,5 +1,5 @@
 import { RuntimeRedirectMiddleware } from '../RuntimeRedirectMiddleware';
-import { ServerRequest, ServerResponse } from '../server.types';
+import type { ServerRequest, ServerResponse } from '../server.types';
 
 const asReq = (req: Partial<ServerRequest>) => req as ServerRequest;
 
@@ -55,11 +55,11 @@ describe('handleRequestAsync', () => {
       response
     );
     expect(response.statusCode).toBe(307);
-    expect(response.end).toBeCalledWith();
-    expect(response.setHeader).toBeCalledTimes(4);
+    expect(response.end).toHaveBeenCalledWith();
+    expect(response.setHeader).toHaveBeenCalledTimes(4);
     expect(response.setHeader).toHaveBeenNthCalledWith(1, 'Location', 'mock-location-expo');
-    expect(getLocation).toBeCalledWith({ runtime: 'expo' });
-    expect(onDeepLink).toBeCalledWith({ runtime: 'expo', platform: 'android' });
+    expect(getLocation).toHaveBeenCalledWith({ runtime: 'expo', forwarded: null });
+    expect(onDeepLink).toHaveBeenCalledWith({ runtime: 'expo', platform: 'android' });
   });
 
   it('redirects to Expo Go with user agent header', async () => {
@@ -77,11 +77,11 @@ describe('handleRequestAsync', () => {
       response
     );
     expect(response.statusCode).toBe(307);
-    expect(response.end).toBeCalledWith();
-    expect(response.setHeader).toBeCalledTimes(4);
+    expect(response.end).toHaveBeenCalledWith();
+    expect(response.setHeader).toHaveBeenCalledTimes(4);
     expect(response.setHeader).toHaveBeenNthCalledWith(1, 'Location', 'mock-location-expo');
-    expect(getLocation).toBeCalledWith({ runtime: 'expo' });
-    expect(onDeepLink).toBeCalledWith({ runtime: 'expo', platform: 'android' });
+    expect(getLocation).toHaveBeenCalledWith({ runtime: 'expo', forwarded: null });
+    expect(onDeepLink).toHaveBeenCalledWith({ runtime: 'expo', platform: 'android' });
   });
 
   it('redirects to a custom runtime', async () => {
@@ -95,10 +95,38 @@ describe('handleRequestAsync', () => {
       response
     );
     expect(response.statusCode).toBe(307);
-    expect(response.end).toBeCalledWith();
-    expect(response.setHeader).toBeCalledTimes(4);
+    expect(response.end).toHaveBeenCalledWith();
+    expect(response.setHeader).toHaveBeenCalledTimes(4);
     expect(response.setHeader).toHaveBeenNthCalledWith(1, 'Location', 'mock-location-custom');
-    expect(getLocation).toBeCalledWith({ runtime: 'custom' });
-    expect(onDeepLink).toBeCalledWith({ runtime: 'custom', platform: 'ios' });
+    expect(getLocation).toHaveBeenCalledWith({ runtime: 'custom', forwarded: null });
+    expect(onDeepLink).toHaveBeenCalledWith({ runtime: 'custom', platform: 'ios' });
+  });
+
+  it('redirects to a custom runtime from a path-only url', async () => {
+    const { middleware, getLocation } = createMiddleware();
+
+    const response = createMockResponse();
+    await middleware.handleRequestAsync(
+      asReq({ url: '/_expo/link?platform=ios&choice=expo-dev-client' }),
+      response
+    );
+    expect(response.statusCode).toBe(307);
+    expect(getLocation).toHaveBeenCalledWith({ runtime: 'custom', forwarded: null });
+  });
+
+  it('passes the forwarded address to the location resolver', async () => {
+    const { middleware, getLocation } = createMiddleware();
+
+    await middleware.handleRequestAsync(
+      asReq({
+        url: 'http://localhost:8081/_expo/link?platform=ios',
+        headers: { forwarded: 'host="proxy.test:4443";proto=https' },
+      }),
+      createMockResponse()
+    );
+    expect(getLocation).toHaveBeenCalledWith({
+      runtime: 'expo',
+      forwarded: { authority: 'proxy.test:4443', protocol: 'https', viaForwardedHeader: true },
+    });
   });
 });

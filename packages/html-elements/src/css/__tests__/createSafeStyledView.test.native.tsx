@@ -1,5 +1,4 @@
-import React from 'react';
-import renderer from 'react-test-renderer';
+import { render } from '@testing-library/react-native';
 
 import View from '../../primitives/View';
 import { createSafeStyledView } from '../createSafeStyledView';
@@ -18,8 +17,8 @@ afterAll(() => {
   console.warn = originalConsoleWarn;
 });
 
-it(`strips invalid style properties`, () => {
-  const tree = renderer.create(
+it('strips invalid style properties', async () => {
+  const { toJSON } = await render(
     <Safe
       style={{
         transitionDuration: '200ms',
@@ -27,29 +26,43 @@ it(`strips invalid style properties`, () => {
       }}
     />
   );
-  //   expect(tree.root.children[0]).toHaveStyle({ position: 'absolute' });
-  expect(tree).toMatchSnapshot();
+  expect(toJSON()).toMatchSnapshot();
 });
 
-it(`replaces invalid position with "relative"`, () => {
-  const tree = renderer.create(
+it('preserves backgroundImage, which React Native supports natively', async () => {
+  const { toJSON } = await render(
+    <Safe
+      style={{
+        backgroundImage: 'linear-gradient(to bottom, red, blue)',
+        backgroundClip: 'border-box',
+      }}
+    />
+  );
+  const json = toJSON();
+  expect(json && !Array.isArray(json) && json.props.style).toMatchObject({
+    backgroundImage: 'linear-gradient(to bottom, red, blue)',
+  });
+});
+
+it('replaces invalid position with "relative"', async () => {
+  const { toJSON } = await render(
     <Safe
       style={{
         position: 'fixed',
       }}
     />
   );
-  expect(tree).toMatchSnapshot();
-  expect(console.warn).toBeCalledWith(`Unsupported position: 'fixed'`);
+  expect(toJSON()).toMatchSnapshot();
+  expect(console.warn).toHaveBeenCalledWith(`Unsupported position: 'fixed'`);
 });
 
-it(`mocks out visibility: hidden by lowering the opacity`, () => {
-  const tree = renderer.create(
+it('mocks out visibility: hidden by lowering the opacity', async () => {
+  const { toJSON } = await render(
     <Safe
       style={{
         visibility: 'hidden',
       }}
     />
   );
-  expect(tree).toMatchSnapshot();
+  expect(toJSON()).toMatchSnapshot();
 });

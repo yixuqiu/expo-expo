@@ -1,18 +1,15 @@
 import ExpoUpdates from '../ExpoUpdates';
 import * as Updates from '../Updates';
-import {
-  Manifest,
-  UpdateCheckResultAvailable,
-  UpdatesLogEntryCode,
-  UpdatesLogEntryLevel,
-} from '../Updates.types';
+import type { Manifest, UpdateCheckResultAvailable } from '../Updates.types';
+import { UpdatesLogEntryCode, UpdatesLogEntryLevel } from '../Updates.types';
 
 const fakeManifest = {
   id: '@jester/test-app',
   sdkVersion: '36.0.0',
 } as any as Manifest;
 
-let old__DEV__;
+let old__DEV__: boolean;
+
 beforeAll(() => {
   old__DEV__ = __DEV__;
   //@ts-expect-error: __DEV__ is usually not assignable but we need to set it to false for this test
@@ -77,8 +74,7 @@ it('returns the proper object when no logs from readLogEntriesAsync', async () =
   jest.mocked(ExpoUpdates.readLogEntriesAsync).mockResolvedValueOnce([]);
 
   const actual = await Updates.readLogEntriesAsync();
-  const expected = [];
-  expect(actual).toEqual(expected);
+  expect(actual).toEqual([]);
 });
 
 it('returns the proper object when logs returned from readLogEntriesAsync', async () => {
@@ -102,9 +98,9 @@ it('returns the proper object when logs returned from readLogEntriesAsync', asyn
 
   const actual = await Updates.readLogEntriesAsync();
   expect(actual.length).toEqual(2);
-  expect(actual[0].timestamp).toEqual(100);
-  expect(actual[0].level).toEqual('info');
-  expect(actual[0].updateId).toBeUndefined();
-  expect(actual[1].code).toEqual('JSRuntimeError');
-  expect(actual[1].stacktrace?.length).toEqual(3);
+  expect(actual[0]?.timestamp).toEqual(100);
+  expect(actual[0]?.level).toEqual('info');
+  expect(actual[0]?.updateId).toBeUndefined();
+  expect(actual[1]?.code).toEqual('JSRuntimeError');
+  expect(actual[1]?.stacktrace?.length).toEqual(3);
 });

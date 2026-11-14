@@ -1,54 +1,108 @@
 import { Button, mergeClasses } from '@expo/styleguide';
-import { ArrowUpRightIcon } from '@expo/styleguide-icons';
-import isBefore from 'date-fns/isBefore';
-import { useRouter } from 'next/compat/router';
+import { ArrowUpRightIcon } from '@expo/styleguide-icons/outline/ArrowUpRightIcon';
+import { XIcon } from '@expo/styleguide-icons/outline/XIcon';
+import { isBefore } from 'date-fns/isBefore';
+import { useEffect, useState } from 'react';
+
+import { useLocalStorage } from '~/common/useLocalStorage';
 
 import { AppJSIcon } from './AppJSIcon';
 
-import { CALLOUT, HEADLINE } from '~/ui/components/Text';
-
 export function AppJSBanner() {
-  const router = useRouter();
-  const appJSConfEndDate = new Date('2024-05-24');
-  const showAppJSConfShoutout = isBefore(new Date(), appJSConfEndDate);
-  const isHomePage = router?.pathname === '/';
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isAppJSBannerVisible, setIsAppJSBannerVisible] = useLocalStorage<boolean>({
+    name: '2026-appjs-banner',
+    defaultValue: true,
+  });
 
-  if (!showAppJSConfShoutout || !isHomePage) {
+  const appJSConfEndDate = new Date('2026-05-29');
+  const showAppJSConfShoutout = isBefore(new Date(), appJSConfEndDate);
+
+  useEffect(function didMount() {
+    setIsLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (isLoaded && isAppJSBannerVisible && showAppJSConfShoutout) {
+      const id = requestAnimationFrame(() => {
+        setIsOpen(true);
+      });
+      return () => {
+        cancelAnimationFrame(id);
+      };
+    }
+  }, [isLoaded, isAppJSBannerVisible, showAppJSConfShoutout]);
+
+  if (!isLoaded || !isAppJSBannerVisible || !showAppJSConfShoutout) {
     return null;
   }
 
   return (
     <div
       className={mergeClasses(
-        'relative flex items-center justify-between gap-3 py-4 px-6 overflow-hidden rounded-lg mt-6 mb-4',
-        'bg-appjs bg-cover bg-left bg-no-repeat',
-        'border border-[#03c] dark:border-[#1e51e7]',
-        'max-md-gutters:flex-wrap'
-      )}>
-      <div className="flex items-center gap-4">
-        <div className="relative z-10 p-2 max-sm-gutters:hidden">
-          <div className="absolute inset-0 rounded-md bg-[#1e51e7] asset-sm-shadow" />
-          <AppJSIcon className="icon-lg relative z-10 text-palette-white" />
-        </div>
-        <div className="relative grid grid-cols-1 gap-0.5">
-          <HEADLINE className="!text-palette-white">App.js Conf 2024</HEADLINE>
-          <CALLOUT className="!text-[#CCD3FF]">
-            The Expo &amp; React Native conference in Europe is back, May 22-24 in Kraków, Poland!
-          </CALLOUT>
-        </div>
-      </div>
-      <div className="z-10 flex items-center gap-3">
-        <Button
-          size="xs"
-          href="https://appjs.co"
-          openInNewTab
-          rightSlot={<ArrowUpRightIcon className="icon-xs text-palette-white opacity-75" />}
+        'grid motion-reduce:transition-none',
+        isOpen
+          ? '[transition:grid-template-rows_350ms_ease-out_250ms,opacity_250ms_ease-out_600ms] grid-rows-[1fr] opacity-100'
+          : 'grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-400 ease-out'
+      )}
+      onTransitionEnd={event => {
+        if (event.propertyName === 'grid-template-rows' && !isOpen) {
+          setIsAppJSBannerVisible(false);
+        }
+      }}>
+      <div className="min-h-0 overflow-hidden">
+        <div
           className={mergeClasses(
-            'gap-1.5 border-[#5d82ff] bg-[#1e51e7] text-palette-white shadow-none asset-sm-shadow',
-            'hocus:bg-[#2b5ef3]'
+            'relative mb-6 flex items-center justify-between gap-3 overflow-hidden rounded-3xl px-6 py-4',
+            'bg-[#eef0ff] dark:bg-[#494CFC22]',
+            'border border-[#494CFC] dark:border-[#3133b0]',
+            'max-md:flex-wrap'
           )}>
-          Learn More
-        </Button>
+          <div className="flex items-center gap-4">
+            <div className="relative z-10 p-2 max-sm:hidden">
+              <div className="absolute inset-0 rounded-md bg-[#494CFC] asset-sm-shadow" />
+              <AppJSIcon className="relative z-10 icon-lg text-palette-white" />
+            </div>
+            <div className="relative grid grid-cols-1">
+              <p className="text-[#494CFC] text-base font-medium dark:text-[#a0b9ff]">
+                App.js Conf 2026
+              </p>
+              <p className="text-[#494CFC] text-sm dark:text-[#a0b9ff]">
+                Join us at the biggest React Native & Expo-focused conference.
+              </p>
+            </div>
+          </div>
+          <div className="z-10 flex items-center gap-3">
+            <Button
+              size="xs"
+              href="https://appjs.co/"
+              openInNewTab
+              rightSlot={
+                <ArrowUpRightIcon
+                  aria-hidden="true"
+                  className="icon-xs text-palette-white opacity-75"
+                />
+              }
+              className={mergeClasses(
+                'gap-1.5 border-[#494CFC] bg-[#494CFC] text-palette-white shadow-none',
+                'dark:hocus:border-[#23257b] dark:hocus:bg-[#23257b]',
+                'hocus:border-[#7189ff] hocus:bg-[#7189ff]'
+              )}>
+              Learn more
+            </Button>
+            <Button
+              size="xs"
+              theme="tertiary"
+              aria-label="Dismiss banner"
+              onClick={() => {
+                setIsOpen(false);
+              }}
+              className="bg-transparent text-palette-white shadow-none dark:hocus:bg-[#23257b] hocus:bg-[#ccd8ff]"
+              leftSlot={<XIcon aria-hidden="true" className="text-[#494CFC]" />}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

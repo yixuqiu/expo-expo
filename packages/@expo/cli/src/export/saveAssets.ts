@@ -4,14 +4,64 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
-import { SerialAsset } from '@expo/metro-config/build/serializer/serializerAssets';
+import type { Platform } from '@expo/config';
+import type { SerialAsset } from '@expo/metro-config/build/serializer/serializerAssets';
+import type { AssetData } from '@expo/metro/metro';
 import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
-import prettyBytes from 'pretty-bytes';
 
-import { BundleAssetWithFileHashes } from './fork-bundleAsync';
 import { Log } from '../log';
+import { env } from '../utils/env';
+
+let bytesFormatter: Intl.NumberFormat | undefined | null;
+
+const prettyBytes = (bytes: number): string => {
+  try {
+    if (bytesFormatter === undefined && typeof Intl === 'object') {
+      bytesFormatter = new Intl.NumberFormat('en', {
+        notation: 'compact',
+        style: 'unit',
+        unit: 'byte',
+        unitDisplay: 'narrow',
+      });
+    }
+    if (bytesFormatter != null) {
+      return bytesFormatter.format(bytes);
+    }
+  } catch {
+    bytesFormatter = null;
+  }
+  // Fall back if ICU is unavailable, which is rare but possible with custom Node.js builds
+  if (bytes >= 900_000) {
+    return `${(bytes / 1_000_000).toFixed(1)}MB`;
+  } else if (bytes >= 900) {
+    return `${(bytes / 1_000).toFixed(1)}KB`;
+  } else {
+    return `${bytes}B`;
+  }
+};
+
+const BLT = '\u203A';
+
+export type BundleOptions = {
+  entryPoint: string;
+  platform: Platform;
+  dev?: boolean;
+  minify?: boolean;
+  bytecode: boolean;
+  sourceMapUrl?: string;
+  sourcemaps?: boolean;
+};
+
+export type BundleAssetWithFileHashes = AssetData & {
+  fileHashes: string[]; // added by the hashAssets asset plugin
+};
+
+export type BundleOutput = {
+  artifacts: SerialAsset[];
+  assets: readonly BundleAssetWithFileHashes[];
+};
 
 export type ManifestAsset = { fileHashes: string[]; files: string[]; hash: string };
 
@@ -24,6 +74,14 @@ export type ExportAssetDescriptor = {
   assetId?: string;
   /** Expo Router route path for formatting the HTML output. */
   routeId?: string;
+  /** Expo Router route path for formatting the middleware function output. */
+  middlewareId?: string;
+  /** Expo Router API route path for formatting the server function output. */
+  apiRouteId?: string;
+  /** Expo Router route path for formatting the RSC output. */
+  rscId?: string;
+  /** Expo Router route path for formatting the loader module output. */
+  loaderId?: string;
   /** A key for grouping together output files by server- or client-side. */
   targetDomain?: 'server' | 'client';
 };
@@ -34,7 +92,7 @@ export async function persistMetroFilesAsync(files: ExportAssetMap, outputDir: s
   if (!files.size) {
     return;
   }
-  fs.mkdirSync(path.join(outputDir), { recursive: true });
+  await fs.promises.mkdir(path.join(outputDir), { recursive: true });
 
   // Test fixtures:
   // Log.log(
@@ -44,7 +102,11 @@ export async function persistMetroFilesAsync(files: ExportAssetMap, outputDir: s
   // );
 
   const assetEntries: [string, ExportAssetDescriptor][] = [];
+  const apiRouteEntries: [string, ExportAssetDescriptor][] = [];
+  const middlewareEntries: [string, ExportAssetDescriptor][] = [];
   const routeEntries: [string, ExportAssetDescriptor][] = [];
+  const rscEntries: [string, ExportAssetDescriptor][] = [];
+  const loaderEntries: [string, ExportAssetDescriptor][] = [];
   const remainingEntries: [string, ExportAssetDescriptor][] = [];
 
   let hasServerOutput = false;
@@ -52,6 +114,10 @@ export async function persistMetroFilesAsync(files: ExportAssetMap, outputDir: s
     hasServerOutput = hasServerOutput || asset[1].targetDomain === 'server';
     if (asset[1].assetId) assetEntries.push(asset);
     else if (asset[1].routeId != null) routeEntries.push(asset);
+    else if (asset[1].middlewareId != null) middlewareEntries.push(asset);
+    else if (asset[1].apiRouteId != null) apiRouteEntries.push(asset);
+    else if (asset[1].rscId != null) rscEntries.push(asset);
+    else if (asset[1].loaderId != null) loaderEntries.push(asset);
     else remainingEntries.push(asset);
   }
 
@@ -69,44 +135,44 @@ export async function persistMetroFilesAsync(files: ExportAssetMap, outputDir: s
     return size;
   };
 
-  if (routeEntries.length) {
-    const plural = routeEntries.length === 1 ? '' : 's';
+  // TODO: If any Expo Router is used, then use a new style which is more simple:
+  // `chalk.gray(/path/to/) + chalk.cyan('route')`
+  // | index.html (1.2kb)
+  // | /path
+  //   | other.html (1.2kb)
 
-    Log.log('');
-    Log.log(chalk.bold`Exporting ${routeEntries.length} static route${plural}:`);
+  const isExpoRouter = routeEntries.length;
 
-    for (const [, assets] of routeEntries.sort((a, b) => a[0].length - b[0].length)) {
-      const id = assets.routeId!;
-      Log.log('/' + (id === '' ? chalk.gray(' (index)') : id), sizeStr(assets.contents));
-    }
-  }
+  // Phase out printing all the assets as users can simply check the file system for more info.
+  const showAdditionalInfo = !isExpoRouter || env.EXPO_DEBUG;
 
   const assetGroups = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])) as [
     string,
     [string, ExportAssetDescriptor][],
   ][];
 
-  if (assetGroups.length) {
-    const totalAssets = assetGroups.reduce((sum, [, assets]) => sum + assets.length, 0);
-    const plural = totalAssets === 1 ? '' : 's';
+  if (showAdditionalInfo) {
+    if (assetGroups.length) {
+      const totalAssets = assetGroups.reduce((sum, [, assets]) => sum + assets.length, 0);
 
-    Log.log('');
-    Log.log(chalk.bold`Exporting ${totalAssets} asset${plural}:`);
+      Log.log('');
+      Log.log(chalk.bold`${BLT} Assets (${totalAssets}):`);
 
-    for (const [assetId, assets] of assetGroups) {
-      const averageContentSize =
-        assets.reduce((sum, [, { contents }]) => sum + contentSize(contents), 0) / assets.length;
-      Log.log(
-        assetId,
-        chalk.gray(
-          `(${[
-            assets.length > 1 ? `${assets.length} variations` : '',
-            `${prettyBytes(averageContentSize)}`,
-          ]
-            .filter(Boolean)
-            .join(' | ')})`
-        )
-      );
+      for (const [assetId, assets] of assetGroups) {
+        const averageContentSize =
+          assets.reduce((sum, [, { contents }]) => sum + contentSize(contents), 0) / assets.length;
+        Log.log(
+          assetId,
+          chalk.gray(
+            `(${[
+              assets.length > 1 ? `${assets.length} variations` : '',
+              `${prettyBytes(averageContentSize)}`,
+            ]
+              .filter(Boolean)
+              .join(' | ')})`
+          )
+        );
+      }
     }
   }
 
@@ -114,7 +180,7 @@ export async function persistMetroFilesAsync(files: ExportAssetMap, outputDir: s
   const other: [string, ExportAssetDescriptor][] = [];
 
   remainingEntries.forEach(([filepath, asset]) => {
-    if (!filepath.match(/_expo\/static\//)) {
+    if (!filepath.match(/_expo\/(server|static)\//)) {
       other.push([filepath, asset]);
     } else {
       const platform = filepath.match(/_expo\/static\/js\/([^/]+)\//)?.[1] ?? 'web';
@@ -126,8 +192,7 @@ export async function persistMetroFilesAsync(files: ExportAssetMap, outputDir: s
 
   [...bundles.entries()].forEach(([platform, assets]) => {
     Log.log('');
-    const plural = assets.length === 1 ? '' : 's';
-    Log.log(chalk.bold`Exporting ${assets.length} bundle${plural} for ${platform}:`);
+    Log.log(chalk.bold`${BLT} ${platform} bundles (${assets.length}):`);
 
     const allAssets = assets.sort((a, b) => a[0].localeCompare(b[0]));
     while (allAssets.length) {
@@ -137,20 +202,116 @@ export async function persistMetroFilesAsync(files: ExportAssetMap, outputDir: s
         // Get source map
         const sourceMapIndex = allAssets.findIndex(([fp]) => fp === filePath + '.map');
         if (sourceMapIndex !== -1) {
-          const [sourceMapFilePath, sourceMapAsset] = allAssets.splice(sourceMapIndex, 1)[0];
+          const [sourceMapFilePath, sourceMapAsset] = allAssets.splice(sourceMapIndex, 1)[0]!;
           Log.log(chalk.gray(sourceMapFilePath), sizeStr(sourceMapAsset.contents));
         }
       }
     }
   });
 
-  if (other.length) {
+  if (showAdditionalInfo && other.length) {
     Log.log('');
-    const plural = other.length === 1 ? '' : 's';
-    Log.log(chalk.bold`Exporting ${other.length} file${plural}:`);
+    Log.log(chalk.bold`${BLT} Files (${other.length}):`);
 
     for (const [filePath, asset] of other.sort((a, b) => a[0].localeCompare(b[0]))) {
       Log.log(filePath, sizeStr(asset.contents));
+    }
+  }
+
+  if (rscEntries.length) {
+    Log.log('');
+    Log.log(chalk.bold`${BLT} React Server Components (${rscEntries.length}):`);
+
+    for (const [filePath, assets] of rscEntries.sort((a, b) => a[0].length - b[0].length)) {
+      const id = assets.rscId!;
+      Log.log(
+        '/' + (id === '' ? chalk.gray(' (index)') : id),
+        sizeStr(assets.contents),
+        chalk.gray(filePath)
+      );
+    }
+  }
+
+  if (routeEntries.length) {
+    Log.log('');
+    Log.log(chalk.bold`${BLT} Static routes (${routeEntries.length}):`);
+
+    for (const [, assets] of routeEntries.sort((a, b) => a[0].length - b[0].length)) {
+      const id = assets.routeId!;
+      Log.log('/' + (id === '' ? chalk.gray(' (index)') : id), sizeStr(assets.contents));
+    }
+  }
+
+  if (apiRouteEntries.length) {
+    const apiRoutesWithoutSourcemaps = apiRouteEntries.filter(
+      (route) => !route[0].endsWith('.map')
+    );
+    Log.log('');
+    Log.log(chalk.bold`${BLT} API routes (${apiRoutesWithoutSourcemaps.length}):`);
+
+    for (const [apiRouteFilename, assets] of apiRoutesWithoutSourcemaps.sort(
+      (a, b) => a[0].length - b[0].length
+    )) {
+      const id = assets.apiRouteId!;
+      const hasSourceMap = apiRouteEntries.find(
+        ([filename, route]) =>
+          filename !== apiRouteFilename &&
+          route.apiRouteId === assets.apiRouteId &&
+          filename.endsWith('.map')
+      );
+      Log.log(
+        id === '' ? chalk.gray(' (index)') : id,
+        sizeStr(assets.contents),
+        hasSourceMap ? chalk.gray(`(source map ${sizeStr(hasSourceMap[1].contents)})`) : ''
+      );
+    }
+  }
+
+  if (middlewareEntries.length) {
+    const middlewareWithoutSourcemaps = middlewareEntries.filter(
+      (route) => !route[0].endsWith('.map')
+    );
+    Log.log('');
+    Log.log(chalk.bold`${BLT} Middleware:`);
+
+    for (const [middlewareFilename, assets] of middlewareWithoutSourcemaps.sort(
+      (a, b) => a[0].length - b[0].length
+    )) {
+      const id = assets.middlewareId!;
+      const hasSourceMap = middlewareEntries.find(
+        ([filename, route]) =>
+          filename !== middlewareFilename &&
+          route.middlewareId === assets.middlewareId &&
+          filename.endsWith('.map')
+      );
+      Log.log(
+        id,
+        sizeStr(assets.contents),
+        hasSourceMap ? chalk.gray(`(source map ${sizeStr(hasSourceMap[1].contents)})`) : ''
+      );
+    }
+  }
+
+  if (loaderEntries.length) {
+    const loadersWithoutSourcemaps = loaderEntries.filter((entry) => !entry[0].endsWith('.map'));
+    Log.log('');
+    Log.log(chalk.bold`${BLT} Loaders (${loadersWithoutSourcemaps.length}):`);
+
+    for (const [loaderFilename, assets] of loadersWithoutSourcemaps.sort(
+      (a, b) => a[0].length - b[0].length
+    )) {
+      const id = assets.loaderId!;
+      const hasSourceMap = loaderEntries.find(
+        ([filename, entry]) =>
+          filename !== loaderFilename &&
+          entry.loaderId === assets.loaderId &&
+          filename.endsWith('.map')
+      );
+      Log.log(
+        id === '/' ? '/ ' + chalk.gray('(index)') : id,
+        sizeStr(assets.contents),
+        hasSourceMap ? chalk.gray(`(source map ${sizeStr(hasSourceMap[1].contents)})`) : ''
+      );
     }
   }
 
@@ -189,17 +350,22 @@ export function getFilesFromSerialAssets(
     includeSourceMaps,
     files = new Map(),
     platform,
+    isServerHosted = platform === 'web',
   }: {
     includeSourceMaps: boolean;
     files?: ExportAssetMap;
     platform?: string;
+    isServerHosted?: boolean;
   }
 ) {
   resources.forEach((resource) => {
+    if (resource.type === 'css-external') {
+      return;
+    }
     files.set(resource.filename, {
       contents: resource.source,
       originFilename: resource.originFilename,
-      targetDomain: platform === 'web' ? 'client' : undefined,
+      targetDomain: isServerHosted ? 'client' : undefined,
     });
   });
 

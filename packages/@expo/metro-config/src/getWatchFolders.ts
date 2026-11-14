@@ -1,9 +1,6 @@
-import assert from 'assert';
+import { getMetroServerRoot, getMetroWorkspaceGlobs } from '@expo/config/paths';
 import fs from 'fs';
-import { sync as globSync } from 'glob';
 import path from 'path';
-
-import { getWorkspaceRoot } from './getModulesPaths';
 
 function readJsonFile(filePath: string) {
   // Read with fs
@@ -32,28 +29,29 @@ export function globAllPackageJsonPaths(
   linkedPackages: string[]
 ): string[] {
   return linkedPackages
-    .map((glob) => {
-      return globSync(path.join(glob, 'package.json').replace(/\\/g, '/'), {
-        cwd: workspaceProjectRoot,
-        absolute: true,
-        ignore: ['**/@(Carthage|Pods|node_modules)/**'],
-      }).map((pkgPath) => {
-        return isValidJsonFile(pkgPath) ? pkgPath : null;
-      });
+    .flatMap((pattern) => {
+      // NOTE(@kitten): Recursive directory globs also return source files; match manifests directly.
+      if (pattern.includes('**')) {
+        const { globSync }: typeof import('tinyglobby') = require('tinyglobby');
+        return globSync(path.posix.join(pattern, 'package.json'), {
+          cwd: workspaceProjectRoot,
+          absolute: true,
+          expandDirectories: false,
+          caseSensitiveMatch: process.platform !== 'darwin' && process.platform !== 'win32',
+          ignore: ['**/@(Carthage|Pods|node_modules)/**'],
+        });
+      }
+      return fs
+        .globSync(pattern, {
+          cwd: workspaceProjectRoot,
+          exclude: (entry) =>
+            entry
+              .split(path.sep)
+              .some((part) => ['Carthage', 'Pods', 'node_modules'].includes(part)),
+        })
+        .map((directory) => path.resolve(workspaceProjectRoot, directory, 'package.json'));
     })
-    .flat()
-    .filter(Boolean)
-    .map((p) => path.join(p as string));
-}
-
-function getWorkspacePackagesArray({ workspaces }: any): string[] {
-  if (Array.isArray(workspaces)) {
-    return workspaces;
-  }
-
-  assert(workspaces?.packages, 'Could not find a `workspaces` object in the root package.json');
-
-  return workspaces.packages;
+    .filter(isValidJsonFile);
 }
 
 /**
@@ -62,15 +60,11 @@ function getWorkspacePackagesArray({ workspaces }: any): string[] {
  */
 export function resolveAllWorkspacePackageJsonPaths(workspaceProjectRoot: string) {
   try {
-    const rootPackageJsonFilePath = path.join(workspaceProjectRoot, 'package.json');
-    // Could throw if package.json is invalid.
-    const rootPackageJson = readJsonFile(rootPackageJsonFilePath);
-
     // Extract the "packages" array or use "workspaces" as packages array (yarn workspaces spec).
-    const packages = getWorkspacePackagesArray(rootPackageJson);
-
+    const workspaceGlobs = getMetroWorkspaceGlobs(workspaceProjectRoot);
+    if (!workspaceGlobs?.length) return [];
     // Glob all package.json files and return valid paths.
-    return globAllPackageJsonPaths(workspaceProjectRoot, packages);
+    return globAllPackageJsonPaths(workspaceProjectRoot, workspaceGlobs);
   } catch {
     return [];
   }
@@ -81,14 +75,15 @@ export function resolveAllWorkspacePackageJsonPaths(workspaceProjectRoot: string
  * @returns list of node module paths to watch in Metro bundler, ex: `['/Users/me/app/node_modules/', '/Users/me/app/apps/my-app/', '/Users/me/app/packages/my-package/']`
  */
 export function getWatchFolders(projectRoot: string): string[] {
-  const workspaceRoot = getWorkspaceRoot(path.resolve(projectRoot));
+  const resolvedProjectRoot = path.resolve(projectRoot);
+  const workspaceRoot = getMetroServerRoot(resolvedProjectRoot);
   // Rely on default behavior in standard projects.
-  if (!workspaceRoot) {
+  if (workspaceRoot === resolvedProjectRoot) {
     return [];
   }
 
   const packages = resolveAllWorkspacePackageJsonPaths(workspaceRoot);
-  if (!packages.length) {
+  if (!packages?.length) {
     return [];
   }
 

@@ -1,14 +1,219 @@
 # Changelog
 
-## Unpublished
+## 58.0.2
 
-### 🛠 Breaking changes
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.1
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.0 — 2026-09-10
 
 ### 🎉 New features
 
+- Add an Android-only `requireConfirmation` option for authenticated reads and writes. ([#48556](https://github.com/expo/expo/pull/48556) by [@skylarbarrera](https://github.com/skylarbarrera))
+
 ### 🐛 Bug fixes
 
+- [Android] Fix `deleteItemAsync` resolving when a retried delete left the value on disk. ([#49151](https://github.com/expo/expo/pull/49151) by [@vonovak](https://github.com/vonovak))
+- [iOS] Reject `deleteItemAsync` when the keychain refuses the delete, instead of resolving as if the item was removed. ([#49146](https://github.com/expo/expo/pull/49146) by [@vonovak](https://github.com/vonovak))
+- [iOS] Apply `keychainAccessible` when overwriting an existing item, instead of silently keeping the accessibility it was first stored with. ([#49128](https://github.com/expo/expo/pull/49128) by [@JoRo-Code](https://github.com/JoRo-Code) and [@behenate](https://github.com/behenate))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
 ### 💡 Others
+
+- [iOS] Remove byte limit warning. ([#40187](https://github.com/expo/expo/pull/40187) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 15.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.6 — 2025-09-02
+
+### 💡 Others
+
+- [iOS] Change Constants to Constant/Property. ([#38926](https://github.com/expo/expo/pull/38926) by [@jakex7](https://github.com/jakex7))
+
+## 15.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.0 — 2025-08-13
+
+### 🐛 Bug fixes
+
+- [android] Reset `isAuthenticating` prompt flag when error is thrown ([#38132](https://github.com/expo/expo/pull/38132) by [@SYoder1](https://github.com/SYoder1))
+- [android] use more specific error messages in authentication prompt errors ([#38340](https://github.com/expo/expo/pull/38340) by [@SYoder1](https://github.com/SYoder1))
+
+## 14.2.3 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 14.2.2 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 14.2.1 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 14.2.0 — 2025-04-11
+
+### 🎉 New features
+
+- [iOS] Added support for access groups. ([#36056](https://github.com/expo/expo/pull/36056) by [@chrsmys](https://github.com/chrsmys))
+
+## 14.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35288](https://github.com/expo/expo/pull/35288) by [@behenate](https://github.com/behenate))
+
+## 14.0.1 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- [Android] Add a config plugin for configuring the Android backup system. ([#29944](https://github.com/expo/expo/pull/29944) by [@behenate](https://github.com/behenate))
+- Add Apple TV support. ([#31374](https://github.com/expo/expo/pull/31374) by [@douglowder](https://github.com/douglowder))
+
+### 💡 Others
+
+- [iOS] check return value of SecAccessControlCreateWithFlags ([#29983](https://github.com/expo/expo/pull/29983) by [@vonovak](https://github.com/vonovak))
+- Removed all `NativeModulesProxy` occurrences. ([#31496](https://github.com/expo/expo/pull/31496) by [@reichhartd](https://github.com/reichhartd))
+
+## 13.0.2 - 2024-06-27
+
+### 🐛 Bug fixes
+
+- [iOS] Improve error message for unhandled errors ([#29394](https://github.com/expo/expo/pull/29394) by [@hassankhan](https://github.com/hassankhan))
+- [Android] Fix decryption errors after Android Auto Backup has restored `expo-secure-store` data. ([#29943](https://github.com/expo/expo/pull/29943) by [@behenate](https://github.com/behenate))
 
 ## 13.0.1 — 2024-04-23
 

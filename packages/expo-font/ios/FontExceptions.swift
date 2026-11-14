@@ -12,8 +12,53 @@ internal final class FontCreationFailedException: GenericException<String> {
   }
 }
 
-internal final class FontRegistrationFailedException: GenericException<CFError> {
+internal final class FontNoPostScriptException: GenericException<String> {
   override var reason: String {
-    "Registering '\(param)' font failed with message: '\(param.localizedDescription)'"
+    "Could not create font '\(param)' from loaded data because it is missing the PostScript name"
+  }
+}
+
+internal final class FontFamilyEmptyFacesException: GenericException<String> {
+  override var reason: String {
+    "Could not load font family '\(param)' because no faces were provided. "
+      + "Pass at least one font face with a 'localUri' to 'loadFontFamilyAsync'"
+  }
+}
+
+internal final class FontFaceMissingUriException: GenericException<String> {
+  override var reason: String {
+    "Could not load font family '\(param)' because one of its faces has no 'localUri'. "
+      + "Make sure every face passed to 'loadFontFamilyAsync' includes a font file URI"
+  }
+}
+
+internal struct FontRegistrationErrorInfo {
+  let fontFamilyAlias: String
+  let cfError: CFError
+  let ctFontManagerError: CTFontManagerError?
+}
+
+internal final class FontRegistrationFailedException: GenericException<FontRegistrationErrorInfo> {
+  override var reason: String {
+    let ctErrorDescription = "CTFontManagerError code: " + (param.ctFontManagerError.map { String($0.rawValue) } ?? "N/A")
+    return "Registering '\(param.fontFamilyAlias)' font failed with message: '\(param.cfError.localizedDescription)'. \(ctErrorDescription)"
+  }
+}
+
+internal final class UnregisteringFontFailedException: GenericException<CFError> {
+  override var reason: String {
+    "Unregistering font failed with message: '\(param.localizedDescription)'"
+  }
+}
+
+internal final class CreateImageException: Exception {
+  override var reason: String {
+    "Could not create image"
+  }
+}
+
+internal final class SaveImageException: GenericException<String> {
+  override var reason: String {
+    "Could not save image to '\(param)'"
   }
 }

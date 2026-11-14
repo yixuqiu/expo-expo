@@ -1,13 +1,16 @@
+import { getConfig, type ExpoConfig } from '@expo/config';
 import spawnAsync from '@expo/spawn-async';
-import { getConfig } from 'expo/config';
-import fs from 'fs';
 import { vol, fs as volFS } from 'memfs';
 import path from 'path';
-import resolveFrom from 'resolve-from';
+import requireString from 'require-from-string';
 
-import { HashSourceContents } from '../../Fingerprint.types';
+import { getExpoConfigAsync } from '../../ExpoConfig';
+import type { HashSource, HashSourceContents } from '../../Fingerprint.types';
 import { normalizeOptionsAsync } from '../../Options';
+import { SourceSkips } from '../../sourcer/SourceSkips';
+import { spawnWithIpcAsync } from '../../utils/SpawnIPC';
 import {
+  getConfigPluginProps,
   getEasBuildSourcesAsync,
   getExpoAutolinkingAndroidSourcesAsync,
   getExpoAutolinkingIosSourcesAsync,
@@ -15,19 +18,45 @@ import {
   getExpoCNGPatchSourcesAsync,
   sortExpoAutolinkingAndroidConfig,
 } from '../Expo';
+import { copyDirSync } from './vol-utils';
 
 jest.mock('@expo/spawn-async');
-jest.mock('find-up');
 jest.mock('fs/promises');
 jest.mock('resolve-from');
 jest.mock('/app/package.json', () => {}, { virtual: true });
+jest.mock('../../ExpoResolver');
+jest.mock('../../ProjectWorkflow');
+jest.mock('../../utils/SpawnIPC');
+
+/** Write a placeholder file to memfs (for `fs.existsSync`) and register a Jest virtual mock (for `require()`). */
+function mockConfigFile(filePath: string, factory: () => any) {
+  vol.writeFileSync(filePath, '');
+  jest.doMock(filePath, factory, { virtual: true });
+}
+
+// Mock `node:fs` with memfs. Jest 30 treats `node:fs` and `fs` as the same module, so this also
+// applies to `fs`; read the test fixtures from the real filesystem explicitly.
+jest.mock('node:fs', () => require('memfs').fs);
+const realFs = jest.requireActual<typeof import('fs')>('fs');
+
+/** Make the next ExpoConfigLoader spawn return the given config and loaded modules. */
+function mockLoadedModules(config: unknown, loadedModules: unknown[]) {
+  const configResult = JSON.stringify({ config, loadedModules });
+  const mockSpawnWithIpcAsync = spawnWithIpcAsync as jest.MockedFunction<typeof spawnWithIpcAsync>;
+  mockSpawnWithIpcAsync.mockResolvedValueOnce({
+    output: [],
+    stdout: configResult,
+    message: configResult,
+    stderr: '',
+    signal: null,
+    status: 0,
+  });
+}
+
+const expoAutolinkingVersion = '1.11.2';
 
 describe(getEasBuildSourcesAsync, () => {
-  afterEach(() => {
-    vol.reset();
-  });
-
-  it('should contains `eas.json` file', async () => {
+  beforeEach(() => {
     vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
     vol.writeFileSync(
       '/app/eas.json',
@@ -56,8 +85,18 @@ describe(getEasBuildSourcesAsync, () => {
   }
 }`
     );
+    vol.writeFileSync('/app/.easignore', 'node_modules/\n');
+  });
 
-    const sources = await getEasBuildSourcesAsync('/app', await normalizeOptionsAsync('/app'));
+  afterEach(() => {
+    vol.reset();
+  });
+
+  it('should contains `eas.json` file', async () => {
+    const sources = await getEasBuildSourcesAsync(
+      '/app',
+      await normalizeOptionsAsync('/app', { sourceSkips: SourceSkips.None })
+    );
     expect(sources).toContainEqual(
       expect.objectContaining({
         type: 'file',
@@ -65,16 +104,49 @@ describe(getEasBuildSourcesAsync, () => {
       })
     );
   });
+
+  it('should skip `eas.json` but keep `.easignore` when SourceSkips.EasJson is set', async () => {
+    const sources = await getEasBuildSourcesAsync(
+      '/app',
+      await normalizeOptionsAsync('/app', { sourceSkips: SourceSkips.EasJson })
+    );
+    expect(sources).not.toContainEqual(expect.objectContaining({ filePath: 'eas.json' }));
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        filePath: '.easignore',
+      })
+    );
+  });
+
+  it('should skip `.easignore` but keep `eas.json` when SourceSkips.Easignore is set', async () => {
+    const sources = await getEasBuildSourcesAsync(
+      '/app',
+      await normalizeOptionsAsync('/app', { sourceSkips: SourceSkips.Easignore })
+    );
+    expect(sources).not.toContainEqual(expect.objectContaining({ filePath: '.easignore' }));
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        filePath: 'eas.json',
+      })
+    );
+  });
+
+  it('should skip both EAS Build files with the default preset', async () => {
+    const sources = await getEasBuildSourcesAsync('/app', await normalizeOptionsAsync('/app'));
+    expect(sources).toEqual([]);
+  });
 });
 
 describe('getExpoAutolinkingSourcesAsync', () => {
   beforeEach(() => {
     const mockSpawnAsync = spawnAsync as jest.MockedFunction<typeof spawnAsync>;
-    const fixtureAndroid = fs.readFileSync(
+    const fixtureAndroid = realFs.readFileSync(
       path.join(__dirname, 'fixtures', 'ExpoAutolinkingAndroid.json'),
       'utf8'
     );
-    const fixtureIos = fs.readFileSync(
+    const fixtureIos = realFs.readFileSync(
       path.join(__dirname, 'fixtures', 'ExpoAutolinkingIos.json'),
       'utf8'
     );
@@ -101,7 +173,8 @@ describe('getExpoAutolinkingSourcesAsync', () => {
   it('should contain expo autolinking projects', async () => {
     let sources = await getExpoAutolinkingAndroidSourcesAsync(
       '/app',
-      await normalizeOptionsAsync('/app')
+      await normalizeOptionsAsync('/app', { sourceSkips: SourceSkips.None }),
+      expoAutolinkingVersion
     );
     expect(sources).toContainEqual(
       expect.objectContaining({
@@ -111,17 +184,22 @@ describe('getExpoAutolinkingSourcesAsync', () => {
     );
     expect(sources).toMatchSnapshot();
 
-    sources = await getExpoAutolinkingIosSourcesAsync('/app', await normalizeOptionsAsync('/app'));
+    sources = await getExpoAutolinkingIosSourcesAsync(
+      '/app',
+      await normalizeOptionsAsync('/app', { sourceSkips: SourceSkips.None }),
+      expoAutolinkingVersion
+    );
     expect(sources).toContainEqual(
       expect.objectContaining({ type: 'dir', filePath: 'node_modules/expo-modules-core' })
     );
     expect(sources).toMatchSnapshot();
   });
 
-  it('should not containt absolute path in contents', async () => {
+  it('should not contain absolute path in contents', async () => {
     let sources = await getExpoAutolinkingAndroidSourcesAsync(
       '/app',
-      await normalizeOptionsAsync('/app')
+      await normalizeOptionsAsync('/app', { sourceSkips: SourceSkips.None }),
+      expoAutolinkingVersion
     );
     for (const source of sources) {
       if (source.type === 'contents') {
@@ -129,12 +207,100 @@ describe('getExpoAutolinkingSourcesAsync', () => {
       }
     }
 
-    sources = await getExpoAutolinkingIosSourcesAsync('/app', await normalizeOptionsAsync('/app'));
+    sources = await getExpoAutolinkingIosSourcesAsync(
+      '/app',
+      await normalizeOptionsAsync('/app', { sourceSkips: SourceSkips.None }),
+      expoAutolinkingVersion
+    );
     for (const source of sources) {
       if (source.type === 'contents') {
         expect(source.contents.indexOf('/app/')).toBe(-1);
       }
     }
+  });
+
+  it('should keep autolinking projects and strip path fields when SourceSkips.AutolinkingConfigPaths is set', async () => {
+    const options = await normalizeOptionsAsync('/app', {
+      sourceSkips: SourceSkips.AutolinkingConfigPaths,
+    });
+
+    let sources = await getExpoAutolinkingAndroidSourcesAsync(
+      '/app',
+      options,
+      expoAutolinkingVersion
+    );
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'dir',
+        filePath: 'node_modules/expo-modules-core/android',
+      })
+    );
+    const androidConfig = sources.find(
+      (source) => source.type === 'contents' && source.id === 'expoAutolinkingConfig:android'
+    );
+    expect(androidConfig?.type).toBe('contents');
+    if (androidConfig?.type !== 'contents') {
+      throw new Error('expected expoAutolinkingConfig:android contents source');
+    }
+    expect(androidConfig.contents).toContain('expo-modules-core');
+    expect(androidConfig.contents).not.toContain('node_modules');
+
+    sources = await getExpoAutolinkingIosSourcesAsync('/app', options, expoAutolinkingVersion);
+    expect(sources).toContainEqual(
+      expect.objectContaining({ type: 'dir', filePath: 'node_modules/expo-modules-core' })
+    );
+    const iosConfig = sources.find(
+      (source) => source.type === 'contents' && source.id === 'expoAutolinkingConfig:ios'
+    );
+    expect(iosConfig?.type).toBe('contents');
+    if (iosConfig?.type !== 'contents') {
+      throw new Error('expected expoAutolinkingConfig:ios contents source');
+    }
+    expect(iosConfig.contents).toContain('expo-modules-core');
+    expect(iosConfig.contents).not.toContain('node_modules');
+  });
+
+  it('should keep android module sources when a gradle plugin has no sourceDir', async () => {
+    const fixture = JSON.parse(
+      realFs.readFileSync(path.join(__dirname, 'fixtures', 'ExpoAutolinkingAndroid.json'), 'utf8')
+    );
+    fixture.modules.push({
+      packageName: 'expo-widgets',
+      packageVersion: '1.0.0',
+      projects: [{ name: 'expo-widgets', sourceDir: '/app/node_modules/expo-widgets/android' }],
+      plugins: [{ id: 'com.example.gradle-plugin', group: 'com.example', version: '1.2.3' }],
+      modules: [],
+    });
+    const stdout = JSON.stringify(fixture);
+    const mockSpawnAsync = spawnAsync as jest.MockedFunction<typeof spawnAsync>;
+    mockSpawnAsync.mockReset();
+    mockSpawnAsync.mockResolvedValueOnce({
+      stdout,
+      stderr: '',
+      status: 0,
+      signal: null,
+      output: [stdout, ''],
+    });
+
+    const sources = await getExpoAutolinkingAndroidSourcesAsync(
+      '/app',
+      await normalizeOptionsAsync('/app', { sourceSkips: SourceSkips.None }),
+      expoAutolinkingVersion
+    );
+    expect(sources).toContainEqual(
+      expect.objectContaining({ type: 'dir', filePath: 'node_modules/expo-modules-core/android' })
+    );
+    expect(sources).toContainEqual(
+      expect.objectContaining({ type: 'dir', filePath: 'node_modules/expo-widgets/android' })
+    );
+    const androidConfig = sources.find(
+      (source) => source.type === 'contents' && source.id === 'expoAutolinkingConfig:android'
+    );
+    if (androidConfig?.type !== 'contents') {
+      throw new Error('expected expoAutolinkingConfig:android contents source');
+    }
+    expect(androidConfig.contents).toContain('com.example.gradle-plugin');
+    expect(androidConfig.contents).toContain('1.2.3');
   });
 });
 
@@ -147,22 +313,19 @@ describe(getExpoConfigSourcesAsync, () => {
     vol.reset();
   });
 
-  it('should return empty array when expo package is not installed', async () => {
+  it('should return empty array when expo config is null (expo package is not installed)', async () => {
     vol.fromJSON(require('./fixtures/BareReactNative70Project.json'));
-    const mockedResolveFrom = resolveFrom.silent as jest.MockedFunction<typeof resolveFrom.silent>;
-    mockedResolveFrom.mockImplementationOnce((fromDirectory: string, moduleId: string) => {
-      const actualResolver = jest.requireActual('resolve-from').silent;
-      // To fake the case as no expo installed, trying to resolve as **nonexist/expo/config** module
-      return actualResolver(fromDirectory, 'nonexist/expo/config');
-    });
-    const sources = await getExpoConfigSourcesAsync('/app', await normalizeOptionsAsync('/app'));
+    const options = await normalizeOptionsAsync('/app');
+    const sources = await getExpoConfigSourcesAsync('/app', null, null, options);
     expect(sources.length).toBe(0);
   });
 
   it('should contain expo config', async () => {
     vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
     const appJson = JSON.parse(vol.readFileSync('/app/app.json', 'utf8').toString());
-    const sources = await getExpoConfigSourcesAsync('/app', await normalizeOptionsAsync('/app'));
+    const options = await normalizeOptionsAsync('/app');
+    const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
     const expoConfigSource = sources.find<HashSourceContents>(
       (source): source is HashSourceContents =>
         source.type === 'contents' && source.id === 'expoConfig'
@@ -172,61 +335,11 @@ describe(getExpoConfigSourcesAsync, () => {
     expect(expoConfig.name).toEqual(appJson.expo.name);
   });
 
-  it('should not contain runtimeVersion in expo config when runtime version is a string', async () => {
-    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
-    vol.writeFileSync(
-      '/app/app.config.js',
-      `\
-export default ({ config }) => {
-  config.runtimeVersion = '1.0.0';
-  config.ios = { runtimeVersion: '1.0.0' };
-  config.android = { runtimeVersion: '1.0.0' };
-  config.web = { runtimeVersion: '1.0.0' };
-  return config;
-};`
-    );
-    const sources = await getExpoConfigSourcesAsync('/app', await normalizeOptionsAsync('/app'));
-    const expoConfigSource = sources.find<HashSourceContents>(
-      (source): source is HashSourceContents =>
-        source.type === 'contents' && source.id === 'expoConfig'
-    );
-    const expoConfig = JSON.parse(expoConfigSource?.contents?.toString() ?? 'null');
-    expect(expoConfig).not.toBeNull();
-    expect(expoConfig.runtimeVersion).toBeUndefined();
-    expect(expoConfig.android.runtimeVersion).toBeUndefined();
-    expect(expoConfig.ios.runtimeVersion).toBeUndefined();
-    expect(expoConfig.web.runtimeVersion).toBeUndefined();
-  });
-
-  it('should keep runtimeVersion in expo config when runtime version is a policy', async () => {
-    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
-    vol.writeFileSync(
-      '/app/app.config.js',
-      `\
-export default ({ config }) => {
-  config.runtimeVersion = { policy: 'test' };
-  config.ios = { runtimeVersion: { policy: 'test' } };
-  config.android = { runtimeVersion: { policy: 'test' } };
-  config.web = { runtimeVersion: { policy: 'test' } };
-  return config;
-};`
-    );
-    const sources = await getExpoConfigSourcesAsync('/app', await normalizeOptionsAsync('/app'));
-    const expoConfigSource = sources.find<HashSourceContents>(
-      (source): source is HashSourceContents =>
-        source.type === 'contents' && source.id === 'expoConfig'
-    );
-    const expoConfig = JSON.parse(expoConfigSource?.contents?.toString() ?? 'null');
-    expect(expoConfig).not.toBeNull();
-    expect(expoConfig.runtimeVersion).toMatchObject({ policy: 'test' });
-    expect(expoConfig.android.runtimeVersion).toMatchObject({ policy: 'test' });
-    expect(expoConfig.ios.runtimeVersion).toMatchObject({ policy: 'test' });
-    expect(expoConfig.web.runtimeVersion).toMatchObject({ policy: 'test' });
-  });
-
   it('should keep expo config contents in deterministic order', async () => {
     vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
-    const sources = await getExpoConfigSourcesAsync('/app', await normalizeOptionsAsync('/app'));
+    const options = await normalizeOptionsAsync('/app');
+    const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
 
     const appJsonContents = vol.readFileSync('/app/app.json', 'utf8').toString();
     const appJson = JSON.parse(appJsonContents);
@@ -239,19 +352,289 @@ export default ({ config }) => {
     vol.writeFileSync('/app/app.json', newAppJsonContents);
 
     // Even new app.json contents changed its order, the source contents should be the same.
-    const sources2 = await getExpoConfigSourcesAsync('/app', await normalizeOptionsAsync('/app'));
+
+    const { config: config2, loadedModules: loadedModules2 } = await getExpoConfigAsync(
+      '/app',
+      options
+    );
+    const sources2 = await getExpoConfigSourcesAsync('/app', config2, loadedModules2, options);
     expect(sources).toEqual(sources2);
+  });
+
+  it('should transform expo config paths as relative paths', async () => {
+    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+    const appJson = JSON.parse(vol.readFileSync('/app/app.json', 'utf8').toString());
+    appJson.expo.extra ||= {};
+    appJson.expo.extra.testFile = '/app/test-file.txt';
+    appJson.expo.extra.testNestedFile = '/app/nested/test-file.txt';
+    vol.writeFileSync('/app/app.json', JSON.stringify(appJson, null, 2));
+    const options = await normalizeOptionsAsync('/app');
+    const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+    const expoConfigSource = sources.find<HashSourceContents>(
+      (source): source is HashSourceContents =>
+        source.type === 'contents' && source.id === 'expoConfig'
+    );
+    const expoConfig = JSON.parse(expoConfigSource?.contents?.toString() ?? 'null');
+    expect(expoConfig.extra.testFile).toBe('test-file.txt');
+    expect(expoConfig.extra.testNestedFile).toBe('nested/test-file.txt');
   });
 
   it('should contain external icon file in app.json', async () => {
     vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
     vol.mkdirSync('/app/assets');
     vol.writeFileSync('/app/assets/icon.png', 'PNG data');
-    const sources = await getExpoConfigSourcesAsync('/app', await normalizeOptionsAsync('/app'));
+    const options = await normalizeOptionsAsync('/app');
+    const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
     expect(sources).toContainEqual(
       expect.objectContaining({
         type: 'file',
-        filePath: './assets/icon.png',
+        filePath: 'assets/icon.png',
+      })
+    );
+  });
+
+  it('should contain external icon file in app.json - ios light/dark/tinted icons', async () => {
+    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+    vol.mkdirSync('/app/assets');
+    vol.writeFileSync('/app/assets/icon-light.png', 'PNG data');
+    vol.writeFileSync('/app/assets/icon-dark.png', 'PNG data');
+    vol.writeFileSync('/app/assets/icon-tinted.png', 'PNG data');
+    const appJson = JSON.parse(vol.readFileSync('/app/app.json', 'utf8').toString());
+    appJson.expo.ios ||= {};
+    appJson.expo.ios.icon = {
+      light: '/app/assets/icon-light.png',
+      dark: '/app/assets/icon-dark.png',
+      tinted: '/app/assets/icon-tinted.png',
+    };
+    vol.writeFileSync('/app/app.json', JSON.stringify(appJson, null, 2));
+
+    const options = await normalizeOptionsAsync('/app');
+    const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        filePath: 'assets/icon-light.png',
+      })
+    );
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        filePath: 'assets/icon-dark.png',
+      })
+    );
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        filePath: 'assets/icon-tinted.png',
+      })
+    );
+  });
+
+  it('should contain external icon file in app.json - ios 26 icon composer', async () => {
+    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+    vol.mkdirSync('/app/assets');
+    copyDirSync(path.join(__dirname, 'fixtures', 'ExpoGo.icon'), '/app/assets/ExpoGo.icon');
+    const appJson = JSON.parse(vol.readFileSync('/app/app.json', 'utf8').toString());
+    appJson.expo.ios ||= {};
+    appJson.expo.ios.icon = '/app/assets/ExpoGo.icon';
+    vol.writeFileSync('/app/app.json', JSON.stringify(appJson, null, 2));
+
+    const options = await normalizeOptionsAsync('/app');
+    const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        // the icon composer .icon is actually a directory
+        type: 'dir',
+        filePath: 'assets/ExpoGo.icon',
+      })
+    );
+  });
+
+  describe('fingerprint sources from expo-font plugin font files', () => {
+    async function getFontSources(
+      fontFiles: Record<string, string>,
+      pluginProps: Record<string, unknown>,
+      platform?: 'ios' | 'android'
+    ) {
+      vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+      vol.mkdirSync('/app/assets/fonts', { recursive: true });
+      for (const [filePath, content] of Object.entries(fontFiles)) {
+        vol.writeFileSync(`/app/${filePath}`, content);
+      }
+
+      const appJson = JSON.parse(vol.readFileSync('/app/app.json', 'utf8').toString());
+      appJson.expo.plugins = [['expo-font', pluginProps]];
+
+      const configResult = JSON.stringify({
+        config: { exp: appJson.expo },
+        loadedModules: [],
+      });
+      (spawnWithIpcAsync as jest.MockedFunction<typeof spawnWithIpcAsync>).mockResolvedValueOnce({
+        output: [],
+        stdout: configResult,
+        message: configResult,
+        stderr: '',
+        signal: null,
+        status: 0,
+      });
+      const options = await normalizeOptionsAsync(
+        '/app',
+        platform ? { platforms: [platform] } : undefined
+      );
+      const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+      return getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+    }
+
+    function expectFontSource(sources: HashSource[], filePath: string, type: string = 'file') {
+      expect(sources).toContainEqual(
+        expect.objectContaining({
+          type,
+          filePath,
+          overrideHashKey: 'expoConfigExternalFile:contentsOnly',
+        })
+      );
+    }
+
+    function expectNoFontSource(sources: HashSource[], filePath: string) {
+      expect(sources).not.toContainEqual(expect.objectContaining({ filePath }));
+    }
+
+    it('includes platform-specific fonts and excludes cross-platform fonts', async () => {
+      const files = {
+        'assets/fonts/SpaceMono-Regular.ttf': 'font data v1',
+        'assets/fonts/SF-Pro.ttf': 'sf pro data',
+        'assets/fonts/Roboto-Regular.ttf': 'roboto regular data',
+        'assets/fonts/Roboto-Bold.ttf': 'roboto bold data',
+        'assets/fonts/RobotoFlex.ttf': 'roboto flex data',
+        'assets/fonts/RobotoFlex-Italic.ttf': 'roboto flex italic data',
+      };
+      const pluginProps = {
+        fonts: ['./assets/fonts/SpaceMono-Regular.ttf'],
+        ios: { fonts: ['./assets/fonts/SF-Pro.ttf'] },
+        android: {
+          fonts: [
+            {
+              fontFamily: 'Roboto',
+              fontDefinitions: [
+                { path: './assets/fonts/Roboto-Regular.ttf', weight: 400 },
+                { path: './assets/fonts/Roboto-Bold.ttf', weight: 700 },
+              ],
+            },
+            {
+              // A family may name its file once instead of each definition repeating it.
+              fontFamily: 'Roboto Flex',
+              path: './assets/fonts/RobotoFlex.ttf',
+              fontDefinitions: [
+                { weight: 400 },
+                { weight: 700, axes: { wght: 650 } },
+                // A definition may still name a file of its own.
+                { path: './assets/fonts/RobotoFlex-Italic.ttf', weight: 400, style: 'italic' },
+              ],
+            },
+          ],
+        },
+      };
+
+      const iosSources = await getFontSources(files, pluginProps, 'ios');
+      expectFontSource(iosSources, 'assets/fonts/SpaceMono-Regular.ttf');
+      expectFontSource(iosSources, 'assets/fonts/SF-Pro.ttf');
+      expectNoFontSource(iosSources, 'assets/fonts/Roboto-Regular.ttf');
+      expectNoFontSource(iosSources, 'assets/fonts/Roboto-Bold.ttf');
+      expectNoFontSource(iosSources, 'assets/fonts/RobotoFlex.ttf');
+
+      const androidSources = await getFontSources(files, pluginProps, 'android');
+      expectFontSource(androidSources, 'assets/fonts/SpaceMono-Regular.ttf');
+      expectFontSource(androidSources, 'assets/fonts/Roboto-Regular.ttf');
+      expectFontSource(androidSources, 'assets/fonts/Roboto-Bold.ttf');
+      expectFontSource(androidSources, 'assets/fonts/RobotoFlex.ttf');
+      expectFontSource(androidSources, 'assets/fonts/RobotoFlex-Italic.ttf');
+      expectNoFontSource(androidSources, 'assets/fonts/SF-Pro.ttf');
+    });
+
+    it('includes android string font paths', async () => {
+      const sources = await getFontSources(
+        {
+          'assets/fonts/SpaceMono-Regular.ttf': 'font data v1',
+          'assets/fonts/Noto-Sans.ttf': 'noto sans data',
+        },
+        {
+          fonts: ['./assets/fonts/SpaceMono-Regular.ttf'],
+          android: { fonts: ['./assets/fonts/Noto-Sans.ttf'] },
+        },
+        'android'
+      );
+
+      expectFontSource(sources, 'assets/fonts/Noto-Sans.ttf');
+      expectFontSource(sources, 'assets/fonts/SpaceMono-Regular.ttf');
+    });
+
+    // When a directory path is passed to `fonts`, the config plugin resolves individual
+    // font files from it (filtering by extension). The fingerprint, hashes the
+    // entire directory — this over-hashes slightly but is safe
+    it('hashes entire font directory when a directory path is specified', async () => {
+      const sources = await getFontSources(
+        {
+          'assets/fonts/Inter.ttf': 'inter font data',
+          'assets/fonts/Roboto.otf': 'roboto font data',
+        },
+        { fonts: ['./assets/fonts'] }
+      );
+
+      expectFontSource(sources, 'assets/fonts', 'dir');
+    });
+  });
+
+  it('should contain external google service files with override hash key', async () => {
+    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+    vol.writeFileSync('/app/google-services.json', 'JSON data');
+    const appJson = JSON.parse(vol.readFileSync('/app/app.json', 'utf8').toString());
+    appJson.expo.android ||= {};
+    appJson.expo.android.googleServicesFile = '/app/google-services.json';
+    vol.writeFileSync('/app/app.json', JSON.stringify(appJson, null, 2));
+
+    const options = await normalizeOptionsAsync('/app');
+    const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        filePath: 'google-services.json',
+        overrideHashKey: 'expoConfigExternalFile:contentsOnly',
+      })
+    );
+  });
+
+  it('should contain external splash image from expo-splash-screen plugin properties', async () => {
+    vol.fromJSON(require('./fixtures/ExpoDefault52Project.json'));
+    vol.mkdirSync('/app/assets/images', { recursive: true });
+    vol.writeFileSync('/app/assets/images/splash-icon.png', 'PNG data');
+
+    const config = {
+      exp: JSON.parse(vol.readFileSync('/app/app.json', 'utf8').toString()).expo,
+    };
+    const configResult = JSON.stringify({ config, loadedModules: [] });
+    const mockSpawnWithIpcAsync = spawnWithIpcAsync as jest.MockedFunction<
+      typeof spawnWithIpcAsync
+    >;
+    mockSpawnWithIpcAsync.mockResolvedValueOnce({
+      output: [],
+      stdout: configResult,
+      message: configResult,
+      stderr: '',
+      signal: null,
+      status: 0,
+    });
+    const options = await normalizeOptionsAsync('/app');
+    const { config: expoConfig, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', expoConfig, loadedModules, options);
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        filePath: 'assets/images/splash-icon.png',
       })
     );
   });
@@ -259,22 +642,30 @@ export default ({ config }) => {
   it('should contain extra files from config plugins', async () => {
     vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
     const config = await getConfig('/app', { skipSDKVersionRequirement: true });
-    const mockSpawnAsync = spawnAsync as jest.MockedFunction<typeof spawnAsync>;
-    const stdout = JSON.stringify({
+    const mockSpawnWithIpcAsync = spawnWithIpcAsync as jest.MockedFunction<
+      typeof spawnWithIpcAsync
+    >;
+    const configResult = JSON.stringify({
       config,
       loadedModules: [
-        'node_modules/third-party/index.js',
-        'node_modules/third-party/node_modules/transitive-third-party/index.js',
+        { type: 'file', path: 'node_modules/third-party/index.js' },
+        {
+          type: 'file',
+          path: 'node_modules/third-party/node_modules/transitive-third-party/index.js',
+        },
       ],
     });
-    mockSpawnAsync.mockResolvedValueOnce({
+    mockSpawnWithIpcAsync.mockResolvedValueOnce({
       output: [],
-      stdout,
+      stdout: configResult,
+      message: configResult,
       stderr: '',
       signal: null,
       status: 0,
     });
-    const sources = await getExpoConfigSourcesAsync('/app', await normalizeOptionsAsync('/app'));
+    const options = await normalizeOptionsAsync('/app');
+    const { config: expoConfig, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', expoConfig, loadedModules, options);
     expect(sources).toContainEqual(
       expect.objectContaining({
         type: 'file',
@@ -287,6 +678,318 @@ export default ({ config }) => {
         filePath: 'node_modules/third-party/node_modules/transitive-third-party/index.js',
       })
     );
+  });
+
+  it('should map a virtual config-plugin module to a contents source', async () => {
+    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+    const config = await getConfig('/app', { skipSDKVersionRequirement: true });
+    const mockSpawnWithIpcAsync = spawnWithIpcAsync as jest.MockedFunction<
+      typeof spawnWithIpcAsync
+    >;
+    const configResult = JSON.stringify({
+      config,
+      loadedModules: [
+        {
+          type: 'contents',
+          id: 'plugins/virtual-plugin.js',
+          contents: 'module.exports = () => {};',
+        },
+      ],
+    });
+    mockSpawnWithIpcAsync.mockResolvedValueOnce({
+      output: [],
+      stdout: configResult,
+      message: configResult,
+      stderr: '',
+      signal: null,
+      status: 0,
+    });
+    const options = await normalizeOptionsAsync('/app');
+    const { config: expoConfig, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', expoConfig, loadedModules, options);
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'contents',
+        id: 'plugins/virtual-plugin.js',
+        contents: 'module.exports = () => {};',
+        reasons: ['expoConfigPlugins'],
+      })
+    );
+  });
+
+  it('should collapse a node_modules plugin file to a package source when configPluginSourceType is package', async () => {
+    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+    vol.mkdirSync('/app/node_modules/some-plugin', { recursive: true });
+    vol.writeFileSync(
+      '/app/node_modules/some-plugin/package.json',
+      JSON.stringify({ name: 'some-plugin', version: '1.2.3' })
+    );
+    const config = await getConfig('/app', { skipSDKVersionRequirement: true });
+    mockLoadedModules(config, [
+      { type: 'file', path: 'node_modules/some-plugin/build/withPlugin.js' },
+    ]);
+    // The default (balanced) preset uses the `package` config-plugin source type.
+    const options = await normalizeOptionsAsync('/app');
+    const { config: expoConfig, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', expoConfig, loadedModules, options);
+
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'package',
+        filePath: 'node_modules/some-plugin/package.json',
+        reasons: ['expoConfigPlugins'],
+      })
+    );
+    expect(sources).not.toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        filePath: 'node_modules/some-plugin/build/withPlugin.js',
+      })
+    );
+  });
+
+  it('should keep a node_modules plugin file as a file source when configPluginSourceType is files', async () => {
+    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+    vol.mkdirSync('/app/node_modules/some-plugin', { recursive: true });
+    vol.writeFileSync(
+      '/app/node_modules/some-plugin/package.json',
+      JSON.stringify({ name: 'some-plugin', version: '1.2.3' })
+    );
+    const config = await getConfig('/app', { skipSDKVersionRequirement: true });
+    mockLoadedModules(config, [
+      { type: 'file', path: 'node_modules/some-plugin/build/withPlugin.js' },
+    ]);
+    const options = await normalizeOptionsAsync('/app', { preset: 'strict' });
+    const { config: expoConfig, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', expoConfig, loadedModules, options);
+
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        filePath: 'node_modules/some-plugin/build/withPlugin.js',
+        reasons: ['expoConfigPlugins'],
+      })
+    );
+  });
+
+  it('should keep an in-repo plugin file as a file source when configPluginSourceType is package', async () => {
+    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+    const config = await getConfig('/app', { skipSDKVersionRequirement: true });
+    mockLoadedModules(config, [{ type: 'file', path: 'plugins/withLocalPlugin.ts' }]);
+    const options = await normalizeOptionsAsync('/app');
+    const { config: expoConfig, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', expoConfig, loadedModules, options);
+
+    expect(sources).toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        filePath: 'plugins/withLocalPlugin.ts',
+        reasons: ['expoConfigPlugins'],
+      })
+    );
+  });
+});
+
+describe(`getExpoConfigSourcesAsync - sourceSkips`, () => {
+  beforeAll(() => {
+    jest.doMock('fs', () => volFS);
+  });
+
+  afterEach(() => {
+    vol.reset();
+  });
+
+  it('should not container version when SourceSkips.ExpoConfigVersions', async () => {
+    await jest.isolateModulesAsync(async () => {
+      vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+      mockConfigFile('/app/app.config.js', () => ({
+        default: ({ config }: any) => {
+          config.android = { versionCode: 1, version: '1.2.3' };
+          config.ios = { buildNumber: '1', version: '4.5.6' };
+          return config;
+        },
+      }));
+
+      const options = await normalizeOptionsAsync('/app', {
+        sourceSkips: SourceSkips.ExpoConfigVersions,
+      });
+      const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+      const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+      const expoConfigSource = sources.find<HashSourceContents>(
+        (source): source is HashSourceContents =>
+          source.type === 'contents' && source.id === 'expoConfig'
+      );
+      const expoConfig = JSON.parse(expoConfigSource?.contents?.toString() ?? 'null');
+      expect(expoConfig).not.toBeNull();
+      expect(expoConfig.version).toBeUndefined();
+      expect(expoConfig.android.versionCode).toBeUndefined();
+      expect(expoConfig.android.version).toBeUndefined();
+      expect(expoConfig.ios.buildNumber).toBeUndefined();
+      expect(expoConfig.ios.version).toBeUndefined();
+    });
+  });
+
+  it('should support sourceSkips from config', async () => {
+    await jest.isolateModulesAsync(async () => {
+      vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+      mockConfigFile('/app/app.config.js', () => ({
+        default: ({ config }: any) => {
+          config.android = { versionCode: 1, package: 'com.example.app' };
+          config.ios = { buildNumber: '1', bundleIdentifier: 'com.example.app' };
+          return config;
+        },
+      }));
+
+      const configContents = `\
+const { SourceSkips } = require('@expo/fingerprint');
+/** @type {import('@expo/fingerprint').Config} */
+const config = {
+  sourceSkips: SourceSkips.ExpoConfigAndroidPackage | SourceSkips.ExpoConfigIosBundleIdentifier | SourceSkips.ExpoConfigVersions,
+};
+module.exports = config;
+`;
+      mockConfigFile('/app/fingerprint.config.js', () => requireString(configContents));
+
+      const options = await normalizeOptionsAsync('/app');
+      const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+      const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+      const expoConfigSource = sources.find<HashSourceContents>(
+        (source): source is HashSourceContents =>
+          source.type === 'contents' && source.id === 'expoConfig'
+      );
+      const expoConfig = JSON.parse(expoConfigSource?.contents?.toString() ?? 'null');
+      expect(expoConfig).not.toBeNull();
+      expect(expoConfig.version).toBeUndefined();
+      expect(expoConfig.android.versionCode).toBeUndefined();
+      expect(expoConfig.android.package).toBeUndefined();
+      expect(expoConfig.ios.buildNumber).toBeUndefined();
+      expect(expoConfig.ios.bundleIdentifier).toBeUndefined();
+    });
+  });
+
+  it('should support sourceSkips specified as string array in config', async () => {
+    await jest.isolateModulesAsync(async () => {
+      vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+      mockConfigFile('/app/app.config.js', () => ({
+        default: ({ config }: any) => {
+          config.android = { versionCode: 1, package: 'com.example.app' };
+          config.ios = { buildNumber: '1', bundleIdentifier: 'com.example.app' };
+          return config;
+        },
+      }));
+
+      const configContents = `\
+const { SourceSkips } = require('@expo/fingerprint');
+/** @type {import('@expo/fingerprint').Config} */
+const config = {
+  sourceSkips: ['ExpoConfigAndroidPackage', 'ExpoConfigIosBundleIdentifier', 'ExpoConfigVersions'],
+};
+module.exports = config;
+`;
+      mockConfigFile('/app/fingerprint.config.js', () => requireString(configContents));
+
+      const options = await normalizeOptionsAsync('/app');
+      const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+      const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+      const expoConfigSource = sources.find<HashSourceContents>(
+        (source): source is HashSourceContents =>
+          source.type === 'contents' && source.id === 'expoConfig'
+      );
+      const expoConfig = JSON.parse(expoConfigSource?.contents?.toString() ?? 'null');
+      expect(expoConfig).not.toBeNull();
+      expect(expoConfig.version).toBeUndefined();
+      expect(expoConfig.android.versionCode).toBeUndefined();
+      expect(expoConfig.android.package).toBeUndefined();
+      expect(expoConfig.ios.buildNumber).toBeUndefined();
+      expect(expoConfig.ios.bundleIdentifier).toBeUndefined();
+    });
+  });
+
+  it('should not contain runtimeVersion when SourceSkips.ExpoConfigRuntimeVersionIfString and runtime version is a string', async () => {
+    await jest.isolateModulesAsync(async () => {
+      vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+      mockConfigFile('/app/app.config.js', () => ({
+        default: ({ config }: any) => {
+          config.runtimeVersion = '1.0.0';
+          config.ios = { runtimeVersion: '1.0.0' };
+          config.android = { runtimeVersion: '1.0.0' };
+          config.web = { runtimeVersion: '1.0.0' };
+          return config;
+        },
+      }));
+      const options = await normalizeOptionsAsync('/app', {
+        sourceSkips: SourceSkips.ExpoConfigRuntimeVersionIfString,
+      });
+      const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+      const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+      const expoConfigSource = sources.find<HashSourceContents>(
+        (source): source is HashSourceContents =>
+          source.type === 'contents' && source.id === 'expoConfig'
+      );
+      const expoConfig = JSON.parse(expoConfigSource?.contents?.toString() ?? 'null');
+      expect(expoConfig).not.toBeNull();
+      expect(expoConfig.runtimeVersion).toBeUndefined();
+      expect(expoConfig.android.runtimeVersion).toBeUndefined();
+      expect(expoConfig.ios.runtimeVersion).toBeUndefined();
+      expect(expoConfig.web.runtimeVersion).toBeUndefined();
+    });
+  });
+
+  it('should keep runtimeVersion when SourceSkips.ExpoConfigRuntimeVersionIfString and runtime version is a policy', async () => {
+    await jest.isolateModulesAsync(async () => {
+      vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+      mockConfigFile('/app/app.config.js', () => ({
+        default: ({ config }: any) => {
+          config.runtimeVersion = { policy: 'test' };
+          config.ios = { runtimeVersion: { policy: 'test' } };
+          config.android = { runtimeVersion: { policy: 'test' } };
+          config.web = { runtimeVersion: { policy: 'test' } };
+          return config;
+        },
+      }));
+      const options = await normalizeOptionsAsync('/app', {
+        sourceSkips: SourceSkips.ExpoConfigRuntimeVersionIfString,
+      });
+      const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+      const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+      const expoConfigSource = sources.find<HashSourceContents>(
+        (source): source is HashSourceContents =>
+          source.type === 'contents' && source.id === 'expoConfig'
+      );
+      const expoConfig = JSON.parse(expoConfigSource?.contents?.toString() ?? 'null');
+      expect(expoConfig).not.toBeNull();
+      expect(expoConfig.runtimeVersion).toMatchObject({ policy: 'test' });
+      expect(expoConfig.android.runtimeVersion).toMatchObject({ policy: 'test' });
+      expect(expoConfig.ios.runtimeVersion).toMatchObject({ policy: 'test' });
+      expect(expoConfig.web.runtimeVersion).toMatchObject({ policy: 'test' });
+    });
+  });
+
+  it('should skip external icon files when SourceSkips.ExpoConfigAssets', async () => {
+    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+    vol.mkdirSync('/app/assets');
+    vol.writeFileSync('/app/assets/icon.png', 'PNG data');
+    const options = await normalizeOptionsAsync('/app', {
+      sourceSkips: SourceSkips.ExpoConfigAssets,
+    });
+    const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+    expect(sources).not.toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        filePath: './assets/icon.png',
+      })
+    );
+  });
+
+  it('should return empty sources when SourceSkips.ExpoConfigAll is set', async () => {
+    vol.fromJSON(require('./fixtures/ExpoManaged47Project.json'));
+    vol.mkdirSync('/app/assets');
+    vol.writeFileSync('/app/assets/icon.png', 'PNG data');
+    const options = await normalizeOptionsAsync('/app', { sourceSkips: SourceSkips.ExpoConfigAll });
+    const { config, loadedModules } = await getExpoConfigAsync('/app', options);
+    const sources = await getExpoConfigSourcesAsync('/app', config, loadedModules, options);
+    expect(sources).toEqual([]);
   });
 });
 
@@ -353,5 +1056,97 @@ describe('sortExpoAutolinkingConfig', () => {
     expect(result.modules[1].projects[2].name).toBe(
       'expo-modules-core$android-annotation-processor'
     );
+  });
+});
+
+describe(getConfigPluginProps, () => {
+  it('should return null from config without plugins', () => {
+    const config: ExpoConfig = {
+      name: 'test',
+      slug: 'test',
+      version: '1.0.0',
+    };
+    expect(getConfigPluginProps(config, 'test')).toBeNull();
+  });
+
+  it('should return null from unmatched plugins', () => {
+    const config: ExpoConfig = {
+      name: 'test',
+      slug: 'test',
+      version: '1.0.0',
+      plugins: ['plugin1', ['plugin2', { prop: 'value' }], ['plugin3', 'stringProp']],
+    };
+    expect(getConfigPluginProps(config, 'test')).toBeNull();
+  });
+
+  it('should return null from plugins without props', () => {
+    const config: ExpoConfig = {
+      name: 'test',
+      slug: 'test',
+      version: '1.0.0',
+      plugins: ['plugin1', ['plugin2', { prop: 'value' }], ['plugin3', 'stringProp'], 'test'],
+    };
+    expect(getConfigPluginProps(config, 'test')).toBeNull();
+  });
+
+  it('should return object from plugins with object props', () => {
+    const config: ExpoConfig = {
+      name: 'test',
+      slug: 'test',
+      version: '1.0.0',
+      plugins: [
+        'plugin1',
+        ['plugin2', { prop: 'value' }],
+        ['plugin3', 'stringProp'],
+        ['test', { foo: 'foo' }],
+      ],
+    };
+    expect(getConfigPluginProps(config, 'test')).toEqual({ foo: 'foo' });
+  });
+
+  it('should return array of object from plugins with array of object props', () => {
+    const config: ExpoConfig = {
+      name: 'test',
+      slug: 'test',
+      version: '1.0.0',
+      plugins: [
+        'plugin1',
+        ['plugin2', { prop: 'value' }],
+        ['plugin3', 'stringProp'],
+        ['test', [{ foo: 'foo' }]],
+      ],
+    };
+    expect(getConfigPluginProps(config, 'test')).toEqual([{ foo: 'foo' }]);
+  });
+
+  it('should return string from plugins with string props', () => {
+    const config: ExpoConfig = {
+      name: 'test',
+      slug: 'test',
+      version: '1.0.0',
+      plugins: [
+        'plugin1',
+        ['plugin2', { prop: 'value' }],
+        ['plugin3', 'stringProp'],
+        ['test', 'test'],
+      ],
+    };
+    expect(getConfigPluginProps(config, 'test')).toEqual('test');
+  });
+
+  it('should return the first matched plugin', () => {
+    const config: ExpoConfig = {
+      name: 'test',
+      slug: 'test',
+      version: '1.0.0',
+      plugins: [
+        'plugin1',
+        ['plugin2', { prop: 'value' }],
+        ['plugin3', 'stringProp'],
+        ['test', 'test'],
+        ['test', [{ foo: 'foo' }]],
+      ],
+    };
+    expect(getConfigPluginProps(config, 'test')).toEqual('test');
   });
 });

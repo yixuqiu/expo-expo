@@ -12,8 +12,8 @@ class EASClientModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("EASClient")
 
-    Constants {
-      mapOf("clientID" to EASClientID(context).uuid.toString())
-    }
+    Constant("clientID") { EASClientID(context).uuid.toString() }
+
+    Constant("deterministicUniformValue") { EASClientID.deterministicUniformValue(EASClientID(context).uuid) }
   }
 }

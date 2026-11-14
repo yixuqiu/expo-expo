@@ -1,22 +1,25 @@
 import type { ExpoConfig } from '@expo/config';
+import type { JSONObject } from '@expo/json-file';
 import JsonFile from '@expo/json-file';
 import * as PackageManager from '@expo/package-manager';
 import chalk from 'chalk';
-import { glob } from 'fast-glob';
 import fs from 'fs';
 import ora from 'ora';
 import path from 'path';
+import { glob } from 'tinyglobby';
 
+import { consumeMonorepoConfigAsync } from './createExpoConfig';
 import { sanitizedName } from './createFileTransform';
+import { SwiftPMUnsupportedError } from './error';
 import { Log } from './log';
-import { formatRunCommand, PackageManagerName } from './resolvePackageManager';
+import type { PackageManagerName } from './resolvePackageManager';
+import { formatRunCommand } from './resolvePackageManager';
 import { env } from './utils/env';
 import { downloadAndExtractGitHubRepositoryAsync } from './utils/github';
 import {
   applyBetaTag,
   applyKnownNpmPackageNameRules,
   downloadAndExtractNpmModuleAsync,
-  ExtractProps,
   getResolvedTemplateName,
 } from './utils/npm';
 
@@ -24,6 +27,7 @@ const debug = require('debug')('expo:init:template') as typeof console.log;
 
 const isMacOS = process.platform === 'darwin';
 
+// keep this list in sync with the validation helper in WWW: src/utils/experienceParser.ts
 const FORBIDDEN_NAMES = [
   'react-native',
   'react',
@@ -67,6 +71,20 @@ function coerceUrl(urlString: string) {
 
 export function resolvePackageModuleId(moduleId: string) {
   if (
+    // Expands github shorthand (owner/repo) to full URLs
+    moduleId.includes('/') &&
+    !(
+      moduleId.startsWith('@') || // Scoped package
+      moduleId.startsWith('.') || // Relative path
+      moduleId.startsWith(path.sep) || // Absolute path
+      // Contains a protocol
+      /^[a-z][-a-z0-9\\.\\+]*:/.test(moduleId)
+    )
+  ) {
+    moduleId = `https://github.com/${moduleId}`;
+  }
+
+  if (
     // Supports github repository URLs
     /^(https?:\/\/)?github\.com\//.test(moduleId)
   ) {
@@ -101,11 +119,16 @@ export function resolvePackageModuleId(moduleId: string) {
 /**
  * Extract a template app to a given file path and clean up any properties left over from npm to
  * prepare it for usage.
+ *
+ * If the template ships a `.create-expo.json`, its `renamePatterns`
+ * field overrides the default rename config used by the HelloWorld
+ * find-and-replace pass. The config file is read once and deleted from disk
+ * immediately so it can never leak into the user's project.
  */
 export async function extractAndPrepareTemplateAppAsync(
   projectRoot: string,
-  { npmPackage }: { npmPackage?: string | null }
-) {
+  { npmPackage, swiftpm }: { npmPackage?: string | null; swiftpm?: boolean }
+): Promise<string> {
   const projectName = path.basename(projectRoot);
 
   debug(`Extracting template app (pkg: ${npmPackage}, projectName: ${projectName})`);
@@ -113,21 +136,28 @@ export async function extractAndPrepareTemplateAppAsync(
   const { type, uri } = resolvePackageModuleId(npmPackage || 'expo-template-default');
 
   if (type === 'repository') {
-    await downloadAndExtractGitHubRepositoryAsync(uri, {
-      cwd: projectRoot,
-      name: projectName,
+    await downloadAndExtractGitHubRepositoryAsync(uri, projectRoot, {
+      expName: projectName,
     });
   } else {
     const resolvedUri = type === 'file' ? uri : getResolvedTemplateName(applyBetaTag(uri));
-    await downloadAndExtractNpmModuleAsync(resolvedUri, {
-      cwd: projectRoot,
-      name: projectName,
+    await downloadAndExtractNpmModuleAsync(resolvedUri, projectRoot, {
+      expName: projectName,
       disableCache: type === 'file',
     });
   }
 
+  if (swiftpm) {
+    await assertSwiftPMSupportedAsync(projectRoot, 'template');
+  }
+
+  const monorepoConfig = await consumeMonorepoConfigAsync(projectRoot);
+
   try {
-    const files = await getTemplateFilesToRenameAsync({ cwd: projectRoot });
+    const files = await getTemplateFilesToRenameAsync({
+      cwd: projectRoot,
+      renameConfig: monorepoConfig?.renamePatterns,
+    });
     await renameTemplateAppNameAsync({
       cwd: projectRoot,
       files,
@@ -138,17 +168,47 @@ export async function extractAndPrepareTemplateAppAsync(
     throw error;
   }
 
-  await sanitizeTemplateAsync(projectRoot);
+  await sanitizeTemplateAsync(projectRoot, { swiftpm });
 
   return projectRoot;
 }
 
+// Android resource XML (strings.xml): aapt2 resolves XML entities before its
+// own escape rules, so only &, <, > take entities; the rest (quotes, @, ?,
+// whitespace) needs Android's backslash escapes. The backslash escaping is a
+// copy of `XML.escapeAndroidString` from `@expo/config-plugins`, which this
+// package does not depend on.
+function escapeAndroidResourceValue(original: string): string {
+  const noAmps = original.replace(/&/g, '&amp;');
+  const noLt = noAmps.replace(/</g, '&lt;');
+  const noGt = noLt.replace(/>/g, '&gt;');
+  const escaped = noGt.replace(/[\n\r\t'"@?\\]/g, (m) => {
+    switch (m) {
+      case '"':
+      case "'":
+      case '@':
+      case '?':
+      case '\\':
+        return '\\' + m;
+      case '\n':
+        return '\\n';
+      case '\r':
+        return '\\r';
+      case '\t':
+        return '\\t';
+      default:
+        throw new Error(`Cannot escape unhandled XML character: ${m}`);
+    }
+  });
+  return escaped.match(/(^\s|\s$)/) ? `"${escaped}"` : escaped;
+}
+
 function escapeXMLCharacters(original: string): string {
-  const noAmps = original.replace('&', '&amp;');
-  const noLt = noAmps.replace('<', '&lt;');
-  const noGt = noLt.replace('>', '&gt;');
-  const noApos = noGt.replace('"', '\\"');
-  return noApos.replace("'", "\\'");
+  const noAmps = original.replace(/&/g, '&amp;');
+  const noLt = noAmps.replace(/</g, '&lt;');
+  const noGt = noLt.replace(/>/g, '&gt;');
+  const noQuots = noGt.replace(/"/g, '&quot;');
+  return noQuots.replace(/'/g, '&apos;');
 }
 
 /**
@@ -160,7 +220,7 @@ function escapeXMLCharacters(original: string): string {
  * specified.
  *
  * By convention, the app name of all templates is "HelloWorld". During
- * extraction, filepaths are transformed via `createEntryResolver()` in
+ * extraction, filepaths are transformed via `createEntryRenamer()` in
  * `createFileTransform.ts`, but the contents of files are left untouched.
  * Technically, the contents used to be transformed during extraction as well,
  * but due to poor configurability, we've moved to a post-extraction approach.
@@ -177,13 +237,13 @@ function escapeXMLCharacters(original: string): string {
  * `getTemplateFilesToRenameAsync()`.
  *
  * The file patterns are formatted as glob expressions to be interpreted by
- * [fast-glob](https://github.com/mrmlnc/fast-glob). Comments are supported with
+ * [tinyglobby](https://github.com/SuperchupuDev/tinyglobby). Comments are supported with
  * the `#` symbol, both in the plain-text file and string array formats.
  * Whitespace is trimmed and whitespace-only lines are ignored.
  *
  * If no rename config has been passed directly to
- * `getTemplateFilesToRenameAsync()` then this default rename config will be
- * used instead.
+ * `getTemplateFilesToRenameAsync()`, then this default
+ * rename config will be used instead.
  */
 export const defaultRenameConfig = [
   // Common
@@ -201,6 +261,13 @@ export const defaultRenameConfig = [
   'ios/Podfile',
   'ios/**/*.xcodeproj/project.pbxproj',
   'ios/**/*.xcodeproj/xcshareddata/xcschemes/*.xcscheme',
+  'ios/**/*.xcworkspace/contents.xcworkspacedata',
+
+  // macOS
+  'macos/Podfile',
+  'macos/**/*.xcodeproj/project.pbxproj',
+  'macos/**/*.xcodeproj/xcshareddata/xcschemes/*.xcscheme',
+  'macos/**/*.xcworkspace/contents.xcworkspacedata',
 ] as const;
 
 /**
@@ -218,29 +285,51 @@ export async function getTemplateFilesToRenameAsync({
    * @see defaultRenameConfig
    */
   renameConfig: userConfig,
-}: Pick<ExtractProps, 'cwd'> & { renameConfig?: string[] }) {
+}: {
+  cwd: string;
+  renameConfig?: string[];
+}) {
   let config = userConfig ?? defaultRenameConfig;
 
   // Strip comments, trim whitespace, and remove empty lines.
-  config = config.map((line) => line.split(/(?<!\\)#/, 2)[0].trim()).filter((line) => line !== '');
+  config = config
+    .map((line) => line.split(/(?<!\\)#/, 2)[0]?.trim() ?? '')
+    .filter((line) => line !== '');
 
-  return await glob(config, {
-    cwd,
-    // `true` is consistent with .gitignore. Allows `*.xml` to match .xml files
-    // in all subdirs.
-    baseNameMatch: true,
-    dot: true,
-    // Prevent climbing out of the template directory in case a template
-    // includes a symlink to an external directory.
-    followSymbolicLinks: false,
-  });
+  return glob(
+    config.map((pattern) => {
+      const literalPattern = pattern.startsWith('!') ? `\\${pattern}` : pattern;
+      // NOTE(@kitten): tinyglobby has no matchBase option; bare patterns match in every directory.
+      return pattern.includes('/') ? literalPattern : `**/${literalPattern}`;
+    }),
+    {
+      cwd,
+      dot: true,
+      expandDirectories: false,
+      // NOTE(@kitten): Renaming must not modify files reached through template symlinks.
+      followSymbolicLinks: false,
+    }
+  );
 }
 
+/**
+ * Substitutes the template's placeholder app name inside the given files. Only file
+ * contents are rewritten, and only three tokens: `Hello App Display Name`, `HelloWorld`
+ * and `helloworld`.
+ *
+ * File and directory names are renamed separately during template extraction, from the
+ * same `sanitizedName` call.
+ *
+ * What this writes is final: unlike `expo prebuild`, `create-expo` runs no config mods
+ * that would rewrite `app_name` afterwards.
+ */
 export async function renameTemplateAppNameAsync({
   cwd,
   name,
   files,
-}: Pick<ExtractProps, 'cwd' | 'name'> & {
+}: {
+  cwd: string;
+  name: string;
   /**
    * An array of files to transform. Usually provided by calling
    * getTemplateFilesToRenameAsync().
@@ -256,7 +345,9 @@ export async function renameTemplateAppNameAsync({
 
       let contents: string;
       try {
-        contents = await fs.promises.readFile(absoluteFilePath, { encoding: 'utf-8' });
+        contents = await fs.promises.readFile(absoluteFilePath, {
+          encoding: 'utf-8',
+        });
       } catch (error) {
         throw new Error(
           `Failed to read template file: "${absoluteFilePath}". Was it removed mid-operation?`,
@@ -266,15 +357,20 @@ export async function renameTemplateAppNameAsync({
 
       debug(`Renaming app name in file: ${absoluteFilePath}`);
 
-      const safeName = ['.xml', '.plist'].includes(path.extname(file))
-        ? escapeXMLCharacters(name)
-        : name;
+      const extension = path.extname(file);
+      // `.xml` files in the rename config are Android resources; `.plist` is generic XML.
+      const escapedDisplayName =
+        extension === '.xml'
+          ? escapeAndroidResourceValue(name)
+          : extension === '.plist'
+            ? escapeXMLCharacters(name)
+            : name;
 
       try {
         const replacement = contents
-          .replace(/Hello App Display Name/g, safeName)
-          .replace(/HelloWorld/g, sanitizedName(safeName))
-          .replace(/helloworld/g, sanitizedName(safeName.toLowerCase()));
+          .replace(/Hello App Display Name/g, () => escapedDisplayName)
+          .replace(/HelloWorld/g, sanitizedName(name))
+          .replace(/helloworld/g, sanitizedName(name).toLowerCase());
 
         if (replacement === contents) {
           return;
@@ -291,26 +387,76 @@ export async function renameTemplateAppNameAsync({
   );
 }
 
+function templateHasNativeCode(root: string): boolean {
+  return [path.join(root, 'android'), path.join(root, 'ios')].some((folder) =>
+    fs.existsSync(folder)
+  );
+}
+
+/**
+ * Throw a `SwiftPMUnsupportedError` when the extracted project depends on a React Native version
+ * older than 0.88. Versions that cannot be read here are left for `expo prebuild` to reject.
+ */
+export async function assertSwiftPMSupportedAsync(
+  projectRoot: string,
+  source: 'template' | 'example'
+): Promise<void> {
+  const packageJsonPath = path.join(projectRoot, 'package.json');
+  if (!fs.existsSync(packageJsonPath)) {
+    return;
+  }
+  const { dependencies } = await JsonFile.readAsync<{ dependencies?: Record<string, string> }>(
+    packageJsonPath
+  );
+  const reactNativeVersion = dependencies?.['react-native'];
+  const [, major, minor] = reactNativeVersion?.match(/(\d+)\.(\d+)/) ?? [];
+  // Nightlies are versioned `0.0.0-<date>-<sha>`, so a minor of 0 is not an old release.
+  if (reactNativeVersion && Number(major) === 0 && Number(minor) >= 1 && Number(minor) < 88) {
+    const projectDir = path.relative(process.cwd(), projectRoot) || path.basename(projectRoot);
+    throw new SwiftPMUnsupportedError(source, reactNativeVersion, projectDir);
+  }
+}
+
 /**
  * Sanitize a template (or example) with expected `package.json` properties and files.
  */
-export async function sanitizeTemplateAsync(projectRoot: string) {
+export async function sanitizeTemplateAsync(
+  projectRoot: string,
+  { swiftpm = false }: { swiftpm?: boolean } = {}
+) {
   const projectName = path.basename(projectRoot);
 
   debug(`Sanitizing template or example app (projectName: ${projectName})`);
 
   const templatePath = path.join(__dirname, '../template/gitignore');
   const ignorePath = path.join(projectRoot, '.gitignore');
+
+  let nativeFoldersIgnored = false;
   if (!fs.existsSync(ignorePath)) {
-    await fs.promises.copyFile(templatePath, ignorePath);
+    if (process.env.NODE_ENV !== 'test') {
+      await fs.promises.copyFile(templatePath, ignorePath);
+    }
+  } else {
+    // If the template has a gitignore file already, we apply a heuristic to check if it ignores
+    // native folders. We're not strictly checking both ios|android but either loosely
+    try {
+      const ignoreContents = fs.readFileSync(ignorePath, 'utf-8');
+      nativeFoldersIgnored = /^\/?(?:ios|android)\/?/gm.test(ignoreContents);
+    } catch {
+      nativeFoldersIgnored = false;
+    }
   }
 
-  const defaultConfig: ExpoConfig = {
+  // `experiments.swiftPackageManager` is not in the generated ExpoConfig schema yet.
+  const defaultConfig: ExpoConfig & { experiments?: { swiftPackageManager?: boolean } } = {
     name: projectName,
     slug: projectName,
+    ...(swiftpm && { experiments: { swiftPackageManager: true } }),
   };
 
-  const appFile = new JsonFile(path.join(projectRoot, 'app.json'), { default: {} });
+  const appFile = new JsonFile(path.join(projectRoot, 'app.json'), {
+    default: {},
+  });
   const appContent = (await appFile.readAsync()) as ExpoConfig | Record<'expo', ExpoConfig>;
   const appJson = deepMerge(
     appContent,
@@ -332,6 +478,40 @@ export async function sanitizeTemplateAsync(projectRoot: string) {
   delete packageJson.description;
   delete packageJson.tags;
   delete packageJson.repository;
+
+  if (
+    (typeof packageJson.scripts === 'object' || packageJson.scripts == null) &&
+    !(packageJson.scripts as JSONObject)?.android &&
+    !(packageJson.scripts as JSONObject)?.ios
+  ) {
+    // When we're creating a template that:
+    // - does not have ios/android scripts
+    // - doesn't have native codes
+    // - has native folders ignored
+    // we automatically add ios/android scripts since prebuild will likely trigger, and used to add these scripts automatically
+    // but doesn't anymore
+    if (templateHasNativeCode(projectRoot)) {
+      packageJson.scripts = {
+        ...packageJson.scripts,
+        android: 'expo run:android',
+        ios: 'expo run:ios',
+      };
+    } else if (nativeFoldersIgnored) {
+      packageJson.scripts = {
+        ...packageJson.scripts,
+        android: 'expo start --android',
+        ios: 'expo start --ios',
+      };
+    } else {
+      // By default we don't do anything since we don't know if `start` or `run:*` are good defaults
+      // We assume that most templates have scripts in this case (e.g. the default template has its own already)
+    }
+  }
+
+  // Only strip the license if it's 0BSD, used by our templates. Leave other licenses alone.
+  if (packageJson.license === '0BSD') {
+    delete packageJson.license;
+  }
 
   await packageFile.writeAsync(packageJson);
 }

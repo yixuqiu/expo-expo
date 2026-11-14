@@ -1,391 +1,494 @@
+import JsonFile from '@expo/json-file';
 import fs from 'fs/promises';
-import execa from 'execa';
-import klawSync from 'klaw-sync';
 import path from 'path';
 
+import {
+  prepareServers,
+  setupServer,
+  RUNTIME_EXPRESS_SERVER,
+  RUNTIME_EXPO_START,
+  RUNTIME_EXPO_SERVE,
+  RUNTIME_WORKERD,
+} from '../../utils/runtime';
+import { findProjectFiles } from '../utils';
 import { runExportSideEffects } from './export-side-effects';
-import { bin, ensurePortFreeAsync, getRouterE2ERoot } from '../utils';
 
 runExportSideEffects();
 
 describe('server-output', () => {
-  const projectRoot = getRouterE2ERoot();
-  const outputDir = path.join(projectRoot, 'dist-server');
-
-  beforeAll(
-    async () => {
-      await ensurePortFreeAsync(8081);
-      await execa('node', [bin, 'export', '-p', 'web', '--output-dir', 'dist-server'], {
-        cwd: projectRoot,
+  describe.each(
+    prepareServers([RUNTIME_EXPRESS_SERVER, RUNTIME_EXPO_START, RUNTIME_WORKERD], {
+      fixtureName: 'server',
+      export: {
         env: {
-          NODE_ENV: 'production',
-          EXPO_USE_STATIC: 'server',
-          E2E_ROUTER_SRC: 'server',
           E2E_ROUTER_ASYNC: 'development',
-          EXPO_USE_FAST_RESOLVER: 'true',
         },
-      });
-    },
-    // Could take 45s depending on how fast the bundler resolves
-    560 * 1000
-  );
-
-  function getFiles() {
-    // List output files with sizes for snapshotting.
-    // This is to make sure that any changes to the output are intentional.
-    // Posix path formatting is used to make paths the same across OSes.
-    return klawSync(outputDir)
-      .map((entry) => {
-        if (entry.path.includes('node_modules') || !entry.stats.isFile()) {
-          return null;
-        }
-        return path.posix.relative(outputDir, entry.path);
-      })
-      .filter(Boolean);
-  }
-
-  describe('requests', () => {
-    beforeAll(async () => {
-      await ensurePortFreeAsync(3000);
-      // Start a server instance that we can test against then kill it.
-      server = execa('node', [nodeScript], {
-        cwd: projectRoot,
-
-        stderr: 'inherit',
-
+      },
+      serve: {
         env: {
-          NODE_ENV: 'production',
           TEST_SECRET_KEY: 'test-secret-key',
         },
-      });
-      // Wait for the server to start
-      await new Promise((resolve) => {
-        const listener = server!.stdout?.on('data', (data) => {
-          if (data.toString().includes('server listening')) {
-            console.log('Express server ready');
-            resolve(null);
-            listener?.removeAllListeners();
-          }
-        });
-      });
-    }, 120 * 1000);
-    const nodeScript = path.join(projectRoot, '__e2e__/server/express.js');
-    let server: execa.ExecaChildProcess<string> | undefined;
-
-    afterAll(async () => {
-      server?.kill();
-    });
+      },
+    })
+  )('$name requests', (config) => {
+    const server = setupServer(config);
 
     ['POST', 'GET', 'PUT', 'DELETE'].map(async (method) => {
       it(`can make requests to ${method} routes`, async () => {
-        // Request missing route
-        expect(
-          await fetch('http://localhost:3000/methods', {
-            method,
-          }).then((res) => res.json())
-        ).toEqual({
+        expect(await server.fetchAsync('/methods', { method }).then((res) => res.json())).toEqual({
           method: method.toLowerCase(),
         });
       });
     });
 
-    it(`can serve build-time static dynamic route`, async () => {
-      const res = await fetch('http://localhost:3000/blog-ssg/abc');
+    it(`renders dynamic routes at request time even when generateStaticParams is exported`, async () => {
+      const res = await server.fetchAsync('/blog-ssg/abc');
       expect(res.status).toEqual(200);
       expect(await res.text()).toMatch(/Post: <!-- -->abc/);
 
-      // This route is not pre-rendered and should show the default value for the dynamic parameter.
-      const res2 = await fetch('http://localhost:3000/blog-ssg/123');
+      const res2 = await server.fetchAsync('/blog-ssg/123');
       expect(res2.status).toEqual(200);
-      expect(await res2.text()).toMatch(/Post: <!-- -->\[post\]/);
+      expect(await res2.text()).toMatch(/Post: <!-- -->123/);
     });
 
     it(`can serve up custom not-found`, async () => {
-      const res = await fetch('http://localhost:3000/missing');
+      const res = await server.fetchAsync('/missing');
       expect(res.status).toEqual(404);
       expect(await res.text()).toMatch(/<div data-testid="custom-404">/);
     });
+
     it(`can serve HTML and a function from the same route`, async () => {
+      expect(await server.fetchAsync('/matching-route/alpha').then((res) => res.text())).toMatch(
+        /<div data-testid="alpha-text">/
+      );
       expect(
-        await fetch('http://localhost:3000/matching-route/alpha').then((res) => res.text())
-      ).toMatch(/<div data-testid="alpha-text">/);
-      expect(
-        await fetch('http://localhost:3000/matching-route/alpha', {
-          method: 'POST',
-        }).then((res) => res.json())
+        await server
+          .fetchAsync('/matching-route/alpha', { method: 'POST' })
+          .then((res) => res.json())
       ).toEqual({ foo: 'bar' });
     });
+
     it(`can serve up index html`, async () => {
-      expect(await fetch('http://localhost:3000').then((res) => res.text())).toMatch(
-        /<div id="root">/
-      );
+      expect(await server.fetchAsync('').then((res) => res.text())).toMatch(/<div id="root">/);
     });
 
     it(`can serve up group routes`, async () => {
       // Can access the same route from different paths
-      expect(await fetch('http://localhost:3000/beta').then((res) => res.text())).toMatch(
+      expect(await server.fetchAsync('/beta').then((res) => res.text())).toMatch(
         /<div data-testid="alpha-beta-text">/
       );
-      expect(await fetch('http://localhost:3000/(alpha)/').then((res) => res.text())).toMatch(
+      expect(await server.fetchAsync('/(alpha)/').then((res) => res.text())).toMatch(
         /<div data-testid="alpha-index">/
       );
-      expect(await fetch('http://localhost:3000/(alpha)/beta').then((res) => res.text())).toMatch(
+      expect(await server.fetchAsync('/(alpha)/beta').then((res) => res.text())).toMatch(
         /<div data-testid="alpha-beta-text">/
       );
     });
-    it(`can serve up dynamic html routes`, async () => {
-      expect(await fetch('http://localhost:3000/blog/123').then((res) => res.text())).toMatch(
-        /\[post\]/
+
+    it('renders dynamic parameters in every runtime', async () => {
+      expect(await server.fetchAsync('/blog/123').then((res) => res.text())).toMatch(
+        /Post: <!-- -->123/
       );
     });
+
     it(`can hit the 404 route`, async () => {
-      expect(
-        await fetch('http://localhost:3000/clearly-missing').then((res) => res.text())
-      ).toMatch(/<div id="root">/);
+      expect(await server.fetchAsync('/clearly-missing').then((res) => res.text())).toMatch(
+        /<div id="root">/
+      );
     });
 
-    it(`can serve up static html in array group`, async () => {
-      expect(getFiles()).not.toContain('server/multi-group.html');
-      expect(getFiles()).not.toContain('server/(a,b)/multi-group.html');
-      expect(getFiles()).toContain('server/(a)/multi-group.html');
-      expect(getFiles()).toContain('server/(b)/multi-group.html');
-      expect(await fetch('http://localhost:3000/multi-group').then((res) => res.text())).toMatch(
+    it(`can render array group routes`, async () => {
+      expect(await server.fetchAsync('/multi-group').then((res) => res.text())).toMatch(
         /<div data-testid="multi-group">/
       );
     });
 
     it(`can serve up static html in specific array group`, async () => {
-      expect(
-        await fetch('http://localhost:3000/(a)/multi-group').then((res) => res.text())
-      ).toMatch(/<div data-testid="multi-group">/);
-
-      expect(
-        await fetch('http://localhost:3000/(b)/multi-group').then((res) => res.text())
-      ).toMatch(/<div data-testid="multi-group">/);
+      expect(await server.fetchAsync('/(a)/multi-group').then((res) => res.text())).toMatch(
+        /<div data-testid="multi-group">/
+      );
+      expect(await server.fetchAsync('/(b)/multi-group').then((res) => res.text())).toMatch(
+        /<div data-testid="multi-group">/
+      );
     });
 
     it(`can not serve up static html in retained array group syntax`, async () => {
       // Should not be able to match the array syntax
-      expect(
-        await fetch('http://localhost:3000/(a,b)/multi-group').then((res) => res.status)
-      ).toEqual(404);
+      expect(await server.fetchAsync('/(a,b)/multi-group').then((res) => res.status)).toEqual(404);
     });
 
     it(`can serve up API route in array group`, async () => {
-      expect(getFiles()).toContain('server/_expo/functions/(a,b)/multi-group-api+api.js');
-      expect(getFiles()).toContain('server/_expo/functions/(a,b)/multi-group-api+api.js.map');
-      expect(getFiles()).not.toContain('server/_expo/functions/(a)/multi-group-api+api.js');
-      expect(getFiles()).not.toContain('server/_expo/functions/(b)/multi-group-api+api.js');
-
-      expect(
-        await fetch('http://localhost:3000/multi-group-api').then((res) => res.json())
-      ).toEqual({ value: 'multi-group-api-get' });
-
-      // Load the sourcemap and check that the paths are relative
-      const map = JSON.parse(
-        await fs.readFile(
-          path.join(outputDir, 'server/_expo/functions/(a,b)/multi-group-api+api.js.map'),
-          { encoding: 'utf8' },
-        )
-      );
-
-      expect(map.sources).toContain('__e2e__/server/app/(a,b)/multi-group-api+api.ts');
+      expect(await server.fetchAsync('/multi-group-api').then((res) => res.json())).toEqual({
+        value: 'multi-group-api-get',
+      });
     });
 
     it(`can serve up API route in specific array group`, async () => {
       // Should be able to match all the group variations
-      expect(
-        await fetch('http://localhost:3000/(a)/multi-group-api').then((res) => res.json())
-      ).toEqual({ value: 'multi-group-api-get' });
-      expect(
-        await fetch('http://localhost:3000/(b)/multi-group-api').then((res) => res.json())
-      ).toEqual({ value: 'multi-group-api-get' });
+      expect(await server.fetchAsync('/(a)/multi-group-api').then((res) => res.json())).toEqual({
+        value: 'multi-group-api-get',
+      });
+      expect(await server.fetchAsync('/(b)/multi-group-api').then((res) => res.json())).toEqual({
+        value: 'multi-group-api-get',
+      });
     });
 
     it(`can not serve up API route in retained array group syntax`, async () => {
       // Should not be able to match the array syntax
-      expect(
-        await fetch('http://localhost:3000/(a,b)/multi-group-api').then((res) => res.status)
-      ).toEqual(404);
+      expect(await server.fetchAsync('/(a,b)/multi-group-api').then((res) => res.status)).toEqual(
+        404
+      );
     });
 
-    it(
-      'can use environment variables',
-      async () => {
-        expect(await fetch('http://localhost:3000/api/env-vars').then((res) => res.json())).toEqual(
-          {
-            // This is defined when we start the production server in `beforeAll`.
-            var: 'test-secret-key',
-          }
-        );
-      },
-      5 * 1000
-    );
-    it(
-      'serves the empty route as 405',
-      async () => {
-        await expect(fetch('http://localhost:3000/api/empty').then((r) => r.status)).resolves.toBe(
-          405
-        );
-      },
-      5 * 1000
-    );
-    it(
-      'serves not-found routes as 404',
-      async () => {
-        await expect(fetch('http://localhost:3000/missing').then((r) => r.status)).resolves.toBe(
-          404
-        );
-      },
-      5 * 1000
-    );
-    it(
-      'automatically handles JS errors thrown inside of route handlers as 500',
-      async () => {
-        const res = await fetch('http://localhost:3000/api/problematic');
+    it('serves the empty route as 405', async () => {
+      await expect(server.fetchAsync('/api/empty').then((r) => r.status)).resolves.toBe(405);
+    });
+
+    it('serves not-found routes as 404', async () => {
+      await expect(server.fetchAsync('/missing').then((r) => r.status)).resolves.toBe(404);
+    });
+
+    it('automatically handles JS errors thrown inside of route handlers as 500', async () => {
+      const res = await server.fetchAsync('/api/problematic');
+      expect(res.status).toBe(500);
+      expect(res.statusText).toBe('Internal Server Error');
+    });
+
+    it('supports multiple values headers in API routes', async () => {
+      const res = await server.fetchAsync('/api/headers');
+      expect(res.status).toBe(200);
+      expect(res.headers.get('x-custom-header')).toBe('customValue');
+      // Multiple headers with the same name are combined into a single comma-separated value
+      expect(res.headers.get('x-multiple-header')).toBe('value1, value2');
+      // Set-Cookie headers are also combined (they are special case which doesn't work with headers.entries())
+      expect(res.headers.get('set-cookie')).toBe('key1=value1, key2=value2');
+      expect(await res.json()).toEqual({ message: 'ok' });
+    });
+
+    describe('Response.json', () => {
+      it('can POST json to a route', async () => {
+        const res = await server.fetchAsync('/api/json', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hello: 'world' }),
+        });
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ hello: 'world' });
+      });
+    });
+
+    describe('Response.error', () => {
+      it('returns a 500 response', async () => {
+        const res = await server.fetchAsync('/api/error', { method: 'GET' });
+        expect(res.status).toBe(500);
+        expect(await res.text()).toEqual(''); // Ensures 500 from Response.error() and not from another error
+      });
+    });
+
+    describe('Response.redirect', () => {
+      it('returns a 302 Location redirect', async () => {
+        const res = await server.fetchAsync('/api/redirect', {
+          redirect: 'manual',
+          method: 'POST',
+        });
+        expect(res.status).toBe(302);
+        expect(res.headers.get('Location')).toBe('http://test.com/redirect');
+      });
+      it('rejects invalid status codes with an internal error', async () => {
+        const res = await server.fetchAsync('/api/redirect', { redirect: 'manual', method: 'GET' });
         expect(res.status).toBe(500);
         expect(res.statusText).toBe('Internal Server Error');
-      },
-      5 * 1000
-    );
-    describe('Response.json', () => {
-      it(
-        'can POST json to a route',
-        async () => {
-          const res = await fetch('http://localhost:3000/api/json', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ hello: 'world' }),
-          }).then((r) => r.json());
-          expect(res).toEqual({ hello: 'world' });
-        },
-        5 * 1000
-      );
+      });
     });
-    describe('Response.error', () => {
-      it(
-        'returns a 500 response',
-        async () => {
-          const res = await fetch('http://localhost:3000/api/error', {
-            method: 'GET',
-          });
-          expect(res.status).toBe(500);
-        },
-        5 * 1000
-      );
+
+    it('handles pinging routes with unsupported methods with 405 "Method Not Allowed"', async () => {
+      const res = await server.fetchAsync('/api/env-vars', { method: 'POST' });
+      expect(res.status).toBe(405);
+      expect(res.statusText).toBe('Method Not Allowed');
     });
-    describe('Response.redirect', () => {
-      it(
-        'returns a 302 Location redirect',
-        async () => {
-          const res = await fetch('http://localhost:3000/api/redirect', {
-            redirect: 'manual',
-            method: 'POST',
-          });
-          expect(res.status).toBe(302);
-          expect(res.headers.get('Location')).toBe('http://test.com/redirect');
-        },
-        5 * 1000
-      );
-      it(
-        'rejects invalid status codes with an internal error',
-        async () => {
-          const res = await fetch('http://localhost:3000/api/redirect', {
-            redirect: 'manual',
-            method: 'GET',
-          });
-          expect(res.status).toBe(500);
-          expect(res.statusText).toBe('Internal Server Error');
-        },
-        5 * 1000
-      );
+
+    it('supports accessing dynamic parameters using same convention as client-side Expo Router', async () => {
+      await expect(server.fetchAsync('/api/abc').then((r) => r.json())).resolves.toEqual({
+        hello: 'abc',
+      });
     });
-    it(
-      'handles pinging routes with unsupported methods with 405 "Method Not Allowed"',
-      async () => {
-        const res = await fetch('http://localhost:3000/api/env-vars', { method: 'POST' });
-        expect(res.status).toBe(405);
-        expect(res.statusText).toBe('Method Not Allowed');
-      },
-      5 * 1000
-    );
-    it(
-      'supports accessing dynamic parameters using same convention as client-side Expo Router',
-      async () => {
-        await expect(fetch('http://localhost:3000/api/abc').then((r) => r.json())).resolves.toEqual(
-          {
-            hello: 'abc',
-          }
-        );
-      },
-      5 * 1000
-    );
-    it(
-      'supports accessing deep dynamic parameters using different convention to client-side Expo Router',
-      async () => {
-        await expect(
-          fetch('http://localhost:3000/api/a/1/2/3').then((r) => r.json())
-        ).resolves.toEqual({
-          results: '1/2/3',
-        });
-      },
-      5 * 1000
-    );
-    it(
+
+    it('supports accessing deep dynamic parameters using different convention to client-side Expo Router', async () => {
+      await expect(server.fetchAsync('/api/a/1/2/3').then((r) => r.json())).resolves.toEqual({
+        results: '1/2/3',
+      });
+    });
+
+    // NOTE(@krystofwoldrich): Skipped for workerd, we can simulate prod by injecting the env vars
+    (server.isWorkerd ? it.skip : it)('can use environment variables', async () => {
+      expect(await server.fetchAsync('/api/env-vars').then((res) => res.json())).toEqual({
+        // This is defined when we start the production server in `beforeAll`.
+        var: 'test-secret-key',
+      });
+    });
+
+    (server.isWorkerd ? it.skip : it)(
       'supports using Node.js externals to read local files',
       async () => {
         await expect(
-          fetch('http://localhost:3000/api/externals').then((r) => r.text())
-        ).resolves.toEqual('a/b/c');
-      },
-      5 * 1000
+          server.fetchAsync('/api/externals').then((r) => r.text())
+        ).resolves.toMatchPath('a/b/c');
+      }
     );
+
+    (server.isWorkerd ? it.skip : it)('supports runtime API', async () => {
+      await expect(server.fetchAsync('/api/runtime').then((r) => r.json())).resolves.toEqual({
+        environment: expect.stringMatching(/production|development/),
+        origin: expect.stringMatching(/^http/),
+      });
+    });
+
+    // NOTE(@krystofwoldrich): There is no API to add the server callbacks in the dev server at the moment.
+    (server.isExpoStart ? describe.skip : describe)('server callbacks', () => {
+      ['POST', 'GET', 'PUT', 'DELETE'].map(async (method) => {
+        it(`\`beforeAPIResponse\` and \`beforeResponse\` are executed for ${method}`, async () => {
+          const headers = await server
+            .fetchAsync('/api/abc')
+            .then((r) => Object.fromEntries(r.headers.entries()));
+          expect(headers).toEqual(
+            expect.objectContaining({
+              'custom-api-type': 'api',
+              'custom-api-route': '/api/[dynamic]',
+              'custom-all-type': 'api',
+              'custom-all-route': '/api/[dynamic]',
+            })
+          );
+          expect(headers).toEqual(
+            expect.not.objectContaining({
+              'custom-html-type': expect.anything(),
+              'custom-html-route': expect.anything(),
+              'custom-error-type': expect.anything(),
+              'custom-error-route': expect.anything(),
+            })
+          );
+        });
+      });
+
+      it('`beforeHTMLResponse` and `beforeResponse` are executed for index page', async () => {
+        const headers = await server
+          .fetchAsync('/')
+          .then((r) => Object.fromEntries(r.headers.entries()));
+        expect(headers).toEqual(
+          expect.objectContaining({
+            'custom-html-type': 'html',
+            'custom-html-route': '/index',
+            'custom-all-type': 'html',
+            'custom-all-route': '/index',
+          })
+        );
+        expect(headers).toEqual(
+          expect.not.objectContaining({
+            'custom-api-type': expect.anything(),
+            'custom-api-route': expect.anything(),
+            'custom-error-type': expect.anything(),
+            'custom-error-route': expect.anything(),
+          })
+        );
+      });
+
+      it('`beforeErrorResponse` and `beforeResponse` are executed for missing page', async () => {
+        const headers = await server
+          .fetchAsync('/missing')
+          .then((r) => Object.fromEntries(r.headers.entries()));
+        expect(headers).toEqual(
+          expect.objectContaining({
+            'custom-error-type': 'notFoundHtml',
+            'custom-error-route': '/+not-found',
+            'custom-all-type': 'notFoundHtml',
+            'custom-all-route': '/+not-found',
+          })
+        );
+        expect(headers).toEqual(
+          expect.not.objectContaining({
+            'custom-html-type': expect.anything(), // is only for actual HTML pages, not 404s
+            'custom-html-route': expect.anything(), // is only for actual HTML pages, not 404s
+            'custom-api-type': expect.anything(),
+            'custom-api-route': expect.anything(),
+          })
+        );
+      });
+
+      it('no callbacks are executed for unhandled api errors', async () => {
+        await expect(
+          server.fetchAsync('/api/problematic').then((r) => Object.fromEntries(r.headers.entries()))
+        ).resolves.toEqual(
+          expect.not.objectContaining({
+            'custom-html-type': expect.anything(),
+            'custom-html-route': expect.anything(),
+            'custom-api-type': expect.anything(),
+            'custom-api-route': expect.anything(),
+            'custom-error-type': expect.anything(),
+            'custom-error-route': expect.anything(),
+            'custom-all-type': expect.anything(),
+            'custom-all-route': expect.anything(),
+          })
+        );
+      });
+
+      it('no callbacks are executed for error responses from user code', async () => {
+        await expect(
+          server.fetchAsync('/api/error').then((r) => Object.fromEntries(r.headers.entries()))
+        ).resolves.toEqual(
+          expect.not.objectContaining({
+            'custom-html-type': expect.anything(),
+            'custom-html-route': expect.anything(),
+            'custom-api-type': expect.anything(),
+            'custom-api-route': expect.anything(),
+            'custom-error-type': expect.anything(),
+            'custom-error-route': expect.anything(),
+            'custom-all-type': expect.anything(),
+            'custom-all-route': expect.anything(),
+          })
+        );
+      });
+    });
+
+    // Tests that require exported files (not available for dev server)
+    (server.isExpoStart ? describe.skip : describe)('exported files', () => {
+      it(`keeps array group routes dynamic`, async () => {
+        const files = findProjectFiles(server.outputDir);
+        expect(files).not.toContain('server/multi-group.html');
+        expect(files).not.toContain('server/(a,b)/multi-group.html');
+        expect(files).not.toContain('server/(a)/multi-group.html');
+        expect(files).not.toContain('server/(b)/multi-group.html');
+      });
+
+      it(`has expected API route from array group`, async () => {
+        const files = findProjectFiles(server.outputDir);
+        expect(files).toContain('server/_expo/functions/(a,b)/multi-group-api+api.js');
+        expect(files).toContain('server/_expo/functions/(a,b)/multi-group-api+api.js.map');
+        expect(files).not.toContain('server/_expo/functions/(a)/multi-group-api+api.js');
+        expect(files).not.toContain('server/_expo/functions/(b)/multi-group-api+api.js');
+
+        // Load the sourcemap and check that the paths are relative
+        const map = JSON.parse(
+          await fs.readFile(
+            path.join(server.outputDir, 'server/_expo/functions/(a,b)/multi-group-api+api.js.map'),
+            { encoding: 'utf8' }
+          )
+        );
+
+        expect(map.sources).toContain('__e2e__/server/app/(a,b)/multi-group-api+api.ts');
+      });
+
+      it('has expected files', async () => {
+        const files = findProjectFiles(server.outputDir);
+
+        // The wrapper should not be included as a route.
+        expect(files).not.toContain('server/+html.html');
+        expect(files).not.toContain('server/_layout.html');
+
+        // Has routes.json
+        expect(files).toContain('server/_expo/routes.json');
+        expect(files).toContain('server/_expo/server/render.js');
+
+        // Has functions
+        expect(files).toContain('server/_expo/functions/methods+api.js');
+        expect(files).toContain('server/_expo/functions/methods+api.js.map');
+        expect(files).toContain('server/_expo/functions/api/[dynamic]+api.js');
+        expect(files).toContain('server/_expo/functions/api/[dynamic]+api.js.map');
+        expect(files).toContain('server/_expo/functions/api/externals+api.js');
+        expect(files).toContain('server/_expo/functions/api/externals+api.js.map');
+
+        // TODO: We shouldn't export this
+        expect(files).toContain('server/_expo/functions/api/empty+api.js');
+        expect(files).toContain('server/_expo/functions/api/empty+api.js.map');
+
+        // Group routes render at request time
+        expect(files).not.toContain('server/(alpha)/index.html');
+        expect(files).not.toContain('server/(alpha)/beta.html');
+        expect(files).not.toContain('server/beta.html');
+
+        // Framework routes render at request time
+        expect(files).not.toContain('server/_sitemap.html');
+        expect(files).not.toContain('server/+not-found.html');
+
+        // Regular routes render at request time
+        expect(files).not.toContain('server/index.html');
+        expect(files).not.toContain('server/blog/[post].html');
+      });
+
+      // Ensure the `/server/_expo/routes.json` contains the right file paths and named regexes.
+      // This test is created to avoid and detect regressions on Windows
+      it('has expected routes manifest entries', async () => {
+        const manifest = await JsonFile.readAsync(
+          path.join(server.outputDir, 'server/_expo/routes.json')
+        );
+        // Asset hashes depend on the bundled source and should not affect route snapshots.
+        expect({
+          ...manifest,
+          assets: JSON.parse(JSON.stringify(manifest.assets).replace(/[a-f0-9]{32}/g, '[hash]')),
+        }).toMatchSnapshot();
+      });
+    });
   });
+});
 
-  it(
-    'has expected files',
-    async () => {
-      // Request HTML
+describe.each([
+  { output: 'static', apiRoutes: true },
+  { output: 'static', apiRoutes: false },
+  { output: 'server', apiRoutes: false },
+])('apiRoutes setting (output: $output, apiRoutes: $apiRoutes)', ({ output, apiRoutes }) => {
+  describe.each(
+    prepareServers([RUNTIME_EXPO_SERVE, RUNTIME_EXPO_START], {
+      fixtureName: 'server',
+      uniqueOutputKey: `api-routes-${output}-${apiRoutes}`,
+      export: {
+        env: {
+          EXPO_USE_STATIC: output,
+          E2E_ROUTER_API_ROUTES: String(apiRoutes),
+        },
+      },
+    })
+  )('$name requests', (config) => {
+    const server = setupServer(config);
 
-      // List output files with sizes for snapshotting.
-      // This is to make sure that any changes to the output are intentional.
-      // Posix path formatting is used to make paths the same across OSes.
-      const files = getFiles();
+    it('serves API routes only when enabled', async () => {
+      const response = await server.fetchAsync('/methods');
+      expect(response.status).toBe(apiRoutes ? 200 : 404);
+      if (apiRoutes) {
+        expect(await response.json()).toEqual({ method: 'get' });
+      }
+    });
 
-      // The wrapper should not be included as a route.
-      expect(files).not.toContain('server/+html.html');
-      expect(files).not.toContain('server/_layout.html');
+    it('serves HTML independently of API routes', async () => {
+      const response = await server.fetchAsync('/blog-ssg/abc');
+      expect(response.status).toBe(200);
+      expect(await response.text()).toMatch(/Post: <!-- -->abc/);
+    });
 
-      // Has routes.json
-      expect(files).toContain('server/_expo/routes.json');
-
-      // Has functions
-      expect(files).toContain('server/_expo/functions/methods+api.js');
-      expect(files).toContain('server/_expo/functions/methods+api.js.map');
-      expect(files).toContain('server/_expo/functions/api/[dynamic]+api.js');
-      expect(files).toContain('server/_expo/functions/api/[dynamic]+api.js.map');
-      expect(files).toContain('server/_expo/functions/api/externals+api.js');
-      expect(files).toContain('server/_expo/functions/api/externals+api.js.map');
-
-      // TODO: We shouldn't export this
-      expect(files).toContain('server/_expo/functions/api/empty+api.js');
-      expect(files).toContain('server/_expo/functions/api/empty+api.js.map');
-
-      // Has single variation of group file
-      expect(files).toContain('server/(alpha)/index.html');
-      expect(files).toContain('server/(alpha)/beta.html');
-      expect(files).not.toContain('server/beta.html');
-
-      // Injected by framework
-      expect(files).toContain('server/_sitemap.html');
-      expect(files).toContain('server/+not-found.html');
-
-      // Normal routes
-      expect(files).toContain('server/index.html');
-      expect(files).toContain('server/blog/[post].html');
-    },
-    5 * 1000
-  );
+    if (config.name !== RUNTIME_EXPO_START) {
+      it('exports the selected rendering mode and API routes', async () => {
+        const files = findProjectFiles(server.outputDir);
+        const hasServerOutput = output === 'server' || apiRoutes;
+        if (output === 'static') {
+          expect(files).toContain(`${hasServerOutput ? 'server/' : ''}blog-ssg/abc.html`);
+          expect(files).not.toContain('server/_expo/server/render.js');
+        } else {
+          expect(files).toContain('server/_expo/server/render.js');
+          expect(files).not.toContain('server/blog-ssg/abc.html');
+        }
+        if (apiRoutes) {
+          expect(files).toContain('server/_expo/functions/methods+api.js');
+        } else {
+          expect(files.filter((file) => file.includes('+api.'))).toEqual([]);
+        }
+        if (hasServerOutput) {
+          const manifest = await JsonFile.readAsync<{ apiRoutes: { page: string }[] }>(
+            path.join(server.outputDir, 'server/_expo/routes.json')
+          );
+          if (apiRoutes) {
+            expect(manifest.apiRoutes.some((route) => route.page === '/methods')).toBe(true);
+          } else {
+            expect(manifest.apiRoutes).toEqual([]);
+          }
+        }
+      });
+    }
+  });
 });

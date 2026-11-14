@@ -25,5 +25,6 @@ final class ExpoGoModule: Module {
         "projectConfig": manifest.expoGoConfigRootObject()
       ]
     }
+
   }
 }

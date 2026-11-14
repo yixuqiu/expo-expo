@@ -1,14 +1,607 @@
 # Changelog
 
-## Unpublished
+## 58.0.17
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- [iOS] Fix bundled images not loading when the app compiles them into React Native's asset catalog with the `RCTUseAssetCatalog` Info.plist key. ([#50723](https://github.com/expo/expo/pull/50723) by [@janicduplessis](https://github.com/janicduplessis))
+
+## 58.0.16
+
+### Patch Changes
+
+- Fix `useImage` releasing the previous image while it was still rendered. In development builds, this made React throw `ERR_NATIVE_SHARED_OBJECT_NOT_FOUND` and stop rendering after the source changed. ([#51742](https://github.com/expo/expo/pull/51742) by [@tsapeta](https://github.com/tsapeta))
+
+## 58.0.15
+
+### Patch Changes
+
+- Use `AssetRegistry` from public API instead of Metro entry point. ([#51302](https://github.com/expo/expo/pull/51302) by [@byCedric](https://github.com/byCedric))
+
+## 58.0.14
+
+### Patch Changes
+
+- [Internal] Bump precompiled artifacts due to ABI breakage in expo-modules-jsi, which makes `JavaScriptValue` a non-copyable struct. ([#51368](https://github.com/expo/expo/pull/51368) by [@tsapeta](https://github.com/tsapeta))
+
+## 58.0.13
+
+### Patch Changes
+
+- [Internal] Use `Image.resolveAssetSource` from `react-native` instead of the `Libraries/Image/resolveAssetSource` deep import. ([#51092](https://github.com/expo/expo/pull/51092) by [@huntie](https://github.com/huntie))
+- Fix blurry SVG images on Android 8.1 and older by drawing them in a software layer. ([#50916](https://github.com/expo/expo/pull/50916) by [@jackstudd](https://github.com/jackstudd))
+
+## 58.0.12
+
+### Patch Changes
+
+- Export `app.plugin.js` from `package.json:exports` so tools that resolve config plugins through Node's package exports, such as the config fallback in EAS CLI, find the config plugin again instead of failing with "Unable to resolve a valid config plugin". ([#51059](https://github.com/expo/expo/pull/51059) by [@huntie](https://github.com/huntie))
+
+## 58.0.11
+
+### Patch Changes
+
+- Restored the `./plugin` subpath export so typed config plugins can be imported from `<package>/plugin` again. ([#50965](https://github.com/expo/expo/pull/50965) by [@Titozzz](https://github.com/Titozzz))
+
+## 58.0.10
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.9
+
+### Patch Changes
+
+- [Android] Fix `tintColor` not applying to SVG colors set to `currentColor`. ([#50744](https://github.com/expo/expo/pull/50744) by [@apuyou](https://github.com/apuyou))
+
+## 58.0.8
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.7 — 2026-09-28
 
 ### 🐛 Bug fixes
 
+- [Android] Fixed native crashes when decoding and clearing some animated GIFs. ([#49533](https://github.com/expo/expo/pull/49533) by [@MangelSpec](https://github.com/MangelSpec))
+- [Android] Avoid reporting an image load error when displaying a placeholder without a source. ([#50668](https://github.com/expo/expo/pull/50668) by [@lukmccall](https://github.com/lukmccall))
+- [Android] Fixed a `You can't start or clear loads in RequestListener or Target callbacks` crash when an image fails to load while layout updates are pending, for example from `react-native-reanimated`. The `onError` event is now dispatched after Glide's failure callback returns, as `onLoad` already was. ([#50550](https://github.com/expo/expo/pull/50550) by [@Joozty](https://github.com/Joozty))
+
+## 58.0.6 — 2026-09-25
+
+### 🐛 Bug fixes
+
+- [Android] Fixed `prefetch` crashing with `PromiseAlreadySettledException` when Glide restarts a failed request after connectivity is restored, resolving the already-settled promise a second time. ([#49944](https://github.com/expo/expo/pull/49944) by [@riorafe](https://github.com/riorafe))
+
+## 58.0.5 — 2026-09-23
+
+### 🐛 Bug fixes
+
+- [Android] Fixed images in recycled lists going permanently blank: the transition's cleanup ran through `withEndAction`, which `ViewPropertyAnimator` drops when the animation is cancelled, so the Glide target was never returned to the pool. ([#49283](https://github.com/expo/expo/pull/49283) by [@oscnord](https://github.com/oscnord))
+
+## 58.0.4 — 2026-09-22
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed `contentPosition` being visually lost when React Native recreates the clipping mask on the image subview (e.g. after an orientation change round-trip). ([#50312](https://github.com/expo/expo/pull/50312) by [@jzhu1224](https://github.com/jzhu1224))
+
+## 58.0.3 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-15
+
+### 🎉 New features
+
+- [iOS][Android] Added an `svgVariables` prop that substitutes values for the CSS custom properties an SVG source refers to with `var()`, so different parts of one document can be given different colors and the image stays a vector instead of being rasterized the way `tintColor` is. Values are not limited to colors. SVG sources that use `var()` now render with their fallback values even without the prop. ([#48663](https://github.com/expo/expo/pull/48663), [#50155](https://github.com/expo/expo/pull/50155) by [@tsapeta](https://github.com/tsapeta))
+
+## 58.0.1 — 2026-09-14
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+### 🎉 New features
+
+- Added an `imageLoaded` module event emitted with the decoded pixel size from every load path. ([#47337](https://github.com/expo/expo/pull/47337) by [@Ubax](https://github.com/Ubax))
+- add expo-observe integration ([#47145](https://github.com/expo/expo/pull/47145) by [@Ubax](https://github.com/Ubax))
+- [iOS][Android] Added a `skipOnCacheHit` field to `transition` that skips the fade the first time a cached image appears (`'memory'` for memory-cache hits, `'all'` for any cache hit), so already-loaded images don't re-animate on mount, tab change, or when scrolling back into view. A transition from a `source` change still plays. ([#48181](https://github.com/expo/expo/pull/48181) by [@janicduplessis](https://github.com/janicduplessis))
+- Added an `includeUrlParams` option to the expo-observe integration; reported image URLs now have their query string and fragment removed unless it is enabled, basic-auth credentials are always removed, and only `http(s)`, `file`, and `android.resource` URLs are reported. ([#49083](https://github.com/expo/expo/pull/49083) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Fixed useImage not releasing loaded images when the source changes or the component unmounts. ([#49857](https://github.com/expo/expo/pull/49857) by [@hirbod](https://github.com/hirbod))
+- [Android] Fixed a URL staying permanently broken after the server answered an image request with `200 OK` and a non-image body, such as an HTML error page. ([#48442](https://github.com/expo/expo/issues/48442) by [@julian-dueck](https://github.com/julian-dueck), [#48456](https://github.com/expo/expo/pull/48456) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
+- [web] Fixed Expo Image's internal `dataSet` marker being overwritten by a user-provided `dataSet`. ([#48821](https://github.com/expo/expo/pull/48821) by [@Brentlok](https://github.com/Brentlok))
+- [iOS] Fixed `generateThumbhashAsync` crashing on images with extreme aspect ratios. ([#47189](https://github.com/expo/expo/issues/47189) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [Android] Replaced the deprecated RenderScript-based `blurRadius` blur with a software stack blur to fix a use-after-free crash under concurrent image loads (aborts under GrapheneOS hardened_malloc). ([#PR](https://github.com/expo/expo/pull/PR) by [@DimitrisTzimikas](https://github.com/DimitrisTzimikas))
+- [Web] Use `textContent` instead of `innerHTML` when injecting image styles, so the style tag is not a Trusted Types sink. ([#48649](https://github.com/expo/expo/pull/48649) by [@VoulgarisLeoni](https://github.com/VoulgarisLeoni))
+- [iOS] Fixed `generateBlurhashAsync` and `generateThumbhashAsync` never settling when the image could not be downloaded. ([#PR](https://github.com/expo/expo/pull/PR) ([#48894](https://github.com/expo/expo/pull/48894) by [@vonovak](https://github.com/vonovak))
+- [Android] Explicitly enable `buildFeatures.buildConfig`, required by AGP 9. ([#47729](https://github.com/expo/expo/pull/47729) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Import the asset registry from `react-native/asset-registry` on web, replacing the `@react-native/assets-registry` package that no longer ships with React Native 0.87. ([#47729](https://github.com/expo/expo/pull/47729) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- [Android] prevent `Canvas: trying to draw too large bitmap` crash by enforcing the hardware bitmap size limit in both `ContentFitDownsampleStrategy` and `loadAsync`. ([#47212](https://github.com/expo/expo/pull/47212) by [@roitium](https://github.com/roitium))
+- [iOS] Support the `accessibilityElementsHidden` prop. ([#46105](https://github.com/expo/expo/pull/46105) by [@marcshilling](https://github.com/marcshilling))
+
 ### 💡 Others
+
+- [iOS] Documented that slow animated WebP decoding is a known reason to set `useAppleWebpCodec` to `false`. ([#PR](https://github.com/expo/expo/pull/PR) by [@expo-bot](https://github.com/expo-bot)) ([#48847](https://github.com/expo/expo/pull/48847) by [@expo-bot](https://github.com/expo-bot))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+### 🎉 New features
+
+- Added `Image.writeToCacheAsync` and `Image.readFromCacheAsync` to seed and read the image cache by cache key. ([#46620](https://github.com/expo/expo/pull/46620) by [@tsapeta](https://github.com/tsapeta))
+
+## 56.0.11 - 2026-06-10
+
+### 🐛 Bug fixes
+
+- [Android] Fixed image staying blank when its `source` changes while a `transition` cross-fade is still running. ([#46752](https://github.com/expo/expo/pull/46752) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.10 - 2026-06-05
+
+### 🎉 New features
+
+- [web] Improved `static` image source selection on web to be based on the rendered layout size by leading the generated `sizes` with `auto`, and default `static` images to `loading="lazy"` (opt out with `loading="eager"`). ([#46425](https://github.com/expo/expo/pull/46425) by [@sebholl](https://github.com/sebholl))
+
+### 💡 Others
+
+- [web] Deprecated `webMaxViewportWidth`. With layout-based selection it is now only used to emit fallback `sizes` breakpoints for browsers that don't yet support `sizes="auto"`. ([#46425](https://github.com/expo/expo/pull/46425) by [@sebholl](https://github.com/sebholl))
+
+## 56.0.9 — 2026-05-23
+
+### 🐛 Bug fixes
+
+- [iOS] Fix `placeholder` failing to load images from the asset catalog (xcassets). ([#46170](https://github.com/expo/expo/pull/46170) by [@zhelezkov](https://github.com/zhelezkov))
+- [iOS] Fix xcasset images not loading from JS due to `file://` scheme mismatch. ([#46170](https://github.com/expo/expo/pull/46170) by [@zhelezkov](https://github.com/zhelezkov))
+
+## 56.0.8 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+- [Android] Fixed `useImage` crashing on SVG sources, and made `maxWidth`/`maxHeight` preserve the SVG's aspect ratio. ([#46077](https://github.com/expo/expo/pull/46077) by [@nishan](https://github.com/intergalacticspacehighway))
+
+## 56.0.7 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-20
+
+### 🐛 Bug fixes
+
+- [Android] Fixed `tintColor` in `loadAsync`/`useImage` requiring API 26. ([#45981](https://github.com/expo/expo/pull/45981) by [@lukmccall](https://github.com/lukmccall))
+
+## 56.0.5 — 2026-05-19
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed `recyclingKey` not clearing cached `placeholderImage`, causing stale blurhash placeholders in recycled list cells. ([#44762](https://github.com/expo/expo/pull/44762) by [@simonronec](https://github.com/simonronec))
+- [iOS] Fixed loading Xcode asset catalog images by resource name. ([#45686](https://github.com/expo/expo/pull/45686) by [@mvincentong](https://github.com/mvincentong))
+
+## 56.0.4 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
+### 🐛 Bug fixes
+
+- [Android] Apply `ApplicationVersionSignature` to local resource URIs (`res:/` scheme) to prevent stale cached images after app updates. by [@linkeryoon](https://github.com/linkeryoon) ([#44355](https://github.com/expo/expo/pull/44355) by [@Yoon-Hae-Min](https://github.com/Yoon-Hae-Min))
+
+### 💡 Others
+
+- [android] Use react natives `OKHttpClient`. ([#44431](https://github.com/expo/expo/pull/44431) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 55.0.10 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-04-21
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed `contentPosition` misalignment by using the unrounded cover/contain layout size for offset math. ([#44497](https://github.com/expo/expo/pull/44497) by [@alicenoknow](https://github.com/alicenoknow))
+
+## 55.0.8 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 - 2026-03-05
+
+### 🐛 Bug fixes
+
+- Added `tintColor` option to `ImageLoadOptions`. This resolves [#42007](https://github.com/expo/expo/issues/42007). ([#42821](https://github.com/expo/expo/pull/42821)) by [@HubertBer](https://github.com/HubertBer). ([#42821](https://github.com/expo/expo/pull/42821) by [@HubertBer](https://github.com/HubertBer))
+
+### 💡 Others
+
+- [iOS] Use `internal import SDWebImage` to hide third-party dependency from public module interface. ([#44248](https://github.com/expo/expo/pull/44248) by [@chrfalch](https://github.com/chrfalch))
+
+## 55.0.5 — 2026-02-25
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed compilation errors in Xcode 26.4 Beta 1 ([#43346](https://github.com/expo/expo/pull/43346) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.4 — 2026-02-20
+
+### 🐛 Bug fixes
+
+- [Android] Uses shared cookie jar for image requests. ([#43257](https://github.com/expo/expo/pull/43257) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed `useImage` crashing on SVGs when the max dimensions are not set. ([#42496](https://github.com/expo/expo/pull/42496) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🎉 New features
+
+- [iOS] Add `color` and `fontSize` style props for SF Symbols to set tint color and size. ([#42320](https://github.com/expo/expo/pull/42320) by [@EvanBacon](https://github.com/EvanBacon))
+- [iOS] Add support for SF Symbols `source="sf:star"`. ([#41907](https://github.com/expo/expo/pull/41907) by [@EvanBacon](https://github.com/EvanBacon))
+- [Android] Upgrades Glide to `5.0.5`. ([#39713](https://github.com/expo/expo/pull/39713) by [@lukmccall](https://github.com/lukmccall))
+- [iOS] Added support for HDR images ([#40242](https://github.com/expo/expo/pull/40242) by [@tsapeta](https://github.com/tsapeta))
+- [iOS] Adopted Swift 6 ([#40369](https://github.com/expo/expo/pull/40369) by [@tsapeta](https://github.com/tsapeta))
+- [iOS] Provide plugin to disable `libdav1d`. ([#40691](https://github.com/expo/expo/pull/40691) by [@alanjhughes](https://github.com/alanjhughes))
+- [iOS] feat: add `configureCache` option ([#40647](https://github.com/expo/expo/pull/40647) by [@kosmydel](https://github.com/kosmydel))
+- [Web] Add `loading` prop for lazy loading images. ([#41442](https://github.com/expo/expo/pull/41442) by [@mozzius](https://github.com/mozzius))
+- [iOS] Added support for PSD images. ([#42077](https://github.com/expo/expo/pull/42077) by [@barthap](https://github.com/barthap))
+
+### 🐛 Bug fixes
+
+- [android] Fix loading delayed placeholder ([#40956](https://github.com/expo/expo/pull/40956) by [@kosmydel](https://github.com/kosmydel))
+- Fix tvOS SymbolEffectOptions availability check ([#42393](https://github.com/expo/expo/pull/42393) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 💡 Others
+
+- Remove tests related files from the published package content. ([#39551](https://github.com/expo/expo/pull/39551) by [@Simek](https://github.com/Simek))
+
+## 3.0.11 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 3.0.10 - 2025-10-20
+
+_This version does not introduce any user-facing changes._
+
+## 3.0.9 - 2025-10-07
+
+### 🐛 Bug fixes
+
+- [Android] Fixed `You can't start or clear loads in RequestListener or Target callbacks`. ([#40212](https://github.com/expo/expo/pull/40212) by [@lukmccall](https://github.com/lukmccall))
+
+## 3.0.8 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 3.0.7 — 2025-09-03
+
+### 🐛 Bug fixes
+
+- [iOS] Fix images not displaying in Material Top Tabs navigator. ([#39323](https://github.com/expo/expo/pull/39323) by [@lukmccall](https://github.com/lukmccall))
+
+## 3.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 3.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 3.0.4 — 2025-08-26
+
+### 🐛 Bug fixes
+
+- [Android] Fixed `The method 'getResourceDrawableUri' was expected to be of type static` exception. ([#39143](https://github.com/expo/expo/pull/39143) by [@lukmccall](https://github.com/lukmccall))
+
+## 3.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 3.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 3.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 3.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- Add `generateThumbhashAsync` ([#38090](https://github.com/expo/expo/pull/38090) by [@Wenszel](https://github.com/Wenszel))
+- Add support for `ImageRef` source in `generateBlurhashAsync` ([#37901](https://github.com/expo/expo/pull/37901) by [@Wenszel](https://github.com/Wenszel))
+- [Android] Add generateBlurhashAsync ([#37817](https://github.com/expo/expo/pull/37817) by [@Wenszel](https://github.com/Wenszel))
+
+### 🐛 Bug fixes
+
+- [Android] Fix animation resuming by casting image to GifDrawable. ([#37363](https://github.com/expo/expo/pull/37363) by [@Wenszel](https://github.com/Wenszel))
+- [Web] Fix `alt` as an alias for `accessibilityLabel` ([#37682](https://github.com/expo/expo/pull/37682) by [@huextrat](https://github.com/huextrat))
+- [iOS] Fix caching resized images from Photo Library. ([#38105](https://github.com/expo/expo/pull/38105) by [@jakex7](https://github.com/jakex7))
+- [iOS] Fix `generatePlaceholder` method syntax error by removing unwanted trailing comma. ([#38318](https://github.com/expo/expo/pull/38318) by [@bortolilucas](https://github.com/bortolilucas))
+
+## 2.4.0 - 2025-07-17
+
+### 🎉 New features
+
+- [iOS] Add a new prop - `enforceEarlyResizing` to reduce the memory usage of the image view. ([#37909](https://github.com/expo/expo/pull/37909) by [@lukmccall](https://github.com/lukmccall))
+
+### 🐛 Bug fixes
+
+- [iOS] Speed up displaying local assets. ([#37795](https://github.com/expo/expo/pull/37795) by [@aleqsio](https://github.com/aleqsio))
+- [iOS] Fix some operation were incorrectly cancelled. ([#37987](https://github.com/expo/expo/pull/37987) by [@lukmccall](https://github.com/lukmccall))
+
+## 2.3.2 - 2025-07-01
+
+### 🐛 Bug fixes
+
+- [iOS] Use specified cache type when no transformation is applied ([#37777](https://github.com/expo/expo/pull/37777) by [@jakex7](https://github.com/jakex7))
+
+## 2.3.1 - 2025-07-01
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed contentPosition is not correct after switching theme. ([#37374](https://github.com/expo/expo/pull/37374) by [@kudo](https://github.com/kudo))
+
+### 📚 3rd party library updates
+
+- [Android] Bumped GIF Glide plugin to 3.0.5 for Android 16KB page size support. ([#37454](https://github.com/expo/expo/pull/37454) by [@kudo](https://github.com/kudo))
+
+## 2.3.0 - 2025-06-11
+
+### 🛠 Breaking changes
+
+- [iOS] `useAppleWebpCodec` has been moved from the source object to the component's prop to make it usable with the local assets. ([#37300](https://github.com/expo/expo/pull/37300) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- [iOS] Fix blurry images when using `tintColor` by scaling `imageThumbnailPixelSize` with screen density. ([#37235](https://github.com/expo/expo/pull/37235) by [@hirbod](https://github.com/hirbod))
+
+## 2.2.1 - 2025-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 2.2.0 - 2025-06-04
+
+### 🎉 New features
+
+- Add imperative api to lock/unlock/reload resource. ([#36912](https://github.com/expo/expo/pull/36912) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Fix React Server Components support. ([#36801](https://github.com/expo/expo/pull/36801) by [@EvanBacon](https://github.com/EvanBacon))
+- [iOS] Fix PhotoLibrary assets being scaled twice. ([#36776](https://github.com/expo/expo/pull/36776) by [@alanjhughes](https://github.com/alanjhughes))
+- [iOS] Don't add transformers when unnecessary. ([#36884](https://github.com/expo/expo/pull/36884) by [@jakex7](https://github.com/jakex7))
+- [Web] Fix `tintColor` in React 19. ([#37133](https://github.com/expo/expo/pull/37133) by [@bradleyayers](https://github.com/bradleyayers))
+
+## 2.1.7 — 2025-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 2.1.6 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 2.1.5 — 2025-04-25
+
+### 🐛 Bug fixes
+
+- Fixed `CUICatalog: Invalid asset name supplied: ''` error on iOS when the path is empty. ([#36294](https://github.com/expo/expo/pull/36294) by [@Innei](https://github.com/Innei))
+
+## 2.1.4 — 2025-04-14
+
+### 🐛 Bug fixes
+
+- Fixed SVG image tinting on iOS. ([#35927](https://github.com/expo/expo/pull/35927) by [@kudo](https://github.com/kudo))
+- [Android] Fixed OutOfMemoryError crash when displaying some gif images ([#36097](https://github.com/expo/expo/pull/36097) by [@rahimrahman](https://github.com/rahimrahman))
+
+## 2.1.3 — 2025-04-11
+
+_This version does not introduce any user-facing changes._
+
+## 2.1.2 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 2.1.1 — 2025-04-08
+
+### 🐛 Bug fixes
+
+- Fixed SVG image tinting on iOS. ([#35927](https://github.com/expo/expo/pull/35927) by [@kudo](https://github.com/kudo))
+
+## 2.1.0 — 2025-04-04
+
+### 🛠 Breaking changes
+
+- upgrade RN to 0.78 ([#35050](https://github.com/expo/expo/pull/35050) by [@vonovak](https://github.com/vonovak))
+
+### 🎉 New features
+
+- type-compatibility with react-native 0.77 ([#34027](https://github.com/expo/expo/pull/34027) by [@vonovak](https://github.com/vonovak))
+- Added `ImageSource.useAppleWebpCodec` on iOS to allow using libwebp codec for better animation performance on some images. ([#35802](https://github.com/expo/expo/pull/35802) by [@kudo](https://github.com/kudo))
+
+### 🐛 Bug fixes
+
+- Rename `fetchpriority` prop to `fetchPriority` to silence web error. ([#35411](https://github.com/expo/expo/pull/35411) by [@EvanBacon](https://github.com/EvanBacon))
+- Fixed `tintColor="currentColor"` conflicts on web. ([#34604](https://github.com/expo/expo/pull/34604) by [@bradleyayers](https://github.com/bradleyayers))
+
+### 💡 Others
+
+- Update `ImageProps` type so `children` are omitted. ([#33210](https://github.com/expo/expo/pull/33210) by [@ashaller2017](https://github.com/ashaller2017))
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35428](https://github.com/expo/expo/pull/35428) by [@behenate](https://github.com/behenate))
+
+### 📚 3rd party library updates
+
+- Bumped `SDWebImage` to 5.21.0. ([#35795](https://github.com/expo/expo/pull/35795) by [@kudo](https://github.com/kudo))
+
+## 2.0.7 - 2025-03-26
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed image be cropped with `contentPosition` on New Architecture mode. ([#35630](https://github.com/expo/expo/pull/35630) by [@kudo](https://github.com/kudo))
+
+## 2.0.6 - 2025-02-19
+
+### 🐛 Bug fixes
+
+- [Android] Fixes a regression in `loadAsync` from [#34767](https://github.com/expo/expo/pull/34767). ([#34965](https://github.com/expo/expo/pull/34965) by [@alanjhughes](https://github.com/alanjhughes)) ([#34767](https://github.com/expo/expo/pull/34767), [#34965](https://github.com/expo/expo/pull/34965) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 2.0.5 - 2025-02-10
+
+### 🐛 Bug fixes
+
+- [Android] Add headers to `loadAsync` requests. ([#34767](https://github.com/expo/expo/pull/34767) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 2.0.4 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 2.0.3 - 2024-11-29
+
+### 🐛 Bug fixes
+
+- [Android] Fixed `useImage` causing a native crash when uri is unresolvable. ([#33268](https://github.com/expo/expo/pull/33268) by [@lukmccall](https://github.com/lukmccall))
+- [Android] Fixes adding a blurhash placeholder to `Image` or `ImageBackground` causing blurry version of the image. ([#33272](https://github.com/expo/expo/pull/33272) by [@lukmccall](https://github.com/lukmccall))
+
+## 2.0.2 — 2024-11-22
+
+### 💡 Others
+
+- Add a warning when `children` are passed to `Image`. ([#33139](https://github.com/expo/expo/pull/33139) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 2.0.1 — 2024-11-19
+
+### 🐛 Bug fixes
+
+- [Android] Fixes Gif animations never stopping even when loop count is set to 1. ([#32944](https://github.com/expo/expo/pull/32944) by [@lukmccall](https://github.com/lukmccall))
+- [Android] Fixed `borderColor` is not applied. ([#33026](https://github.com/expo/expo/pull/33026) by [@lukmccall](https://github.com/lukmccall))
+- [Android] Fixed `border` related props weren't applied correctly. ([#33078](https://github.com/expo/expo/pull/33078) by [@lukmccall](https://github.com/lukmccall))
+
+### 💡 Others
+
+- [Android] migrate ImageView to CSSBackgroundDrawable ([#33024](https://github.com/expo/expo/pull/33024) by [@vonovak](https://github.com/vonovak))
+
+## 2.0.0 — 2024-11-11
+
+_This version does not introduce any user-facing changes._
+
+## 2.0.0-preview.1 — 2024-10-31
+
+### 🐛 Bug fixes
+
+- Fixed displaying a placeholder when `useImage` hook is used. ([#32430](https://github.com/expo/expo/pull/32430) by [@tsapeta](https://github.com/tsapeta))
+
+## 2.0.0-preview.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840), [#30871](https://github.com/expo/expo/pull/30871) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Added `Image.loadAsync` API. ([#25079](https://github.com/expo/expo/pull/25079) by [@tsapeta](https://github.com/tsapeta), [#26824](https://github.com/expo/expo/pull/26824) by [@aleqsio](https://github.com/aleqsio), [#31575](https://github.com/expo/expo/pull/31575) by [@tsapeta](https://github.com/tsapeta))
+- Add basic React Server Component support. ([#29869](https://github.com/expo/expo/pull/29869) by [@EvanBacon](https://github.com/EvanBacon))
+- [iOS] Added support for rendering shared image refs. ([#30661](https://github.com/expo/expo/pull/30661) by [@tsapeta](https://github.com/tsapeta))
+- [Android] Added support for rendering shared image refs. ([#31098](https://github.com/expo/expo/pull/31098) by [@lukmccall](https://github.com/lukmccall))
+- [Android] Added support for rendering shared refs of `Bitmap's`. ([#31440](https://github.com/expo/expo/pull/31440) by [@lukmccall](https://github.com/lukmccall))
+- Added `useImage` hook. ([#31171](https://github.com/expo/expo/pull/31171) by [@tsapeta](https://github.com/tsapeta))
+- Added downscaling options to `useImage` hook. ([#32113](https://github.com/expo/expo/pull/32113) by [@lukmccall](https://github.com/lukmccall))
+
+### 🐛 Bug fixes
+
+- Fix props not being passed to parent container. ([#29416](https://github.com/expo/expo/pull/29416) by [@aleqsio](https://github.com/aleqsio))
+- Add missing `react` and `react-native` peer dependencies for isolated modules. ([#30469](https://github.com/expo/expo/pull/30469) by [@byCedric](https://github.com/byCedric))
+- Add missing `react-native-web` optional peer dependency for isolated modules. ([#30689](https://github.com/expo/expo/pull/30689) by [@byCedric](https://github.com/byCedric))
+- [Web] Fix type incompatibility between style prop and `@types/react-native-web` ([#31150](https://github.com/expo/expo/pull/31150) by [@adamhari](https://github.com/adamhari))
+- [iOS] Fixed `isAnimated` property always returning `true`. ([#31834](https://github.com/expo/expo/pull/31834) by [@tsapeta](https://github.com/tsapeta))
+- [iOS] Fixed `stopAnimating` broken on downscaled animated images. ([#32053](https://github.com/expo/expo/pull/32053) by [@kudo](https://github.com/kudo))
+
+### 💡 Others
+
+- Use the `src` folder as the Metro target. ([#30665](https://github.com/expo/expo/pull/30665) by [@tsapeta](https://github.com/tsapeta))
+- Provide image's memory footprint for better garbage collection. ([#31168](https://github.com/expo/expo/pull/31168) by [@tsapeta](https://github.com/tsapeta) & [#31784](https://github.com/expo/expo/pull/31784) by [@lukmccall](https://github.com/lukmccall))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.75.x. ([#30034](https://github.com/expo/expo/pull/30034) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Added support for React Native 0.76.x. ([#31552](https://github.com/expo/expo/pull/31552) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 1.13.0 - 2024-09-23
+
+### 🎉 New features
+
+- Added `onDisplay` event. ([#31581](https://github.com/expo/expo/pull/31581) by [@tsapeta](https://github.com/tsapeta))
+
+## 1.12.15 - 2024-08-24
+
+_This version does not introduce any user-facing changes._
+
+## 1.12.13 - 2024-07-16
+
+### 🐛 Bug fixes
+
+- [Web] Fix blurhash not working and causing fetches to `blurhash:/` uri. ([#27587](https://github.com/expo/expo/pull/27587) by [@aleqsio](https://github.com/aleqsio))
+- [iOS] Fixed `blurRadius` not working. Also made the effect render more consistently across platforms. ([#29678](https://github.com/expo/expo/pull/29678) by [@vonovak](https://github.com/vonovak))
+- Fixed `tintColor` not working on Safari browsers. ([#29169](https://github.com/expo/expo/pull/29169) by [@bradleyayers](https://github.com/bradleyayers))
+- Fixed reanimated support on web. ([#29197](https://github.com/expo/expo/pull/29197) by [@nishan](https://github.com/intergalacticspacehighway)) ([#29197](https://github.com/expo/expo/pull/29197) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
+
+## 1.12.12 - 2024-06-13
+
+### 💡 Others
+
+- Removed @react-native/assets-registry dependency. ([#29541](https://github.com/expo/expo/pull/29541) by [@kudo](https://github.com/kudo))
+
+## 1.12.11 - 2024-06-06
+
+_This version does not introduce any user-facing changes._
+
+## 1.12.10 - 2024-06-05
+
+### 💡 Others
+
+- Pin @react-native subpackage versions to 0.74.83. ([#29441](https://github.com/expo/expo/pull/29441) by [@kudo](https://github.com/kudo))
 
 ## 1.12.9 — 2024-05-09
 
@@ -94,7 +687,7 @@ _This version does not introduce any user-facing changes._
 ### 🐛 Bug fixes
 
 - Fixed ResizeObserver attaching on every image transition. ([#25819](https://github.com/expo/expo/pull/25819) by [@aleqsio](https://github.com/aleqsio))
-- [Android] Fixed the tine color was applied to the mask element. ([#26323](https://github.com/expo/expo/pull/26323) by [@lukmccall](https://github.com/lukmccall))
+- [Android] Fixed the tint color was applied to the mask element. ([#26323](https://github.com/expo/expo/pull/26323) by [@lukmccall](https://github.com/lukmccall))
 - [Web] Fixed `nativeViewRef` invalid prop warning. ([#25922](https://github.com/expo/expo/pull/25922) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
 
 ## 1.10.4 - 2024-01-18
@@ -362,7 +955,7 @@ _This version does not introduce any user-facing changes._
 
 ### 🎉 New features
 
-- Added `recyclingKey` prop that allows reseting the image view content when the view is recycled. ([#21297](https://github.com/expo/expo/pull/21297) & [#21309](https://github.com/expo/expo/pull/21309) by [@tsapeta](https://github.com/tsapeta) & [@lukmccall](https://github.com/lukmccall))
+- Added `recyclingKey` prop that allows resetting the image view content when the view is recycled. ([#21297](https://github.com/expo/expo/pull/21297) & [#21309](https://github.com/expo/expo/pull/21309) by [@tsapeta](https://github.com/tsapeta) & [@lukmccall](https://github.com/lukmccall))
 
 ## 1.0.0-rc.1 — 2023-02-14
 
@@ -370,7 +963,7 @@ _This version does not introduce any user-facing changes._
 
 - Fixed `You can't start or clear loads in RequestListener or Target callbacks` on Android. ([#21192](https://github.com/expo/expo/pull/21192) by [@lukmccall](https://github.com/lukmccall))
 - Fixed SVGs are not rendered in the release mode on Android. ([#21214](https://github.com/expo/expo/pull/21214) by [@lukmccall](https://github.com/lukmccall))
-- Stop sending `onProgress` event when the asset size is unknown which led to diving by zero and a crash. ([#21215](https://github.com/expo/expo/pull/21215) by [@tsapeta](https://github.com/tsapeta))
+- Stop sending `onProgress` event when the asset size is unknown which led to dividing by zero and a crash. ([#21215](https://github.com/expo/expo/pull/21215) by [@tsapeta](https://github.com/tsapeta))
 
 ## 1.0.0-rc.0 — 2023-02-09
 

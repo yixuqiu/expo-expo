@@ -1,14 +1,282 @@
 # Changelog
 
-## Unpublished
+## 58.0.3
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.2
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.1 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
 
 ### 🐛 Bug fixes
 
+- [iOS] Fixed the GL surface using a cached main-screen scale instead of the scale of the scene the view is in. ([#48169](https://github.com/expo/expo/pull/48169) by [@alanjhughes](https://github.com/alanjhughes))
+- [iOS] Fixed `takeSnapshotAsync` sizing the image from the main screen's scale rather than the scale the drawable was rendered at. ([#48528](https://github.com/expo/expo/pull/48528) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 57.0.2 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-30
+
 ### 💡 Others
+
+- Update docs to `createContextAsync` and `destroyContextAsync` methods which purpose wasn't documented and [was confusing](https://github.com/expo/expo/issues/40037). ([#47200](https://github.com/expo/expo/pull/47200) by [@HubertBer](https://github.com/HubertBer))
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-19
+
+### 🐛 Bug fixes
+
+- Install `WebGLRenderingContext` and `WebGL2RenderingContext` globals and their numeric constants at module init so libraries that read them before any GL context is created no longer crash. ([#45865](https://github.com/expo/expo/pull/45865) by [@tsapeta](https://github.com/tsapeta))
+- Make `WebGL2RenderingContext` inherit from `WebGLRenderingContext`, matching the WebGL spec. `gl2 instanceof WebGLRenderingContext` now returns `true` for WebGL2 contexts, and shared constants and methods are no longer duplicated on the WebGL2 prototype. ([#45871](https://github.com/expo/expo/pull/45871) by [@tsapeta](https://github.com/tsapeta))
+
+## 56.0.4 — 2026-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Make `msaaSamples` and `enableExperimentalWorkletSupport` optional in `GLViewProps` to align TypeScript types with their runtime `defaultProps` values. ([#43767](https://github.com/expo/expo/pull/43767) by [@jcarlosroldan](https://github.com/jcarlosroldan))
+
+### 💡 Others
+
+- [iOS] Changed `EXGLContext.prepare:` signature — callers must now schedule onto the JS thread and pass a raw `jsi::Runtime` pointer. ([#44337](https://github.com/expo/expo/pull/44337) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed missing dependencies when building from source ([#42901](https://github.com/expo/expo/pull/42901) by [@chrfalch](https://github.com/chrfalch))
+
+## 55.0.4 — 2026-02-03
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed a crash caused by the missing module registry. ([#42653](https://github.com/expo/expo/pull/42653) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🐛 Bug fixes
+
+- Fix race condition bug for **web** env for `onLayout` callback. ([#41460](https://github.com/expo/expo/pull/41460) by [@psnet](https://github.com/psnet))
+
+### 💡 Others
+
+- Methods of the legacy `EXGLObjectManager` module are now exported from the existing native module in Swift. ([#41171](https://github.com/expo/expo/pull/41171) by [@tsapeta](https://github.com/tsapeta))
+- [android] rename module to align with iOS ([#41193](https://github.com/expo/expo/pull/41193) by [@Ubax](https://github.com/Ubax))
+
+### ⚠️ Notices
+
+- **Performance optimization**: remove support of **GIF** image format in image decoding in `texImage2D` expo wrapper. ([#41499](https://github.com/expo/expo/pull/41499) by [@psnet](https://github.com/psnet))
+- **Performance optimization**: reduce supported old image formats in lib `stb_image.h` used for image decoding in `texImage2D` expo wrapper to support only **JPEG, PNG, GIF** image formats. Formats **BMP, PSD, TGA, HDR, PIC, PNM** are no longer supported. ([#41001](https://github.com/expo/expo/pull/41001) by [@psnet](https://github.com/psnet))
+- Updated library `stb_image.h` used for image decoding in `texImage2D` expo wraper method. A lot of fixes and performance improvements, see related PR. ([#41000](https://github.com/expo/expo/pull/41000) by [@psnet](https://github.com/psnet))
+- Added support for React Native 0.82.x. ([#39678](https://github.com/expo/expo/pull/39678) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 16.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.1 — 2025-08-15
+
+### 💡 Others
+
+- [Web] Remove `findDOMNode` usage. ([#38800](https://github.com/expo/expo/pull/38800) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 16.0.0 — 2025-08-13
+
+### 💡 Others
+
+- Use pointerEvents style instead of prop for components on web. ([#38023](https://github.com/expo/expo/pull/38023) by [@EvanBacon](https://github.com/EvanBacon))
+- Add missing optional `react-dom` and `react-native-reanimated` peer dependencies ([#38569](https://github.com/expo/expo/pull/38569) by [@kitten](https://github.com/kitten))
+
+## 15.1.7 - 2025-07-01
+
+### 🐛 Bug fixes
+
+- Added Android 16KB page size support. ([#37446](https://github.com/expo/expo/pull/37446) by [@kudo](https://github.com/kudo))
+
+## 15.1.6 - 2025-06-05
+
+_This version does not introduce any user-facing changes._
+
+## 15.1.5 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 15.1.4 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 15.1.3 — 2025-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 15.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 15.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 15.1.0 — 2025-04-04
+
+### 🛠 Breaking changes
+
+- upgrade RN to 0.78 ([#35050](https://github.com/expo/expo/pull/35050) by [@vonovak](https://github.com/vonovak))
+
+### 🐛 Bug fixes
+
+- stb_image PNG: Checks for invalid DEFLATE codes. ([#35184](https://github.com/expo/expo/pull/35184) by [@manoj23](https://github.com/manoj23))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+
+## 15.0.5 - 2025-04-01
+
+### 🐛 Bug fixes
+
+- [ios] Fixed build errors in XCode 16.3 ([#35811](https://github.com/expo/expo/pull/35811) by [@chrfalch](https://github.com/chrfalch))
+
+## 15.0.4 - 2025-01-19
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.3 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.2 — 2024-11-14
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.1 — 2024-11-07
+
+### 🐛 Bug fixes
+
+- Converted the native view from Objective-C to Swift to fix support for the New Architecture. ([#32675](https://github.com/expo/expo/pull/32675) by [@tsapeta](https://github.com/tsapeta))
+
+## 15.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Add NULL check before releasing `textureRef` in `EXGLCameraObject`. ([#29092](https://github.com/expo/expo/pull/29092) by [@hakonk](https://github.com/hakonk))
+- Add missing `react` and `react-native` peer dependencies for isolated modules. ([#30468](https://github.com/expo/expo/pull/30468) by [@byCedric](https://github.com/byCedric))
+- Add missing `react-native-web` optional peer dependency for isolated modules. ([#30689](https://github.com/expo/expo/pull/30689) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Enabled support on web on iOS. ([#31479](https://github.com/expo/expo/pull/31479) by [@fobos531](https://github.com/fobos531))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.75.x. ([#30034](https://github.com/expo/expo/pull/30034), [#30828](https://github.com/expo/expo/pull/30828) by [@gabrieldonadel](https://github.com/gabrieldonadel))
 
 ## 14.0.2 — 2024-04-24
 

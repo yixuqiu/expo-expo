@@ -1,278 +1,637 @@
-// Copyright 2023-present 650 Industries. All rights reserved.
+// Copyright 2024-present 650 Industries. All rights reserved.
 
 import ExpoModulesCore
-import Photos
+#if os(iOS)
+import QuickLook
+#endif
 
-private let EVENT_DOWNLOAD_PROGRESS = "expo-file-system.downloadProgress"
-private let EVENT_UPLOAD_PROGRESS = "expo-file-system.uploadProgress"
-
+@available(iOS 14, tvOS 14, *)
 public final class FileSystemModule: Module {
-  private lazy var sessionTaskDispatcher = EXSessionTaskDispatcher(sessionHandler: ExpoAppDelegate.getSubscriberOfType(FileSystemBackgroundSessionHandler.self))
-  private lazy var taskHandlersManager = EXTaskHandlersManager()
-  private lazy var resourceManager = PHAssetResourceManager()
+  #if os(iOS)
+  private lazy var filePickingHandler = FilePickingHandler(module: self)
+  private var isPresentingPreview = false
+  private weak var previewController: QLPreviewController?
+  private var deferredPreview: (files: [FileSystemFile], options: FilePreviewOptions?, initialIndex: Int, promise: Promise)?
+  #endif
 
-  private lazy var backgroundSession = createUrlSession(type: .background, delegate: sessionTaskDispatcher)
-  private lazy var foregroundSession = createUrlSession(type: .foreground, delegate: sessionTaskDispatcher)
+  private let downloadStore = DownloadTaskStore()
 
-  private var documentDirectory: URL? {
+  var documentDirectory: URL? {
     return appContext?.config.documentDirectory
   }
 
-  private var cacheDirectory: URL? {
+  var cacheDirectory: URL? {
     return appContext?.config.cacheDirectory
   }
 
-  // swiftlint:disable:next cyclomatic_complexity
+  var totalDiskSpace: Int64? {
+    guard let path = documentDirectory?.path,
+      let attributes = try? FileManager.default.attributesOfFileSystem(forPath: path) else {
+      return nil
+    }
+    return attributes[.systemSize] as? Int64
+  }
+
+  var availableDiskSpace: Int64? {
+    guard let path = documentDirectory?.path,
+      let attributes = try? FileManager.default.attributesOfFileSystem(forPath: path) else {
+      return nil
+    }
+    return attributes[.systemFreeSize] as? Int64
+  }
+
+  private func writeToFile(
+    _ file: FileSystemFile,
+    content: Either<String, NativeArrayBuffer>,
+    options: WriteOptions?
+  ) throws {
+    let append = options?.append ?? false
+    if let content: String = content.get() {
+      if options?.encoding == WriteEncoding.base64 {
+        guard let data = Data(base64Encoded: content, options: .ignoreUnknownCharacters) else {
+          throw UnableToWriteBase64DataException(file.url.absoluteString)
+        }
+        try file.write(data, append: append)
+      } else {
+        try file.write(content, append: append)
+      }
+    } else if let content: NativeArrayBuffer = content.get() {
+      try file.write(content, append: append)
+    }
+  }
+
+  #if os(iOS)
+  private func canPreviewItem(_ item: FileSystemPreviewItem) -> Bool {
+    #if targetEnvironment(macCatalyst)
+    return QLPreviewController.canPreviewItem(item)
+    #else
+    return QLPreviewController.canPreview(item)
+    #endif
+  }
+
+  private func canPreview(file: FileSystemFile) throws -> Bool {
+    return try file.withCorrectTypeAndScopedAccess(permission: .read) {
+      guard file.exists else {
+        return false
+      }
+      return canPreviewItem(FileSystemPreviewItem(url: file.url, title: nil))
+    }
+  }
+
+  private func requestPreview(
+    files: [FileSystemFile], options: FilePreviewOptions?, initialIndex: Int, promise: Promise
+  ) throws {
+    if isPresentingPreview {
+      guard deferPreviewUntilDismissal(files: files, options: options, initialIndex: initialIndex, promise: promise) else {
+        throw FilePreviewInProgressException()
+      }
+    } else {
+      try presentPreview(files: files, options: options, initialIndex: initialIndex, promise: promise)
+    }
+  }
+
+  private func presentPreview(
+    files: [FileSystemFile], options: FilePreviewOptions?, initialIndex: Int, promise: Promise
+  ) throws {
+    guard let currentViewController = appContext?.utilities?.currentViewController() else {
+      throw FilePreviewMissingViewControllerException()
+    }
+
+    var scopedAccesses: [FileSystemScopedAccess] = []
+    var items: [FileSystemPreviewItem] = []
+    for file in files {
+      // Retain access while validating the collection and until Quick Look closes.
+      scopedAccesses.append(try makeScopedAccess(for: file, permission: .read))
+      guard file.exists else {
+        throw FilePreviewFileNotFoundException(file.url)
+      }
+      let item = FileSystemPreviewItem(url: file.url, title: options?.title)
+      guard canPreviewItem(item) else {
+        throw FilePreviewUnsupportedException(file.url)
+      }
+      items.append(item)
+    }
+
+    let previewController = FileSystemPreviewController()
+    let session = FileSystemPreviewSession(items: items, scopedAccesses: scopedAccesses) { [weak self] in
+      guard let self else {
+        return
+      }
+      self.isPresentingPreview = false
+      self.previewController = nil
+
+      guard let deferredPreview = self.deferredPreview else {
+        return
+      }
+      self.deferredPreview = nil
+      do {
+        try self.presentPreview(
+          files: deferredPreview.files,
+          options: deferredPreview.options,
+          initialIndex: deferredPreview.initialIndex,
+          promise: deferredPreview.promise
+        )
+      } catch {
+        deferredPreview.promise.reject(error)
+      }
+    }
+    previewController.session = session
+    previewController.onPresentationFailure = { [weak self] in
+      self?.isPresentingPreview = false
+      self?.previewController = nil
+      promise.reject(FilePreviewPresentationException())
+    }
+    isPresentingPreview = true
+    self.previewController = previewController
+    previewController.dataSource = session
+    previewController.delegate = session
+    previewController.currentPreviewItemIndex = initialIndex
+
+    currentViewController.present(previewController, animated: true) { [weak previewController] in
+      previewController?.onPresentationFailure = nil
+      promise.resolve()
+    }
+  }
+
+  private func deferPreviewUntilDismissal(
+    files: [FileSystemFile],
+    options: FilePreviewOptions?,
+    initialIndex: Int,
+    promise: Promise
+  ) -> Bool {
+    guard deferredPreview == nil,
+      let previewController,
+      previewController.isBeingDismissed,
+      let transitionCoordinator = previewController.transitionCoordinator else {
+      return false
+    }
+
+    deferredPreview = (files, options, initialIndex, promise)
+
+    if transitionCoordinator.isInteractive {
+      transitionCoordinator.notifyWhenInteractionChanges { [weak self] context in
+        guard context.isCancelled else {
+          return
+        }
+        self?.rejectDeferredPreview()
+      }
+    }
+    return true
+  }
+
+  private func rejectDeferredPreview() {
+    guard let deferredPreview else {
+      return
+    }
+    self.deferredPreview = nil
+    deferredPreview.promise.reject(FilePreviewInProgressException())
+  }
+  #endif
+
   public func definition() -> ModuleDefinition {
-    Name("ExponentFileSystem")
+    Name("FileSystem")
 
-    Constants {
-      return [
-        "documentDirectory": documentDirectory?.absoluteString,
-        "cacheDirectory": cacheDirectory?.absoluteString,
-        "bundleDirectory": Bundle.main.bundlePath
-      ]
+    Events("downloadProgress")
+
+    #if os(iOS)
+    OnDestroy {
+      rejectDeferredPreview()
+    }
+    #endif
+
+    Constant("documentDirectory") {
+      return documentDirectory?.absoluteString
     }
 
-    Events(EVENT_DOWNLOAD_PROGRESS, EVENT_UPLOAD_PROGRESS)
-
-    AsyncFunction("getInfoAsync") { (url: URL, options: InfoOptions, promise: Promise) in
-      switch url.scheme {
-      case "file":
-        EXFileSystemLocalFileHandler.getInfoForFile(url, withOptions: options.toDictionary(), resolver: promise.resolver, rejecter: promise.legacyRejecter)
-      case "assets-library", "ph":
-        EXFileSystemAssetLibraryHandler.getInfoForFile(url, withOptions: options.toDictionary(), resolver: promise.resolver, rejecter: promise.legacyRejecter)
-      default:
-        throw UnsupportedSchemeException(url.scheme)
-      }
+    Constant("cacheDirectory") {
+      return cacheDirectory?.absoluteString
     }
 
-    AsyncFunction("readAsStringAsync") { (url: URL, options: ReadingOptions) -> String in
-      try ensurePathPermission(appContext, path: url.path, flag: .read)
+    Constant("bundleDirectory") {
+      return Bundle.main.bundlePath
+    }
 
-      if options.encoding == .base64 {
-        return try readFileAsBase64(path: url.path, options: options)
+    Constant("appleSharedContainers") {
+      return getAppleSharedContainers()
+    }
+
+    Property("totalDiskSpace") {
+      return totalDiskSpace
+    }
+
+    Property("availableDiskSpace") {
+      return availableDiskSpace
+    }
+
+    AsyncFunction("downloadFileAsync") { (url: URL, to: FileSystemPath, options: DownloadOptions?, downloadUuid: String?, promise: Promise) in
+      try downloadFileWithStore(
+        url: url,
+        to: to,
+        options: options,
+        downloadUuid: downloadUuid,
+        downloadStore: self.downloadStore,
+        promise: promise,
+        sendEvent: { [weak self] name, body in
+          self?.sendEvent(name, body)
+        }
+      )
+    }
+
+    Function("cancelDownloadAsync") { (downloadUuid: String) in
+      self.downloadStore.cancel(uuid: downloadUuid)
+    }
+
+    AsyncFunction("pickDirectoryAsync") { (initialUri: URL?, promise: Promise) in
+      #if os(iOS)
+      filePickingHandler.presentDocumentPicker(
+        picker: createDirectoryPicker(initialUri: initialUri),
+        isDirectory: true,
+        initialUri: initialUri,
+        mimeTypes: [],
+        multipleDocuments: false,
+        promise: promise
+      )
+      #else
+      promise.reject(FeatureNotAvailableOnPlatformException())
+      #endif
+    }.runOnQueue(.main)
+
+    AsyncFunction("pickFileAsync") { (options: FilePickingOptions?, promise: Promise) in
+      #if os(iOS)
+      filePickingHandler.presentDocumentPicker(
+        picker: createFilePicker(initialUri: options?.initialUri, mimeTypes: options?.mimeTypes ?? []),
+        isDirectory: false,
+        initialUri: options?.initialUri,
+        mimeTypes: options?.mimeTypes ?? [],
+        multipleDocuments: options?.multipleFiles ?? false,
+        promise: promise
+      )
+      #else
+      promise.reject(FeatureNotAvailableOnPlatformException())
+      #endif
+    }.runOnQueue(.main)
+    Function("info") { (url: URL) in
+      let output = PathInfo()
+      output.exists = false
+      output.isDirectory = nil
+
+      guard let fileSystemManager = appContext?.fileSystem else {
+        return output
       }
+
+      if fileSystemManager.getPathPermissions(url.path).contains(.read) {
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) {
+          output.exists = true
+          output.isDirectory = isDirectory.boolValue
+          return output
+        }
+      }
+      return output
+    }
+
+    AsyncFunction("canPreview") { (files: [FileSystemFile]) -> Bool in
+      #if os(iOS)
+      guard !files.isEmpty else {
+        throw FilePreviewInvalidInputException("At least one file is required for a preview.")
+      }
+      return try files.allSatisfy { try canPreview(file: $0) }
+      #else
+      throw FeatureNotAvailableOnPlatformException()
+      #endif
+    }.runOnQueue(.main)
+
+    AsyncFunction("preview") { (files: [FileSystemFile], initialIndex: Double, promise: Promise) in
+      #if os(iOS)
       do {
-        return try String(contentsOfFile: url.path, encoding: options.encoding.toStringEncoding() ?? .utf8)
+        guard let initialIndex = Int(exactly: initialIndex),
+          files.indices.contains(initialIndex) else {
+          throw FilePreviewInvalidInputException("initialIndex must be an integer within a nonempty preview collection.")
+        }
+        try requestPreview(files: files, options: nil, initialIndex: initialIndex, promise: promise)
       } catch {
-        throw FileNotReadableException(url.path)
+        promise.reject(error)
+      }
+      #else
+      promise.reject(FeatureNotAvailableOnPlatformException())
+      #endif
+    }.runOnQueue(.main)
+
+    // swiftlint:disable:next closure_body_length
+    Class(FileSystemFile.self) {
+      Constructor { (url: URL) in
+        return FileSystemFile(url: url.standardizedFileURL)
+      }
+
+      // we can't throw in a constructor, so this is a workaround
+      Function("validatePath") { file in
+        try file.validatePath()
+      }
+
+      // maybe asString, readAsString, readAsText, readText, ect.
+      AsyncFunction("text") { file in
+        return try file.text()
+      }
+
+      Function("textSync") { file in
+        return try file.text()
+      }
+
+      AsyncFunction("base64") { file in
+        return try file.base64()
+      }
+
+      Function("base64Sync") { file in
+        return try file.base64()
+      }
+
+      AsyncFunction("bytes") { file in
+        return try file.bytes()
+      }
+
+      Function("bytesSync") { file in
+        return try file.bytes()
+      }
+
+      Function("open") { (file: FileSystemFile, mode: FileMode?) in
+        return try FileSystemFileHandle(file: file, mode: mode)
+      }
+
+      AsyncFunction("canPreview") { (file: FileSystemFile, _: FilePreviewOptions?) -> Bool in
+        #if os(iOS)
+        return try canPreview(file: file)
+        #else
+        throw FeatureNotAvailableOnPlatformException()
+        #endif
+      }
+      .runOnQueue(.main)
+
+      AsyncFunction("preview") { (file: FileSystemFile, options: FilePreviewOptions?, promise: Promise) in
+        #if os(iOS)
+        do {
+          try requestPreview(files: [file], options: options, initialIndex: 0, promise: promise)
+        } catch {
+          promise.reject(error)
+        }
+        #else
+        promise.reject(FeatureNotAvailableOnPlatformException())
+        #endif
+      }
+      .runOnQueue(.main)
+
+      Function("info") { (file: FileSystemFile, options: InfoOptions?) in
+        return try file.info(options: options ?? InfoOptions())
+      }
+
+      AsyncFunction("digest") { (file: FileSystemFile, algorithm: String) in
+        return try file.digest(algorithm: algorithm)
+      }
+
+      AsyncFunction("write") { (file: FileSystemFile, content: Either<String, NativeArrayBuffer>, options: WriteOptions?) in
+        try writeToFile(file, content: content, options: options)
+      }
+
+      Function("writeSync") { (file: FileSystemFile, content: Either<String, NativeArrayBuffer>, options: WriteOptions?) in
+        try writeToFile(file, content: content, options: options)
+      }
+
+      Property("size") { file in
+        (try? file.size) ?? 0
+      }
+
+      Property("md5") { file in
+        try? file.md5
+      }
+
+      Property("modificationTime") { file in
+        try? file.modificationTime
+      }
+
+      Property("lastModified") { file in
+        try? file.modificationTime
+      }
+
+      Property("creationTime") { file in
+        try? file.creationTime
+      }
+
+      Property("type") { file in
+        file.type
+      }
+
+      Function("delete") { file in
+        try file.delete()
+      }
+
+      Property("exists") { file in
+        return file.exists
+      }
+
+      Function("create") { (file, options: CreateOptions?) in
+        try file.create(options ?? CreateOptions())
+      }
+
+      AsyncFunction("copy") { (file, to: FileSystemPath, options: RelocationOptions?) in
+        try file.copy(to: to, options: options ?? RelocationOptions())
+      }
+
+      Function("copySync") { (file, to: FileSystemPath, options: RelocationOptions?) in
+        try file.copy(to: to, options: options ?? RelocationOptions())
+      }
+
+      AsyncFunction("move") { (file, to: FileSystemPath, options: RelocationOptions?) in
+        try file.move(to: to, options: options ?? RelocationOptions())
+      }
+
+      Function("moveSync") { (file, to: FileSystemPath, options: RelocationOptions?) in
+        try file.move(to: to, options: options ?? RelocationOptions())
+      }
+
+      Function("rename") { (file, newName: String) in
+        try file.rename(newName)
+      }
+
+      Property("uri") { file in
+        return file.url.absoluteString
       }
     }
 
-    AsyncFunction("writeAsStringAsync") { (url: URL, string: String, options: WritingOptions) in
-      try ensurePathPermission(appContext, path: url.path, flag: .write)
-
-      if options.encoding == .base64 {
-        try writeFileAsBase64(path: url.path, string: string)
-        return
-      }
-      do {
-        try string.write(toFile: url.path, atomically: true, encoding: options.encoding.toStringEncoding() ?? .utf8)
-      } catch {
-        throw FileNotWritableException(url.path)
-          .causedBy(error)
-      }
-    }
-
-    AsyncFunction("deleteAsync") { (url: URL, options: DeletingOptions) in
-      guard url.isFileURL else {
-        throw InvalidFileUrlException(url)
-      }
-      try ensurePathPermission(appContext, path: url.appendingPathComponent("..").path, flag: .write)
-      try removeFile(path: url.path, idempotent: options.idempotent)
-    }
-
-    AsyncFunction("moveAsync") { (options: RelocatingOptions) in
-      let (fromUrl, toUrl) = try options.asTuple()
-
-      guard fromUrl.isFileURL else {
-        throw InvalidFileUrlException(fromUrl)
-      }
-      guard toUrl.isFileURL else {
-        throw InvalidFileUrlException(toUrl)
+    Class(FileSystemFileHandle.self) {
+      AsyncFunction("readBytes") { (fileHandle, bytes: Int) in
+        try fileHandle.read(bytes)
       }
 
-      try ensurePathPermission(appContext, path: fromUrl.appendingPathComponent("..").path, flag: .write)
-      try ensurePathPermission(appContext, path: toUrl.path, flag: .write)
-      try removeFile(path: toUrl.path, idempotent: true)
-      try FileManager.default.moveItem(atPath: fromUrl.path, toPath: toUrl.path)
-    }
-
-    AsyncFunction("copyAsync") { (options: RelocatingOptions, promise: Promise) in
-      let (fromUrl, toUrl) = try options.asTuple()
-
-      if isPHAsset(path: fromUrl.absoluteString) {
-        copyPHAsset(fromUrl: fromUrl, toUrl: toUrl, with: resourceManager, promise: promise)
-        return
+      Function("readBytesSync") { (fileHandle, bytes: Int) in
+        try fileHandle.read(bytes)
       }
 
-      try ensurePathPermission(appContext, path: fromUrl.path, flag: .read)
-      try ensurePathPermission(appContext, path: toUrl.path, flag: .write)
+      AsyncFunction("writeBytes") { (fileHandle, bytes: Data) in
+        try fileHandle.write(bytes)
+      }
 
-      if fromUrl.scheme == "file" {
-        EXFileSystemLocalFileHandler.copy(from: fromUrl, to: toUrl, resolver: promise.resolver, rejecter: promise.legacyRejecter)
-      } else if ["ph", "assets-library"].contains(fromUrl.scheme) {
-        EXFileSystemAssetLibraryHandler.copy(from: fromUrl, to: toUrl, resolver: promise.resolver, rejecter: promise.legacyRejecter)
-      } else {
-        throw InvalidFileUrlException(fromUrl)
+      Function("writeBytesSync") { (fileHandle, bytes: Data) in
+        try fileHandle.write(bytes)
+      }
+
+      Function("close") { fileHandle in
+        try fileHandle.close()
+      }
+
+      Property("offset") { fileHandle in
+        fileHandle.offset
+      }.set { (fileHandle, volume: UInt64) in
+        fileHandle.offset = volume
+      }
+
+      Property("size") { fileHandle in
+        fileHandle.size
       }
     }
 
-    AsyncFunction("makeDirectoryAsync") { (url: URL, options: MakeDirectoryOptions) in
-      guard url.isFileURL else {
-        throw InvalidFileUrlException(url)
+    // swiftlint:disable:next closure_body_length
+    Class(FileSystemDirectory.self) {
+      Constructor { (url: URL) in
+        return FileSystemDirectory(url: url.standardizedFileURL)
       }
 
-      try ensurePathPermission(appContext, path: url.path, flag: .write)
-      try FileManager.default.createDirectory(at: url, withIntermediateDirectories: options.intermediates, attributes: nil)
+      Function("info") { directory in
+        try directory.info()
+      }
+
+      // we can't throw in a constructor, so this is a workaround
+      Function("validatePath") { directory in
+        try directory.validatePath()
+      }
+
+      Function("delete") { directory in
+        try directory.delete()
+      }
+
+      Property("exists") { directory in
+        return directory.exists
+      }
+
+      Function("create") { (directory, options: CreateOptions?) in
+        try directory.create(options ?? CreateOptions())
+      }
+
+      AsyncFunction("copy") { (directory, to: FileSystemPath, options: RelocationOptions?) in
+        try directory.copy(to: to, options: options ?? RelocationOptions())
+      }
+
+      Function("copySync") { (directory, to: FileSystemPath, options: RelocationOptions?) in
+        try directory.copy(to: to, options: options ?? RelocationOptions())
+      }
+
+      AsyncFunction("move") { (directory, to: FileSystemPath, options: RelocationOptions?) in
+        try directory.move(to: to, options: options ?? RelocationOptions())
+      }
+
+      Function("moveSync") { (directory, to: FileSystemPath, options: RelocationOptions?) in
+        try directory.move(to: to, options: options ?? RelocationOptions())
+      }
+
+      Function("rename") { (directory, newName: String) in
+        try directory.rename(newName)
+      }
+
+      // this function is internal and will be removed in the future (when returning arrays of shared objects is supported)
+      Function("listAsRecords") { directory in
+        try directory.listAsRecords()
+      }
+
+      Function("createFile") { (directory, name: String, content: String?) in
+        let file = FileSystemFile(url: directory.url.appendingPathComponent(name))
+        try file.create(CreateOptions())
+        return file
+      }
+
+      Function("createDirectory") { (directory, name: String) in
+        let newDirectory = FileSystemDirectory(url: directory.url.appendingPathComponent(name))
+        try newDirectory.create(CreateOptions())
+        return newDirectory
+      }
+
+      Property("uri") { directory in
+        return directory.url.absoluteString
+      }
+
+      Property("size") { directory in
+        return try? directory.size
+      }
     }
 
-    AsyncFunction("readDirectoryAsync") { (url: URL) -> [String] in
-      guard url.isFileURL else {
-        throw InvalidFileUrlException(url)
+    Class(FileSystemUploadTask.self) {
+      Constructor {
+        return FileSystemUploadTask()
       }
-      try ensurePathPermission(appContext, path: url.path, flag: .read)
 
-      return try FileManager.default.contentsOfDirectory(atPath: url.path)
+      AsyncFunction("start") { (task: FileSystemUploadTask, url: URL, file: FileSystemFile, options: UploadTaskOptions, promise: Promise) in
+        task.start(url: url, file: file, options: options, promise: promise)
+      }
+
+      Function("cancel") { (task: FileSystemUploadTask) in
+        task.cancel()
+      }
     }
 
-    AsyncFunction("downloadAsync") { (sourceUrl: URL, localUrl: URL, options: DownloadOptions, promise: Promise) in
-      try ensureFileDirectoryExists(localUrl)
-      try ensurePathPermission(appContext, path: localUrl.path, flag: .write)
-
-      if sourceUrl.isFileURL {
-        try ensurePathPermission(appContext, path: sourceUrl.path, flag: .read)
-        EXFileSystemLocalFileHandler.copy(from: sourceUrl, to: localUrl, resolver: promise.resolver, rejecter: promise.legacyRejecter)
-        return
+    Class(FileSystemDownloadTask.self) {
+      Constructor {
+        return FileSystemDownloadTask()
       }
-      let session = options.sessionType == .background ? backgroundSession : foregroundSession
-      let request = createUrlRequest(url: sourceUrl, headers: options.headers)
-      let downloadTask = session.downloadTask(with: request)
-      let taskDelegate = EXSessionDownloadTaskDelegate(
-        resolve: promise.resolver,
-        reject: promise.legacyRejecter,
-        localUrl: localUrl,
-        shouldCalculateMd5: options.md5
-      )
 
-      sessionTaskDispatcher.register(taskDelegate, for: downloadTask)
-      downloadTask.resume()
+      AsyncFunction("start") { (task: FileSystemDownloadTask, url: URL, to: FileSystemPath, options: DownloadTaskOptions?, promise: Promise) in
+        try to.validatePermission(.write)
+        task.start(url: url, to: to, options: options, promise: promise)
+      }.runOnQueue(.main)
+
+      AsyncFunction("pause") { (task: FileSystemDownloadTask) -> [String: String?] in
+        return await task.pause()
+      }
+
+      AsyncFunction("resume") { (task: FileSystemDownloadTask, url: URL, to: FileSystemPath, resumeData: String, options: DownloadTaskOptions?, promise: Promise) in
+        try to.validatePermission(.write)
+        task.resume(url: url, to: to, resumeData: resumeData, options: options, promise: promise)
+      }.runOnQueue(.main)
+
+      AsyncFunction("acknowledgeBackgroundCompletionAsync") { (task: FileSystemDownloadTask) in
+        try task.acknowledgeBackgroundCompletion()
+      }.runOnQueue(.main)
+
+      Property("response") { (task: FileSystemDownloadTask) in
+        task.getResponse()
+      }
+
+      Function("cancel") { (task: FileSystemDownloadTask) in
+        task.cancel()
+      }
     }
 
-    AsyncFunction("uploadAsync") { (targetUrl: URL, localUrl: URL, options: UploadOptions, promise: Promise) in
-      guard localUrl.isFileURL else {
-        throw InvalidFileUrlException(localUrl)
+    Class(FileSystemWatcher.self) {
+      Constructor { (path: URL, options: WatchOptions?) in
+        try FileSystemWatcher(path: path, options: options)
       }
-      guard FileManager.default.fileExists(atPath: localUrl.path) else {
-        throw FileNotExistsException(localUrl.path)
-      }
-      let session = options.sessionType == .background ? backgroundSession : foregroundSession
-      let task = try createUploadTask(session: session, targetUrl: targetUrl, sourceUrl: localUrl, options: options)
-      let taskDelegate = EXSessionUploadTaskDelegate(resolve: promise.resolver, reject: promise.legacyRejecter)
 
-      sessionTaskDispatcher.register(taskDelegate, for: task)
-      task.resume()
+      Function("start") { watcher in
+        watcher.start()
+      }
+
+      Function("stop") { watcher in
+        watcher.stop()
+      }
     }
+  }
 
-    AsyncFunction("uploadTaskStartAsync") { (targetUrl: URL, localUrl: URL, uuid: String, options: UploadOptions, promise: Promise) in
-      let session = options.sessionType == .background ? backgroundSession : foregroundSession
-      let task = try createUploadTask(session: session, targetUrl: targetUrl, sourceUrl: localUrl, options: options)
-      let onSend: EXUploadDelegateOnSendCallback = { [weak self] _, _, totalBytesSent, totalBytesExpectedToSend in
-        self?.sendEvent(EVENT_UPLOAD_PROGRESS, [
-          "uuid": uuid,
-          "data": [
-            "totalBytesSent": totalBytesSent,
-            "totalBytesExpectedToSend": totalBytesExpectedToSend
-          ]
-        ])
-      }
-      let taskDelegate = EXSessionCancelableUploadTaskDelegate(
-        resolve: promise.resolver,
-        reject: promise.legacyRejecter,
-        onSendCallback: onSend,
-        resumableManager: taskHandlersManager,
-        uuid: uuid
-      )
-
-      sessionTaskDispatcher.register(taskDelegate, for: task)
-      taskHandlersManager.register(task, uuid: uuid)
-      task.resume()
+  private func getAppleSharedContainers() -> [String: String] {
+    guard let appContext else {
+      return [:]
     }
-
-    // swiftlint:disable:next line_length closure_body_length
-    AsyncFunction("downloadResumableStartAsync") { (sourceUrl: URL, localUrl: URL, uuid: String, options: DownloadOptions, resumeDataString: String?, promise: Promise) in
-      try ensureFileDirectoryExists(localUrl)
-      try ensurePathPermission(appContext, path: localUrl.path, flag: .write)
-
-      let session = options.sessionType == .background ? backgroundSession : foregroundSession
-      let resumeData = resumeDataString != nil ? Data(base64Encoded: resumeDataString ?? "") : nil
-      let onWrite: EXDownloadDelegateOnWriteCallback = { [weak self] _, _, totalBytesWritten, totalBytesExpectedToWrite in
-        self?.sendEvent(EVENT_DOWNLOAD_PROGRESS, [
-          "uuid": uuid,
-          "data": [
-            "totalBytesWritten": totalBytesWritten,
-            "totalBytesExpectedToWrite": totalBytesExpectedToWrite
-          ]
-        ])
+    var result: [String: String] = [:]
+    for appGroup in appContext.appCodeSignEntitlements.appGroups ?? [] {
+      if let directory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) {
+        result[appGroup] = directory.standardizedFileURL.path
       }
-      let task: URLSessionDownloadTask
-
-      if let resumeDataString, let resumeData = Data(base64Encoded: resumeDataString) {
-        task = session.downloadTask(withResumeData: resumeData)
-      } else {
-        let request = createUrlRequest(url: sourceUrl, headers: options.headers)
-        task = session.downloadTask(with: request)
-      }
-
-      let taskDelegate = EXSessionResumableDownloadTaskDelegate(
-        resolve: promise.resolver,
-        reject: promise.legacyRejecter,
-        localUrl: localUrl,
-        shouldCalculateMd5: options.md5,
-        onWriteCallback: onWrite,
-        resumableManager: taskHandlersManager,
-        uuid: uuid
-      )
-
-      sessionTaskDispatcher.register(taskDelegate, for: task)
-      taskHandlersManager.register(task, uuid: uuid)
-      task.resume()
     }
-
-    AsyncFunction("downloadResumablePauseAsync") { (id: String) -> [String: String?] in
-      guard let task = taskHandlersManager.downloadTask(forId: id) else {
-        throw DownloadTaskNotFoundException(id)
-      }
-      let resumeData = await task.cancelByProducingResumeData()
-
-      return [
-        "resumeData": resumeData?.base64EncodedString()
-      ]
-    }
-
-    AsyncFunction("networkTaskCancelAsync") { (id: String) in
-      taskHandlersManager.task(forId: id)?.cancel()
-    }
-
-    AsyncFunction("getFreeDiskStorageAsync") { () -> Int in
-    // Uses required reason API based on the following reason: E174.1 85F4.1
-      let resourceValues = try getResourceValues(from: documentDirectory, forKeys: [.volumeAvailableCapacityKey])
-
-      guard let availableCapacity = resourceValues?.volumeAvailableCapacity else {
-        throw CannotDetermineDiskCapacity()
-      }
-      return availableCapacity
-    }
-
-    AsyncFunction("getTotalDiskCapacityAsync") { () -> Int in
-        // Uses required reason API based on the following reason: E174.1 85F4.1
-      let resourceValues = try getResourceValues(from: documentDirectory, forKeys: [.volumeTotalCapacityKey])
-
-      guard let totalCapacity = resourceValues?.volumeTotalCapacity else {
-        throw CannotDetermineDiskCapacity()
-      }
-      return totalCapacity
-    }
+    return result
   }
 }

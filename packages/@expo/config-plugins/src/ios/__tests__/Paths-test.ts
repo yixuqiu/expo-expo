@@ -9,6 +9,7 @@ import {
   getAllInfoPlistPaths,
   getAppDelegate,
   getXcodeProjectPath,
+  getPBXProjectPath,
   getPodfilePath,
 } from '../Paths';
 
@@ -181,13 +182,13 @@ describe(getAppDelegate, () => {
     });
   });
 
-  it(`returns C++ (objcpp) path`, () => {
+  it(`returns Swift path`, () => {
     vol.fromJSON(rnFixture, '/');
 
     expect(getAppDelegate('/')).toStrictEqual({
       contents: expect.any(String),
-      path: '/ios/HelloWorld/AppDelegate.mm',
-      language: 'objcpp',
+      path: '/ios/HelloWorld/AppDelegate.swift',
+      language: 'swift',
     });
   });
 
@@ -274,5 +275,18 @@ describe(getAllInfoPlistPaths, () => {
       '/app/ios/ExampleE2ETests/Info.plist',
       '/app/ios/ExampleE2E-tvOSTests/Info.plist',
     ]);
+  });
+});
+
+describe(getPBXProjectPath, () => {
+  afterEach(() => {
+    vol.reset();
+  });
+
+  it(`gets the pbxproj path`, () => {
+    vol.fromJSON({
+      '/app/ios/app.xcodeproj/project.pbxproj': '',
+    });
+    expect(getPBXProjectPath('/app')).toBe('/app/ios/app.xcodeproj/project.pbxproj');
   });
 });

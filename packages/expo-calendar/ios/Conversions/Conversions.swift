@@ -108,7 +108,7 @@ func serializeCalendar(item: EKCalendarItem, with formatter: DateFormatter) -> [
   var serailizedItem = [String: Any?]()
 
   serailizedItem["id"] = item.calendarItemIdentifier
-  serailizedItem["calendarId"] = item.calendar.calendarIdentifier
+  serailizedItem["calendarId"] = item.calendar?.calendarIdentifier
   if let title = item.title {
     serailizedItem["title"] = title
   }
@@ -147,7 +147,7 @@ func serializeCalendar(item: EKCalendarItem, with formatter: DateFormatter) -> [
     if let daysOfTheWeek = rule.daysOfTheWeek {
       recurrenceRule["daysOfTheWeek"] = daysOfTheWeek.map({ day in
         [
-          "dayOfTheWeek": day.dayOfTheWeek,
+          "dayOfTheWeek": day.dayOfTheWeek.rawValue,
           "weekNumber": day.weekNumber
         ]
       })

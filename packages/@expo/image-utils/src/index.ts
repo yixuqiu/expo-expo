@@ -3,9 +3,9 @@ import {
   compositeImagesAsync,
   generateFaviconAsync,
   generateImageAsync,
+  generateImageBackgroundAsync,
   getPngInfo,
 } from './Image';
-import { ImageFormat, ImageOptions, ResizeMode } from './Image.types';
 import { convertFormat, jimpAsync, createSquareAsync } from './jimp';
 import { findSharpInstanceAsync, isAvailableAsync, sharpAsync } from './sharp';
 import { SharpCommandOptions, SharpGlobalOptions } from './sharp.types';
@@ -30,10 +30,13 @@ export {
   isAvailableAsync,
   sharpAsync,
   generateImageAsync,
+  generateImageBackgroundAsync,
   generateFaviconAsync,
   Cache,
   compositeImagesAsync,
   getPngInfo,
 };
 
-export { SharpGlobalOptions, SharpCommandOptions, ResizeMode, ImageFormat, ImageOptions };
+export type { SharpGlobalOptions, SharpCommandOptions } from './sharp.types';
+
+export type { ResizeMode, ImageFormat, ImageOptions } from './Image.types';

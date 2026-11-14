@@ -5,13 +5,12 @@ import ExpoModulesCore
 import EXManifests
 
 /**
- Manages the React Native app opened in Expo Go. As opposed to ``EXReactAppManager`` and ``EXHomeAppManager``,
+ Manages the React Native app opened in Expo Go. As opposed to ``EXReactAppManager``,
  this manager is versioned and used by them under the hood like an adapter.
  */
 @objc(EXVersionManager)
 final class VersionManager: EXVersionManagerObjC {
   var appContext: AppContext?
-  var legacyModulesProxy: LegacyNativeModulesProxy?
   var legacyModuleRegistry: EXModuleRegistry?
 
   let params: [AnyHashable: Any]
@@ -30,12 +29,40 @@ final class VersionManager: EXVersionManagerObjC {
     self.manifest = manifest
 
     configureReact(
-      enableTurboModules: manifest.experiments()?["turboModules"] as? Bool ?? false,
       fatalHandler: fatalHandler,
       logFunction: logFunction,
       logThreshold: logThreshold
     )
     super.init(params: params, manifest: manifest, fatalHandler: fatalHandler, logFunction: logFunction, logThreshold: logThreshold)
+  }
+
+  @objc
+  override func createExpoGoAppContext() -> AppContext {
+    return getOrCreateAppContext()
+  }
+
+  private func getOrCreateAppContext() -> AppContext {
+    if let appContext {
+      return appContext
+    }
+
+    let legacyModuleRegistry = createLegacyModuleRegistry(params: params, manifest: manifest)
+    let config = createAppContextConfig()
+    let appContext = AppContext(
+      legacyModuleRegistry: legacyModuleRegistry,
+      config: config
+    )
+
+    self.appContext = appContext
+    self.legacyModuleRegistry = legacyModuleRegistry
+
+    // The default ConstantsProvider returns "bare" for `executionEnvironment`, Expo Go
+    // needs "storeClient" and the loaded app's manifest, which EXConstantsBinding provides.
+    appContext.constants = EXConstantsBinding(params: params)
+
+    registerExpoModules(appContext)
+
+    return appContext
   }
 
   /**
@@ -50,50 +77,37 @@ final class VersionManager: EXVersionManagerObjC {
    Returns a list of bridge modules to register when the bridge initializes.
    */
   @objc
-  override func extraModules(forBridge bridge: Any) -> [Any] {
-    // Ideally if we don't initialize the app context here, but unfortunately there is no better place in bridge lifecycle
-    // that would work well for us (especially properly invalidating existing app context on reload).
-    let legacyModuleRegistry = createLegacyModuleRegistry(params: params, manifest: manifest)
-    let legacyModulesProxy = LegacyNativeModulesProxy(customModuleRegistry: legacyModuleRegistry)
-    let config = createAppContextConfig()
-    let appContext = AppContext(legacyModulesProxy: legacyModulesProxy, legacyModuleRegistry: legacyModuleRegistry, config: config)
+  override func extraModules() -> [Any] {
+    self.appContext = nil
+    let appContext = getOrCreateAppContext()
 
-    self.appContext = appContext
-    self.legacyModuleRegistry = legacyModuleRegistry
-    self.legacyModulesProxy = legacyModulesProxy
+    guard let legacyModuleRegistry else {
+      fatalError("Legacy modules should have been initialized")
+    }
 
     let modules: [Any] = [
       EXAppState(),
       EXDisabledDevLoadingView(),
       EXStatusBarManager(),
 
-      // Adding EXNativeModulesProxy with the custom moduleRegistry.
-      legacyModulesProxy,
-
       // Adding the way to access the module registry from RCTBridgeModules.
       EXModuleRegistryHolderReactModule(moduleRegistry: legacyModuleRegistry),
 
-      // When ExpoBridgeModule is initialized by RN, it automatically creates the app context.
-      // In Expo Go, it has to use already created app context.
-      ExpoBridgeModule(appContext: appContext)
     ]
 
-    // Register additional Expo modules, specific to Expo Go.
-    registerExpoModules()
-
-    return modules + super.extraModules(forBridge: bridge)
+    return modules + super.extraModules()
   }
 
   /**
    Registers Expo modules that are not generated in ``ExpoModulesProvider``, but are necessary for Expo Go apps.
    */
-  private func registerExpoModules() {
-    guard let appContext,
-      let kernelServices = params["services"] as? [AnyHashable: Any] else {
+  private func registerExpoModules(_ appContext: AppContext) {
+    guard let kernelServices = params["services"] as? [AnyHashable: Any] else {
       log.error("Unable to register Expo modules, the app context or kernel services is unavailable")
       return
     }
-    appContext.moduleRegistry.register(module: ExpoGoModule(appContext: appContext, manifest: manifest))
+    appContext.moduleRegistry.register(module: ExpoGoModule(appContext: appContext, manifest: manifest), name: nil)
+    appContext.moduleRegistry.register(module: SnackDirectTransport(appContext: appContext), name: nil)
 
     guard let updatesKernelService = kernelServices["EXUpdatesManager"] as? UpdatesBindingDelegate else {
       log.error("Unable to register Expo modules, the app context or kernel services is unavailable")
@@ -105,7 +119,24 @@ final class VersionManager: EXVersionManagerObjC {
       appContext: appContext,
       updatesKernelService: updatesKernelService,
       scopeKey: manifest.scopeKey()
-    ), preventModuleOverriding: true)
+    ), name: nil, preventModuleOverriding: true)
+
+    // Override expo-notifications modules
+    registerExpoNotificationsModules(appContext)
+  }
+
+  private func registerExpoNotificationsModules(_ appContext: AppContext) {
+    let modules: [Module] = [
+      ExpoGoNotificationsCategoriesModule(appContext: appContext, scopeKey: manifest.scopeKey()),
+      ExpoGoNotificationsEmitterModule(appContext: appContext, scopeKey: manifest.scopeKey()),
+      ExpoGoNotificationsHandlerModule(appContext: appContext, scopeKey: manifest.scopeKey()),
+      ExpoGoNotificationsPresentationModule(appContext: appContext, scopeKey: manifest.scopeKey()),
+      ExpoGoNotificationsSchedulerModule(appContext: appContext, scopeKey: manifest.scopeKey()),
+      ExpoGoNotificationsServerRegistrationModule(appContext: appContext, scopeKey: manifest.scopeKey())
+    ]
+    for module in modules {
+      appContext.moduleRegistry.register(module: module, name: nil, preventModuleOverriding: true)
+    }
   }
 
   private func createAppContextConfig() -> AppContextConfig {
@@ -120,7 +151,8 @@ final class VersionManager: EXVersionManagerObjC {
     }
     return AppContextConfig(
       documentDirectory: URL(fileURLWithPath: documentDirectory),
-      cacheDirectory: URL(fileURLWithPath: cacheDirectory)
+      cacheDirectory: URL(fileURLWithPath: cacheDirectory),
+      appGroups: nil
     )
   }
 }
@@ -129,12 +161,10 @@ final class VersionManager: EXVersionManagerObjC {
  Configures some React Native global options.
  */
 private func configureReact(
-  enableTurboModules: Bool,
   fatalHandler: @escaping (Error?) -> Void,
   logFunction: @escaping RCTLogFunction,
   logThreshold: RCTLogLevel
 ) {
-  RCTEnableTurboModule(enableTurboModules)
   RCTSetFatalHandler(fatalHandler)
   RCTSetLogThreshold(logThreshold)
   RCTSetLogFunction(logFunction)

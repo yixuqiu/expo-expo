@@ -1,6 +1,8 @@
 // Copyright 2015-present 650 Industries. All rights reserved.
 
 import Foundation
+import React
+import ExpoModulesCore
 
 class DevMenuPackagerConnectionHandler {
   weak var manager: DevMenuManager?
@@ -13,50 +15,62 @@ class DevMenuPackagerConnectionHandler {
     // `RCT_DEV` isn't available in Swift, that's why we used `DEBUG` instead.
     // It shouldn't diverge, because of the definition of `RCT_DEV`.
 #if DEBUG
-    RCTPackagerConnection
-      .shared()
-      .addNotificationHandler(
+    DispatchQueue.main.async { [weak self] in
+      guard let self, let manager = self.manager else { return }
+      disableRnDevMenu(manager)
+
+      let devSettings: RCTDevSettings? = manager.currentAppContext?.nativeModule(named: "DevSettings")
+// TODO(gabrieldonadel): Remove this once we bump react-native-macos to 0.84
+#if !os(macOS)
+      let packagerConnection = devSettings?.packagerConnection
+#else
+      let packagerConnection: RCTPackagerConnection? = RCTPackagerConnection.shared()
+#endif
+      packagerConnection?.addNotificationHandler(
         self.sendDevCommandNotificationHandler,
         queue: DispatchQueue.main,
         forMethod: "sendDevCommand"
       )
 
-    RCTPackagerConnection
-      .shared()
-      .addNotificationHandler(
+      packagerConnection?.addNotificationHandler(
         self.devMenuNotificationHanlder,
         queue: DispatchQueue.main,
         forMethod: "devMenu"
       )
+    }
 #endif
+  }
+
+  private func disableRnDevMenu(_ manager: DevMenuManager) {
+// TODO(gabrieldonadel): Remove this once we bump react-native-macos to 0.84
+#if !os(macOS)
+    let rctDevMenu: RCTDevMenu? = manager.currentAppContext?.nativeModule(named: "RCTDevMenu")
+    rctDevMenu?.devMenuEnabled = false
+    rctDevMenu?.keyboardShortcutsEnabled = false
+#endif
+    DevMenuKeyCommandsInterceptor.reinstall()
   }
 
   @objc
   func sendDevCommandNotificationHandler(_ params: [String: Any]) {
     guard let manager = manager,
-          let command = params["name"] as? String,
-          let bridge = manager.currentBridge
+      let command = params["name"] as? String,
+      let appContext = manager.currentAppContext
     else {
       return
     }
 
-    let devDelegate = DevMenuDevOptionsDelegate(forBridge: bridge)
+    let devDelegate = DevMenuDevOptionsDelegate(forAppContext: appContext)
 
     switch command {
     case "reload":
-      devDelegate.reload()
+      manager.reload()
     case "toggleDevMenu":
       self.manager?.toggleMenu()
-    case "toggleRemoteDebugging":
-      devDelegate.toggleRemoteDebugging()
     case "toggleElementInspector":
       devDelegate.toggleElementInsector()
     case "togglePerformanceMonitor":
       devDelegate.togglePerformanceMonitor()
-    case "reconnectReactDevTools":
-      // Emit the `RCTDevMenuShown` for the app to reconnect react-devtools
-      // https://github.com/facebook/react-native/blob/22ba1e45c52edcc345552339c238c1f5ef6dfc65/Libraries/Core/setUpReactDevTools.js#L80
-      bridge.enqueueJSCall("RCTNativeAppEventEmitter.emit", args: ["RCTDevMenuShown"])
     default:
       NSLog("Unknown command from packager: %@", command)
     }

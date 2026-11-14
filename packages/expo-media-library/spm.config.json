@@ -1,0 +1,34 @@
+{
+  "$schema": "../../tools/src/prebuilds/schemas/spm.config.schema.json",
+  "publishPrebuilds": true,
+  "products": [
+    {
+      "name": "ExpoMediaLibrary",
+      "podName": "ExpoMediaLibrary",
+      "platforms": ["iOS(\"16.4\")"],
+      "externalDependencies": [
+        "ReactNativeDependencies",
+        "React",
+        "Hermes",
+        "expo-modules-core/ExpoModulesCore"
+      ],
+      "targets": [
+        {
+          "type": "swift",
+          "name": "ExpoMediaLibrary",
+          "path": "ios",
+          "pattern": "**/*.swift",
+          "dependencies": [
+            "ReactNativeDependencies",
+            "React",
+            "Hermes",
+            "expo-modules-core/ExpoModulesCore"
+          ],
+          "linkedFrameworks": ["Foundation", "UIKit", "Photos", "PhotosUI"],
+          "exclude": ["Tests/**"],
+          "resources": [{ "path": "ios/PrivacyInfo.xcprivacy", "rule": "copy" }]
+        }
+      ]
+    }
+  ]
+}

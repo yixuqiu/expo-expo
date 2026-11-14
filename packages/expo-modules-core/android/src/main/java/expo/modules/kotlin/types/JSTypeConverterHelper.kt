@@ -8,7 +8,13 @@ import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
+import expo.modules.kotlin.records.formatters.FormattedRecord
+import expo.modules.kotlin.records.formatters.ValueOrSkip
+import io.github.expo.pika.PIntrospectionData
+import io.github.expo.pika.PIntrospectionProvider
+import io.github.expo.pika.PProperty
 import java.io.File
+import java.lang.reflect.Modifier
 import java.net.URI
 import java.net.URL
 import kotlin.reflect.KProperty1
@@ -18,71 +24,206 @@ import kotlin.reflect.full.memberProperties
 import kotlin.reflect.full.primaryConstructor
 import kotlin.reflect.jvm.isAccessible
 
-fun Record.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): WritableMap {
-  val result = containerProvider.createMap()
+/**
+ * Returns field key if property is annotated with [Field]
+ */
+private fun PProperty<Record, *>.asFieldKey(): String? {
+  val fieldAnnotation = annotations
+    .firstOrNull { annotation -> annotation.jClass == Field::class.java }
+    ?: return null
 
-  javaClass
+  val propertyName = (
+    fieldAnnotation
+      .arguments
+      .getOrDefault("key", name) as String
+    )
+    .ifEmpty { name }
+
+  return propertyName
+}
+
+private fun Record.getIntrospectionData(): PIntrospectionData<Record>? {
+  return if (this is PIntrospectionProvider) {
+    @Suppress("UNCHECKED_CAST")
+    getIntrospectionData() as? PIntrospectionData<Record>
+  } else {
+    null
+  }
+}
+
+fun Record.toJSValueExperimental(
+  introspectionData: PIntrospectionData<Record>? = this.getIntrospectionData()
+): Map<String, Any?> {
+  val result = mutableMapOf<String, Any?>()
+
+  if (introspectionData == null) {
+    javaClass
+      .kotlin
+      .memberProperties
+      .forEach { property ->
+        val fieldInformation = property.findAnnotation<Field>() ?: return@forEach
+        val jsKey = fieldInformation.key.takeUnless { it == "" } ?: property.name
+
+        property.isAccessible = true
+
+        val value = property.get(this)
+        val convertedValue = JSTypeConverterProvider.convertToJSValue(value, useExperimentalConverter = true)
+        result[jsKey] = convertedValue
+      }
+  } else {
+    introspectionData
+      .properties
+      .forEach { property ->
+        val propertyKey = property.asFieldKey() ?: return@forEach
+
+        val propValue = property.get(this)
+        val convertedValue = JSTypeConverterProvider.convertToJSValue(propValue, useExperimentalConverter = true)
+        result[propertyKey] = convertedValue
+      }
+  }
+
+  return result
+}
+
+fun FormattedRecord<*>.toJSValueExperimental(): Map<String, Any?> {
+  val result = mutableMapOf<String, Any?>()
+
+  record
+    .javaClass
     .kotlin
-    .memberProperties.map { property ->
-      val fieldInformation = property.findAnnotation<Field>() ?: return@map
+    .memberProperties
+    .forEach { property ->
+      val fieldInformation = property.findAnnotation<Field>() ?: return@forEach
       val jsKey = fieldInformation.key.takeUnless { it == "" } ?: property.name
 
       property.isAccessible = true
 
-      val value = property.get(this)
-      val convertedValue = JSTypeConverter.convertToJSValue(value, containerProvider)
-      result.putGeneric(jsKey, convertedValue)
+      val action = formatter.getAction(property)
+
+      val rawProperty = property.get(record)
+      val value = action?.invoke(record, rawProperty) ?: rawProperty
+
+      val unwrappedValue = if (value is ValueOrSkip<*>) {
+        when (value) {
+          is ValueOrSkip.Value<*> -> value.value
+          ValueOrSkip.Skip -> return@forEach
+        }
+      } else {
+        value
+      }
+
+      val convertedValue = JSTypeConverterProvider.convertToJSValue(unwrappedValue, useExperimentalConverter = true)
+      result[jsKey] = convertedValue
     }
 
   return result
 }
 
-fun Bundle.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): WritableMap {
+fun Record.toJSValue(
+  containerProvider: JSTypeConverterProvider.ContainerProvider,
+  introspectionData: PIntrospectionData<Record>? = this.getIntrospectionData()
+): WritableMap {
+  val result = containerProvider.createMap()
+
+  if (introspectionData == null) {
+    javaClass
+      .kotlin
+      .memberProperties
+      .forEach { property ->
+        val fieldInformation = property.findAnnotation<Field>() ?: return@forEach
+        val jsKey = fieldInformation.key.takeUnless { it == "" } ?: property.name
+
+        property.isAccessible = true
+
+        val value = property.get(this)
+        val convertedValue = JSTypeConverterProvider.legacyConvertToJSValue(value, containerProvider)
+        result.putGeneric(jsKey, convertedValue)
+      }
+  } else {
+    introspectionData
+      .properties
+      .forEach { property ->
+        val propertyKey = property.asFieldKey() ?: return@forEach
+
+        val value = property.get(this)
+        val convertedValue = JSTypeConverterProvider.legacyConvertToJSValue(value, containerProvider)
+        result.putGeneric(propertyKey, convertedValue)
+      }
+  }
+
+  return result
+}
+
+fun Bundle.toJSValueExperimental(): Map<String, Any?> {
+  val result = mutableMapOf<String, Any?>()
+
+  for (key in keySet()) {
+    @Suppress("DEPRECATION")
+    val value = get(key)
+    val convertedValue = JSTypeConverterProvider.convertToJSValue(value, useExperimentalConverter = true)
+    result[key] = convertedValue
+  }
+
+  return result
+}
+
+fun Bundle.toJSValue(containerProvider: JSTypeConverterProvider.ContainerProvider): WritableMap {
   val result = containerProvider.createMap()
 
   for (key in keySet()) {
+    @Suppress("DEPRECATION")
     val value = get(key)
-    val convertedValue = JSTypeConverter.convertToJSValue(value, containerProvider)
+    val convertedValue = JSTypeConverterProvider.legacyConvertToJSValue(value, containerProvider)
     result.putGeneric(key, convertedValue)
   }
 
   return result
 }
 
-fun <K, V> Map<K, V>.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): WritableMap {
+fun <K, V> Map<K, V>.toJSValueExperimental(): Map<String, Any?> {
+  return this.map { (key, value) ->
+    key.toString() to JSTypeConverterProvider.convertToJSValue(value, useExperimentalConverter = true)
+  }.toMap()
+}
+
+fun <K, V> Map<K, V>.toJSValue(containerProvider: JSTypeConverterProvider.ContainerProvider): WritableMap {
   val result = containerProvider.createMap()
 
   for ((key, value) in entries) {
-    val convertedValue = JSTypeConverter.convertToJSValue(value, containerProvider)
+    val convertedValue = JSTypeConverterProvider.legacyConvertToJSValue(value, containerProvider)
     result.putGeneric(key.toString(), convertedValue)
   }
 
   return result
 }
 
-fun <T> Iterable<T>.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): WritableArray {
+fun <T> Collection<T>.toJSValueExperimental(): Collection<Any?> {
+  return this.map { JSTypeConverterProvider.convertToJSValue(it, useExperimentalConverter = true) }
+}
+
+fun <T> Collection<T>.toJSValue(containerProvider: JSTypeConverterProvider.ContainerProvider): WritableArray {
   val result = containerProvider.createArray()
 
   for (value in this) {
-    val convertedValue = JSTypeConverter.convertToJSValue(value, containerProvider)
+    val convertedValue = JSTypeConverterProvider.legacyConvertToJSValue(value, containerProvider)
     result.putGeneric(convertedValue)
   }
 
   return result
 }
 
-fun <T> Array<T>.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): WritableArray {
+fun <T> Array<T>.toJSValue(containerProvider: JSTypeConverterProvider.ContainerProvider): WritableArray {
   val result = containerProvider.createArray()
 
   for (value in this) {
-    val convertedValue = JSTypeConverter.convertToJSValue(value, containerProvider)
+    val convertedValue = JSTypeConverterProvider.legacyConvertToJSValue(value, containerProvider)
     result.putGeneric(convertedValue)
   }
 
   return result
 }
 
-fun IntArray.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): WritableArray {
+fun IntArray.toJSValue(containerProvider: JSTypeConverterProvider.ContainerProvider): WritableArray {
   return containerProvider.createArray().also {
     for (value in this) {
       it.pushInt(value)
@@ -90,7 +231,15 @@ fun IntArray.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): Wr
   }
 }
 
-fun FloatArray.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): WritableArray {
+fun LongArray.toJSValue(containerProvider: JSTypeConverterProvider.ContainerProvider): WritableArray {
+  return containerProvider.createArray().also {
+    for (value in this) {
+      it.pushLong(value)
+    }
+  }
+}
+
+fun FloatArray.toJSValue(containerProvider: JSTypeConverterProvider.ContainerProvider): WritableArray {
   return containerProvider.createArray().also {
     for (value in this) {
       it.pushDouble(value.toDouble())
@@ -98,7 +247,7 @@ fun FloatArray.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): 
   }
 }
 
-fun DoubleArray.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): WritableArray {
+fun DoubleArray.toJSValue(containerProvider: JSTypeConverterProvider.ContainerProvider): WritableArray {
   return containerProvider.createArray().also {
     for (value in this) {
       it.pushDouble(value)
@@ -106,7 +255,7 @@ fun DoubleArray.toJSValue(containerProvider: JSTypeConverter.ContainerProvider):
   }
 }
 
-fun BooleanArray.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): WritableArray {
+fun BooleanArray.toJSValue(containerProvider: JSTypeConverterProvider.ContainerProvider): WritableArray {
   return containerProvider.createArray().also {
     for (value in this) {
       it.pushBoolean(value)
@@ -126,7 +275,18 @@ fun Enum<*>.toJSValue(): Any? {
 
     @Suppress("UNCHECKED_CAST")
     val parameterProperty = this::class.declaredMemberProperties
-      .find { it.name == parameterName } as KProperty1<Enum<*>, *>
+      .find { it.name == parameterName } as? KProperty1<Enum<*>, *>
+
+    // Minifiers can rename the parameter in the Kotlin metadata (for example, to `p0`) and keep the property name.
+    if (parameterProperty == null) {
+      val fields = declaringJavaClass.declaredFields
+        .filter { !Modifier.isStatic(it.modifiers) && !it.isSynthetic }
+      return when (fields.size) {
+        0 -> name
+        1 -> fields.first().apply { isAccessible = true }.get(this)
+        else -> throw IllegalStateException("Enum '$javaClass' cannot be used as return type (incompatible with JS)")
+      }
+    }
 
     return parameterProperty.get(this)
   }
@@ -150,10 +310,10 @@ fun File.toJSValue(): String {
   return absolutePath
 }
 
-fun Pair<*, *>.toJSValue(containerProvider: JSTypeConverter.ContainerProvider): WritableArray {
+fun Pair<*, *>.toJSValue(containerProvider: JSTypeConverterProvider.ContainerProvider): WritableArray {
   return containerProvider.createArray().also {
-    val convertedFirst = JSTypeConverter.convertToJSValue(first, containerProvider)
-    val convertedSecond = JSTypeConverter.convertToJSValue(second, containerProvider)
+    val convertedFirst = JSTypeConverterProvider.legacyConvertToJSValue(first, containerProvider)
+    val convertedSecond = JSTypeConverterProvider.legacyConvertToJSValue(second, containerProvider)
     it.putGeneric(convertedFirst)
     it.putGeneric(convertedSecond)
   }
@@ -166,6 +326,7 @@ internal fun WritableMap.putGeneric(key: String, value: Any?) {
     is ReadableMap -> putMap(key, value)
     is String -> putString(key, value)
     is Int -> putInt(key, value)
+    is Long -> putLong(key, value)
     is Number -> putDouble(key, value.toDouble())
     is Boolean -> putBoolean(key, value)
     else -> throw IllegalArgumentException("Could not put '${value.javaClass}' to WritableMap")
@@ -179,6 +340,7 @@ internal fun WritableArray.putGeneric(value: Any?) {
     is ReadableMap -> pushMap(value)
     is String -> pushString(value)
     is Int -> pushInt(value)
+    is Long -> pushLong(value)
     is Number -> pushDouble(value.toDouble())
     is Boolean -> pushBoolean(value)
     else -> throw IllegalArgumentException("Could not put '${value.javaClass}' to WritableArray")

@@ -1,6 +1,5 @@
 
 #import "EXStatusBarManager.h"
-#import "EXUnversioned.h"
 
 #import <React/RCTEventDispatcher.h>
 #import <React/RCTLog.h>
@@ -32,6 +31,8 @@ RCT_ENUM_CONVERTER(UIStatusBarAnimation, (@{
 
 @implementation EXStatusBarManager
 
+@synthesize bridge = _bridge;
+
 + (NSString *)moduleName { return @"RCTStatusBarManager"; }
 
 - (NSArray<NSString *> *)supportedEvents
@@ -40,20 +41,32 @@ RCT_ENUM_CONVERTER(UIStatusBarAnimation, (@{
            @"statusBarFrameWillChange"];
 }
 
-#if !TARGET_OS_TV
+#if !TARGET_OS_TV 
 
 - (void)setBridge:(RCTBridge *)bridge
 {
-  [super setBridge:bridge];
-  _capturedStatusBarProperties = [[self _currentStatusBarProperties] mutableCopy];
+  _bridge = bridge;
+
+  // `_currentStatusBarProperties` reads UIApplication properties that require the main thread.
+  // Under bridgeless/TurboModule, `setBridge:` is invoked on the JS thread during lazy module
+  // construction, so hop to the main queue for the initial capture.
+  void (^captureProperties)(void) = ^{
+    self->_capturedStatusBarProperties = [[self _currentStatusBarProperties] mutableCopy];
+  };
+  if ([NSThread isMainThread]) {
+    captureProperties();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), captureProperties);
+  }
+
   [[NSNotificationCenter defaultCenter] addObserver:self
                                            selector:@selector(_bridgeDidForeground:)
-                                               name:EX_UNVERSIONED(@"EXKernelBridgeDidForegroundNotification")
+                                               name:@"EXKernelBridgeDidForegroundNotification"
                                              object:self.bridge];
-  
+
   [[NSNotificationCenter defaultCenter] addObserver:self
                                            selector:@selector(_bridgeDidBackground:)
-                                               name:EX_UNVERSIONED(@"EXKernelBridgeDidBackgroundNotification")
+                                               name:@"EXKernelBridgeDidBackgroundNotification"
                                              object:self.bridge];
 }
 
@@ -186,7 +199,7 @@ RCT_EXPORT_METHOD(_applyPropertiesAndForget:(NSDictionary *)properties)
 {
   UIApplication *currentApplication = RCTSharedApplication();
   return @{
-    @"style": @(currentApplication.statusBarStyle),
+    @"style": @(RCTUIStatusBarManager().statusBarStyle),
     @"networkActivityIndicatorVisible": @(currentApplication.isNetworkActivityIndicatorVisible),
     @"hidden": @(currentApplication.isStatusBarHidden),
   };

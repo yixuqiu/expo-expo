@@ -1,10 +1,14 @@
 {
-  "name": "expo-screen-capture",
-  "platforms": ["ios", "android", "web"],
-  "android": {
-    "modules": ["expo.modules.screencapture.ScreenCaptureModule"]
-  },
-  "ios": {
+  "platforms": ["apple", "android", "web"],
+  "apple": {
     "modules": ["ScreenCaptureModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.screencapture.ScreenCaptureModule"],
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.screencapture",
+      "repository": "local-maven-repo"
+    }
   }
 }

@@ -1,21 +1,17 @@
-import { css } from '@emotion/react';
-import { LinkBase, shadows, theme } from '@expo/styleguide';
-import { borderRadius, spacing } from '@expo/styleguide-base';
-import { TriangleDownIcon } from '@expo/styleguide-icons';
+import { LinkBase, mergeClasses } from '@expo/styleguide';
+import { TriangleDownIcon } from '@expo/styleguide-icons/custom/TriangleDownIcon';
+import { motion } from 'framer-motion';
 import { useRouter } from 'next/compat/router';
 import {
   type ComponentType,
   type PropsWithChildren,
   type ReactNode,
   useRef,
-  useState,
   useEffect,
-  MouseEventHandler,
+  useState,
 } from 'react';
 
-import withHeadingManager, {
-  HeadingManagerProps,
-} from '~/components/page-higher-order/withHeadingManager';
+import withHeadingManager, { HeadingManagerProps } from '~/common/withHeadingManager';
 import { PermalinkIcon } from '~/ui/components/Permalink';
 import { DEMI } from '~/ui/components/Text';
 
@@ -29,6 +25,7 @@ type CollapsibleProps = PropsWithChildren<{
    */
   open?: boolean;
   testID?: string;
+  className?: string;
 }>;
 
 const Collapsible: ComponentType<CollapsibleProps> = withHeadingManager(
@@ -36,136 +33,101 @@ const Collapsible: ComponentType<CollapsibleProps> = withHeadingManager(
     summary,
     testID,
     children,
+    className,
     headingManager,
     open = false,
   }: CollapsibleProps & HeadingManagerProps) => {
-    // track open state so we can collapse header if it is set to open by the URL hash
-    const [isOpen, setOpen] = useState<boolean>(open);
+    const [isOpen, setIsOpen] = useState(open);
     const router = useRouter();
+    const detailsRef = useRef<HTMLDetailsElement>(null);
 
     // HeadingManager is used to generate a slug that corresponds to the collapsible summary.
     // These are normally generated for MD (#) headings, but Collapsible doesn't have those.
     // This is a ref because identical tags will keep incrementing the number if it is not.
     const heading = useRef(headingManager.addHeading(summary, 1, undefined));
 
-    // expand collapsible if the current hash matches the heading
+    // note(simek) expand collapsible if the current hash matches the heading
     useEffect(() => {
       if (router?.asPath) {
         const splitUrl = router.asPath.split('#');
-        const hash = splitUrl.length ? splitUrl[1] : undefined;
+        const hash = splitUrl.length > 0 ? splitUrl[1] : undefined;
         if (hash && hash === heading.current.slug) {
-          setOpen(true);
+          detailsRef?.current?.setAttribute('open', '');
         }
       }
     }, []);
 
-    const onToggle: MouseEventHandler<HTMLElement> = event => {
-      // Detect if we are clicking the PermalinkIcon. Probably a better way to do this?
-      if (event.target instanceof SVGElement) {
-        if (!isOpen) {
-          setOpen(true);
-        }
-      } else {
-        setOpen(!isOpen);
-        // Ensure that the collapsible opens nicely on the first click
-        event.preventDefault();
-      }
-    };
-
     return (
-      <details id={heading.current.slug} css={detailsStyle} open={isOpen} data-testid={testID}>
-        <summary css={summaryStyle} className="group" onClick={onToggle}>
-          <div css={markerWrapperStyle}>
-            <TriangleDownIcon className="icon-sm text-icon-default" css={markerStyle} />
+      <details
+        ref={detailsRef}
+        id={heading.current.slug}
+        onToggle={event => {
+          setIsOpen(event.currentTarget.open);
+        }}
+        className={mergeClasses(
+          'mb-3 scroll-m-4 rounded-3xl border border-default bg-default p-0',
+          '[&[open]]:shadow-xs',
+          '[h4+&]:mt-3 [li>&]:mt-3 [p+&]:mt-3',
+          className
+        )}
+        open={isOpen}
+        data-testid={testID}
+        data-md="collapsible">
+        <summary
+          className={mergeClasses(
+            'group m-0 grid cursor-pointer grid-cols-[min-content_auto_min-content_1fr] items-center rounded-3xl bg-subtle p-1.5 pr-3',
+            '[details[open]>&]:rounded-b-none',
+            '[&_h4]:my-0',
+            '[&_code]:mt-px [&_code]:inline [&_code]:bg-element [&_code]:pb-px [&_code]:text-[85%] [&_code]:leading-snug'
+          )}>
+          <div className="mt-1.25 mr-2 ml-1.5 self-baseline">
+            <TriangleDownIcon
+              aria-hidden="true"
+              className={mergeClasses(
+                'icon-sm text-icon-default',
+                '-rotate-90 transition-transform duration-200',
+                '[details[open]>summary_&]:rotate-0'
+              )}
+            />
           </div>
-          <span className="inline-flex gap-1.5 items-center scroll-m-5 mr-2 relative">
-            <DEMI>{summary}</DEMI>
-          </span>
-          <LinkBase href={'#' + heading.current.slug} ref={heading.current.ref}>
-            <PermalinkIcon className="icon-sm inline-flex invisible group-hover:visible group-focus-visible:visible" />
+          <DEMI
+            className={mergeClasses(
+              'relative mr-1 inline scroll-m-5 items-center gap-1.5',
+              'group-hover:text-secondary group-hover:[&_code]:text-secondary'
+            )}>
+            {summary}
+          </DEMI>
+          <LinkBase
+            href={'#' + heading.current.slug}
+            ref={heading.current.ref}
+            skipNextLink
+            onClick={() => {
+              detailsRef?.current?.setAttribute('open', '');
+            }}
+            className="ml-auto inline rounded-md p-1 hocus:bg-element"
+            aria-label="Permalink">
+            <PermalinkIcon className="invisible inline-flex icon-sm group-hover:visible group-focus-visible:visible" />
           </LinkBase>
+          <div />
         </summary>
-        <div css={contentStyle} className="last:[&>*]:!mb-1">
-          {children}
-        </div>
+        <motion.div
+          initial={false}
+          animate={{
+            transition: { type: 'tween' },
+            height: isOpen ? 'auto' : 0,
+          }}
+          className="overflow-hidden">
+          <div
+            className={mergeClasses(
+              'px-5 py-4',
+              '[&_p]:ml-0 [&_pre>pre]:mt-0 [&>*:last-child]:mb-1!'
+            )}>
+            {children}
+          </div>
+        </motion.div>
       </details>
     );
   }
 );
 
 export { Collapsible };
-
-const detailsStyle = css({
-  overflow: 'hidden',
-  background: theme.background.default,
-  border: `1px solid ${theme.border.default}`,
-  borderRadius: borderRadius.md,
-  padding: 0,
-  marginBottom: spacing[3],
-
-  '&[open]': {
-    boxShadow: shadows.xs,
-  },
-
-  'h4 + &, p + &, li > &': {
-    marginTop: spacing[3],
-  },
-});
-
-const summaryStyle = css({
-  display: 'grid',
-  gridTemplateColumns: 'min-content auto 1fr',
-  alignItems: 'center',
-  userSelect: 'none',
-  listStyle: 'none',
-  backgroundColor: theme.background.subtle,
-  padding: spacing[1.5],
-  paddingRight: spacing[3],
-  margin: 0,
-  cursor: 'pointer',
-
-  '&:hover span': {
-    color: theme.text.secondary,
-  },
-
-  '::-webkit-details-marker': {
-    display: 'none',
-  },
-
-  h4: {
-    marginTop: 0,
-    marginBottom: 0,
-  },
-
-  code: {
-    backgroundColor: theme.background.element,
-    display: 'inline',
-    fontSize: '90%',
-  },
-});
-
-const markerWrapperStyle = css({
-  alignSelf: 'baseline',
-  marginTop: 5,
-  marginLeft: spacing[1.5],
-  marginRight: spacing[2],
-});
-
-const markerStyle = css({
-  transform: 'rotate(-90deg)',
-  transition: `transform 200ms`,
-
-  'details[open] &': { transform: 'rotate(0)' },
-});
-
-const contentStyle = css({
-  padding: `${spacing[4]}px ${spacing[5]}px`,
-
-  p: {
-    marginLeft: 0,
-  },
-
-  'pre > pre': {
-    marginTop: 0,
-  },
-});

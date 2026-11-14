@@ -1,17 +1,16 @@
 import assert from 'assert';
 import chalk from 'chalk';
 
+import { Log } from '../log';
 import { env } from './env';
+import { event } from './events';
 import { memoize } from './fn';
 import { learnMore } from './link';
 import { isUrlAvailableAsync } from './url';
-import { fetchAsync } from '../api/rest/client';
-import { Log } from '../log';
 
-const debug = require('debug')('expo:utils:validateApplicationId') as typeof console.log;
-
+// TODO: Adjust to indicate that the bundle identifier must start with a letter, period, or hyphen.
 const IOS_BUNDLE_ID_REGEX = /^[a-zA-Z0-9-.]+$/;
-const ANDROID_PACKAGE_REGEX = /^(?!.*\bnative\b)[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
+const ANDROID_PACKAGE_REGEX = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
 
 /** Validate an iOS bundle identifier. */
 export function validateBundleId(value: string): boolean {
@@ -35,10 +34,56 @@ export function validatePackageWithWarning(value: string): true | string {
     return `Package name must contain more than one segment, separated by ".", e.g. com.${value}`;
   }
   if (!ANDROID_PACKAGE_REGEX.test(value)) {
-    return 'Invalid characters in Android package name. Only alphanumeric characters, "." and "_" are allowed, and each "." must be followed by a letter or number.';
+    return 'Invalid characters in Android package name. Only alphanumeric characters, "." and "_" are allowed, and each segment start with a letter.';
   }
 
   return true;
+}
+
+export function getSanitizedPackage(value: string) {
+  // It's common to use dashes in your node project name, strip them from the suggested package name.
+  let output = value
+    // Oracle recommends package names are "legalized" by converting hyphen to an underscore and removing unsupported characters
+    // https://docs.oracle.com/javase/tutorial/java/package/namingpkgs.html
+    // However, life is much nicer when the bundle identifier and package name are the same and iOS has the inverse rule— converting underscores to hyphens.
+    // So we'll simply remove hyphens and illegal characters for Android.
+    .replace(/[^a-zA-Z0-9_.]/g, '')
+    // Prevent multiple '.' in a row (e.g. no zero-length segments).
+    .replace(/\.+/g, '.')
+    // Prevent '.' from the start or end.
+    .replace(/^\.|\.$/g, '');
+
+  output ||= 'app';
+
+  // Prepend extra segments
+  let segments = output.split('.').length;
+  while (segments < 2) {
+    output = `com.${output}`;
+    segments += 1;
+  }
+
+  // Ensure each dot has a letter or number after it
+  output = output
+    .split('.')
+    .map((segment) => {
+      segment = /^[a-zA-Z]/.test(segment) ? segment : 'x' + segment;
+
+      if (RESERVED_ANDROID_PACKAGE_NAME_SEGMENTS.includes(segment)) {
+        segment = 'x' + segment;
+      }
+      return segment;
+    })
+    .join('.');
+
+  return output;
+}
+
+export function getSanitizedBundleIdentifier(value: string) {
+  // According to the behavior observed when using the UI in Xcode.
+  // Must start with a letter, period, or hyphen (not number).
+  // Can only contain alphanumeric characters, periods, and hyphens.
+  // Can have empty segments (e.g. com.example..app).
+  return value.replace(/(^[^a-zA-Z.-]|[^a-zA-Z0-9-.])/g, '-');
 }
 
 // https://en.wikipedia.org/wiki/List_of_Java_keywords
@@ -118,7 +163,7 @@ export function assertValidPackage(value: string) {
   assert.match(
     value,
     ANDROID_PACKAGE_REGEX,
-    `Invalid format of Android package name. Only alphanumeric characters, '.' and '_' are allowed, and each '.' must be followed by a letter. The Java keyword 'native' is not allowed.`
+    `Invalid format of Android package name. Only alphanumeric characters, '.' and '_' are allowed, and each '.' must be followed by a letter. Reserved Java keywords are not allowed.`
   );
 }
 
@@ -130,24 +175,22 @@ export async function getBundleIdWarningInternalAsync(bundleId: string): Promise
   }
 
   if (!(await isUrlAvailableAsync('itunes.apple.com'))) {
-    debug(
-      `Couldn't connect to iTunes Store to check bundle ID ${bundleId}. itunes.apple.com may be down.`
-    );
+    event('bundle_id_no_network', { bundleId });
     // If no network, simply skip the warnings since they'll just lead to more confusion.
     return null;
   }
 
   const url = `http://itunes.apple.com/lookup?bundleId=${bundleId}`;
   try {
-    debug(`Checking iOS bundle ID '${bundleId}' at: ${url}`);
-    const response = await fetchAsync(url);
-    const json = await response.json();
+    event('bundle_id_checking', { bundleId, url });
+    const response = await fetch(url);
+    const json: any = await response.json();
     if (json.resultCount > 0) {
       const firstApp = json.results[0];
       return formatInUseWarning(firstApp.trackName, firstApp.sellerName, bundleId);
     }
   } catch (error: any) {
-    debug(`Error checking bundle ID ${bundleId}: ${error.message}`);
+    event('bundle_id_check_error', { bundleId, error: event.error(error as Error) });
     // Error fetching itunes data.
   }
   return null;
@@ -166,17 +209,15 @@ export async function getPackageNameWarningInternalAsync(
   }
 
   if (!(await isUrlAvailableAsync('play.google.com'))) {
-    debug(
-      `Couldn't connect to Play Store to check package name ${packageName}. play.google.com may be down.`
-    );
+    event('package_name_no_network', { packageName });
     // If no network, simply skip the warnings since they'll just lead to more confusion.
     return null;
   }
 
   const url = `https://play.google.com/store/apps/details?id=${packageName}`;
   try {
-    debug(`Checking Android package name '${packageName}' at: ${url}`);
-    const response = await fetchAsync(url);
+    event('package_name_checking', { packageName, url });
+    const response = await fetch(url);
     // If the page exists, then warn the user.
     if (response.status === 200) {
       // There is no JSON API for the Play Store so we can't concisely
@@ -187,7 +228,7 @@ export async function getPackageNameWarningInternalAsync(
     }
   } catch (error: any) {
     // Error fetching play store data or the page doesn't exist.
-    debug(`Error checking package name ${packageName}: ${error.message}`);
+    event('package_name_check_error', { packageName, error: event.error(error as Error) });
   }
   return null;
 }

@@ -1,19 +1,39 @@
-apply plugin: 'com.android.library'
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
 
 group = 'expo.modules.audio'
-version = '0.1.0'
-
-def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
-apply from: expoModulesCorePlugin
-applyKotlinExpoModulesCorePlugin()
-useCoreDependencies()
-useDefaultAndroidSdkVersions()
-useExpoPublishing()
+version = '58.0.10'
 
 android {
   namespace "expo.modules.audio"
   defaultConfig {
     versionCode 1
-    versionName "0.1.0"
+    versionName "58.0.10"
   }
+
+  compileOptions {
+    targetCompatibility JavaVersion.VERSION_1_8
+  }
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  implementation 'androidx.core:core-ktx:1.15.0'
+
+  def androidxMedia3Version = "1.9.1"
+  implementation "androidx.media3:media3-session:$androidxMedia3Version"
+  implementation "androidx.media3:media3-exoplayer:$androidxMedia3Version"
+  implementation "androidx.media3:media3-exoplayer-dash:$androidxMedia3Version"
+  implementation "androidx.media3:media3-datasource:$androidxMedia3Version"
+  implementation "androidx.media3:media3-datasource-okhttp:$androidxMedia3Version"
+  implementation "androidx.media3:media3-exoplayer-hls:$androidxMedia3Version"
+  implementation "androidx.media3:media3-exoplayer-smoothstreaming:$androidxMedia3Version"
+
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'io.mockk:mockk:1.14.9'
 }

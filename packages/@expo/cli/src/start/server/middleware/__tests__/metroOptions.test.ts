@@ -1,4 +1,72 @@
-import { createBundleUrlPath, getMetroDirectBundleOptions } from '../metroOptions';
+import type { ExpoConfig } from '@expo/config';
+import { env } from 'node:process';
+
+import {
+  createBundleUrlPath,
+  getAsyncRoutesFromExpoConfig,
+  getChunkingStrategyFromExpoConfig,
+  getMetroDirectBundleOptions,
+  getMetroDirectBundleOptionsForExpoConfig,
+} from '../metroOptions';
+
+describe('chunking options', () => {
+  it.each([
+    { experiments: undefined, expectedStrategy: 'legacy' },
+    { experiments: {}, expectedStrategy: 'legacy' },
+    { experiments: { chunking: { mode: 'legacy' } }, expectedStrategy: 'legacy' },
+    { experiments: { chunking: { mode: 'granular' } }, expectedStrategy: 'granular' },
+    {
+      experiments: { chunking: { mode: 'granular' }, reactServerComponentRoutes: true },
+      expectedStrategy: 'legacy',
+    },
+    {
+      experiments: { chunking: { mode: 'granular' }, reactServerFunctions: true },
+      expectedStrategy: 'legacy',
+    },
+    {
+      experiments: {
+        chunking: { mode: 'granular' },
+        reactServerComponentRoutes: true,
+        reactServerFunctions: true,
+      },
+      expectedStrategy: 'legacy',
+    },
+  ] as const)('selects $expectedStrategy for $experiments', ({ experiments, expectedStrategy }) => {
+    const result = getMetroDirectBundleOptionsForExpoConfig(
+      '/app',
+      {
+        name: 'test',
+        slug: 'test',
+        experiments,
+      },
+      {
+        mainModuleName: '/app/index.js',
+        mode: 'production',
+        platform: 'web',
+        isExporting: true,
+        splitChunks: true,
+      }
+    );
+    expect(result.serializerOptions).toMatchObject({
+      chunkingStrategy: expectedStrategy,
+      splitChunks: true,
+    });
+  });
+
+  it.each(['legacy', 'granular'] as const)(
+    'keeps %s chunking independent of the async routes setting',
+    (mode) => {
+      const config = {
+        name: 'test',
+        slug: 'test',
+        experiments: { chunking: { mode } } as ExpoConfig['experiments'],
+        extra: { router: { asyncRoutes: false } },
+      };
+      expect(getChunkingStrategyFromExpoConfig(config)).toBe(mode);
+      expect(getAsyncRoutesFromExpoConfig(config, 'production', 'web')).toBe(false);
+    }
+  );
+});
 
 describe(getMetroDirectBundleOptions, () => {
   it(`asserts unsupported options: using bytecode on web`, () => {
@@ -6,15 +74,15 @@ describe(getMetroDirectBundleOptions, () => {
       getMetroDirectBundleOptions({
         bytecode: true,
         platform: 'web',
-      })
-    ).toThrowError(/Cannot use bytecode with the web platform/);
+      } as any)
+    ).toThrow(/Cannot use bytecode with the web platform/);
   });
   it(`asserts unsupported options: using bytecode without hermes`, () => {
     expect(() =>
       getMetroDirectBundleOptions({
         bytecode: true,
-      })
-    ).toThrowError(/Bytecode is only supported with the Hermes engine/);
+      } as any)
+    ).toThrow(/Bytecode is only supported with the Hermes engine/);
   });
 
   it(`returns basic options`, () => {
@@ -25,17 +93,25 @@ describe(getMetroDirectBundleOptions, () => {
         platform: 'ios',
         baseUrl: '/foo/',
         isExporting: false,
+        bytecode: false,
+        reactCompiler: false,
       })
     ).toEqual({
       customResolverOptions: {},
-      customTransformOptions: { preserveEnvVars: false, baseUrl: '/foo/' },
-      serializerOptions: {},
+      customTransformOptions: {
+        baseUrl: '/foo/',
+      },
+      serializerOptions: {
+        includeSourceMaps: undefined,
+        excludeSource: false,
+      },
       dev: true,
       entryFile: '/index.js',
       inlineSourceMap: false,
       minify: false,
       platform: 'ios',
       unstable_transformProfile: 'default',
+      shallow: false,
     });
   });
   it(`injects source url if serializer options are provided`, () => {
@@ -46,14 +122,17 @@ describe(getMetroDirectBundleOptions, () => {
         platform: 'ios',
         serializerIncludeMaps: true,
         isExporting: false,
+        bytecode: false,
+        reactCompiler: false,
       })
     ).toEqual({
       sourceUrl:
         'http://localhost:8081/index.js.bundle?platform=ios&dev=true&hot=false&serializer.map=true',
       customResolverOptions: {},
-      customTransformOptions: { preserveEnvVars: false },
+      customTransformOptions: {},
       serializerOptions: {
         includeSourceMaps: true,
+        excludeSource: false,
       },
       sourceMapUrl:
         'http://localhost:8081/index.js.map?platform=ios&dev=true&hot=false&serializer.map=true',
@@ -63,6 +142,29 @@ describe(getMetroDirectBundleOptions, () => {
       minify: false,
       platform: 'ios',
       unstable_transformProfile: 'default',
+      shallow: false,
+    });
+  });
+  describe(`live bindings`, () => {
+    afterEach(() => {
+      delete env.EXPO_UNSTABLE_LIVE_BINDINGS;
+    });
+    it(`enables live bindings by default`, () => {
+      expect(
+        getMetroDirectBundleOptions({} as any).customTransformOptions?.liveBindings
+      ).toBeUndefined();
+    });
+    it(`enables live bindings by default`, () => {
+      env.EXPO_UNSTABLE_LIVE_BINDINGS = 'true';
+      expect(
+        getMetroDirectBundleOptions({} as any).customTransformOptions?.liveBindings
+      ).toBeUndefined();
+    });
+    it(`enables live bindings by default`, () => {
+      env.EXPO_UNSTABLE_LIVE_BINDINGS = '0';
+      expect(getMetroDirectBundleOptions({} as any).customTransformOptions?.liveBindings).toBe(
+        'false'
+      );
     });
   });
 });
@@ -99,6 +201,24 @@ describe(createBundleUrlPath, () => {
         lazy: true,
         isExporting: true,
       })
-    ).toEqual('/index.bundle?platform=ios&dev=true&hot=false');
+    ).toEqual('/index.bundle?platform=ios&dev=true&hot=false&resolver.exporting=true');
+  });
+  it(`distinguishes a loader bundle from the full bundle of the same entry`, () => {
+    const options = {
+      mainModuleName: 'app/index',
+      mode: 'development',
+      platform: 'web',
+      environment: 'node',
+      isExporting: false,
+    } as const;
+    const loaderUrl = createBundleUrlPath({ ...options, isLoaderBundle: true });
+    expect(loaderUrl).not.toEqual(createBundleUrlPath(options));
+    // Metro reads `transform.*` params back into the custom transform options it bundles with.
+    expect(
+      new URL(loaderUrl, 'http://localhost').searchParams.get('transform.isLoaderBundle')
+    ).toBe(
+      getMetroDirectBundleOptions({ ...options, isLoaderBundle: true }).customTransformOptions
+        ?.isLoaderBundle
+    );
   });
 });

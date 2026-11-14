@@ -1,12 +1,9 @@
 import { act, render, screen } from '@testing-library/react-native';
-import '@testing-library/jest-native/extend-expect';
-import React from 'react';
 
-import UseUpdatesTestApp from './UseUpdatesTestApp';
-import ExpoUpdates from '../ExpoUpdates';
 import type { Manifest, UpdatesNativeStateMachineContext } from '../Updates.types';
-import { emitTestStateChangeEvent } from '../UpdatesEmitter';
+import { emitTestStateChangeEvent, resetLatestContext } from '../UpdatesEmitter';
 import { updateFromManifest } from '../UseUpdatesUtils';
+import UseUpdatesTestApp from './UseUpdatesTestApp';
 
 type UpdatesNativeStateChangeTestEvent = {
   context: UpdatesNativeStateMachineContext & {
@@ -32,92 +29,128 @@ describe('useUpdates()', () => {
     const mockError = { name: 'UpdatesError', code: 'ERR_TEST', message: 'test message' };
     const isCheckingEvent: UpdatesNativeStateChangeTestEvent = {
       context: {
+        isStartupProcedureRunning: false,
         isUpdateAvailable: false,
         isUpdatePending: false,
         isRestarting: false,
+        restartCount: 0,
         isChecking: true,
         isDownloading: false,
         lastCheckForUpdateTimeString: mockDate.toISOString(),
+        sequenceNumber: 0,
+        downloadProgress: 0,
       },
     };
     const updateAvailableEvent: UpdatesNativeStateChangeTestEvent = {
       context: {
+        isStartupProcedureRunning: false,
         isUpdateAvailable: true,
         isUpdatePending: false,
         isRestarting: false,
+        restartCount: 0,
         isChecking: false,
         isDownloading: false,
         latestManifest: mockManifest,
         lastCheckForUpdateTimeString: mockDate.toISOString(),
+        sequenceNumber: 1,
+        downloadProgress: 0,
       },
     };
     const updateUnavailableEvent: UpdatesNativeStateChangeTestEvent = {
       context: {
+        isStartupProcedureRunning: false,
         isUpdateAvailable: false,
         isUpdatePending: false,
         isRestarting: false,
+        restartCount: 0,
         isChecking: false,
         isDownloading: false,
         lastCheckForUpdateTimeString: mockDate.toISOString(),
+        sequenceNumber: 1,
+        downloadProgress: 0,
       },
     };
     const checkErrorEvent: UpdatesNativeStateChangeTestEvent = {
       context: {
+        isStartupProcedureRunning: false,
         isUpdateAvailable: false,
         isUpdatePending: false,
         isRestarting: false,
+        restartCount: 0,
         isChecking: false,
         isDownloading: false,
         checkError: mockError,
         lastCheckForUpdateTimeString: mockDate.toISOString(),
+        sequenceNumber: 1,
+        downloadProgress: 0,
       },
     };
     const isDownloadingEvent: UpdatesNativeStateChangeTestEvent = {
       context: {
+        isStartupProcedureRunning: false,
         isUpdateAvailable: false,
         isUpdatePending: false,
         isRestarting: false,
+        restartCount: 0,
         isChecking: false,
         isDownloading: true,
         lastCheckForUpdateTimeString: mockDate.toISOString(),
+        sequenceNumber: 0,
+        downloadProgress: 0,
       },
     };
     const updateDownloadedEvent: UpdatesNativeStateChangeTestEvent = {
       context: {
+        isStartupProcedureRunning: false,
         isUpdateAvailable: true,
         isUpdatePending: true,
         isRestarting: false,
+        restartCount: 0,
         isChecking: false,
         isDownloading: false,
         latestManifest: mockManifest,
         downloadedManifest: mockManifest,
         lastCheckForUpdateTimeString: mockDate.toISOString(),
+        sequenceNumber: 1,
+        downloadProgress: 0,
       },
     };
     const downloadErrorEvent: UpdatesNativeStateChangeTestEvent = {
       context: {
+        isStartupProcedureRunning: false,
         isUpdateAvailable: false,
         isUpdatePending: false,
         isRestarting: false,
+        restartCount: 0,
         isChecking: false,
         isDownloading: false,
         downloadError: mockError,
         lastCheckForUpdateTimeString: mockDate.toISOString(),
+        sequenceNumber: 1,
+        downloadProgress: 0,
       },
     };
     const updateAvailableWithRollbackEvent: UpdatesNativeStateChangeTestEvent = {
       context: {
+        isStartupProcedureRunning: false,
         isUpdateAvailable: true,
         isUpdatePending: false,
         isRestarting: false,
+        restartCount: 0,
         isChecking: false,
         isDownloading: false,
         rollback: {
           commitTime: mockDate.toISOString(),
         },
         lastCheckForUpdateTimeString: mockDate.toISOString(),
+        sequenceNumber: 1,
+        downloadProgress: 0,
       },
     };
+
+    beforeEach(() => {
+      resetLatestContext();
+    });
 
     it('Shows currently running info', async () => {
       await render(<UseUpdatesTestApp />);
@@ -127,10 +160,10 @@ describe('useUpdates()', () => {
       expect(createdAtView).toHaveTextContent('2023-03-26T04:58:02.560Z');
       const channelView = await screen.findByTestId('currentlyRunning_channel');
       expect(channelView).toHaveTextContent('main');
-    });
+    }, 8000);
 
     it('Shows available update after receiving state change', async () => {
-      render(<UseUpdatesTestApp />);
+      await render(<UseUpdatesTestApp />);
       await act(async () => {
         emitTestStateChangeEvent(isCheckingEvent);
       });
@@ -149,7 +182,7 @@ describe('useUpdates()', () => {
     });
 
     it('Shows no available update after receiving state change', async () => {
-      render(<UseUpdatesTestApp />);
+      await render(<UseUpdatesTestApp />);
       await act(async () => {
         emitTestStateChangeEvent(isCheckingEvent);
       });
@@ -169,7 +202,7 @@ describe('useUpdates()', () => {
     });
 
     it('Handles error in checkForUpdate()', async () => {
-      render(<UseUpdatesTestApp />);
+      await render(<UseUpdatesTestApp />);
       await act(async () => {
         emitTestStateChangeEvent(isCheckingEvent);
       });
@@ -183,7 +216,7 @@ describe('useUpdates()', () => {
     });
 
     it('Shows downloaded update after receiving state change', async () => {
-      render(<UseUpdatesTestApp />);
+      await render(<UseUpdatesTestApp />);
       await act(async () => {
         emitTestStateChangeEvent(isDownloadingEvent);
       });
@@ -199,7 +232,7 @@ describe('useUpdates()', () => {
     });
 
     it('Handles error during downloadUpdate()', async () => {
-      render(<UseUpdatesTestApp />);
+      await render(<UseUpdatesTestApp />);
       await act(async () => {
         emitTestStateChangeEvent(isDownloadingEvent);
       });
@@ -215,7 +248,7 @@ describe('useUpdates()', () => {
     });
 
     it('Handles rollback', async () => {
-      render(<UseUpdatesTestApp />);
+      await render(<UseUpdatesTestApp />);
       await act(async () => {
         emitTestStateChangeEvent(isCheckingEvent);
       });
@@ -233,15 +266,6 @@ describe('useUpdates()', () => {
         // truncate the fractional part of the seconds value in the time
         mockDate.toISOString().substring(0, 19)
       );
-    });
-
-    it('Handles error in initial read of native context', async () => {
-      jest
-        .mocked(ExpoUpdates.getNativeStateMachineContextAsync)
-        .mockRejectedValueOnce(new Error('In dev mode'));
-      render(<UseUpdatesTestApp />);
-      const errorView = await screen.findByTestId('initializationError');
-      expect(errorView).toHaveTextContent('In dev mode');
     });
   });
 

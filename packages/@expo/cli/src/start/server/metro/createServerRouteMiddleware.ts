@@ -6,50 +6,98 @@
  */
 
 import type { ProjectConfig } from '@expo/config';
-import resolve from 'resolve';
+import type { MiddlewareSettings } from 'expo-server';
+import { createRequestHandler } from 'expo-server/adapter/http';
+import { ImmutableRequest, type RouteInfo } from 'expo-server/private';
+import path from 'path';
 import resolveFrom from 'resolve-from';
-import { promisify } from 'util';
 
-import { ForwardHtmlError } from './MetroBundlerDevServer';
-import { fetchManifest } from './fetchRouterManifest';
-import { getErrorOverlayHtmlAsync, logMetroError } from './metroErrorInterface';
-import { warnInvalidWebOutput } from './router';
 import { CommandError } from '../../../utils/errors';
-
-const debug = require('debug')('expo:start:server:metro') as typeof console.log;
-
-const resolveAsync = promisify(resolve) as any as (
-  id: string,
-  opts: resolve.AsyncOpts
-) => Promise<string | null>;
+import { fetchManifest } from './fetchRouterManifest';
+import { getErrorOverlayHtmlAsync } from './metroErrorInterface';
+import {
+  warnInvalidWebOutput,
+  isApiRoutesEnabled,
+  warnInvalidMiddlewareOutput,
+  warnInvalidMiddlewareMatcherSettings,
+} from './router';
+import { event } from './routerEvents';
 
 export function createRouteHandlerMiddleware(
   projectRoot: string,
   options: {
     appDir: string;
     routerRoot: string;
-    getStaticPageAsync: (pathname: string) => Promise<{ content: string }>;
+    getStaticPageAsync: (
+      pathname: string,
+      route: RouteInfo<RegExp>,
+      request?: ImmutableRequest
+    ) => Promise<{ content: string | ReadableStream<Uint8Array>; resources?: unknown }>;
     bundleApiRoute: (
       functionFilePath: string
     ) => Promise<null | Record<string, Function> | Response>;
+    executeLoaderAsync: (
+      route: RouteInfo<RegExp>,
+      request: ImmutableRequest
+    ) => Promise<Response | undefined>;
     config: ProjectConfig;
-  } & import('expo-router/build/routes-manifest').Options
+    headers: Record<string, string | string[]>;
+    rsc?: {
+      path: string;
+      handler: {
+        GET: (req: Request) => Promise<Response>;
+        POST: (req: Request) => Promise<Response>;
+      };
+    };
+  } & import('@expo/router-server/build/routes-manifest').Options
 ) {
   if (!resolveFrom.silent(projectRoot, 'expo-router')) {
     throw new CommandError(
-      'static and server rendering requires the expo-router package to be installed in your project.'
+      `static and server rendering requires the expo-router package to be installed in your project. Either install the expo-router package or change 'web.output' to 'single' in your app.json.`
     );
   }
 
-  const { createRequestHandler } =
-    require('@expo/server/build/vendor/http') as typeof import('@expo/server/build/vendor/http');
-
   return createRequestHandler(
-    { build: '' },
+    { build: '', isDevelopment: true },
     {
       async getRoutesManifest() {
-        const manifest = await fetchManifest<RegExp>(projectRoot, options);
-        debug('manifest', manifest);
+        const manifest = await fetchManifest(projectRoot, options);
+        event('manifest_fetched', {});
+
+        if (manifest && !isApiRoutesEnabled(options.config.exp)) {
+          if (options.config.exp.web?.output === 'static' && manifest.apiRoutes.length) {
+            warnInvalidWebOutput(manifest.apiRoutes.map((route) => route.file));
+          }
+          manifest.apiRoutes = [];
+        }
+
+        // TODO(@hassankhan): Invert the conditionals for an early return if no manifest if found
+
+        if (
+          manifest &&
+          options.rsc &&
+          !manifest.apiRoutes.find((route) => route.page.startsWith(options.rsc!.path))
+        ) {
+          // Insert the route before any catch-all routes that might match the RSC path.
+          manifest.apiRoutes.unshift({
+            file: require.resolve('@expo/cli/static/template/[...rsc]+api.ts'),
+            page: `${options.rsc.path}/[...rsc]`,
+            namedRegex: new RegExp(`^${options.rsc.path}(?:/(?<rsc>.+?))?(?:/)?$`),
+            routeKeys: { rsc: 'rsc' },
+          });
+        }
+
+        const output = options.config.exp.web?.output;
+        if (manifest && (output === 'static' || output === 'server')) {
+          // In development, set `loader` property on all HTML routes. We can't know which routes
+          // have loaders without bundling via Metro to detect exports. In production, this is
+          // populated by `exportStaticAsync.ts` after bundling.
+          // At runtime, `getLoaderData()` returns a 404 response if no loader exists.
+          for (const route of manifest.htmlRoutes) {
+            route.loader = `_expo/loaders${route.page}.js`;
+          }
+        }
+
         // NOTE: no app dir if null
         // TODO: Redirect to 404 page
         return (
@@ -59,29 +107,31 @@ export function createRouteHandlerMiddleware(
               {
                 file: 'index.js',
                 page: '/index',
+                generated: true,
                 routeKeys: {},
                 namedRegex: /^\/(?:index)?\/?$/i,
               },
             ],
             apiRoutes: [],
             notFoundRoutes: [],
+            redirects: [],
+            rewrites: [],
           }
         );
       },
-      async getHtml(request) {
+      async getHtml(request, route) {
         try {
-          const { content } = await options.getStaticPageAsync(request.url);
+          const { exp } = options.config;
+          const useServerRendering = exp.web?.output === 'server';
+
+          const { content } = await options.getStaticPageAsync(
+            request.url,
+            route,
+            useServerRendering ? new ImmutableRequest(request) : undefined
+          );
           return content;
         } catch (error: any) {
           // Forward the Metro server response as-is. It won't be pretty, but at least it will be accurate.
-          if (error instanceof ForwardHtmlError) {
-            return new Response(error.html, {
-              status: error.statusCode,
-              headers: {
-                'Content-Type': 'text/html',
-              },
-            });
-          }
 
           try {
             return new Response(
@@ -98,7 +148,7 @@ export function createRouteHandlerMiddleware(
               }
             );
           } catch (staticError: any) {
-            debug('Failed to render static error overlay:', staticError);
+            event('static_overlay_failed', { error: String(staticError?.message ?? staticError) });
             // Fallback error for when Expo Router is misconfigured in the project.
             return new Response(
               '<span><h3>Internal Error:</h3><b>Project is not setup correctly for static rendering (check terminal for more info):</b><br/>' +
@@ -116,22 +166,45 @@ export function createRouteHandlerMiddleware(
           }
         }
       },
-      logApiRouteExecutionError(error) {
-        logMetroError(projectRoot, { error });
+      async handleRouteError(error) {
+        // NOTE(@kitten): ExpoError is currently not exposed by expo-server just yet
+        if (error && typeof error === 'object' && error.name === 'ExpoError') {
+          // TODO(@krystofwoldrich): Can we show code snippet of the handler?
+          // NOTE(@krystofwoldrich): Removing stack since to avoid confusion. The error is not in the server code.
+          delete error.stack;
+        }
+
+        const htmlServerError = await getErrorOverlayHtmlAsync({
+          error,
+          projectRoot,
+          routerRoot: options.routerRoot!,
+        });
+
+        return new Response(htmlServerError, {
+          status: 500,
+          headers: {
+            'Content-Type': 'text/html',
+          },
+        });
       },
       async getApiRoute(route) {
+        // We check if RSC is enabled before the warning check, as `web.output` could be set to
+        // `single`
+        if (options.rsc && route.page.startsWith(options.rsc.path)) {
+          return options.rsc.handler;
+        }
+
         const { exp } = options.config;
-        if (exp.web?.output !== 'server') {
+        if (!isApiRoutesEnabled(exp)) {
           warnInvalidWebOutput();
         }
 
-        const resolvedFunctionPath = await resolveAsync(route.file, {
-          extensions: ['.js', '.jsx', '.ts', '.tsx'],
-          basedir: options.appDir,
-        })!;
-
+        // TODO(@kitten): Unify with MetroBundlerDevServer#exportExpoRouterApiRoutesAsync
+        const resolvedFunctionPath = path.isAbsolute(route.file)
+          ? route.file
+          : path.join(options.appDir, route.file);
         try {
-          debug(`Bundling middleware at: ${resolvedFunctionPath}`);
+          event('api_route_bundling', { path: event.path(resolvedFunctionPath) });
           return await options.bundleApiRoute(resolvedFunctionPath!);
         } catch (error: any) {
           return new Response(
@@ -144,6 +217,61 @@ export function createRouteHandlerMiddleware(
             }
           );
         }
+      },
+      async getMiddleware(route) {
+        const { exp } = options.config;
+
+        if (exp.web?.output !== 'server' && !isApiRoutesEnabled(exp)) {
+          warnInvalidMiddlewareOutput();
+          return {
+            default: () => {
+              console.warn(
+                'Server middleware requires server output or apiRoutes: true in the expo-router config plugin'
+              );
+            },
+          };
+        }
+
+        // TODO(@kitten): Unify with MetroBundlerDevServer#exportMiddlewareAsync
+        const resolvedFunctionPath = path.isAbsolute(route.file)
+          ? route.file
+          : path.join(options.appDir, route.file);
+        try {
+          event('middleware_bundling', { path: event.path(resolvedFunctionPath) });
+          const middlewareModule = (await options.bundleApiRoute(resolvedFunctionPath!)) as any;
+
+          if ((middlewareModule.unstable_settings as MiddlewareSettings)?.matcher) {
+            warnInvalidMiddlewareMatcherSettings(middlewareModule.unstable_settings?.matcher);
+          }
+
+          return middlewareModule;
+        } catch (error: any) {
+          return new Response(
+            'Failed to load middleware: ' + resolvedFunctionPath + '\n\n' + error.message,
+            {
+              status: 500,
+              headers: {
+                'Content-Type': 'text/html',
+              },
+            }
+          );
+        }
+      },
+      async getLoaderData(request, route) {
+        const response = await options.executeLoaderAsync(route, new ImmutableRequest(request));
+        const result = response ?? new Response(null, { status: 404 });
+        if (result.headers.has('Cache-Control')) {
+          return result;
+        }
+
+        // Default header-less loader responses to `no-store` in development
+        const headers = new Headers(result.headers);
+        headers.set('Cache-Control', 'no-store');
+        return new Response(result.body, {
+          status: result.status,
+          statusText: result.statusText,
+          headers,
+        });
       },
     }
   );

@@ -1,4 +1,4 @@
-import { DeviceEventEmitter } from 'expo-modules-core';
+import { DeviceEventEmitter } from 'react-native';
 
 import {
   assertSensorEventEnabledAsync,
@@ -16,11 +16,15 @@ export default {
     }
     return await isSensorEnabledAsync(eventName);
   },
-  _handleMotion({ accelerationIncludingGravity }) {
+  _handleMotion({ accelerationIncludingGravity: acceleration, timeStamp }: DeviceMotionEvent) {
+    // Abort if data is missing from the event
+    if (acceleration === null) return;
+
     DeviceEventEmitter.emit('gyroscopeDidUpdate', {
-      x: accelerationIncludingGravity.x,
-      y: accelerationIncludingGravity.y,
-      z: accelerationIncludingGravity.z,
+      x: acceleration.x,
+      y: acceleration.y,
+      z: acceleration.z,
+      timestamp: timeStamp / 1000,
     });
   },
   getPermissionsAsync,

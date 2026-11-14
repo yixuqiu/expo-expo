@@ -1,0 +1,557 @@
+# Changelog
+
+## 58.0.23
+
+### Patch Changes
+
+- Updated dependencies. ([#51934](https://github.com/expo/expo/pull/51934), [#51118](https://github.com/expo/expo/pull/51118), [#51119](https://github.com/expo/expo/pull/51119), [#52047](https://github.com/expo/expo/pull/52047), [#51117](https://github.com/expo/expo/pull/51117), [#51120](https://github.com/expo/expo/pull/51120), [#52010](https://github.com/expo/expo/pull/52010))
+  - @expo/ui@58.0.23
+
+## 58.0.22
+
+### Patch Changes
+
+- Updated dependencies. ([#51896](https://github.com/expo/expo/pull/51896), [#51988](https://github.com/expo/expo/pull/51988), [#51914](https://github.com/expo/expo/pull/51914), [#51954](https://github.com/expo/expo/pull/51954), [#51650](https://github.com/expo/expo/pull/51650), [#51958](https://github.com/expo/expo/pull/51958), [#51888](https://github.com/expo/expo/pull/51888), [#51971](https://github.com/expo/expo/pull/51971), [#50024](https://github.com/expo/expo/pull/50024), [#51906](https://github.com/expo/expo/pull/51906), [#51899](https://github.com/expo/expo/pull/51899), [#51904](https://github.com/expo/expo/pull/51904), [#51651](https://github.com/expo/expo/pull/51651), [#51698](https://github.com/expo/expo/pull/51698), [#51889](https://github.com/expo/expo/pull/51889), [#51799](https://github.com/expo/expo/pull/51799), [#51867](https://github.com/expo/expo/pull/51867))
+  - @expo/ui@58.0.22
+
+## 58.0.21
+
+### Patch Changes
+
+- Updated dependencies. ([#51704](https://github.com/expo/expo/pull/51704), [#51775](https://github.com/expo/expo/pull/51775))
+  - @expo/ui@58.0.21
+
+## 58.0.20
+
+### Patch Changes
+
+- Fix Android apps crashing at launch with `constructor cannot be null` when they use expo-widgets. The `CustomNotification` class now has a constructor that throws, because instances only come from `CustomNotificationFactory`. ([#51655](https://github.com/expo/expo/pull/51655) by [@voida6](https://github.com/voida6))
+- Fix the Android build failing with `Unresolved reference 'jakex7'`. Custom notifications now import the `io.github.expo.peek` packages that the `peek-emittables` dependency provides. ([#51654](https://github.com/expo/expo/pull/51654) by [@voida6](https://github.com/voida6))
+- [Android] Fix the layout registry script exiting without output when the package path contains a symlink, for example in a pnpm install. ([#51641](https://github.com/expo/expo/pull/51641) by [@juliusmarminge](https://github.com/juliusmarminge))
+- Updated dependencies. ([#51617](https://github.com/expo/expo/pull/51617))
+  - @expo/ui@58.0.20
+
+## 58.0.19
+
+### Patch Changes
+
+- Updated dependencies. ([#51632](https://github.com/expo/expo/pull/51632), [#51636](https://github.com/expo/expo/pull/51636))
+  - @expo/ui@58.0.19
+
+## 58.0.18
+
+### Patch Changes
+
+- Updated dependencies. ([#51459](https://github.com/expo/expo/pull/51459), [#51563](https://github.com/expo/expo/pull/51563), [#51606](https://github.com/expo/expo/pull/51606))
+  - @expo/ui@58.0.18
+
+## 58.0.17
+
+### Patch Changes
+
+- [Android] Add custom notifications. ([#51461](https://github.com/expo/expo/pull/51461) by [@jakex7](https://github.com/jakex7))
+- [iOS] Rebuild the widgets JS bundle on every Xcode build so JS changes are picked up without a clean build. ([#50200](https://github.com/expo/expo/pull/50200) by [@jakex7](https://github.com/jakex7))
+- Updated dependencies. ([#51480](https://github.com/expo/expo/pull/51480), [#51426](https://github.com/expo/expo/pull/51426))
+  - @expo/ui@58.0.17
+
+## 58.0.16
+
+### Patch Changes
+
+- [Android] Fix `generateExpoWidgetsLayoutRegistry` failing on Windows with `RangeError: Maximum call stack size exceeded` when a widget sets `initialLayout`. Absolute Windows paths (`D:\...`) are now resolved as files instead of being stubbed as empty modules. ([#51028](https://github.com/expo/expo/pull/51028) by [@Cedric921](https://github.com/Cedric921))
+- [Android] Fix minified release builds crashing on launch with `Failed to create an instance of class androidx.work.impl.WorkDatabase.canonicalName`. R8 stripped the no-arg constructor of WorkManager's Room database, which WorkManager creates by reflection; `expo-widgets` now ships consumer keep rules for it and for WorkManager's input mergers. ([#51349](https://github.com/expo/expo/pull/51349) by [@expo-bot](https://github.com/expo-bot))
+- [iOS] Show an empty widget, instead of an error, before the app has been launched. The widget layout is stored when the app first runs `createWidget()`, so a freshly installed or updated app that hasn't been opened yet has no layout. Widgets in this state, including previews in the widget gallery, rendered the "No layout found" red box. Because that view has no container background, iOS 17+ replaced it with the system's "Please adopt containerBackground API" placeholder. They now render an empty view with the system's tertiary fill until the app runs. ([#51350](https://github.com/expo/expo/pull/51350) by [@jsg2021](https://github.com/jsg2021))
+- [iOS] Fix widget layout errors being hidden behind the system's "Please adopt containerBackground API" placeholder on iOS 17+. The red box shown when a widget's layout fails to evaluate now declares a container background, so its error message is visible. ([#51350](https://github.com/expo/expo/pull/51350) by [@jsg2021](https://github.com/jsg2021))
+- [Android] Fix a release build failing `checkReleaseDuplicateClasses` when another dependency brings WorkManager 2.8 or newer, by pinning `work-runtime-ktx` forward from the 2.7.1 that Glance requests. ([#50010](https://github.com/expo/expo/pull/50010) by [@LizunovSergey](https://github.com/LizunovSergey))
+- Updated dependencies. ([#51368](https://github.com/expo/expo/pull/51368), [#51319](https://github.com/expo/expo/pull/51319), [#51237](https://github.com/expo/expo/pull/51237), [#50715](https://github.com/expo/expo/pull/50715), [#50727](https://github.com/expo/expo/pull/50727), [#51412](https://github.com/expo/expo/pull/51412), [#51322](https://github.com/expo/expo/pull/51322), [#51351](https://github.com/expo/expo/pull/51351))
+  - @expo/ui@58.0.16
+
+## 58.0.15
+
+### Patch Changes
+
+- Updated dependencies. ([#51283](https://github.com/expo/expo/pull/51283), [#51274](https://github.com/expo/expo/pull/51274), [#51163](https://github.com/expo/expo/pull/51163), [#51196](https://github.com/expo/expo/pull/51196), [#50369](https://github.com/expo/expo/pull/50369))
+  - @expo/ui@58.0.15
+
+## 58.0.14
+
+### Patch Changes
+
+- Updated dependencies. ([#50941](https://github.com/expo/expo/pull/50941), [#50860](https://github.com/expo/expo/pull/50860))
+  - @expo/ui@58.0.14
+
+## 58.0.13
+
+### Patch Changes
+
+- Updated dependencies. ([#50893](https://github.com/expo/expo/pull/50893), [#51116](https://github.com/expo/expo/pull/51116), [#51007](https://github.com/expo/expo/pull/51007), [#50910](https://github.com/expo/expo/pull/50910), [#50909](https://github.com/expo/expo/pull/50909), [#51108](https://github.com/expo/expo/pull/51108))
+  - @expo/ui@58.0.13
+
+## 58.0.12
+
+### Patch Changes
+
+- Updated dependencies. ([#50984](https://github.com/expo/expo/pull/50984), [#50927](https://github.com/expo/expo/pull/50927), [#50687](https://github.com/expo/expo/pull/50687))
+  - @expo/ui@58.0.12
+
+## 58.0.11
+
+### Patch Changes
+
+- [Android] Fix update during active Glance sessions. ([#50850](https://github.com/expo/expo/pull/50850) by [@jakex7](https://github.com/jakex7))
+- Updated dependencies. ([#50881](https://github.com/expo/expo/pull/50881), [#49933](https://github.com/expo/expo/pull/49933))
+  - @expo/ui@58.0.11
+
+## 58.0.10
+
+### Patch Changes
+
+- Add React hook and component helper stubs to prevent missing API errors when rendering widgets, including `memo` and `forwardRef`. ([#50834](https://github.com/expo/expo/pull/50834) by [@jakex7](https://github.com/jakex7))
+- [iOS] Stop linking WidgetKit into apps that use `@expo/ui` without widgets. The `widgetURL`, `activityBackgroundTint`, `widgetAccentedRenderingMode`, and `containerBackground` (`widget` placement) modifiers and the `AccessoryWidgetBackground` view now take effect only inside `expo-widgets` widgets and Live Activities. ([#50786](https://github.com/expo/expo/pull/50786) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
+- Updated dependencies. ([#50801](https://github.com/expo/expo/pull/50801), [#49986](https://github.com/expo/expo/pull/49986), [#50674](https://github.com/expo/expo/pull/50674), [#50786](https://github.com/expo/expo/pull/50786), [#50851](https://github.com/expo/expo/pull/50851))
+  - @expo/ui@58.0.10
+
+## 58.0.9
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762), [#50579](https://github.com/expo/expo/pull/50579), [#50693](https://github.com/expo/expo/pull/50693))
+  - @expo/plist@0.10.1
+  - @expo/ui@58.0.9
+
+## 58.0.8 — 2026-09-28
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.7 — 2026-09-25
+
+### 🐛 Bug fixes
+
+- [iOS] Fix `with-node.sh` ignoring the app's `NODE_BINARY` and `.xcode.env` when building without CocoaPods. ([#50084](https://github.com/expo/expo/pull/50084) by [@chrfalch](https://github.com/chrfalch))
+
+## 58.0.6 — 2026-09-23
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.5 — 2026-09-22
+
+### 🎉 New features
+
+- [Android] Added support for the `cornerRadius` modifier. ([#50333](https://github.com/expo/expo/pull/50333) by [@jakex7](https://github.com/jakex7))
+
+## 58.0.4 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.3 — 2026-09-16
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-15
+
+### 🎉 New features
+
+- [Android] Add support for the `Image` component. ([#50116](https://github.com/expo/expo/pull/50116) by [@jakex7](https://github.com/jakex7))
+
+## 58.0.1 — 2026-09-14
+
+### 🎉 New features
+
+- [iOS] Add support for `Overlay`, `Background`, and `Mask` in widgets and Live Activities. ([#49810](https://github.com/expo/expo/pull/49810) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- [iOS] Preserve SwiftUI view identity across widget and Live Activity updates so system update animations can run. ([#49810](https://github.com/expo/expo/pull/49810) by [@jakex7](https://github.com/jakex7))
+- [Android] Fix Gradle build failure when no Android widget is configured. ([#50038](https://github.com/expo/expo/pull/50038) by [@keith-kurak](https://github.com/keith-kurak))
+
+### 💡 Others
+
+- Upgrade React Native to 0.88.0-rc.0 ([#49910](https://github.com/expo/expo/pull/49910) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 58.0.0 — 2026-09-10
+
+### 🛠 Breaking changes
+
+- Handle undefined props instead fallback to empty object. ([#46492](https://github.com/expo/expo/pull/46492) by [@jakex7](https://github.com/jakex7))
+
+### 🎉 New features
+
+- [iOS] Expose stable ActivityKit identifiers on Live Activity instances. ([#48589](https://github.com/expo/expo/pull/48589) by [@developwithJB](https://github.com/developwithJB))
+- [Android] Create a JS bundle for widgets. ([#46286](https://github.com/expo/expo/pull/46286) by [@jakex7](https://github.com/jakex7))
+- [iOS] Expose ActivityKit's `staleDate` on `LiveActivity.start()` and `LiveActivity.update()`. ([#46343](https://github.com/expo/expo/pull/46343) by [@KyleAsaff](https://github.com/KyleAsaff))
+- Add an initial layout registry for widgets. ([#46501](https://github.com/expo/expo/pull/46501) by [@jakex7](https://github.com/jakex7))
+- Add `initialProps` to widgets layout registry. ([#46527](https://github.com/expo/expo/pull/46527) by [@jakex7](https://github.com/jakex7))
+- [Android] Add Hermes runtime. ([#46684](https://github.com/expo/expo/pull/46684) by [@jakex7](https://github.com/jakex7))
+- [Android] Basic Android components. ([#46951](https://github.com/expo/expo/pull/46951) by [@jakex7](https://github.com/jakex7))
+- [Android] Implement widgets. ([#46961](https://github.com/expo/expo/pull/46961) by [@jakex7](https://github.com/jakex7))
+- [Android] Support interactions. ([#47035](https://github.com/expo/expo/pull/47035) by [@jakex7](https://github.com/jakex7))
+- [iOS][plugin] Fix extension `CFBundleVersion` sync. ([#47061](https://github.com/expo/expo/pull/47061) by [@jakex7](https://github.com/jakex7))
+- [iOS] Changing widget configuration at runtime. ([#47533](https://github.com/expo/expo/pull/47533) by [@jakex7](https://github.com/jakex7))
+- [Android] Refactor to Peek emittables. ([#47411](https://github.com/expo/expo/pull/47411) by [@jakex7](https://github.com/jakex7))
+- [Android] Support Material Colors inside widgets. ([#48454](https://github.com/expo/expo/pull/48454) by [@jakex7](https://github.com/jakex7))
+- [iOS] Expose ActivityKit's `isStale` on `LiveActivityEnvironment`. ([#48303](https://github.com/expo/expo/pull/48303) by [@dirkpostma](https://github.com/dirkpostma))
+
+### 🐛 Bug fixes
+
+- [iOS] Localize widget gallery names and descriptions using the app's `Localizable.strings` files. ([#49606](https://github.com/expo/expo/pull/49606) by [@jakex7](https://github.com/jakex7))
+- [iOS] Fix widget and Live Activity `Text` modifiers being applied twice. ([#49535](https://github.com/expo/expo/pull/49535) by [@gee1k](https://github.com/gee1k))
+- Resolve deep `react-native/*` imports as empty modules when bundling widget layouts, fixing every widget failing with "Could not create context for layout evaluation" after `@expo/ui` 57.0.14 introduced such an import. ([#49491](https://github.com/expo/expo/pull/49491) by [@usmsam](https://github.com/usmsam))
+- [iOS] Fix XCFramework precompilation failing on the unguarded `ActivityViewContext` parameter of `getLiveActivityEnvironment`, which requires iOS 16.1. ([#49076](https://github.com/expo/expo/pull/49076) by [@brentvatne](https://github.com/brentvatne))
+- [iOS] Quote script-phase paths so iOS builds work from a project path containing a space. ([#48747](https://github.com/expo/expo/pull/48747) by [@expo-bot](https://github.com/expo-bot))
+- [iOS] Fix `LiveActivityFactory.getInstances()` returning live activities that belong to other factories or that have already ended. ([#48489](https://github.com/expo/expo/pull/48489) by [@huextrat](https://github.com/huextrat))
+- [iOS] Deliver the Live Activity `start()` URL to the Lock Screen banner, and scope it to the activity that set it instead of storing it globally per factory name. ([#48489](https://github.com/expo/expo/pull/48489) by [@huextrat](https://github.com/huextrat))
+- [Android] Add 16KB page size support. ([#47135](https://github.com/expo/expo/pull/47135) by [@jakex7](https://github.com/jakex7))
+- Make deprecated root-level widget config fields optional. ([#47933](https://github.com/expo/expo/pull/47933) by [@eliotgevers](https://github.com/eliotgevers))
+- [iOS][plugin] Only add the `aps-environment` entitlement when `enablePushNotifications` is enabled, and keep a pre-existing value. ([#47645](https://github.com/expo/expo/pull/47645) by [@kadikraman](https://github.com/kadikraman))
+- [Android] Fix modifiers type cast. ([#47616](https://github.com/expo/expo/pull/47721) by [@jakex7](https://github.com/jakex7))
+- Fix blank widget when JSX children mix a `.map()` array with sibling elements. ([#47888](https://github.com/expo/expo/pull/47888) by [@jakex7](https://github.com/jakex7))
+- [iOS] Restore push token observation when retrieving existing Live Activities. ([#48589](https://github.com/expo/expo/pull/48589) by [@developwithJB](https://github.com/developwithJB))
+- [iOS] Resolve autolinking relative to expo. ([#49453](https://github.com/expo/expo/pull/49453) by [@jakex7](https://github.com/jakex7))
+
+### 💡 Others
+
+- [iOS] Remove availability check for iOS 16. ([#48651](https://github.com/expo/expo/pull/48651) by [@jakex7](https://github.com/jakex7))
+- [Android] Migrate to Peek 0.2.0 ([#48340](https://github.com/expo/expo/pull/48340) by [@jakex7](https://github.com/jakex7))
+
+## 57.0.7 - 2026-07-29
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.6 - 2026-07-17
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-07
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.19 - 2026-06-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.18 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.17 - 2026-06-05
+
+### 🎉 New features
+
+- Expose shared directory for images. ([#46339](https://github.com/expo/expo/pull/46339) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- [Android] Fix widget strings file location. ([#46538](https://github.com/expo/expo/pull/46538) by [@jakex7](https://github.com/jakex7))
+
+### 💡 Others
+
+- Temporarily make the Android config plugin opt-in with `enableAndroid`. ([#46463](https://github.com/expo/expo/pull/46463) by [@jakex7](https://github.com/jakex7))
+
+## 56.0.16 - 2026-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.15 — 2026-05-26
+
+### 🎉 New features
+
+- [Android] Create base android package. ([#46090](https://github.com/expo/expo/pull/46090) by [@jakex7](https://github.com/jakex7))
+- [plugin] Create config plugin for android. ([#46091](https://github.com/expo/expo/pull/46091) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Allow string widget family values in the typed config plugin. ([#46133](https://github.com/expo/expo/issues/46133) by [@eliotgevers](https://github.com/eliotgevers))
+- [plugin] Inherit `ios.deploymentTarget` from app config for generated widget extension targets. ([#46193](https://github.com/expo/expo/pull/46193) by [@eliotgevers](https://github.com/eliotgevers))
+
+## 56.0.14 — 2026-05-23
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.13 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.12 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.11 — 2026-05-20
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.10 — 2026-05-19
+
+### 💡 Others
+
+- Validate/sanitize config-plugin inputs more comprehensively ([#45884](https://github.com/expo/expo/pull/45884) by [@kitten](https://github.com/kitten))
+
+## 56.0.9 — 2026-05-15
+
+### 🎉 New features
+
+- Use shared JS runtime. ([#45781](https://github.com/expo/expo/pull/45781) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Fix Live Activity multiple evaluations. ([#45675](https://github.com/expo/expo/pull/45675) by [@nkopylov](https://github.com/nkopylov))
+- Fix module precompile. ([#45715](https://github.com/expo/expo/pull/45715) by [@jakex7](https://github.com/jakex7))
+
+### 💡 Others
+
+- Migrated to the single-payload `SharedObject.emit` API. ([#45596](https://github.com/expo/expo/pull/45596) by [@tsapeta](https://github.com/tsapeta))
+
+## 56.0.8 — 2026-05-13
+
+### 🎉 New features
+
+- Support configurable widgets. ([#45726](https://github.com/expo/expo/pull/45726) by [@jakex7](https://github.com/jakex7))
+- Improve RedBox messages. ([#45732](https://github.com/expo/expo/pull/45732) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Improve environment configuration types. ([#45734](https://github.com/expo/expo/pull/45734) by [@jakex7](https://github.com/jakex7))
+
+## 56.0.7 — 2026-05-13
+
+### 🎉 New features
+
+- Add `ChartView` support. ([#45674](https://github.com/expo/expo/pull/45674) by [@jakex7](https://github.com/jakex7))
+
+## 56.0.6 — 2026-05-11
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-07
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+- Remove hardcoded `containerBackground` in favor of `@expo/ui` modifier. ([#44192](https://github.com/expo/expo/pull/44192) by [@jakex7](https://github.com/jakex7))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+- Support `PlatformColor`. ([#44193](https://github.com/expo/expo/pull/44193) by [@jakex7](https://github.com/jakex7))
+- [plugin] Make incremental prebuilds work ([#45157](https://github.com/expo/expo/pull/45157) by [@jakex7](https://github.com/jakex7))
+- [android] Add stub methods. ([#45335](https://github.com/expo/expo/pull/45335) by [@jakex7](https://github.com/jakex7))
+- Add widget RedBox. ([#45402](https://github.com/expo/expo/pull/45402) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Add support for `AccessoryWidgetBackground` views from `@expo/ui` in widget rendering. ([#44499](https://github.com/expo/expo/pull/44499) by [@cinques](https://github.com/cinques))
+- Fix `ExpoWidgets.bundle` not copied to widget extension when `use_frameworks` is active. ([#44065](https://github.com/expo/expo/pull/44065) by [@marvwhere](https://github.com/marvwhere))
+- Fix `getLiveActivityUrl` reading URL from shared storage so Dynamic Island tap navigates to the deep link URL. ([#44346](https://github.com/expo/expo/pull/44346) by [@prenansb](https://github.com/prenansb))
+- [plugin] Fix "extension CFBundleVersion not synced with main app" ([#44928](https://github.com/expo/expo/pull/44928) by [@jakex7](https://github.com/jakex7))
+- [plugin] Use relative paths in Xcode project ([#45000](https://github.com/expo/expo/pull/45000) by [@jakex7](https://github.com/jakex7))
+- Exclude worklets and reanimated from widgets bundle ([#44999](https://github.com/expo/expo/pull/44999) by [@jakex7](https://github.com/jakex7))
+
+### 💡 Others
+
+- Fixed build error from nightly tests. ([#43849](https://github.com/expo/expo/pull/43849) by [@kudo](https://github.com/kudo))
+
+## 55.0.17 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.16 - 2026-05-04
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-05-01
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-06
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 - 2026-03-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 - 2026-03-19
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 - 2026-03-18
+
+### 🎉 New features
+
+- Pass environment to AppIntent ([#43925](https://github.com/expo/expo/pull/43925) by [@jakex7](https://github.com/jakex7))
+- Automatically add `target` for `Button`. ([#43977](https://github.com/expo/expo/pull/43977) by [@jakex7](https://github.com/jakex7))
+- Add support for `Link` view from `@expo/ui`. ([#43985](https://github.com/expo/expo/pull/43985) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Add support for `React.Fragment`. ([#43833](https://github.com/expo/expo/pull/43833) by [@jakex7](https://github.com/jakex7))
+- Add Button children support. ([#43832](https://github.com/expo/expo/pull/43832) by [@jakex7](https://github.com/jakex7))
+- Remove unused `Compression` related code. ([#43981](https://github.com/expo/expo/pull/43981) by [@jakex7](https://github.com/jakex7))
+
+## 55.0.5 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 - 2026-03-11
+
+### 🛠 Breaking changes
+
+- Pass environment to Widgets and Live Activities. ([#43681](https://github.com/expo/expo/pull/43681) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Filter out invalid children. ([#43720](https://github.com/expo/expo/pull/43720) by [@jakex7](https://github.com/jakex7))
+
+## 55.0.3 - 2026-03-05
+
+### 🐛 Bug fixes
+
+- [plugin] Fix reading undefined when config is not provided. ([#43568](https://github.com/expo/expo/pull/43568) by [@jakex7](https://github.com/jakex7))
+- Skip server bundling in `export:embed` call for `expo-widgets` bundle ([#43602](https://github.com/expo/expo/pull/43602) by [@kitten](https://github.com/kitten))
+
+## 55.0.2 - 2026-02-26
+
+### 🎉 New features
+
+- Add support for `after(date)` dismissal policy, final content state, and `contentDate` when ending a Live Activity. ([#43472](https://github.com/expo/expo/pull/43472) by [@jakex7](https://github.com/jakex7))
+- [plugin] Add `contentMarginsDisabled`. ([#43799](https://github.com/expo/expo/pull/43799) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Add missing project root to `watchFolders` in `metro.config.js` ([#43449](https://github.com/expo/expo/pull/43449) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- Remove extraneous `@expo/config-plugins` dependency ([#43452](https://github.com/expo/expo/pull/43452) by [@kitten](https://github.com/kitten))
+
+## 55.0.1 — 2026-02-25
+
+### 🐛 Bug fixes
+
+- Fix "blinking" on interactions. ([#43416](https://github.com/expo/expo/pull/43416) by [@jakex7](https://github.com/jakex7))
+- Generate WidgetBundle for live activity even when there are no widgets. ([#43425](https://github.com/expo/expo/pull/43425) by [@jakex7](https://github.com/jakex7))
+
+## 55.0.0 — 2026-02-25
+
+### 🎉 New features
+
+- New API based on shared objects. ([#43243](https://github.com/expo/expo/pull/43243) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Fix iOS bundle build for irregularly hoisted dependencies or monorepos ([#43350](https://github.com/expo/expo/pull/43350) by [@kitten](https://github.com/kitten))
+
+## 55.0.0-alpha.8 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0-alpha.7 — 2026-02-16
+
+### 🎉 New features
+
+- Render widgets in JSC. ([#42987](https://github.com/expo/expo/pull/42987) by [@jakex7](https://github.com/jakex7))
+- Create widgets runtime bundle at build time. ([#43170](https://github.com/expo/expo/pull/43170) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Fix blank widget preview content ([#42857](https://github.com/expo/expo/pull/42857) by [@garygcchiu](https://github.com/garygcchiu))
+- Fix duplicated warnings on start and prebuild. ([#43072](https://github.com/expo/expo/pull/43072) by [@jakex7](https://github.com/jakex7))
+
+## 55.0.0-alpha.6 — 2026-02-08
+
+### 🐛 Bug fixes
+
+- Register widget extension target with EAS Build => Apple Developer Portal ([#42954](https://github.com/expo/expo/pull/42954) by [@garygcchiu](https://github.com/garygcchiu))
+- Set DEVELOPMENT_TEAM on the widget target during prebuild when ios.appleTeamId is configured ([#42954](https://github.com/expo/expo/pull/42954) by [@garygcchiu](https://github.com/garygcchiu))
+
+## 55.0.0-alpha.5 — 2026-02-03
+
+### 🎉 New features
+
+- Add push-to-start token listener. ([#42721](https://github.com/expo/expo/pull/42721) by [@jakex7](https://github.com/jakex7))
+- Add `onTokenReceived` event and additional Live Activities functions. ([#42724](https://github.com/expo/expo/pull/42724) by [@jakex7](https://github.com/jakex7))
+
+### 🐛 Bug fixes
+
+- Fix build issue with "ambiguous implicit access level for import" ([#42507](https://github.com/expo/expo/pull/42507) by [@garygcchiu](https://github.com/garygcchiu))
+
+## 55.0.0-alpha.4 — 2026-01-27
+
+### 💡 Others
+
+- Fixed availability check. ([#42543](https://github.com/expo/expo/pull/42543) by [@tsapeta](https://github.com/tsapeta))
+- Fixed autolinking when building react-native from source. ([#42553](https://github.com/expo/expo/pull/42553) by [@jakex7](https://github.com/jakex7))
+
+## 55.0.0-alpha.3 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0-alpha.2 — 2026-01-23
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0-alpha.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0-alpha.0 — 2026-01-21
+
+_This version does not introduce any user-facing changes._

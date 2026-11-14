@@ -1,5 +1,5 @@
-import { createCachedFetch } from './rest/client';
 import { CommandError } from '../utils/errors';
+import { createCachedFetch, getResponseDataOrThrow } from './rest/client';
 
 /** Represents version info for a particular SDK. */
 export type SDKVersion = {
@@ -56,6 +56,7 @@ export async function getVersionsAsync({
       `Unexpected response when fetching version info from Expo servers: ${results.statusText}.`
     );
   }
+
   const json = await results.json();
-  return json.data;
+  return getResponseDataOrThrow<Versions>(json);
 }

@@ -21,7 +21,7 @@ typedef NS_ENUM(NSInteger, EXKernelErrorCode) {
 @property (nonatomic, strong, readonly) EXKernelAppRegistry *appRegistry;
 @property (nonatomic, strong, readonly) EXKernelServiceRegistry *serviceRegistry;
 @property (nonatomic, readonly) EXKernelAppRecord *visibleApp;
-@property (nonatomic, assign) id<EXAppBrowserController> browserController;
+@property (nonatomic, assign, nullable) id<EXAppBrowserController> browserController;
 
 + (instancetype)sharedInstance;
 
@@ -30,11 +30,6 @@ typedef NS_ENUM(NSInteger, EXKernelErrorCode) {
 - (void)reloadAppWithScopeKey:(NSString *)scopeKey; // called by Updates.reload
 - (void)reloadAppFromCacheWithScopeKey:(NSString *)scopeKey; // called by Updates.reloadFromCache
 - (void)reloadVisibleApp; // called in development whenever the app is reloaded
-
-/**
- *  Initial props to pass to an app based on LaunchOptions from UIApplicationDelegate.
- */
-- (nullable NSDictionary *)initialAppPropsFromLaunchOptions:(NSDictionary *)launchOptions;
 
 /**
  *  Find and return the (potentially versioned) native module instance belonging to the

@@ -1,14 +1,216 @@
 # Changelog
 
-## Unpublished
+## 58.0.2
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.1 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
 
 ### 🐛 Bug fixes
 
+- [iOS] Run Sign in with Apple requests on the main queue to prevent a dispatch assertion. ([#47733](https://github.com/expo/expo/pull/47733) by [@eliotgevers](https://github.com/eliotgevers))
+- [iOS] Resolve the presentation window scene-aware and fail gracefully instead of crashing when no window is available for the Sign in with Apple sheet. ([#46955](https://github.com/expo/expo/pull/46955) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 57.0.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 7.2.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 7.2.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 7.2.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 7.2.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 7.2.0 — 2025-04-04
+
 ### 💡 Others
+
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35428](https://github.com/expo/expo/pull/35428) by [@behenate](https://github.com/behenate))
+
+## 7.1.3 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.2 — 2024-11-19
+
+### 🐛 Bug fixes
+
+- Fix `formatFullName` not specifying a return type. ([#33068](https://github.com/expo/expo/pull/33068) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 7.1.1 — 2024-11-15
+
+_This version does not introduce any user-facing changes._
+
+## 7.1.0 — 2024-11-14
+
+### 🎉 New features
+
+- Add `formatFullName` method to format tokenized full name object into a local-aware string representation ([#32567](https://github.com/expo/expo/pull/32567) by [@Armster15](https://github.com/Armster15))
+
+## 7.0.1 — 2024-10-22
+
+_This version does not introduce any user-facing changes._
+
+## 7.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Add missing `react-native` peer dependency. ([#30573](https://github.com/expo/expo/pull/30573) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Removed redundant usage of `EventEmitter` instance. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
+
+## 6.4.2 - 2024-07-22
+
+### 💡 Others
+
+- Handle new error code on `iOS` 18. ([#29639](https://github.com/expo/expo/pull/29639) by [@alanjhughes](https://github.com/alanjhughes))
 
 ## 6.4.1 — 2024-04-23
 

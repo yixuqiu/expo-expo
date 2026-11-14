@@ -1,13 +1,13 @@
 # expo-tracking-transparency
 
-A library for requesting permission to track the user or their device. Examples of data used for tracking include email address, device ID, advertising ID, etc... This permission is only necessary on iOS 14 and higher; on iOS 13 and below this permission is always granted. If the "Allow Apps to Request to Track" device-level setting is off, this permission will be denied.
+A library for tracking app users and managing tracking permissions. Provides access to advertising identifiers and manages the required permissions for tracking. Examples of data used for tracking include email address, device ID, advertising ID, etc. If the "Allow Apps to Request to Track" device-level setting is off, this permission will be denied.
 
-For more information on Apple's new App Tracking Transparency framework, please refer to their [documentation](https://developer.apple.com/app-store/user-privacy-and-data-use/).
+For more information on Apple's App Tracking Transparency framework, please refer to their [documentation](https://developer.apple.com/app-store/user-privacy-and-data-use/).
 
 ## API documentation
 
-- [Documentation for the main branch](https://github.com/expo/expo/blob/main/docs/pages/versions/unversioned/sdk/tracking-transparency.mdx)
 - [Documentation for the latest stable release](https://docs.expo.dev/versions/latest/sdk/tracking-transparency/)
+- [Documentation for the main branch](https://docs.expo.dev/versions/unversioned/sdk/tracking-transparency/)
 
 ## Installation in managed Expo projects
 
@@ -23,6 +23,15 @@ For bare React Native projects, you must ensure that you have [installed and con
 npx expo install expo-tracking-transparency
 ```
 
+### Configure for Android
+
+Add `com.google.android.gms.permission.AD_ID` permission to your manifest (`android/app/src/main/AndroidManifest.xml`):
+
+```xml
+<!-- Added permissions -->
+<uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
+```
+
 ### Configure for iOS
 
 Run `npx pod-install` after installing the npm package.
@@ -32,15 +41,6 @@ Add `NSUserTrackingUsageDescription` key to your `Info.plist`:
 ```xml
 <key>NSUserTrackingUsageDescription</key>
 <string>Your custom usage description string here.</string>
-```
-
-### Configure for Android
-
-Add `com.google.android.gms.permission.AD_ID` permission to your manifest (`android/app/src/main/AndroidManifest.xml`):
-
-```xml
-<!-- Added permissions -->
-<uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
 ```
 
 ## Contributing

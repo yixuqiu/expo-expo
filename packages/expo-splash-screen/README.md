@@ -74,7 +74,7 @@ https://user-images.githubusercontent.com/379606/120575890-b7437080-c3d6-11eb-9c
 
 > **Android only.**
 
-By using this resize mode your app will will leverage Android's ability to present a static bitmap while the application is starting up.
+By using this resize mode your app will leverage Android's ability to present a static bitmap while the application is starting up.
 Android (unlike iOS) does not support stretching of the provided image during launch, so the application will present the given image centered on the screen at its original dimensions.
 
 <table>
@@ -384,10 +384,6 @@ The newly created `SplashScreen.storyboard` needs to be marked as the `Launch Sc
 
 ##### Provide different background colors
 
-Depending on what iOS version your application is targeting, you have to adjust your native project differently to a obtain working per-appearance splash screen view.
-
-##### I'm targeting iOS 11+
-
 You can take advantage of [`named colors`](https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/WhatsNewXcode/xcode_9/xcode_9.html) in your Xcode project.
 
 1. Create a new `Color Set` and customize its values for different color modes:
@@ -409,19 +405,6 @@ You can take advantage of [`named colors`](https://developer.apple.com/library/a
  <summary>Show image with details</summary>
 <img src="./assets/configuration-ios-selectNamedColor.png" height="350" />
 </details>
-
-##### I'm targeting iOS version < 11
-
-You cannot use [`named colors`](https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/WhatsNewXcode/xcode_9/xcode_9.html) feature in your Xcode project.
-Instead you have to create an additional image set that contains small 1x1px images, each with the desired background color. Then, you'll use this additional image resource as a background in the splash screen view.
-
-You can use this online generator to obtain 1x1px `.png` images with desired colors: http://www.1x1px.me.
-
-1. Create `SplashScreenBackground` `Image Set` with desired background colors for each mode in your `Images.xcassets` directory:
-   - open your `.xcassets` directory with images,
-   - in the content panel add `New image set` and name it `SplashScreenBackground`,
-   - convert this `Image set` to support `Dark Appearance` by navigating to `Attributes Inspector` in the right panel and changing `Appearance` to `Any, Dark`,
-   - provide images with colors for every mode (you can generate color 1x1px images using http://www.1x1px.me).
 
 <details>
  <summary>Show image with details</summary>
@@ -474,11 +457,6 @@ You might want to add a separate image for `dark` mode. If the system is switche
 <img src="./assets/configuration-ios-addDarkImagesXcassets.png" height="280" />
 </details>
 
-###### Background color when you want to support iOS < 11
-
-If you're targeting a version of iOS < 11 then you cannot use `named color` feature and instead you need to generate images with desired background colors that are going to be used as the background for splash screen view.
-There is this awesome 1x1px png online generator: http://www.1x1px.me (use it to generate two 1x1px images with desired background colors for different color modes).
-
 #### 🛠 (<em>optional</em>) Customize StatusBar
 
 You might want to customize the StatusBar appearance during the time the SplashScreen is being shown.
@@ -514,7 +492,7 @@ To achieve fully-native splash screen behavior, `expo-splash-screen` needs to be
 3. [Configure `res/drawable/splashscreen.xml`](#-configure-resdrawablesplashscreenxml)
 4. [Configure `res/values/styles.xml`](#-configure-resvaluesstylesxml)
 5. [Configure `AndroidManifest.xml`](#-configure-androidmanifestxml)
-6. [(<em>optional</em>) Customzine `resizeMode`](#-optional-customize-resizemode)
+6. [(<em>optional</em>) Customize `resizeMode`](#-optional-customize-resizemode)
 7. [(<em>optional</em>) Enable dark mode](#-optional-enable-dark-mode-1)
 8. [(<em>optional</em>) Customize StatusBar](#-customize-statusbar-1)
 
@@ -564,7 +542,7 @@ Create the file with the following content:
 
 #### `NATIVE` mode adjustments
 
-If you've overridden `<string name="expo_splash_screen_resize_mode">native</string>` mode in [`res/values/strings.xml`](#-optional-customize-resizemode), you shoulw add:
+If you've overridden `<string name="expo_splash_screen_resize_mode">native</string>` mode in [`res/values/strings.xml`](#-optional-customize-resizemode), you should add:
 
 ```diff
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
@@ -690,50 +668,6 @@ Read more about `android:windowLightStatusBar` flag in [official Android documen
 
 To read more about Android multi-API-level support see [this official documentation](https://developer.android.com/guide/topics/resources/providing-resources).
 
-3. Customize `StatusBar color` option (a.k.a. `background color` of the StatusBar component)
-
-To achieve custom background color you need to create a new color resource and provide it to the SplashScreen `style` description.
-
-Create new color resource in your `res/values/colors.xml` (if your application supports dark mode, consider adding different color in `res/values-night/colors.xml` file):
-
-```diff
-  <resources>
-    <color name="splashscreen_background">#D0D0C0</color>
-+   <color name="splashscreen_statusbar_color">#(AA)RRGGBB</color> <!-- #AARRGGBB or #RRGGBB format -->
-  </resources>
-```
-
-Update your `res/values/styles.xml` file with the following entry:
-
-```diff
-  <!-- Main/SplashScreen activity theme. -->
-  <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
-    <item name="android:windowBackground">@drawable/splashscreen</item>
-+   <item name="android:statusBarColor">@color/splashscreen_statusbar_color</item>
-    <!-- Other style properties -->
-  </style>
-```
-
-If you have multiple `styles.xml` files located in different directories containing exactly the same `style` entry (e.g. in `res/values-night`, `res/values-night-v23`, etc.), be sure to update these files accordingly.
-
-Read more about `android:statusBarColor` option in [official Android documentation](https://developer.android.com/reference/android/R.attr#statusBarColor).
-
-4. Customize `StatusBar translucent` flag
-
-When the StatusBar is translucent, the app will be able to draw under the StatusBar component area.
-
-To make the StatusBar translucent update your `res/values/strings.xml` file with the following content:
-
-```diff
---- a/android/app/src/main/res/values/strings.xml
-+++ b/android/app/src/main/res/values/strings.xml
- <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
- <resources>
-   <string name="app_name">sdk42</string>
-+  <string name="expo_splash_screen_status_bar_translucent">true</string>
-</resources>
-```
-
 ## 👏 Contributing
 
 Contributions are very welcome! Please refer to guidelines described in the [contributing guide](https://github.com/expo/expo#contributing).
@@ -742,7 +676,7 @@ Contributions are very welcome! Please refer to guidelines described in the [con
 
 ### iOS caching
 
-Splash Screens on iOS apps can sometimes encounter a caching issue where the previous image will flash before showing the new, intended image. When this occurs, we recommend you try power cycling your device and uninstalling and re-installing the application. However, the caching sometimes can persist for a day or two so be patient if the aforementioned steps were unable to resolve the issue.
+Splash Screens on iOS apps can sometimes encounter a caching issue where the previous image will flash before showing the new, intended image. When this occurs, we recommend you try power cycling your device and uninstalling and re-installing the application. However, the caching sometimes can persist for a day or two, so be patient if the aforementioned steps were unable to resolve the issue.
 
 ### `NATIVE` mode pushes splash image up a little bit
 
@@ -765,8 +699,8 @@ We try to keep changes backward compatible, the code for `expo-splash-screen` wi
  import com.facebook.react.ReactRootView;
  import com.swmansion.gesturehandler.react.RNGestureHandlerEnabledRootView;
 
--import expo.modules.splashscreen.singletons.SplashScreen;
--import expo.modules.splashscreen.SplashScreenImageResizeMode;
+-import host.exp.exponent.experience.splashscreen.legacy.singletons.SplashScreen;
+-import host.exp.exponent.experience.splashscreen.legacy.SplashScreenImageResizeMode;
 -
  public class MainActivity extends ReactActivity {
    @Override
@@ -779,7 +713,7 @@ We try to keep changes backward compatible, the code for `expo-splash-screen` wi
    }
 ```
 
-3. Override default `resizeMode` and `statusBarTranslucent` in stings.xml
+3. Override default `resizeMode` in strings.xml
 
 ```diff
 --- a/android/app/src/main/res/values/strings.xml
@@ -788,7 +722,6 @@ We try to keep changes backward compatible, the code for `expo-splash-screen` wi
  <resources>
    <string name="app_name">sdk42</string>
 +  <string name="expo_splash_screen_resize_mode">contain</string>
-+  <string name="expo_splash_screen_status_bar_translucent">false</string>
 </resources>
 ```
 

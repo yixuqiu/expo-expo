@@ -1,4 +1,5 @@
-import { boolish, int, string } from 'getenv';
+import { boolish, int, string, getOriginalEnvValue } from '@expo/env';
+import process from 'node:process';
 
 // @expo/webpack-config -> expo-pwa -> @expo/image-utils: EXPO_IMAGE_UTILS_NO_SHARP
 
@@ -37,7 +38,8 @@ class Env {
 
   /** Is running in non-interactive CI mode */
   get CI() {
-    return boolish('CI', false);
+    const ci = process.env.CI;
+    return ci === '1' || ci?.toLowerCase() === 'true';
   }
 
   /** Disable telemetry (analytics) */
@@ -52,7 +54,9 @@ class Env {
 
   /** local directory to the universe repo for testing locally */
   get EXPO_UNIVERSE_DIR() {
-    return string('EXPO_UNIVERSE_DIR', '');
+    // Read from the pre-dotenv env — this is a filesystem path used by internal
+    // tooling; a project `.env` overriding it could redirect file access.
+    return getOriginalEnvValue('EXPO_UNIVERSE_DIR') || '';
   }
 
   /** @deprecated Default Webpack host string */
@@ -62,11 +66,11 @@ class Env {
 
   /** Skip warning users about a dirty git status */
   get EXPO_NO_GIT_STATUS() {
-    return boolish('EXPO_NO_GIT_STATUS', false);
+    return boolish('EXPO_NO_GIT_STATUS', true);
   }
   /** Disable auto web setup */
   get EXPO_NO_WEB_SETUP() {
-    return boolish('EXPO_NO_WEB_SETUP', false);
+    return boolish('EXPO_NO_WEB_SETUP', envIsHeadless());
   }
   /** Disable auto TypeScript setup */
   get EXPO_NO_TYPESCRIPT_SETUP() {
@@ -76,9 +80,25 @@ class Env {
   get EXPO_NO_CACHE() {
     return boolish('EXPO_NO_CACHE', false);
   }
+  /** Disable validating Metro's transform cache against inlined ambient values (e.g. `EXPO_PUBLIC_*` env vars). */
+  get EXPO_NO_CACHE_VARY() {
+    return boolish('EXPO_NO_CACHE_VARY', false);
+  }
   /** Disable the app select redirect page. */
   get EXPO_NO_REDIRECT_PAGE() {
     return boolish('EXPO_NO_REDIRECT_PAGE', false);
+  }
+  /** Append the reserved `__expo_*` params that keep the dev menu closed to Expo Go and development build launch URLs. Unset defaults to the inverse of `isInteractive()`. */
+  get EXPO_NO_DEV_MENU(): boolean {
+    return boolish('EXPO_NO_DEV_MENU', false);
+  }
+  /** Disable printing the QR code in the interactive Terminal UI. */
+  get EXPO_NO_QR_CODE(): boolean {
+    return boolish('EXPO_NO_QR_CODE', false);
+  }
+  /** Resolve application IDs from Expo app config before native files in `expo start`. */
+  get EXPO_RUN_PREFER_APP_CONFIG_ID(): boolean {
+    return boolish('EXPO_RUN_PREFER_APP_CONFIG_ID', false);
   }
   /** The React Metro port that's baked into react-native scripts and tools. */
   get RCT_METRO_PORT() {
@@ -94,14 +114,14 @@ class Env {
     return string('EXPO_PUBLIC_FOLDER', 'public');
   }
 
-  /** Higher priority `$EDIOTR` variable for indicating which editor to use when pressing `o` in the Terminal UI. */
+  /** Higher priority `$EDITOR` variable for indicating which editor to use when pressing `o` in the Terminal UI. */
   get EXPO_EDITOR(): string {
     return string('EXPO_EDITOR', '');
   }
 
-  /** Enable auto server root detection for Metro. This will change the server root to the workspace root. */
-  get EXPO_USE_METRO_WORKSPACE_ROOT(): boolean {
-    return boolish('EXPO_USE_METRO_WORKSPACE_ROOT', false);
+  /** Overwrite the hostname used in dev server URLs, disregarding the `--host`, `--lan` and `--localhost` arguments. */
+  get REACT_NATIVE_PACKAGER_HOSTNAME(): string | null {
+    return string('REACT_NATIVE_PACKAGER_HOSTNAME', '')?.trim() || null;
   }
 
   /**
@@ -109,7 +129,8 @@ class Env {
    * This is useful for browser editors that require custom proxy URLs.
    */
   get EXPO_PACKAGER_PROXY_URL(): string {
-    return string('EXPO_PACKAGER_PROXY_URL', '');
+    // Read from the pre-dotenv env — overrides dev server URL served to clients.
+    return getOriginalEnvValue('EXPO_PACKAGER_PROXY_URL') || '';
   }
 
   /**
@@ -148,6 +169,18 @@ class Env {
   }
 
   /**
+   * Instructs a different Metro config to be loaded.
+   * The path, according to metro-config, should be a path relative to the current working directory.
+   * This flag is internal and was added for external tools.
+   * @internal
+   */
+  get EXPO_OVERRIDE_METRO_CONFIG(): string | undefined {
+    // Read from the pre-dotenv env — this path is `require()`d as Metro config,
+    // so a project `.env` overriding it would execute attacker code in-process.
+    return getOriginalEnvValue('EXPO_OVERRIDE_METRO_CONFIG')?.trim() || undefined;
+  }
+
+  /**
    * Use the network inspector by overriding the metro inspector proxy with a custom version.
    * @deprecated This has been replaced by `@react-native/dev-middleware` and is now unused.
    */
@@ -160,24 +193,17 @@ class Env {
     return boolish('EXPO_NO_METRO_LAZY', false);
   }
 
-  /** Enable the unstable inverse dependency stack trace for Metro bundling errors. */
+  /**
+   * Enable the unstable inverse dependency stack trace for Metro bundling errors.
+   * @deprecated This will be removed in the future.
+   */
   get EXPO_METRO_UNSTABLE_ERRORS() {
-    return boolish('EXPO_METRO_UNSTABLE_ERRORS', false);
-  }
-
-  /** Enable the unstable fast resolver for Metro. */
-  get EXPO_USE_FAST_RESOLVER() {
-    return boolish('EXPO_USE_FAST_RESOLVER', false);
+    return boolish('EXPO_METRO_UNSTABLE_ERRORS', true);
   }
 
   /** Disable Environment Variable injection in client bundles. */
   get EXPO_NO_CLIENT_ENV_VARS(): boolean {
     return boolish('EXPO_NO_CLIENT_ENV_VARS', false);
-  }
-
-  /** Enable the React Native JS Inspector, instead of the "classic" Chrome DevTools (SDK <=49) */
-  get EXPO_USE_UNSTABLE_DEBUGGER(): boolean {
-    return boolish('EXPO_USE_UNSTABLE_DEBUGGER', false);
   }
 
   /** Set the default `user` that should be passed to `--user` with ADB commands. Used for installing APKs on Android devices with multiple profiles. Defaults to `0`. */
@@ -195,10 +221,129 @@ class Env {
     return boolish('EXPO_NO_BUNDLE_SPLITTING', false);
   }
 
-  /** Enable unstable/experimental Atlas to gather bundle information during development or export */
-  get EXPO_UNSTABLE_ATLAS() {
-    return boolish('EXPO_UNSTABLE_ATLAS', false);
+  /**
+   * Enable Atlas to gather bundle information during development or export.
+   * Note, because this used to be an experimental feature, both `EXPO_ATLAS` and `EXPO_UNSTABLE_ATLAS` are supported.
+   */
+  get EXPO_ATLAS() {
+    return boolish('EXPO_ATLAS', boolish('EXPO_UNSTABLE_ATLAS', false));
+  }
+
+  /** Unstable: Enable tree shaking for Metro. */
+  get EXPO_UNSTABLE_TREE_SHAKING() {
+    return boolish('EXPO_UNSTABLE_TREE_SHAKING', false);
+  }
+
+  /** Unstable: Enable eager bundling where transformation runs uncached after the entire bundle has been created. This is required for production tree shaking and less optimized for development bundling. */
+  get EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH() {
+    return boolish('EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH', false);
+  }
+
+  /** Enable the use of Expo's custom metro require implementation. The custom require supports better debugging, tree shaking, and React Server Components. */
+  get EXPO_USE_METRO_REQUIRE() {
+    return boolish('EXPO_USE_METRO_REQUIRE', false);
+  }
+
+  /** Internal key used to pass eager bundle data from the CLI to the native run scripts during `npx expo run` commands. */
+  get __EXPO_EAGER_BUNDLE_OPTIONS() {
+    return getOriginalEnvValue('__EXPO_EAGER_BUNDLE_OPTIONS') || '';
+  }
+
+  /** Disable server deployment during production builds (during `expo export:embed`). This is useful for testing API routes and server components against a local server. */
+  get EXPO_NO_DEPLOY(): boolean {
+    return boolish('EXPO_NO_DEPLOY', false);
+  }
+
+  /** Enable hydration during development when rendering Expo Web */
+  get EXPO_WEB_DEV_HYDRATE(): boolean {
+    return boolish('EXPO_WEB_DEV_HYDRATE', false);
+  }
+
+  /** Enable experimental React Server Functions support. */
+  get EXPO_UNSTABLE_SERVER_FUNCTIONS(): boolean {
+    return boolish('EXPO_UNSTABLE_SERVER_FUNCTIONS', false);
+  }
+
+  /** Enable unstable/experimental support for deploying the native server in `npx expo run` commands. */
+  get EXPO_UNSTABLE_DEPLOY_SERVER(): boolean {
+    return boolish('EXPO_UNSTABLE_DEPLOY_SERVER', false);
+  }
+
+  /** Is running in EAS Build. This is set by EAS: https://docs.expo.dev/eas/environment-variables/ */
+  get EAS_BUILD(): boolean {
+    return boolish('EAS_BUILD', false);
+  }
+
+  /** Disable the React Native Directory compatibility check for new architecture when installing packages */
+  get EXPO_NO_NEW_ARCH_COMPAT_CHECK(): boolean {
+    return boolish('EXPO_NO_NEW_ARCH_COMPAT_CHECK', envIsHeadless());
+  }
+
+  /** Disable the dependency validation when installing other dependencies and starting the project */
+  get EXPO_NO_DEPENDENCY_VALIDATION(): boolean {
+    return boolish('EXPO_NO_DEPENDENCY_VALIDATION', envIsHeadless());
+  }
+
+  /** Force Expo CLI to run in webcontainer mode, this has impact on which URL Expo is using by default */
+  get EXPO_FORCE_WEBCONTAINER_ENV(): boolean {
+    return boolish('EXPO_FORCE_WEBCONTAINER_ENV', false);
+  }
+
+  /** Disable by falsy value live binding in experimental import export support. Enabled by default. */
+  get EXPO_UNSTABLE_LIVE_BINDINGS(): boolean {
+    return boolish('EXPO_UNSTABLE_LIVE_BINDINGS', true);
+  }
+
+  /**
+   * Enable the experimental MCP integration or further specify the MCP server URL.
+   */
+  get EXPO_UNSTABLE_MCP_SERVER(): string {
+    const value = string('EXPO_UNSTABLE_MCP_SERVER', '');
+    if (value === '1' || value.toLowerCase() === 'true') {
+      return this.EXPO_STAGING ? 'staging-mcp.expo.dev' : 'mcp.expo.dev';
+    }
+    // Re-read from the pre-dotenv env — overrides dev server URL served to clients.
+    return getOriginalEnvValue('EXPO_UNSTABLE_MCP_SERVER') || '';
+  }
+
+  /** Enable Expo Log Box for iOS and Android (Web is enabled by default) */
+  get EXPO_UNSTABLE_LOG_BOX(): boolean {
+    return boolish('EXPO_UNSTABLE_LOG_BOX', false);
+  }
+
+  /**
+   * Disable Expo's custom network inspection (the `/inspector/network` relay, response body
+   * storage, and the "Expo Network" DevTools tab), leaving the React Native DevTools Network
+   * panel to React Native's core network reporting. Temporary until the custom network
+   * inspection is removed.
+   */
+  get EXPO_UNSTABLE_CORE_NETWORK_INSPECTOR(): boolean {
+    return boolish('EXPO_UNSTABLE_CORE_NETWORK_INSPECTOR', false);
+  }
+
+  /**
+   * Enable Bonjour advertising of the Expo CLI on local networks
+   */
+  get EXPO_UNSTABLE_BONJOUR(): boolean {
+    return boolish('EXPO_UNSTABLE_BONJOUR', !envIsHeadless());
+  }
+
+  /** @internal Configure other environment variables for headless operations */
+  get EXPO_UNSTABLE_HEADLESS() {
+    return boolish('EXPO_UNSTABLE_HEADLESS', envIsWebcontainer());
   }
 }
 
 export const env = new Env();
+
+export function envIsWebcontainer() {
+  // See: https://github.com/unjs/std-env/blob/4b1e03c4efce58249858efc2cc5f5eac727d0adb/src/providers.ts#L134-L143
+  return (
+    env.EXPO_FORCE_WEBCONTAINER_ENV ||
+    (process.env.SHELL === '/bin/jsh' && !!process.versions.webcontainer)
+  );
+}
+
+export function envIsHeadless() {
+  return env.EXPO_UNSTABLE_HEADLESS;
+}

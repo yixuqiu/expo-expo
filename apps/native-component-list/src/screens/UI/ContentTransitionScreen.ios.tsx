@@ -1,0 +1,75 @@
+import { Host, Section, Text, VStack, HStack, Button, Form, Image } from '@expo/ui/swift-ui';
+import {
+  animation,
+  Animation,
+  contentTransition,
+  font,
+  contentShape,
+  shapes,
+  buttonStyle,
+} from '@expo/ui/swift-ui/modifiers';
+import { useRef, useState } from 'react';
+
+export default function ContentTransitionScreen() {
+  const [count, setCount] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const countsDown = useRef(false);
+
+  return (
+    <Host style={{ flex: 1 }}>
+      <Form>
+        <Section
+          title="Numeric Text (Count Up/Down)"
+          modifiers={[contentShape(shapes.rectangle())]}>
+          <VStack spacing={16}>
+            <Text
+              modifiers={[
+                font({ size: 48, weight: 'bold', design: 'rounded' }),
+                contentTransition('numericText', { countsDown: countsDown.current }),
+                animation(Animation.default, count),
+              ]}>
+              {count.toLocaleString()}
+            </Text>
+            <HStack spacing={16}>
+              <Button
+                label="Increment"
+                modifiers={[buttonStyle('bordered')]}
+                onPress={() => {
+                  countsDown.current = false;
+                  setCount((c) => c + 1);
+                }}
+              />
+              <Button
+                modifiers={[buttonStyle('bordered')]}
+                label="Decrement"
+                onPress={() => {
+                  countsDown.current = true;
+                  setCount((c) => c - 1);
+                }}
+              />
+            </HStack>
+          </VStack>
+        </Section>
+        <Section title="Symbol Effect (Replace)" modifiers={[contentShape(shapes.rectangle())]}>
+          <VStack spacing={16}>
+            <Image
+              systemName={isMuted ? 'speaker.slash.fill' : 'speaker.wave.3.fill'}
+              size={48}
+              modifiers={[
+                contentTransition('symbolEffect', {
+                  symbolEffect: { effect: 'replace', direction: 'downUp' },
+                }),
+                animation(Animation.default, isMuted),
+              ]}
+            />
+            <Button
+              label="Toggle"
+              modifiers={[buttonStyle('bordered')]}
+              onPress={() => setIsMuted((muted) => !muted)}
+            />
+          </VStack>
+        </Section>
+      </Form>
+    </Host>
+  );
+}

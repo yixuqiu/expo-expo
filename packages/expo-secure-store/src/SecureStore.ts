@@ -2,6 +2,15 @@ import ExpoSecureStore from './ExpoSecureStore';
 
 export type KeychainAccessibilityConstant = number;
 
+/**
+ * The authentication method that protects an entry.
+ * - `'none'`: no authentication.
+ * - `'biometry'`: biometric authentication only.
+ * - `'deviceCredentials'`: biometric authentication with fallback to the device PIN, pattern, or password.
+ *   On Android, this method requires API 30 or higher.
+ */
+export type AuthenticationMethod = 'none' | 'biometry' | 'deviceCredentials';
+
 // @needsAudit
 /**
  * The data in the keychain item cannot be accessed after a restart until the device has been
@@ -22,6 +31,8 @@ export const AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: KeychainAccessibilityConstant 
 /**
  * The data in the keychain item can always be accessed regardless of whether the device is locked.
  * This is the least secure option.
+ *
+ * @deprecated Use an accessibility level that provides some user protection, such as `AFTER_FIRST_UNLOCK`.
  */
 export const ALWAYS: KeychainAccessibilityConstant = ExpoSecureStore.ALWAYS;
 
@@ -36,6 +47,8 @@ export const WHEN_PASSCODE_SET_THIS_DEVICE_ONLY: KeychainAccessibilityConstant =
 // @needsAudit
 /**
  * Similar to `ALWAYS`, except the entry is not migrated to a new device when restoring from a backup.
+ *
+ * @deprecated Use an accessibility level that provides some user protection, such as `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`.
  */
 export const ALWAYS_THIS_DEVICE_ONLY: KeychainAccessibilityConstant =
   ExpoSecureStore.ALWAYS_THIS_DEVICE_ONLY;
@@ -54,8 +67,6 @@ export const WHEN_UNLOCKED: KeychainAccessibilityConstant = ExpoSecureStore.WHEN
 export const WHEN_UNLOCKED_THIS_DEVICE_ONLY: KeychainAccessibilityConstant =
   ExpoSecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY;
 
-const VALUE_BYTES_LIMIT = 2048;
-
 // @needsAudit
 export type SecureStoreOptions = {
   /**
@@ -65,30 +76,57 @@ export type SecureStoreOptions = {
    */
   keychainService?: string;
   /**
-   * Option responsible for enabling the usage of the user authentication methods available on the device while
-   * accessing data stored in SecureStore.
-   * - Android: Equivalent to [`setUserAuthenticationRequired(true)`](https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.Builder#setUserAuthenticationRequired(boolean))
-   *   (requires API 23).
-   * - iOS: Equivalent to [`kSecAccessControlBiometryCurrentSet`](https://developer.apple.com/documentation/security/secaccesscontrolcreateflags/ksecaccesscontrolbiometrycurrentset/).
-   * Complete functionality is unlocked only with a freshly generated key - this would not work in tandem with the `keychainService`
-   * value used for the others non-authenticated operations.
+   * Determines the authentication method for this entry. Specify `'none'` for no authentication, `'biometry'` for biometric authentication only,
+   * or `'deviceCredentials'` for biometric with fallback to device credentials (PIN, pattern, or password).
+   * Use `canUseDeviceCredentialsAuthentication()` to check if device credentials are available.
    *
-   * Warning: This option is not supported in Expo Go when biometric authentication is available due to a missing NSFaceIDUsageDescription.
+   * > **warning** Boolean values are deprecated and will be removed in a future release. `true` is treated as `'biometry'`
+   * > and `false` as `'none'`. Passing a boolean logs a deprecation warning once per app session.
+   *
+   * - Android: Equivalent to [`setUserAuthenticationRequired(true)`](https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.Builder#setUserAuthenticationRequired(boolean))
+   *   (requires API 23). `'deviceCredentials'` requires API 30+.
+   * - iOS: Equivalent to [`biometryCurrentSet`](https://developer.apple.com/documentation/security/secaccesscontrolcreateflags/2937192-biometrycurrentset) or [`userPresence`](https://developer.apple.com/documentation/security/secaccesscontrolcreateflags/userpresence).
+   *
+   * This option works slightly differently across platforms: On Android, user authentication is required for all operations.
+   * On iOS, the user is prompted to authenticate only when reading or updating an existing value (not when creating a new one).
+   *
+   * Warning: This option is not supported in Expo Go when Face ID is available due to a missing NSFaceIDUsageDescription.
    * In release builds or when using continuous native generation, make sure to use the `expo-secure-store` config plugin.
    *
+   * > **Note:** Test authentication behavior on a real device because emulators and simulators may not show authentication prompts in the same way.
+   *
+   * @default 'none'
    */
-  requireAuthentication?: boolean;
+  requireAuthentication?: AuthenticationMethod | boolean;
   /**
-   * Custom message displayed to the user while `requireAuthentication` option is turned on.
+   * Sets a hint to the system for whether to require user confirmation after authentication.
+   * This may be ignored by the system if the user has disabled implicit authentication in Settings
+   * or if it does not apply to a particular biometric modality. Defaults to `true`.
+   *
+   * This option is only used when `requireAuthentication` is enabled.
+   * @platform android
+   */
+  requireConfirmation?: boolean;
+  /**
+   * Custom message displayed to the user during authentication.
    */
   authenticationPrompt?: string;
   /**
    * Specifies when the stored entry is accessible, using iOS's `kSecAttrAccessible` property.
+   * When an existing entry is overwritten, passing this option updates the entry's accessibility,
+   * and omitting it keeps the accessibility the entry was stored with.
    * @see Apple's documentation on [keychain item accessibility](https://developer.apple.com/documentation/security/ksecattraccessible/).
    * @default SecureStore.WHEN_UNLOCKED
    * @platform ios
    */
   keychainAccessible?: KeychainAccessibilityConstant;
+
+  /**
+   * Specifies the access group the stored entry belongs to.
+   * @see Apple's documentation on [Sharing access to keychain items among a collection of apps](https://developer.apple.com/documentation/security/sharing-access-to-keychain-items-among-a-collection-of-apps).
+   * @platform ios
+   */
+  accessGroup?: string;
 };
 
 // @needsAudit
@@ -96,7 +134,7 @@ export type SecureStoreOptions = {
  * Returns whether the SecureStore API is enabled on the current device. This does not check the app
  * permissions.
  *
- * @return Promise which fulfils witch `boolean`, indicating whether the SecureStore API is available
+ * @return Promise which fulfils with a `boolean`, indicating whether the SecureStore API is available
  * on the current device. Currently, this resolves `true` on Android and iOS only.
  */
 export async function isAvailableAsync(): Promise<boolean> {
@@ -110,7 +148,7 @@ export async function isAvailableAsync(): Promise<boolean> {
  * @param key The key that was used to store the associated value.
  * @param options An [`SecureStoreOptions`](#securestoreoptions) object.
  *
- * @return A promise that will reject if the value couldn't be deleted.
+ * @return A promise that rejects if the value can't be deleted.
  */
 export async function deleteItemAsync(
   key: string,
@@ -118,7 +156,7 @@ export async function deleteItemAsync(
 ): Promise<void> {
   ensureValidKey(key);
 
-  await ExpoSecureStore.deleteValueWithKeyAsync(key, options);
+  await ExpoSecureStore.deleteValueWithKeyAsync(key, normalizeOptions(options));
 }
 
 // @needsAudit
@@ -128,19 +166,23 @@ export async function deleteItemAsync(
  * @param key The key that was used to store the associated value.
  * @param options An [`SecureStoreOptions`](#securestoreoptions) object.
  *
- * @return A promise that resolves to the previously stored value. It will return `null` if there is no entry
- * for the given key or if the key has been invalidated. It will reject if an error occurs while retrieving the value.
+ * @return A promise that resolves to the previously stored value. It resolves with `null` if there is no entry
+ * for the given key or if the key has been invalidated. It rejects if an error occurs while retrieving the value.
  *
- * > Keys are invalidated by the system when biometrics change, such as adding a new fingerprint or changing the face profile used for face recognition.
+ * > Keys stored with `requireAuthentication: 'biometry'` are invalidated by the system when biometrics change, such as adding a new fingerprint or changing the face profile used for face recognition.
+ * > Keys stored with `requireAuthentication: 'deviceCredentials'` are not affected by biometric changes. On Android, keys stored with either method are invalidated when the user removes the device's lock screen.
  * > After a key has been invalidated, it becomes impossible to read its value.
- * > This only applies to values stored with `requireAuthentication` set to `true`.
+ *
+ * > **Note:** When `requireAuthentication` is set to `'biometry'` or `'deviceCredentials'`, the authentication prompt itself can fail independently of the stored value: the app user cancels or dismisses the prompt, no biometrics are enrolled, the hardware is unavailable, the user is locked out after too many failed attempts, or the prompt times out.
+ * > In these cases the promise rejects with an error whose `message` is the native string (for example, `"User canceled the authentication"` on Android or `"User canceled the operation."` on iOS).
+ * > Wrap the call in `try/catch` and treat a rejection as an auth-flow outcome to retry or back out of, not as data corruption.
  */
 export async function getItemAsync(
   key: string,
   options: SecureStoreOptions = {}
 ): Promise<string | null> {
   ensureValidKey(key);
-  return await ExpoSecureStore.getValueWithKeyAsync(key, options);
+  return await ExpoSecureStore.getValueWithKeyAsync(key, normalizeOptions(options));
 }
 
 // @needsAudit
@@ -148,10 +190,14 @@ export async function getItemAsync(
  * Stores a key–value pair.
  *
  * @param key The key to associate with the stored value. Keys may contain alphanumeric characters, `.`, `-`, and `_`.
- * @param value The value to store. Size limit is 2048 bytes.
+ * @param value The value to store.
  * @param options An [`SecureStoreOptions`](#securestoreoptions) object.
  *
- * @return A promise that will reject if value cannot be stored on the device.
+ * @return A promise that rejects if value cannot be stored on the device.
+ *
+ * > **Note:** When `requireAuthentication` is set to `'biometry'` or `'deviceCredentials'`, the authentication prompt itself can fail independently of the stored value: the app user cancels or dismisses the prompt, no biometrics are enrolled, the hardware is unavailable, the user is locked out after too many failed attempts, or the prompt times out.
+ * > In these cases the promise rejects with an error whose `message` is the native string (for example, `"User canceled the authentication"` on Android or `"User canceled the operation."` on iOS).
+ * > Wrap the call in `try/catch` and treat a rejection as an auth-flow outcome to retry or back out of, not as data corruption.
  */
 export async function setItemAsync(
   key: string,
@@ -165,17 +211,20 @@ export async function setItemAsync(
     );
   }
 
-  await ExpoSecureStore.setValueWithKeyAsync(value, key, options);
+  await ExpoSecureStore.setValueWithKeyAsync(value, key, normalizeOptions(options));
 }
 
 /**
- * Stores a key–value pair synchronously.
- * > **Note:** This function blocks the JavaScript thread, so the application may not be interactive when the `requireAuthentication` option is set to `true` until the user authenticates.
+ * Stores a key–value pair synchronously. It throws if the value cannot be stored on the device.
+ * > **Note:** This function blocks the JavaScript thread, so the application may not be interactive when the `requireAuthentication` option is set to `'biometry'` or `'deviceCredentials'` until the user authenticates.
  *
  * @param key The key to associate with the stored value. Keys may contain alphanumeric characters, `.`, `-`, and `_`.
- * @param value The value to store. Size limit is 2048 bytes.
+ * @param value The value to store.
  * @param options An [`SecureStoreOptions`](#securestoreoptions) object.
  *
+ * > **Note:** When `requireAuthentication` is set to `'biometry'` or `'deviceCredentials'`, the authentication prompt itself can fail independently of the stored value: the app user cancels or dismisses the prompt, no biometrics are enrolled, the hardware is unavailable, the user is locked out after too many failed attempts, or the prompt times out.
+ * > In these cases the function throws an error whose `message` is the native string (for example, `"User canceled the authentication"` on Android or `"User canceled the operation."` on iOS).
+ * > Wrap the call in `try/catch` and treat the error as an auth-flow outcome to retry or back out of, not as data corruption.
  */
 export function setItem(key: string, value: string, options: SecureStoreOptions = {}): void {
   ensureValidKey(key);
@@ -185,29 +234,54 @@ export function setItem(key: string, value: string, options: SecureStoreOptions 
     );
   }
 
-  return ExpoSecureStore.setValueWithKeySync(value, key, options);
+  return ExpoSecureStore.setValueWithKeySync(value, key, normalizeOptions(options));
 }
 
 /**
  * Synchronously reads the stored value associated with the provided key.
  * > **Note:** This function blocks the JavaScript thread, so the application may not be interactive when reading a value with `requireAuthentication`
- * > option set to `true` until the user authenticates.
+ * > option set to `'biometry'` or `'deviceCredentials'` until the user authenticates.
  * @param key The key that was used to store the associated value.
  * @param options An [`SecureStoreOptions`](#securestoreoptions) object.
  *
- * @return Previously stored value. It will return `null` if there is no entry for the given key or if the key has been invalidated.
+ * @return Previously stored value. It returns `null` if there is no entry
+ * for the given key or if the key has been invalidated. It throws if an error occurs while retrieving the value.
+ *
+ * > **Note:** When `requireAuthentication` is set to `'biometry'` or `'deviceCredentials'`, the authentication prompt itself can fail independently of the stored value: the app user cancels or dismisses the prompt, no biometrics are enrolled, the hardware is unavailable, the user is locked out after too many failed attempts, or the prompt times out.
+ * > In these cases the function throws an error whose `message` is the native string (for example, `"User canceled the authentication"` on Android or `"User canceled the operation."` on iOS).
+ * > Wrap the call in `try/catch` and treat the error as an auth-flow outcome to retry or back out of, not as data corruption.
  */
 export function getItem(key: string, options: SecureStoreOptions = {}): string | null {
   ensureValidKey(key);
-  return ExpoSecureStore.getValueWithKeySync(key, options);
+  return ExpoSecureStore.getValueWithKeySync(key, normalizeOptions(options));
 }
 
 /**
  * Checks if the value can be saved with `requireAuthentication` option enabled.
- * @return `true` if the device supports biometric authentication and the enrolled method is sufficiently secure. Otherwise, returns `false`.
+ * @return `true` if the device supports biometric authentication and the enrolled method is sufficiently secure. Otherwise, returns `false`. Always returns false on tvOS.
+ * @platform android
+ * @platform ios
  */
 export function canUseBiometricAuthentication(): boolean {
   return ExpoSecureStore.canUseBiometricAuthentication();
+}
+
+/**
+ * Checks whether the device is secured with a PIN, pattern, or password.
+ *
+ * Use this to determine if the user can authenticate with `requireAuthentication: 'deviceCredentials'`
+ * (biometric with fallback to device credentials).
+ *
+ * > On Android, `requireAuthentication: 'deviceCredentials'` requires API 30+. On devices running
+ * > API 23-29 this method returns `false` because device credential authentication is not
+ * > supported there.
+ *
+ * @return `true` if the device has a secure lock screen configured. Otherwise, returns `false`. Always returns `false` on tvOS.
+ * @platform android
+ * @platform ios
+ */
+export function canUseDeviceCredentialsAuthentication(): boolean {
+  return ExpoSecureStore.canUseDeviceCredentialsAuthentication();
 }
 
 function ensureValidKey(key: string) {
@@ -223,39 +297,30 @@ function isValidKey(key: string) {
 }
 
 function isValidValue(value: string) {
-  if (typeof value !== 'string') {
-    return false;
-  }
-  if (byteCount(value) > VALUE_BYTES_LIMIT) {
-    console.warn(
-      'Value being stored in SecureStore is larger than 2048 bytes and it may not be stored successfully. In a future SDK version, this call may throw an error.'
-    );
-  }
-  return true;
+  return typeof value === 'string';
 }
 
-// copy-pasted from https://stackoverflow.com/a/39488643
-function byteCount(value: string) {
-  let bytes = 0;
+let hasWarnedAboutBooleanRequireAuthentication = false;
 
-  for (let i = 0; i < value.length; i++) {
-    const codePoint = value.charCodeAt(i);
-
-    // Lone surrogates cannot be passed to encodeURI
-    if (codePoint >= 0xd800 && codePoint < 0xe000) {
-      if (codePoint < 0xdc00 && i + 1 < value.length) {
-        const next = value.charCodeAt(i + 1);
-
-        if (next >= 0xdc00 && next < 0xe000) {
-          bytes += 4;
-          i++;
-          continue;
-        }
-      }
-    }
-
-    bytes += codePoint < 0x80 ? 1 : codePoint < 0x800 ? 2 : 3;
+function normalizeOptions(options: SecureStoreOptions): SecureStoreOptions {
+  const { requireAuthentication, ...otherOptions } = options;
+  if (requireAuthentication === undefined) {
+    return otherOptions;
   }
+  return { ...otherOptions, requireAuthentication: toAuthenticationMethod(requireAuthentication) };
+}
 
-  return bytes;
+function toAuthenticationMethod(
+  requireAuthentication: AuthenticationMethod | boolean
+): AuthenticationMethod {
+  if (typeof requireAuthentication !== 'boolean') {
+    return requireAuthentication;
+  }
+  if (!hasWarnedAboutBooleanRequireAuthentication) {
+    hasWarnedAboutBooleanRequireAuthentication = true;
+    console.warn(
+      `SecureStore: passing a boolean to the requireAuthentication option is deprecated and will be removed in the future. Use "none" instead of false and "biometry" instead of true.`
+    );
+  }
+  return requireAuthentication ? 'biometry' : 'none';
 }

@@ -1,4 +1,6 @@
-import { WebBrowserOpenOptions, WebBrowserWindowFeatures } from 'expo-web-browser';
+import type { AuthSessionOpenOptions, WebBrowserWindowFeatures } from 'expo-web-browser';
+
+import type { DiscoveryDocument } from './Discovery';
 
 // @needsAudit
 export enum CodeChallengeMethod {
@@ -73,7 +75,7 @@ export enum Prompt {
  * Options passed to the `promptAsync()` method of `AuthRequest`s.
  * This can be used to configure how the web browser should look and behave.
  */
-export type AuthRequestPromptOptions = Omit<WebBrowserOpenOptions, 'windowFeatures'> & {
+export type AuthRequestPromptOptions = Omit<AuthSessionOpenOptions, 'windowFeatures'> & {
   /**
    * URL to open when prompting the user. This usually should be defined internally and left `undefined` in most cases.
    */
@@ -89,7 +91,7 @@ export type AuthRequestPromptOptions = Omit<WebBrowserOpenOptions, 'windowFeatur
 /**
  * Represents an OAuth authorization request as JSON.
  */
-export interface AuthRequestConfig {
+export type AuthRequestConfig = {
   /**
    * Specifies what is returned from the authorization server.
    *
@@ -110,7 +112,7 @@ export interface AuthRequestConfig {
   clientId: string;
   /**
    * After completing an interaction with a resource owner the
-   * server will redirect to this URI. Learn more about [linking in Expo](/guides/linking/).
+   * server will redirect to this URI. Learn more about [linking in Expo](/linking/overview/).
    *
    * [Section 3.1.2](https://tools.ietf.org/html/rfc6749#section-3.1.2)
    */
@@ -145,7 +147,7 @@ export interface AuthRequestConfig {
    *
    * [Section 3.1.2.1](https://openid.net/specs/openid-connect-core-1_0.html#AuthorizationRequest)
    */
-  prompt?: Prompt;
+  prompt?: Prompt | Prompt[];
   /**
    * Used for protection against [Cross-Site Request Forgery](https://tools.ietf.org/html/rfc6749#section-10.12).
    */
@@ -159,4 +161,6 @@ export interface AuthRequestConfig {
    * @default true
    */
   usePKCE?: boolean;
-}
+};
+
+export type AuthDiscoveryDocument = Pick<DiscoveryDocument, 'authorizationEndpoint'>;

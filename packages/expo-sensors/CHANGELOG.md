@@ -1,14 +1,272 @@
 # Changelog
 
-## Unpublished
+## 58.0.4
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- [Android] Fixed `DeviceMotion` emitting a stale reading from the previous subscription when re-subscribing, and sensors restarting after the last listener was removed when the app returned to the foreground. ([#51364](https://github.com/expo/expo/pull/51364) by [@tomjvk](https://github.com/tomjvk))
+
+## 58.0.3
+
+### Patch Changes
+
+- [iOS] Rewrote the motion permission requester in Swift, so expo-sensors no longer needs a separate Objective-C target when built with Swift Package Manager. Fixed a crash when `NSMotionUsageDescription` is missing from Info.plist: the permission is now reported as denied and an error is logged. ([#51161](https://github.com/expo/expo/pull/51161) by [@chrfalch](https://github.com/chrfalch))
+
+## 58.0.2
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+
+## 58.0.1
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 - 2026-06-10
 
 ### 🐛 Bug fixes
 
+- Fixed the prebuilt `ExpoSensors.xcframework` always returning `denied` for the motion permission on iOS. The prebuild config unconditionally defined `EXPO_DISABLE_MOTION_PERMISSION`, which is only meant to be set when opting out via the `motionPermission: false` config plugin option. ([#46686](https://github.com/expo/expo/issues/46686) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.5 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.4 — 2026-05-13
+
 ### 💡 Others
+
+- Updated permission type and permission status imports to be imported from `expo` instead of `expo-modules-core` ([#45565](https://github.com/expo/expo/pull/45565) by [@Wenszel](https://github.com/Wenszel))
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed TCC crash on iOS 26 during Metro reload when `motionPermission: false` — `CMAltimeter.stopRelativeAltitudeUpdates()` now only runs if updates were started. ([#45396](https://github.com/expo/expo/pull/45396) by [@JustinFay01](https://github.com/JustinFay01))
+
+## 55.0.14 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+### 🐛 Bug fixes
+
+- [iOS] Fixed build failure when motion permission is disabled with the config plugin. ([#42599](https://github.com/expo/expo/pull/42599) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.3 — 2026-01-27
+
+### 💡 Others
+
+- mark `removeSubscription` calls as deprecated ([#42098](https://github.com/expo/expo/pull/42098) by [@vonovak](https://github.com/vonovak))
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.6 — 2025-09-02
+
+### 💡 Others
+
+- Change Constants to Constant/Property. ([#38926](https://github.com/expo/expo/pull/38926) by [@jakex7](https://github.com/jakex7))
+
+## 15.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 15.0.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.3 — 2025-04-25
+
+### 🐛 Bug fixes
+
+- [Android] Fix throwing an error inside `getOrientation` when the `currentActivity` is not available. ([#36369](https://github.com/expo/expo/pull/36369) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 14.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 14.1.0 — 2025-04-04
+
+### 🐛 Bug fixes
+
+- Add missing `getPermissionsAsync` and `requestPermissionsAsync` implementations to native DeviceMotion modules. ([#33719](https://github.com/expo/expo/pull/33719) by [@ratley](https://github.com/ratley))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+
+## 14.0.2 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.1 — 2024-10-28
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- Add missing `react-native` peer dependencies for isolated modules. ([#30482](https://github.com/expo/expo/pull/30482) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Fix incorrect event emitting tests. ([#28953](https://github.com/expo/expo/pull/28953) by [@aleqsio](https://github.com/aleqsio))
+- Removed redundant usage of `EventEmitter` instance. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
+- [Android] Remove usage of deprecated internal modules API. ([#28715](https://github.com/expo/expo/pull/28715) by [@lukmccall](https://github.com/lukmccall))
+- [iOS] Fix pedometer sensor when app goes to background then foreground. ([#29957]https://github.com/expo/expo/pull/29957) by [@rlods](https://github.com/rlods))
+
+### ⚠️ Notices
+
+- Added support for React Native 0.76.x. ([#31552](https://github.com/expo/expo/pull/31552) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 13.0.9 - 2024-06-27
+
+### 🎉 New features
+
+- [iOS] Allow excluding motion permission APIs. ([#29845](https://github.com/expo/expo/pull/29845) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 13.0.8 - 2024-05-29
+
+### 🐛 Bug fixes
+
+- [Android] Fixed `NPE` in `DeviceMotionListener`. ([#29022](https://github.com/expo/expo/pull/29022) by [@lukmccall](https://github.com/lukmccall))
+
+## 13.0.7 — 2024-05-15
+
+### 🐛 Bug fixes
+
+- [Android] Fix crash when using `DeviceMotion` module. ([#28839](https://github.com/expo/expo/pull/28839) by [@behenate](https://github.com/behenate))
+
+## 13.0.6 — 2024-05-13
+
+### 💡 Others
+
+- Add timestamps to relevant sensor events. ([#28761](https://github.com/expo/expo/pull/28761) by [@jkaufman](https://github.com/jkaufman))
 
 ## 13.0.5 — 2024-05-06
 

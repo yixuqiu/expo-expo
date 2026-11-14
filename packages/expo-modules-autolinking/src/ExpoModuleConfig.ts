@@ -1,5 +1,12 @@
-import {
+import { isAppleTargetPlatform } from '@expo/platforms';
+import fs from 'fs';
+import path from 'path';
+
+import { memoize } from './memoize';
+import type {
+  AndroidGradleAarProjectDescriptor,
   AndroidGradlePluginDescriptor,
+  AndroidPublication,
   RawExpoModuleConfig,
   RawModuleConfigApple,
   SupportedPlatform,
@@ -10,6 +17,29 @@ function arrayize<T>(value: T[] | T | undefined): T[] {
     return value;
   }
   return value != null ? [value] : [];
+}
+
+export class ExpoAndroidModuleConfig {
+  constructor(
+    public classifier: string,
+    public name: string | null
+  ) {}
+}
+
+export class ExpoAndroidProjectConfig {
+  constructor(
+    public name: string,
+    public path: string,
+    public modules?: ExpoAndroidModuleConfig[],
+    public services?: string[],
+    public publication?: AndroidPublication,
+    public gradleAarProjects?: AndroidGradleAarProjectDescriptor[],
+    public shouldUsePublicationScriptPath?: string,
+    /**
+     * Whether this project is the root one.
+     */
+    public isDefault: boolean = false
+  ) {}
 }
 
 /**
@@ -24,11 +54,18 @@ export class ExpoModuleConfig {
   supportsPlatform(platform: SupportedPlatform): boolean {
     const supportedPlatforms = this.rawConfig.platforms ?? [];
 
-    if (platform === 'apple') {
+    if (platform === 'web') {
+      // Web platform is implicitly supported for autolinking resolution but has no special behavior
+      return true;
+    } else if (platform === 'apple') {
       // Apple platform is supported when any of iOS, macOS and tvOS is supported.
       return supportedPlatforms.some((supportedPlatform) => {
-        return ['apple', 'ios', 'macos', 'tvos'].includes(supportedPlatform);
+        return supportedPlatform === 'apple' || isAppleTargetPlatform(supportedPlatform);
       });
+    }
+    if (isAppleTargetPlatform(platform)) {
+      // ios|macos|tvos are supported when the module supports "apple" as a platform in general
+      return supportedPlatforms.includes(platform) || supportedPlatforms.includes('apple');
     }
     return supportedPlatforms.includes(platform);
   }
@@ -45,9 +82,12 @@ export class ExpoModuleConfig {
    */
   appleModules() {
     const appleConfig = this.getAppleConfig();
+    return appleConfig?.modules ?? [];
+  }
 
-    // `modulesClassNames` is a legacy name for the same config.
-    return appleConfig?.modules ?? appleConfig?.modulesClassNames ?? [];
+  /** Whether the config declares the Apple modules list. Even an empty list disables scanning. */
+  declaresAppleModules(): boolean {
+    return this.getAppleConfig()?.modules != null;
   }
 
   /**
@@ -86,20 +126,48 @@ export class ExpoModuleConfig {
   }
 
   /**
-   * Returns a list of names of Kotlin native modules classes to put to the generated package provider file.
+   * Returns information about Android projects defined by the module author.
    */
-  androidModules() {
-    const androidConfig = this.rawConfig.android;
+  androidProjects(defaultProjectName: string): ExpoAndroidProjectConfig[] {
+    const androidProjects: ExpoAndroidProjectConfig[] = [];
 
-    // `modulesClassNames` is a legacy name for the same config.
-    return androidConfig?.modules ?? androidConfig?.modulesClassNames ?? [];
-  }
+    // Adding the "root" Android project - it might not be valid.
+    androidProjects.push(
+      new ExpoAndroidProjectConfig(
+        this.rawConfig.android?.name ?? defaultProjectName,
+        this.rawConfig.android?.path ?? 'android',
+        this.rawConfig.android?.modules?.map((module) =>
+          typeof module === 'string'
+            ? new ExpoAndroidModuleConfig(module, null)
+            : new ExpoAndroidModuleConfig(module.class, module.name)
+        ),
+        this.rawConfig.android?.services,
+        this.rawConfig.android?.publication,
+        this.rawConfig.android?.gradleAarProjects,
+        this.rawConfig.android?.shouldUsePublicationScriptPath,
+        !this.rawConfig.android?.path // it's default project because path is not defined
+      )
+    );
 
-  /**
-   * Returns build.gradle file paths defined by the module author.
-   */
-  androidGradlePaths(): string[] {
-    return arrayize(this.rawConfig.android?.gradlePath ?? []);
+    this.rawConfig.android?.projects?.forEach((project) => {
+      androidProjects.push(
+        new ExpoAndroidProjectConfig(
+          project.name,
+          project.path,
+          project.modules?.map((module) =>
+            typeof module === 'string'
+              ? new ExpoAndroidModuleConfig(module, null)
+              : new ExpoAndroidModuleConfig(module.class, module.name)
+          ),
+          project.services,
+          project.publication,
+          project.gradleAarProjects,
+          project.shouldUsePublicationScriptPath
+        )
+      );
+    });
+
+    return androidProjects;
   }
 
   /**
@@ -110,6 +178,27 @@ export class ExpoModuleConfig {
   }
 
   /**
+   * Returns gradle projects containing AAR files defined by the module author.
+   */
+  androidGradleAarProjects(): AndroidGradleAarProjectDescriptor[] {
+    return arrayize(this.rawConfig.android?.gradleAarProjects ?? []);
+  }
+
+  /**
+   * Returns the publication config for Android.
+   */
+  androidPublication(): AndroidPublication | undefined {
+    return this.rawConfig.android?.publication;
+  }
+
+  /**
+   * Returns core features required by the module author.
+   */
+  coreFeatures(): string[] {
+    return arrayize(this.rawConfig.coreFeatures ?? []);
+  }
+
+  /**
    * Returns serializable raw config.
    */
   toJSON(): RawExpoModuleConfig {
@@ -117,11 +206,24 @@ export class ExpoModuleConfig {
   }
 }
 
-/**
- * Reads the config at given path and returns the config wrapped by `ExpoModuleConfig` class.
- */
-export function requireAndResolveExpoModuleConfig(path: string): ExpoModuleConfig {
-  // TODO: Validate the raw config against a schema.
-  // TODO: Support for `*.js` files, not only static `*.json`.
-  return new ExpoModuleConfig(require(path) as RawExpoModuleConfig);
-}
+/** Names of Expo Module config files (highest to lowest priority) */
+const EXPO_MODULE_CONFIG_FILENAMES = ['expo-module.config.json', 'unimodule.json'];
+
+export const discoverExpoModuleConfigAsync = memoize(async function discoverExpoModuleConfigAsync(
+  directoryPath: string
+): Promise<ExpoModuleConfig | null> {
+  for (let idx = 0; idx < EXPO_MODULE_CONFIG_FILENAMES.length; idx++) {
+    // TODO: Validate the raw config against a schema.
+    // TODO: Support for `*.js` files, not only static `*.json`.
+    const targetPath = path.join(directoryPath, EXPO_MODULE_CONFIG_FILENAMES[idx] ?? '');
+    let text: string;
+    try {
+      text = await fs.promises.readFile(targetPath, 'utf8');
+    } catch {
+      // try the next file
+      continue;
+    }
+    return new ExpoModuleConfig(JSON.parse(text) as RawExpoModuleConfig);
+  }
+  return null;
+});

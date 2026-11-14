@@ -1,17 +1,26 @@
 import { getConfig } from '@expo/config';
-import { vol } from 'memfs';
-import nock from 'nock';
+import type { ChangeEvent } from '@expo/metro/metro-file-map/flow-types';
+import { ImmutableRequest } from 'expo-server/private';
+import { fs, vol } from 'memfs';
 
-import { logEventAsync } from '../../../../utils/telemetry';
-import { BundlerStartOptions } from '../../BundlerDevServer';
+import type { ExportAssetMap } from '../../../../export/saveAssets';
+import { getEnvFiles, reloadEnvFiles } from '../../../../utils/nodeEnv';
+import type { BundlerStartOptions } from '../../BundlerDevServer';
 import { getPlatformBundlers } from '../../platformBundlers';
-import { MetroBundlerDevServer, getDeepLinkHandler } from '../MetroBundlerDevServer';
+import { MetroBundlerDevServer } from '../MetroBundlerDevServer';
+import { createRouteHandlerMiddleware } from '../createServerRouteMiddleware';
 import { instantiateMetroAsync } from '../instantiateMetro';
+import { HAS_LOGGED_SYMBOL, IS_METRO_BUNDLE_ERROR_SYMBOL } from '../metroErrorInterface';
 import { warnInvalidWebOutput } from '../router';
-import { FileChangeEvent, observeAnyFileChanges } from '../waitForMetroToObserveTypeScriptFile';
+import { observeAnyFileChanges, observeFileChanges } from '../waitForMetroToObserveTypeScriptFile';
 
 jest.mock('../waitForMetroToObserveTypeScriptFile', () => ({
   observeAnyFileChanges: jest.fn(),
+  observeFileChanges: jest.fn(),
+}));
+jest.mock('../../../../utils/nodeEnv', () => ({
+  getEnvFiles: jest.fn(() => []),
+  reloadEnvFiles: jest.fn(),
 }));
 jest.mock('../router', () => {
   return {
@@ -35,18 +44,170 @@ jest.mock('@expo/config', () => ({
 }));
 jest.mock('../instantiateMetro', () => ({
   instantiateMetroAsync: jest.fn(async () => ({
+    metro: { _config: {}, _bundler: {} },
     middleware: { use: jest.fn() },
     server: { listen: jest.fn(), close: jest.fn() },
   })),
 }));
 
+jest.mock('../createServerRouteMiddleware', () => ({
+  createRouteHandlerMiddleware: jest.fn(() => jest.fn()),
+}));
+
 jest.mock('../../middleware/mutations');
 jest.mock('../../../../log');
-jest.mock('../../../../utils/analytics/getDevClientProperties', () => jest.fn(() => ({})));
-jest.mock('../../../../utils/telemetry');
 
 beforeEach(() => {
   vol.reset();
+  delete process.env.REACT_NATIVE_PACKAGER_HOSTNAME;
+  delete process.env.EXPO_PACKAGER_PROXY_URL;
+});
+
+const htmlRoute = {
+  file: './posts/[postId].tsx',
+  page: '/posts/[postId]',
+  namedRegex: /^\/posts\/(?<postId>[^/]+?)\/?$/i,
+  routeKeys: { postId: 'postId' },
+};
+
+const rawServerManifest = {
+  apiRoutes: [],
+  htmlRoutes: [
+    {
+      file: './posts/[postId].tsx',
+      page: '/posts/[postId]',
+      namedRegex: '^/posts/(?<postId>[^/]+?)/?$',
+      routeKeys: { postId: 'postId' },
+    },
+  ],
+  notFoundRoutes: [],
+  redirects: [],
+  rewrites: [],
+};
+
+function createDevServerForStaticPageTests() {
+  vol.fromJSON(
+    {
+      '/index.js': '',
+      '/package.json': JSON.stringify({ main: 'index.js' }),
+    },
+    '/'
+  );
+
+  const devServer = new MetroBundlerDevServer(
+    '/',
+    getPlatformBundlers('/', { web: { bundler: 'metro' } })
+  );
+  devServer['instanceMetroOptions'] = {
+    mode: 'development',
+    isExporting: false,
+    clientBoundaries: [],
+    baseUrl: '',
+    reactCompiler: false,
+    routerRoot: 'app',
+    asyncRoutes: false,
+  };
+  devServer['getDevServerUrlOrAssert'] = jest.fn(() => 'http://localhost:8081');
+  return devServer;
+}
+
+describe('Metro error reporting', () => {
+  it.each([true, false])(
+    'reports only the final outcome after validating serializer output (valid: %s)',
+    async (valid) => {
+      const devServer = createDevServerForStaticPageTests();
+      const update = jest.fn();
+      const revision = {
+        id: 'revision',
+        date: new Date(),
+        prepend: [],
+        graph: { dependencies: new Map() },
+      };
+      devServer['metro'] = {
+        _config: {
+          transformer: { asyncRequireModulePath: 'asyncRequire' },
+          serializer: { getModulesRunBeforeMainModule: () => [] },
+          server: {},
+        },
+        _reporter: { update },
+        _shouldAddModuleToIgnoreList: () => false,
+        _resolveRelativePath: async () => '/app/asyncRequire.js',
+        getNewBuildNumber: () => 1,
+        getBundler: () => ({
+          updateGraph: async () => ({ revision, delta: { reset: true, added: new Map() } }),
+        }),
+      } as any;
+      devServer['getMetroRevision'] = jest.fn().mockResolvedValue(revision);
+      devServer['getMetroSerializer'] = jest
+        .fn()
+        .mockReturnValue(async () =>
+          valid ? { artifacts: [{ type: 'js', source: 'code' }], assets: [] } : {}
+        );
+      const result = devServer['_bundleDirectAsync']('/app/index.js', {
+        transformOptions: {
+          dev: true,
+          minify: false,
+          platform: 'web',
+          type: 'module',
+          unstable_transformProfile: 'default',
+        },
+        resolverOptions: { customResolverOptions: {}, dev: true },
+        graphOptions: { lazy: false, shallow: false },
+        serializerOptions: { output: 'static' } as any,
+      });
+      if (valid) {
+        await expect(result).resolves.toMatchObject({ bundle: 'code' });
+        expect(update.mock.calls.map(([event]) => event.type)).toEqual([
+          'bundle_build_started',
+          'bundle_build_done',
+        ]);
+      } else {
+        await expect(result).rejects.toMatchObject({
+          message: expect.stringContaining('Serializer did not return expected format'),
+          [IS_METRO_BUNDLE_ERROR_SYMBOL]: true,
+        });
+        expect(update.mock.calls.map(([event]) => event.type)).toEqual([
+          'bundle_build_started',
+          'bundle_build_failed',
+          'bundling_error',
+        ]);
+      }
+    }
+  );
+
+  it.each(['bundleApiRoute', 'bundleLoader'] as const)(
+    '%s preserves reporting flags when wrapping an error',
+    async (method) => {
+      const devServer = createDevServerForStaticPageTests();
+      const error = Object.assign(new Error('transform failed'), {
+        [IS_METRO_BUNDLE_ERROR_SYMBOL]: true,
+        [HAS_LOGGED_SYMBOL]: true,
+      });
+      devServer['ssrLoadModuleContents'] = jest.fn().mockRejectedValue(error);
+      await expect(devServer[method]('/app/index.ts', { platform: 'web' })).rejects.toMatchObject({
+        [IS_METRO_BUNDLE_ERROR_SYMBOL]: true,
+        [HAS_LOGGED_SYMBOL]: true,
+      });
+    }
+  );
+
+  it('preserves reporting flags when loader execution wraps a bundle failure', async () => {
+    const devServer = createDevServerForStaticPageTests();
+    const error = Object.assign(new Error('transform failed'), {
+      [IS_METRO_BUNDLE_ERROR_SYMBOL]: true,
+      [HAS_LOGGED_SYMBOL]: true,
+    });
+    devServer['ssrLoadModule'] = jest.fn().mockRejectedValue(error);
+    await expect(
+      devServer.executeServerDataLoaderAsync(new URL('http://localhost/'), {
+        file: 'index.ts',
+        params: {},
+      } as any)
+    ).rejects.toMatchObject({
+      [IS_METRO_BUNDLE_ERROR_SYMBOL]: true,
+      [HAS_LOGGED_SYMBOL]: true,
+    });
+  });
 });
 
 async function getStartedDevServer(options: Partial<BundlerStartOptions> = {}) {
@@ -54,15 +215,126 @@ async function getStartedDevServer(options: Partial<BundlerStartOptions> = {}) {
     '/',
     getPlatformBundlers('/', { web: { bundler: 'metro' } })
   );
-  devServer['getAvailablePortAsync'] = jest.fn(() => Promise.resolve(3000));
   // Tested in the superclass
   devServer['postStartAsync'] = jest.fn(async () => {});
   devServer['startImplementationAsync'] = jest.fn(devServer['startImplementationAsync']);
-  await devServer.startAsync({ location: {}, ...options });
+  // The port is always resolved by the caller before the dev server starts.
+  await devServer.startAsync({ location: {}, port: 3000, ...options });
   return devServer;
 }
 
+describe('getStaticRenderFunctionAsync', () => {
+  afterEach(() => {
+    jest.mocked(getConfig).mockReturnValue({
+      pkg: {},
+      exp: { sdkVersion: '45.0.0', name: 'my-app', slug: 'my-app' },
+    } as unknown as ReturnType<typeof getConfig>);
+  });
+
+  it('uses static streaming for static export', async () => {
+    jest.mocked(getConfig).mockReturnValue({
+      pkg: {},
+      exp: {
+        name: 'test',
+        slug: 'test',
+        web: { output: 'static' },
+      },
+    } as unknown as ReturnType<typeof getConfig>);
+
+    const devServer = createDevServerForStaticPageTests();
+    const getStreamingContent = jest.fn(async () => '<html>streamed SSG</html>');
+    const resolvedMetadata = { metadata: { title: 'Post 123' }, headNodes: ['Post 123'] };
+    const resolveMetadata = jest.fn(async () => resolvedMetadata);
+    devServer['ssrLoadModule'] = jest.fn(async () => ({
+      getStreamingContent,
+      resolveMetadata,
+      getManifest: async () => ({ screens: {} }),
+      getBuildTimeServerManifestAsync: async () => rawServerManifest,
+    })) as unknown as (typeof devServer)['ssrLoadModule'];
+
+    const { renderAsync } = await devServer.getStaticRenderFunctionAsync();
+    const options = {
+      hydrate: true,
+      loader: { data: { postId: '123' }, key: '/posts/[postId]' },
+      assets: { css: [{ type: 'css' as const, href: '/app.css' }], js: ['/app.js'] },
+    };
+    const runtimeRoute = { contextKey: './posts/[postId].tsx' } as any;
+    await expect(renderAsync('/posts/123', runtimeRoute, options)).resolves.toBe(
+      '<html>streamed SSG</html>'
+    );
+
+    expect(resolveMetadata).toHaveBeenCalledWith({
+      route: { file: './posts/[postId].tsx', page: '/posts/[postId]' },
+      request: undefined,
+      params: { postId: '123' },
+    });
+    expect(getStreamingContent).toHaveBeenCalledWith(new URL('http://localhost:8081/posts/123'), {
+      ...options,
+      metadata: resolvedMetadata,
+      route: { file: './posts/[postId].tsx', page: '/posts/[postId]' },
+      params: { postId: '123' },
+      output: 'static',
+    });
+
+    const metadataError = new Error('metadata failed');
+    resolveMetadata.mockRejectedValueOnce(metadataError);
+    await expect(renderAsync('/posts/456', runtimeRoute, options)).rejects.toBe(metadataError);
+    expect(getStreamingContent).toHaveBeenCalledTimes(1);
+
+    resolveMetadata.mockClear();
+    await renderAsync('/+not-found', { internal: true } as any, options);
+    expect(resolveMetadata).not.toHaveBeenCalled();
+    expect(getStreamingContent).toHaveBeenLastCalledWith(
+      new URL('http://localhost:8081/+not-found'),
+      {
+        ...options,
+        route: { file: undefined, page: '/+not-found', generated: true },
+        params: {},
+        output: 'static',
+      }
+    );
+  });
+});
+
 describe('startAsync', () => {
+  it.each([
+    { output: 'static', pkg: {}, routeHandlerCalls: 0 },
+    { output: 'server', pkg: {}, routeHandlerCalls: 0 },
+    {
+      output: 'static',
+      pkg: { dependencies: { 'expo-router': '*' } },
+      routeHandlerCalls: 1,
+    },
+    {
+      output: 'server',
+      pkg: { main: 'custom-entry.js', dependencies: { 'expo-router': '*' } },
+      routeHandlerCalls: 1,
+    },
+    {
+      output: 'server',
+      pkg: { devDependencies: { 'expo-router': '*' } },
+      routeHandlerCalls: 1,
+    },
+    {
+      output: 'single',
+      pkg: { dependencies: { 'expo-router': '*' } },
+      routeHandlerCalls: 0,
+    },
+  ] as const)(
+    'uses the Router handler $routeHandlerCalls times for $output output and $pkg',
+    async ({ output, pkg, routeHandlerCalls }) => {
+      jest.mocked(getConfig).mockReturnValue({
+        pkg,
+        exp: { name: 'test', slug: 'test', web: { output } },
+      } as ReturnType<typeof getConfig>);
+      jest.mocked(createRouteHandlerMiddleware).mockClear();
+
+      await getStartedDevServer();
+
+      expect(createRouteHandlerMiddleware).toHaveBeenCalledTimes(routeHandlerCalls);
+    }
+  );
+
   it(`starts metro`, async () => {
     const devServer = await getStartedDevServer();
 
@@ -71,9 +343,9 @@ describe('startAsync', () => {
     expect(devServer.getInstance()).toEqual({
       location: {
         host: 'localhost',
-        port: expect.any(Number),
+        port: 3000,
         protocol: 'http',
-        url: expect.stringMatching(/http:\/\/localhost:\d+/),
+        url: 'http://localhost:3000',
       },
       middleware: {
         use: expect.any(Function),
@@ -85,6 +357,105 @@ describe('startAsync', () => {
     });
 
     expect(instantiateMetroAsync).toHaveBeenCalled();
+    expect(instantiateMetroAsync).toHaveBeenCalledWith(
+      devServer,
+      expect.objectContaining({ port: 3000 }),
+      expect.objectContaining({
+        devToolsPluginManager: devServer['devToolsPluginManager'],
+      })
+    );
+  });
+
+  it(`listens on 127.0.0.1 with --localhost`, async () => {
+    const devServer = await getStartedDevServer({ location: { hostType: 'localhost' } });
+
+    expect(instantiateMetroAsync).toHaveBeenLastCalledWith(
+      devServer,
+      expect.objectContaining({ host: '127.0.0.1' }),
+      expect.anything()
+    );
+  });
+
+  it(`reports the resolved port, not the port the socket came back with`, async () => {
+    jest.mocked(instantiateMetroAsync).mockResolvedValueOnce({
+      metro: { _config: {}, _bundler: {} },
+      middleware: { use: jest.fn() },
+      server: { listen: jest.fn(), close: jest.fn() },
+      address: { protocol: 'http', address: 'localhost', family: 'ipv4', port: 9999 },
+    } as any);
+
+    const devServer = await getStartedDevServer({ port: 3000 });
+
+    expect(devServer.getInstance()!.location.port).toBe(3000);
+    expect(devServer.getInstance()!.location.url).toBe('http://localhost:3000');
+    expect(devServer.getUrlCreator().constructUrl({ hostType: 'localhost' })).toBe(
+      'http://127.0.0.1:3000'
+    );
+  });
+});
+
+describe('watchEnvironmentVariables', () => {
+  it('keeps the Metro mode when env files reload', async () => {
+    const devServer = new MetroBundlerDevServer(
+      '/',
+      getPlatformBundlers('/', { web: { bundler: 'metro' } })
+    );
+    devServer['instance'] = { server: {} } as any;
+    devServer['metro'] = {} as any;
+    devServer['instanceMetroOptions'] = { mode: 'production' };
+
+    await devServer.watchEnvironmentVariables();
+
+    expect(getEnvFiles).toHaveBeenCalledWith('/', 'production');
+    jest.mocked(observeFileChanges).mock.calls[0]![2]();
+    expect(reloadEnvFiles).toHaveBeenCalledWith('/', 'production');
+  });
+});
+
+describe('watchConfig', () => {
+  let watchFile: jest.SpyInstance;
+
+  beforeEach(() => {
+    watchFile = jest.spyOn(fs, 'watchFile').mockImplementation(() => ({ unref: jest.fn() }) as any);
+  });
+
+  afterEach(() => {
+    watchFile.mockRestore();
+  });
+
+  // Every file that `@expo/metro-config/src/config/resolveMetroUserConfig.ts` can load a Metro config from.
+  it.each([
+    'metro.config.js',
+    'metro.config.cjs',
+    'metro.config.mjs',
+    'metro.config.json',
+    'metro.config.ts',
+    'metro.config.cts',
+    'metro.config.mts',
+    '.config/metro.js',
+    '.config/metro.ts',
+  ])('watches %s for changes', (configFile) => {
+    vol.fromJSON({ [`/${configFile}`]: '' }, '/');
+    const devServer = new MetroBundlerDevServer(
+      '/',
+      getPlatformBundlers('/', { web: { bundler: 'metro' } })
+    );
+
+    devServer['watchConfig']();
+
+    expect(watchFile).toHaveBeenCalledWith(`/${configFile}`, expect.any(Function));
+  });
+
+  it('does not watch rn-cli.config.js, which `@expo/metro-config` never loads', () => {
+    vol.fromJSON({ '/rn-cli.config.js': '' }, '/');
+    const devServer = new MetroBundlerDevServer(
+      '/',
+      getPlatformBundlers('/', { web: { bundler: 'metro' } })
+    );
+
+    devServer['watchConfig']();
+
+    expect(watchFile).not.toHaveBeenCalled();
   });
 });
 
@@ -110,10 +481,11 @@ describe('API Route output warning', () => {
           output: 'static',
         },
       },
+      pkg: { dependencies: { 'expo-router': '*' } },
     });
   }
   async function setupDevServer() {
-    let pCallback: ((events: FileChangeEvent[]) => void | Promise<void>) | null = null;
+    let pCallback: ((events: ChangeEvent) => void | Promise<void>) | null = null;
     jest
       .mocked(observeAnyFileChanges)
       .mockClear()
@@ -134,174 +506,388 @@ describe('API Route output warning', () => {
   it(`warns when output is not server and an API route is created`, async () => {
     mockMetroStatic();
     const callback = await setupDevServer();
-    callback([
-      {
-        filePath: '/app/foo+api.ts',
-        type: 'change',
-        metadata: { type: 'f' },
+    callback({
+      changes: {
+        addedDirectories: [],
+        removedDirectories: [],
+        addedFiles: [['/app/foo+api.ts', { isSymlink: false }]],
+        modifiedFiles: [],
+        removedFiles: [],
       },
-    ]);
-    expect(warnInvalidWebOutput).toBeCalled();
+      rootDir: '/',
+    });
+    expect(warnInvalidWebOutput).toHaveBeenCalled();
   });
 
   it(`does not warn about invalid output when API route is being deleted`, async () => {
     mockMetroStatic();
     const callback = await setupDevServer();
-    callback([
-      {
-        filePath: '/app/foo+api.ts',
-        type: 'change',
-        metadata: { type: 'd' },
+    callback({
+      changes: {
+        addedDirectories: [],
+        removedDirectories: [],
+        addedFiles: [],
+        modifiedFiles: [],
+        removedFiles: [['/app/foo+api.ts', { isSymlink: false }]],
       },
-    ]);
-    expect(warnInvalidWebOutput).not.toBeCalled();
+      rootDir: '/',
+    });
+    expect(warnInvalidWebOutput).not.toHaveBeenCalled();
 
-    // Sanity to ensure test works.
-    callback([
-      {
-        filePath: '/app/foo+api.ts',
-        type: 'change',
-        metadata: { type: 'l' },
+    // Sanity to ensure test works — adding an API route should warn.
+    callback({
+      changes: {
+        addedDirectories: [],
+        removedDirectories: [],
+        addedFiles: [['/app/foo+api.ts', { isSymlink: false }]],
+        modifiedFiles: [],
+        removedFiles: [],
       },
-    ]);
-    expect(warnInvalidWebOutput).toBeCalled();
+      rootDir: '/',
+    });
+    expect(warnInvalidWebOutput).toHaveBeenCalled();
   });
 
   it(`does not warn about invalid output when file is not a valid API route`, async () => {
     mockMetroStatic();
     const callback = await setupDevServer();
-    callback([
-      {
-        filePath: '/app/foo.ts',
-        type: 'change',
-        metadata: { type: 'l' },
+    callback({
+      changes: {
+        addedDirectories: [],
+        removedDirectories: [],
+        addedFiles: [['/app/foo.ts', { isSymlink: false }]],
+        modifiedFiles: [],
+        removedFiles: [],
       },
-    ]);
-    expect(warnInvalidWebOutput).not.toBeCalled();
+      rootDir: '/',
+    });
+    expect(warnInvalidWebOutput).not.toHaveBeenCalled();
   });
 
   it(`does not warn about invalid output when file is outside of routes directory`, async () => {
     mockMetroStatic();
     const callback = await setupDevServer();
-    callback([
-      {
-        filePath: '/other/foo+api.js',
-        type: 'change',
-        metadata: { type: 'l' },
+    callback({
+      changes: {
+        addedDirectories: [],
+        removedDirectories: [],
+        addedFiles: [['/other/foo+api.js', { isSymlink: false }]],
+        modifiedFiles: [],
+        removedFiles: [],
       },
-    ]);
-    expect(warnInvalidWebOutput).not.toBeCalled();
-  });
-});
-
-describe('onDeepLink', () => {
-  it(`logs an event if runtime is custom`, async () => {
-    const handler = getDeepLinkHandler('/');
-    await handler({ runtime: 'custom', platform: 'ios' });
-    expect(logEventAsync).toHaveBeenCalledWith('dev client start command', {
-      status: 'started',
+      rootDir: '/',
     });
-  });
-
-  it(`does not log an event if runtime is expo`, async () => {
-    const handler = getDeepLinkHandler('/');
-    await handler({ runtime: 'expo', platform: 'ios' });
-    expect(logEventAsync).not.toHaveBeenCalled();
+    expect(warnInvalidWebOutput).not.toHaveBeenCalled();
   });
 });
 
-describe('getStaticResourcesAsync', () => {
+describe('getStaticPageAsync', () => {
   beforeEach(() => {
-    vol.reset();
+    jest.mocked(getConfig).mockReturnValue({
+      pkg: {},
+      exp: {
+        name: 'test',
+        slug: 'test',
+        web: {
+          output: 'server',
+        },
+      },
+    } as unknown as ReturnType<typeof getConfig>);
   });
 
-  it(`throws from a metro static resource error`, async () => {
-    vol.fromJSON(
+  it('returns a ReadableStream for server output', async () => {
+    const devServer = createDevServerForStaticPageTests();
+    const stream = new ReadableStream<Uint8Array>();
+    const getStreamingContent = jest.fn(async () => stream);
+    const resolveMetadata = jest.fn(async () => null);
+    const ssrLoadModule = jest.fn(async () => ({
+      getStreamingContent,
+      resolveMetadata,
+    }));
+    const getStaticResourcesAsync = jest.fn(async () => ({
+      artifacts: [
+        {
+          type: 'css-external',
+          filename: 'https://example.com/font.css',
+          originFilename: 'app/global.css',
+          source: '',
+          metadata: {},
+        },
+        {
+          type: 'css',
+          filename: '_expo/static/css/app.css',
+          originFilename: 'app/global.css',
+          source: 'body { color: red; }',
+          metadata: { hmrId: 'app_global_css' },
+        },
+        {
+          type: 'css-external',
+          filename: 'https://example.com/route.css',
+          originFilename: 'app/route.css',
+          source: '',
+          metadata: { media: 'screen' },
+        },
+        {
+          type: 'css',
+          filename: '_expo/static/css/route.css',
+          originFilename: 'app/route.css',
+          source: 'body { color: blue; }',
+          metadata: { hmrId: 'app_route_css' },
+        },
+      ],
+    }));
+
+    devServer['ssrLoadModule'] = ssrLoadModule as unknown as (typeof devServer)['ssrLoadModule'];
+    devServer['getStaticResourcesAsync'] = getStaticResourcesAsync as any;
+
+    const request = new ImmutableRequest(new Request('http://localhost:8081/posts/123'));
+    const result = await devServer['getStaticPageAsync']('/posts/123', htmlRoute, request);
+
+    expect(result).toEqual({ content: stream });
+    expect(ssrLoadModule).toHaveBeenCalledWith(
+      require.resolve('@expo/router-server/node/render.js'),
       {
-        'index.js': '',
-        'node_modules/expo-router/package.json': JSON.stringify({}),
-        'package.json': JSON.stringify({}),
+        environment: 'node',
+        minify: false,
+        isExporting: false,
+        platform: 'web',
+      }
+    );
+    expect(getStreamingContent).toHaveBeenCalledWith(new URL('http://localhost:8081/posts/123'), {
+      loader: undefined,
+      metadata: null,
+      request,
+      route: { file: './posts/[postId].tsx', page: '/posts/[postId]' },
+      params: { postId: '123' },
+      assets: {
+        css: [
+          { type: 'external', href: 'https://example.com/font.css', media: undefined },
+          { type: 'inline', source: 'body { color: red; }', hmrId: 'app_global_css' },
+          { type: 'external', href: 'https://example.com/route.css', media: 'screen' },
+          { type: 'inline', source: 'body { color: blue; }', hmrId: 'app_route_css' },
+        ],
+        js: [expect.stringContaining('/index.bundle?')],
       },
-      '/'
-    );
-    const scope = nock('http://localhost:8081')
-      .get(
-        '/index.bundle?platform=web&dev=true&hot=false&transform.routerRoot=app&resolver.environment=client&transform.environment=client&serializer.output=static'
-      )
-      .reply(
-        200,
-        JSON.stringify({
-          type: 'InternalError',
-          errors: [],
-          message:
-            'Metro has encountered an error: While trying to resolve module `stylis` from file `/Users/evanbacon/Documents/GitHub/lab/emotion-error-test/node_modules/@emotion/cache/dist/emotion-cache.browser.esm.js`, the package `/Users/evanbacon/Documents/GitHub/lab/emotion-error-test/node_modules/stylis/package.json` was successfully found. However, this package itself specifies a `main` module field that could not be resolved (`/Users/evanbacon/Documents/GitHub/lab/emotion-error-test/node_modules/stylis/dist/stylis.mjs`. Indeed, none of these files exist:\n' +
-            '\n' +
-            '  * /Users/evanbacon/Documents/GitHub/lab/emotion-error-test/node_modules/stylis/dist/stylis.mjs(.web.ts|.ts|.web.tsx|.tsx|.web.js|.js|.web.jsx|.jsx|.web.json|.json|.web.cjs|.cjs|.web.scss|.scss|.web.sass|.sass|.web.css|.css)\n' +
-            '  * /Users/evanbacon/Documents/GitHub/lab/emotion-error-test/node_modules/stylis/dist/stylis.mjs/index(.web.ts|.ts|.web.tsx|.tsx|.web.js|.js|.web.jsx|.jsx|.web.json|.json|.web.cjs|.cjs|.web.scss|.scss|.web.sass|.sass|.web.css|.css): /Users/evanbacon/Documents/GitHub/lab/emotion-error-test/node_modules/metro/src/node-haste/DependencyGraph.js (289:17)\n' +
-            '\n' +
-            '\x1B[0m \x1B[90m 287 |\x1B[39m         }\x1B[0m\n' +
-            '\x1B[0m \x1B[90m 288 |\x1B[39m         \x1B[36mif\x1B[39m (error \x1B[36minstanceof\x1B[39m \x1B[33mInvalidPackageError\x1B[39m) {\x1B[0m\n' +
-            '\x1B[0m\x1B[31m\x1B[1m>\x1B[22m\x1B[39m\x1B[90m 289 |\x1B[39m           \x1B[36mthrow\x1B[39m \x1B[36mnew\x1B[39m \x1B[33mPackageResolutionError\x1B[39m({\x1B[0m\n' +
-            '\x1B[0m \x1B[90m     |\x1B[39m                 \x1B[31m\x1B[1m^\x1B[22m\x1B[39m\x1B[0m\n' +
-            '\x1B[0m \x1B[90m 290 |\x1B[39m             packageError\x1B[33m:\x1B[39m error\x1B[33m,\x1B[39m\x1B[0m\n' +
-            '\x1B[0m \x1B[90m 291 |\x1B[39m             originModulePath\x1B[33m:\x1B[39m \x1B[36mfrom\x1B[39m\x1B[33m,\x1B[39m\x1B[0m\n' +
-            '\x1B[0m \x1B[90m 292 |\x1B[39m             targetModuleName\x1B[33m:\x1B[39m to\x1B[33m,\x1B[39m\x1B[0m',
-        })
-      );
-
-    const devServer = await getStartedDevServer({
-      mode: 'development',
-      minify: false,
-      isExporting: false,
     });
-
-    expect(devServer['postStartAsync']).toHaveBeenCalled();
-
-    await expect(devServer.getStaticResourcesAsync()).rejects.toThrowError(
-      /Metro has encountered an error: While trying to resolve module `stylis` from/
-    );
-
-    expect(scope.isDone()).toBe(true);
   });
-  it(`throws from a metro server error`, async () => {
-    vol.fromJSON(
-      {
-        'index.js': '',
-        'node_modules/expo-router/package.json': JSON.stringify({}),
-        'package.json': JSON.stringify({}),
-      },
-      '/'
-    );
-    const scope = nock('http://localhost:8081')
-      .get(
-        '/index.bundle?platform=web&dev=true&hot=false&transform.routerRoot=app&resolver.environment=client&transform.environment=client&serializer.output=static'
-      )
-      .reply(
-        500,
-        `<!DOCTYPE html>
-        <html lang="en">
-        <head>
-        <meta charset="utf-8">
-        <title>Error</title>
-        </head>
-        <body>
-        <pre>Error: Unable to resolve module ./packages/expo-router/entry from /Users/evanbacon/Documents/GitHub/expo/apps/sandbox/.: <br><br>None of these files exist:<br> &nbsp;* packages/expo-router/entry(.web.ts|.ts|.web.tsx|.tsx|.web.mjs|.mjs|.web.js|.js|.web.jsx|.jsx|.web.json|.json|.web.cjs|.cjs|.web.scss|.scss|.web.sass|.sass|.web.css|.css|.web.cjs|.cjs)<br> &nbsp;* packages/expo-router/entry/index(.web.ts|.ts|.web.tsx|.tsx|.web.mjs|.mjs|.web.js|.js|.web.jsx|.jsx|.web.json|.json|.web.cjs|.cjs|.web.scss|.scss|.web.sass|.sass|.web.css|.css|.web.cjs|.cjs)<br> &nbsp; &nbsp;at ModuleResolver.resolveDependency (/Users/evanbacon/Documents/GitHub/expo/node_modules/metro/src/node-haste/DependencyGraph/ModuleResolution.js:114:15)<br> &nbsp; &nbsp;at DependencyGraph.resolveDependency (/Users/evanbacon/Documents/GitHub/expo/node_modules/metro/src/node-haste/DependencyGraph.js:277:43)<br> &nbsp; &nbsp;at /Users/evanbacon/Documents/GitHub/expo/node_modules/metro/src/lib/transformHelpers.js:169:21<br> &nbsp; &nbsp;at Server._resolveRelativePath (/Users/evanbacon/Documents/GitHub/expo/node_modules/metro/src/Server.js:1045:12)<br> &nbsp; &nbsp;at process.processTicksAndRejections (node:internal/process/task_queues:95:5)<br> &nbsp; &nbsp;at async Server.requestProcessor [as _processBundleRequest] (/Users/evanbacon/Documents/GitHub/expo/node_modules/metro/src/Server.js:449:37)<br> &nbsp; &nbsp;at async Server._processRequest (/Users/evanbacon/Documents/GitHub/expo/node_modules/metro/src/Server.js:383:7)</pre>
-        </body>
-        </html>`
-      );
 
-    const devServer = await getStartedDevServer({
-      mode: 'development',
-      minify: false,
-      isExporting: false,
+  it.each([false, true])(
+    'renders development SSG without request data (incoming request: %s)',
+    async (hasRequest) => {
+      jest.mocked(getConfig).mockReturnValue({
+        pkg: {},
+        exp: {
+          name: 'test',
+          slug: 'test',
+          web: { output: 'static' },
+        },
+      } as unknown as ReturnType<typeof getConfig>);
+
+      const devServer = createDevServerForStaticPageTests();
+      const getStreamingContent = jest.fn(async () => '<html>streamed SSG</html>');
+      const resolvedMetadata = { metadata: { title: 'Post 123' }, headNodes: ['Post 123'] };
+      const resolveMetadata = jest.fn(async () => resolvedMetadata);
+      devServer['ssrLoadModule'] = jest.fn(async () => ({
+        getStreamingContent,
+        resolveMetadata,
+      })) as unknown as (typeof devServer)['ssrLoadModule'];
+      devServer['getStaticResourcesAsync'] = jest.fn(async () => ({ artifacts: [] })) as any;
+      devServer.executeServerDataLoaderAsync = jest.fn(async () =>
+        Response.json({ postId: '123' })
+      ) as any;
+
+      const request = hasRequest
+        ? new ImmutableRequest(new Request('http://localhost:8081/posts/123'))
+        : undefined;
+      const result = await devServer['getStaticPageAsync']('/posts/123', htmlRoute, request);
+
+      expect(result).toEqual({ content: '<html>streamed SSG</html>', resources: [] });
+      expect(resolveMetadata).toHaveBeenCalledWith({
+        route: { file: './posts/[postId].tsx', page: '/posts/[postId]' },
+        request: undefined,
+        params: { postId: '123' },
+      });
+      expect(devServer.executeServerDataLoaderAsync).toHaveBeenCalledWith(
+        new URL('http://localhost:8081/posts/123'),
+        expect.objectContaining({ params: { postId: '123' } }),
+        undefined
+      );
+      expect(getStreamingContent).toHaveBeenCalledWith(new URL('http://localhost:8081/posts/123'), {
+        loader: { data: { postId: '123' }, key: '/posts/123' },
+        metadata: resolvedMetadata,
+        route: { file: './posts/[postId].tsx', page: '/posts/[postId]' },
+        params: { postId: '123' },
+        output: 'static',
+        hydrate: false,
+        assets: {
+          css: [],
+          js: [expect.stringContaining('/index.bundle?')],
+          favicon: undefined,
+        },
+      });
+    }
+  );
+
+  it.each([
+    ['static', '/_sitemap', 'expo-router/build/views/Sitemap.js'],
+    ['static', '/missing', 'expo-router/build/views/Unmatched.js'],
+    ['server', '/_sitemap', 'expo-router/build/views/Sitemap.js'],
+    ['server', '/missing', 'expo-router/build/views/Unmatched.js'],
+  ])('%s output renders generated route %s', async (output, pathname, file) => {
+    jest.mocked(getConfig).mockReturnValue({
+      pkg: {},
+      exp: { name: 'test', slug: 'test', web: { output } },
+    } as unknown as ReturnType<typeof getConfig>);
+
+    const devServer = createDevServerForStaticPageTests();
+    const html = '<html>Generated route</html>';
+    devServer['ssrLoadModule'] = jest.fn(async () => ({
+      getStreamingContent: async () => (output === 'server' ? new Response(html).body : html),
+      resolveMetadata: async ({ route }: { route: { file: string } }) => {
+        throw new Error(`Cannot find module '${route.file}' in the app context`);
+      },
+    })) as unknown as (typeof devServer)['ssrLoadModule'];
+    devServer['getStaticResourcesAsync'] = jest.fn(async () => ({ artifacts: [] })) as any;
+
+    const { content } = await devServer['getStaticPageAsync'](
+      pathname,
+      { file, page: pathname, generated: true, routeKeys: {}, namedRegex: /^\/.*$/ },
+      output === 'server'
+        ? new ImmutableRequest(new Request(`http://localhost:8081${pathname}`))
+        : undefined
+    );
+
+    expect(typeof content === 'string' ? content : await new Response(content).text()).toBe(html);
+  });
+
+  it('normalizes loader Response data and passes dynamic params to metadata', async () => {
+    jest.mocked(getConfig).mockReturnValue({
+      pkg: {},
+      exp: {
+        name: 'test',
+        slug: 'test',
+        web: {
+          output: 'server',
+        },
+      },
+    } as unknown as ReturnType<typeof getConfig>);
+
+    const devServer = createDevServerForStaticPageTests();
+    devServer.executeServerDataLoaderAsync = jest.fn(async () =>
+      Response.json({ postId: '123' })
+    ) as any;
+    const request = new ImmutableRequest(new Request('http://localhost:8081/posts/123'));
+    const resolveMetadata = jest.fn(async () => ({ headNodes: [] }));
+
+    const result = await devServer['getDevServerRenderOptionsAsync']({
+      location: new URL('http://localhost:8081/posts/123'),
+      route: htmlRoute,
+      request,
+      resolveMetadata: resolveMetadata as any,
     });
 
-    expect(devServer['postStartAsync']).toHaveBeenCalled();
+    expect(result).toEqual({
+      params: { postId: '123' },
+      route: { file: './posts/[postId].tsx', page: '/posts/[postId]' },
+      metadata: { headNodes: [] },
+      loader: {
+        data: { postId: '123' },
+        key: '/posts/123',
+      },
+    });
+    expect(resolveMetadata).toHaveBeenCalledWith({
+      route: {
+        file: './posts/[postId].tsx',
+        page: '/posts/[postId]',
+      },
+      request,
+      params: { postId: '123' },
+    });
+  });
 
-    await expect(devServer.getStaticResourcesAsync()).rejects.toThrowErrorMatchingInlineSnapshot(
-      `"Metro failed to bundle the project. Check the console for more information."`
+  it('throws when streaming SSR is missing a request', async () => {
+    const devServer = createDevServerForStaticPageTests();
+
+    await expect(devServer['getStaticPageAsync']('/posts/123', htmlRoute)).rejects.toThrow(
+      'development streaming SSR requires a request'
+    );
+  });
+});
+
+describe('executeServerDataLoaderAsync', () => {
+  it('only forwards allowlisted loader `Response` headers in SSG', async () => {
+    jest.mocked(getConfig).mockReturnValue({
+      pkg: {},
+      exp: {
+        name: 'test',
+        slug: 'test',
+        web: {
+          output: 'static',
+        },
+      },
+    } as unknown as ReturnType<typeof getConfig>);
+
+    const devServer = createDevServerForStaticPageTests();
+    devServer['ssrLoadModule'] = jest.fn(async () => ({
+      loader: async () =>
+        Response.json(
+          { foo: 'bar' },
+          {
+            headers: {
+              'Cache-Control': 'public, max-age=3600',
+              'X-Custom-Header': 'test-value',
+            },
+          }
+        ),
+    })) as unknown as (typeof devServer)['ssrLoadModule'];
+
+    const response = await devServer.executeServerDataLoaderAsync(
+      new URL('http://localhost:8081/posts/123'),
+      {
+        file: './posts/[postId].tsx',
+        contextKey: '/posts/[postId]',
+        pathname: '/posts/123',
+        params: { postId: '123' },
+      }
     );
 
-    expect(scope.isDone()).toBe(true);
+    expect(response?.headers.get('Cache-Control')).toBe('public, max-age=3600');
+    expect(response?.headers.get('X-Custom-Header')).toBeNull();
+    await expect(response!.json()).resolves.toEqual({ foo: 'bar' });
+  });
+});
+
+describe('exportServerRouteAsync', () => {
+  it('rewrites only the trailing source map directive', async () => {
+    // https://github.com/expo/expo/issues/47960
+    const devServer = new MetroBundlerDevServer(
+      '/',
+      getPlatformBundlers('/', { web: { bundler: 'metro' } })
+    );
+    const files: ExportAssetMap = new Map();
+
+    const src = [
+      `const n='This is string data, not a comment.\\n//# sourceMappingURL=embedded.js.map\\nEnd of data.';`,
+      '//# sourceMappingURL=index.map',
+    ].join('\n');
+
+    await devServer['exportServerRouteAsync']({
+      contents: {
+        src,
+        map: JSON.stringify({ version: 3, sources: [], names: [], mappings: '' }),
+      },
+      artifactFilename: '_expo/server/render.js',
+      files,
+      includeSourceMaps: true,
+      descriptor: {},
+    });
+
+    expect(files.get('_expo/server/render.js')?.contents).toBe(
+      [
+        `const n='This is string data, not a comment.\\n//# sourceMappingURL=embedded.js.map\\nEnd of data.';`,
+        '//# sourceMappingURL=render.js.map',
+      ].join('\n')
+    );
+    expect(files.has('_expo/server/render.js.map')).toBe(true);
   });
 });

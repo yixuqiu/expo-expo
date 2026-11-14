@@ -10,11 +10,10 @@ const BARE_EXPO_DIR = path.join(Directories.getAppsDir(), 'bare-expo', 'android'
 
 const excludedInTests = [
   'expo-module-template',
-  'expo-module-template-local',
-  'expo-notifications',
   'expo-splash-screen',
   'expo-modules-test-core',
   'expo-dev-client',
+  'expo-dev-launcher',
 ];
 
 const testTypes = ['local', 'instrumented', 'spotless'] as const;
@@ -76,9 +75,14 @@ export async function androidNativeUnitTests({
   if (type === 'instrumented') {
     const testCommand = 'connectedAndroidTest';
     const uninstallTestCommand = 'uninstallDebugAndroidTest';
+    // A local emulator can still have test apps from an earlier run, so uninstall them before
+    // and after the tests. CI always starts a fresh emulator, where each uninstall is only an
+    // extra Gradle run
+    const shouldUninstallTestApps = !process.env.CI;
 
-    // TODO: remove this once avd cache saved to storage
-    await runGradlew(androidPackages, uninstallTestCommand, BARE_EXPO_DIR);
+    if (shouldUninstallTestApps) {
+      await runGradlew(androidPackages, uninstallTestCommand, BARE_EXPO_DIR);
+    }
 
     // We should build and test expo-modules-core first
     // that to make the `isExpoModulesCoreTests` in _expo-modules-core/android/build.gradle_ working.
@@ -91,8 +95,9 @@ export async function androidNativeUnitTests({
 
     await runGradlew(androidPackages.filter(isNotExpoModulesCore), testCommand, BARE_EXPO_DIR);
 
-    // Cleanup installed test app
-    await runGradlew(androidPackages, uninstallTestCommand, BARE_EXPO_DIR);
+    if (shouldUninstallTestApps) {
+      await runGradlew(androidPackages, uninstallTestCommand, BARE_EXPO_DIR);
+    }
   } else if (type === 'spotless') {
     const spotlessApplyCommand = 'spotlessApply';
     const spotlessCheckCommand = 'spotlessCheck';
@@ -123,7 +128,7 @@ async function runGradlew(packages: Packages.Package[], testCommand: string, cwd
   try {
     await spawnAsync(
       './gradlew',
-      packages.map((pkg) => `:${pkg.packageSlug}:${testCommand}`),
+      ['--build-cache', ...packages.map((pkg) => `:${pkg.packageSlug}:${testCommand}`)],
       {
         cwd,
         stdio: 'inherit',

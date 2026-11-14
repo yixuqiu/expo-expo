@@ -1,15 +1,14 @@
 // Copyright 2015-present 650 Industries. All rights reserved.
 
-#import "EXApiUtil.h"
 #import "EXAppFetcher+Private.h"
 #import "EXAbstractLoader.h"
 #import "EXEnvironment.h"
-#import "EXErrorRecoveryManager.h"
 #import "EXJavaScriptResource.h"
 #import "EXKernel.h"
-#import "EXVersions.h"
 
 #import <React/RCTUtils.h>
+
+#import "Expo_Go-Swift.h"
 
 @import EXManifests;
 
@@ -39,12 +38,10 @@ NS_ASSUME_NONNULL_BEGIN
                             error:(void (^)(NSError *))errorBlock
 {
   EXJavaScriptResource *jsResource = [[EXJavaScriptResource alloc] initWithBundleName:[self.dataSource bundleResourceNameForAppFetcher:self withManifest:manifest]
-                                                                            remoteUrl:[EXApiUtil bundleUrlFromManifest:manifest]
+                                                                            remoteUrl:[EXApiUtil bundleUrlFromManifest:manifest relativeTo:self.appLoader.manifestUrl]
                                                                       devToolsEnabled:manifest.isUsingDeveloperTool];
   jsResource.abiVersion = [[EXVersions sharedInstance] availableSdkVersionForManifest:manifest];
   jsResource.requestTimeoutInterval = timeoutInterval;
-
-  EXCachedResourceBehavior behavior = cacheBehavior;
   
   if ([self.dataSource appFetcherShouldInvalidateBundleCache:self]) {
     [jsResource removeCache];
@@ -68,4 +65,3 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 NS_ASSUME_NONNULL_END
-

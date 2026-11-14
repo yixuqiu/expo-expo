@@ -1,14 +1,720 @@
 # Changelog
 
-## Unpublished
+## 58.0.15
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Updated dependencies. ([#51670](https://github.com/expo/expo/pull/51670), [#51669](https://github.com/expo/expo/pull/51669))
+  - expo-dev-launcher@58.0.15
+
+## 58.0.14
+
+### Patch Changes
+
+- Updated dependencies.
+  - expo-dev-launcher@58.0.14
+
+## 58.0.13
+
+### Patch Changes
+
+- Updated dependencies. ([#51360](https://github.com/expo/expo/pull/51360))
+  - expo-dev-launcher@58.0.13
+
+## 58.0.12
+
+### Patch Changes
+
+- Updated dependencies. ([#51131](https://github.com/expo/expo/pull/51131), [#51130](https://github.com/expo/expo/pull/51130))
+  - expo-dev-launcher@58.0.12
+  - expo-dev-menu@58.0.11
+
+## 58.0.11
+
+### Patch Changes
+
+- Updated dependencies. ([#50951](https://github.com/expo/expo/pull/50951))
+  - expo-dev-launcher@58.0.11
+
+## 58.0.10
+
+### Patch Changes
+
+- Updated dependencies. ([#50900](https://github.com/expo/expo/pull/50900))
+  - expo-dev-menu@58.0.10
+  - expo-dev-launcher@58.0.10
+
+## 58.0.9
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762))
+  - expo-dev-launcher@58.0.9
+  - expo-dev-menu@58.0.9
+  - expo-dev-menu-interface@58.0.1
+  - expo-manifests@58.0.1
+  - expo-updates-interface@58.0.1
+
+## 58.0.8 — 2026-09-28
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.7 — 2026-09-25
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.6 — 2026-09-23
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.5 — 2026-09-22
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.4 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.3 — 2026-09-16
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-15
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.1 — 2026-09-14
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.10 - 2026-07-29
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.9 - 2026-07-23
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.8 - 2026-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.7 - 2026-07-17
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.6 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-01
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-06-30
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.20 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.19 - 2026-06-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.18 - 2026-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.17 - 2026-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.16 — 2026-05-26
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.15 — 2026-05-23
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.14 — 2026-05-21
 
 ### 🐛 Bug fixes
 
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.13 — 2026-05-20
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.12 — 2026-05-19
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.11 — 2026-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.10 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.9 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.7 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-11
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-08
+
 ### 💡 Others
+
+- Remove pinned dependencies ([#45520](https://github.com/expo/expo/pull/45520) by [@kitten](https://githun.com/kitten))
+
+## 56.0.4 — 2026-05-07
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.32 - 2026-05-04
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.31 - 2026-05-04
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.30 - 2026-05-01
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.29 - 2026-05-01
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.28 - 2026-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.27 - 2026-04-11
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.26 - 2026-04-10
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.25 - 2026-04-10
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.24 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.23 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.22 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.21 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.20 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.19 - 2026-03-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.18 - 2026-03-18
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.17 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.16 - 2026-03-11
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-03-11
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-03-11
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-03-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-03-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-03-04
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-02-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+### 🎉 New features
+
+- Add sources button to dev client on iOS. ([#42493](https://github.com/expo/expo/pull/42493) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🎉 New features
+
+- Add initial macOS support ([#41330](https://github.com/expo/expo/pull/41330) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 6.0.20 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.19 - 2025-12-04
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.18 - 2025-11-17
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.17 - 2025-11-05
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.16 - 2025-10-21
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.15 - 2025-10-10
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.14 - 2025-10-09
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.13 - 2025-10-01
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.12 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.11 — 2025-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.10 — 2025-09-04
+
+### 🐛 Bug fixes
+
+- fix LICENSE.md conflict ([#39373](https://github.com/expo/expo/pull/39373) by [@iameli](https://github.com/iameli))
+
+## 6.0.9 — 2025-09-03
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.8 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.7 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.6 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.5 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.4 — 2025-08-21
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.3 — 2025-08-19
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 6.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- [iOS] Partial support for Apple TV. ([#38388](https://github.com/expo/expo/pull/38388) by [@douglowder](https://github.com/douglowder))
+
+### 💡 Others
+
+- fix TS error when running tests ([#38660](https://github.com/expo/expo/pull/38660) by [@vonovak](https://github.com/vonovak))
+
+## 5.2.4 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 5.2.3 - 2025-07-02
+
+_This version does not introduce any user-facing changes._
+
+## 5.2.2 - 2025-06-26
+
+_This version does not introduce any user-facing changes._
+
+## 5.2.1 - 2025-06-18
+
+_This version does not introduce any user-facing changes._
+
+## 5.2.0 - 2025-06-04
+
+### 💡 Others
+
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+
+## 5.1.8 — 2025-05-02
+
+_This version does not introduce any user-facing changes._
+
+## 5.1.7 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 5.1.6 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 5.1.5 — 2025-04-28
+
+_This version does not introduce any user-facing changes._
+
+## 5.1.4 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 5.1.3 — 2025-04-22
+
+_This version does not introduce any user-facing changes._
+
+## 5.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 5.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 5.1.0 — 2025-04-04
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+- [Android] Specified Gradle project version. ([#35751](https://github.com/expo/expo/pull/35751) by [@lukmccall](https://github.com/lukmccall))
+
+## 5.0.18 - 2025-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.17 - 2025-04-01
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.16 - 2025-03-31
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.15 - 2025-03-18
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.14 - 2025-03-13
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.13 - 2025-03-11
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.12 - 2025-02-10
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.11 - 2025-01-31
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.10 - 2025-01-20
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.9 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.8 - 2024-12-30
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.7 - 2024-12-24
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.6 - 2024-12-10
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.5 - 2024-11-29
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.4 — 2024-11-22
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.3 — 2024-11-19
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.2 — 2024-11-15
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.1 — 2024-11-12
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.0 — 2024-11-11
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.0-preview.9 — 2024-11-07
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.0-preview.8 — 2024-11-07
+
+### 🐛 Bug fixes
+
+- [Android] Fixed mutiple reload when pressing `r` in CLI on react-native old architecture mode. ([#32532](https://github.com/expo/expo/pull/32532) by [@kudo](https://github.com/kudo))
+
+## 5.0.0-preview.7 — 2024-11-05
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.0-preview.6 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.0-preview.5 — 2024-10-31
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.0-preview.4 — 2024-10-30
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.0-preview.3 — 2024-10-29
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.0-preview.2 — 2024-10-25
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.0-preview.1 — 2024-10-24
+
+_This version does not introduce any user-facing changes._
+
+## 5.0.0-preview.0 — 2024-10-22
+
+- Add `addGeneratedScheme` config plugin option to disable automatic adding of dev client app scheme. ([#31147](https://github.com/expo/expo/pull/31147) by [@keith-kurak](https://github.com/keith-kurak))
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+- Changed the exports shape, instead of using namespaces, all entities now are exported directly on package top-level. ([#31969](https://github.com/expo/expo/pull/31969) by [@Simek](https://github.com/Simek))
+
+### 🎉 New features
+
+- Added support for React Native 0.75. ([#30743](https://github.com/expo/expo/pull/30743) by [@alanjhughes](https://github.com/alanjhughes))
+
+### 🐛 Bug fixes
+
+- Only import from `expo/config-plugins` to follow proper dependency chains. ([#30499](https://github.com/expo/expo/pull/30499) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Fix homepage link in `package.json`. ([#30163](https://github.com/expo/expo/pull/30163) by [@amandeepmittal](https://github.com/amandeepmittal))
+- Standardized Babel configuration to use `expo-module-scripts`. ([#31915](https://github.com/expo/expo/pull/31915) by [@reichhartd](https://github.com/reichhartd))
+
+## 4.0.27 - 2024-09-23
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.26 - 2024-09-03
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.25 - 2024-08-23
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.24 - 2024-08-21
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.23 - 2024-08-14
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.22 - 2024-08-08
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.21 - 2024-07-29
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.20 - 2024-07-11
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.19 - 2024-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.18 - 2024-06-13
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.17 - 2024-06-12
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.16 - 2024-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.15 - 2024-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.14 — 2024-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 4.0.13 — 2024-05-09
+
+_This version does not introduce any user-facing changes._
 
 ## 4.0.12 — 2024-05-09
 

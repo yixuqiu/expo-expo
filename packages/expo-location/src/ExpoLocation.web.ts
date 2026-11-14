@@ -1,11 +1,12 @@
-import { PermissionResponse, PermissionStatus, UnavailabilityError } from 'expo-modules-core';
+import { PermissionStatus, UnavailabilityError, type PermissionResponse } from 'expo';
 
-import {
-  LocationAccuracy,
+import type {
+  LocationHeadingOptions,
   LocationLastKnownOptions,
   LocationObject,
   LocationOptions,
 } from './Location.types';
+import { LocationAccuracy } from './Location.types';
 import { LocationEventEmitter } from './LocationEventEmitter';
 
 class GeocoderError extends Error {
@@ -139,7 +140,7 @@ export default {
   },
   async getCurrentPositionAsync(options: LocationOptions): Promise<LocationObject> {
     return new Promise<LocationObject>((resolve, reject) => {
-      const resolver = (position) => {
+      const resolver: PositionCallback = (position) => {
         lastKnownPosition = geolocationPositionToJSON(position);
         resolve(lastKnownPosition);
       };
@@ -150,10 +151,10 @@ export default {
       });
     });
   },
-  async removeWatchAsync(watchId): Promise<void> {
+  async removeWatchAsync(watchId: number): Promise<void> {
     navigator.geolocation.clearWatch(watchId);
   },
-  async watchDeviceHeading(headingId): Promise<void> {
+  async watchDeviceHeading(_headingId: number, _options?: LocationHeadingOptions): Promise<void> {
     console.warn('Location.watchDeviceHeading: is not supported on web');
   },
   async hasServicesEnabledAsync(): Promise<boolean> {
@@ -165,10 +166,9 @@ export default {
   async reverseGeocodeAsync(): Promise<any[]> {
     throw new GeocoderError();
   },
-  async watchPositionImplAsync(watchId: string, options: LocationOptions): Promise<string> {
-    return new Promise<string>((resolve) => {
-      // @ts-ignore: the types here need to be fixed
-      watchId = global.navigator.geolocation.watchPosition(
+  async watchPositionImplAsync(watchId: number, options: PositionOptions): Promise<number> {
+    return new Promise((resolve) => {
+      watchId = navigator.geolocation.watchPosition(
         (position) => {
           lastKnownPosition = geolocationPositionToJSON(position);
           LocationEventEmitter.emit('Expo.locationChanged', {
@@ -177,17 +177,34 @@ export default {
           });
         },
         undefined,
-        // @ts-ignore: the options object needs to be fixed
         options
       );
       resolve(watchId);
     });
   },
 
-  getPermissionsAsync,
-  async requestPermissionsAsync(): Promise<PermissionResponse> {
-    return getPermissionsAsync(true);
+  async watchMotionActivityImplAsync(_watchId: number): Promise<void> {
+    console.warn('Location.watchMotionActivityAsync: is not supported on web');
   },
+
+  async getMotionActivityPermissionsAsync(): Promise<PermissionResponse> {
+    return {
+      status: PermissionStatus.UNDETERMINED,
+      granted: false,
+      canAskAgain: false,
+      expires: 'never',
+    };
+  },
+
+  async requestMotionActivityPermissionsAsync(): Promise<PermissionResponse> {
+    return {
+      status: PermissionStatus.UNDETERMINED,
+      granted: false,
+      canAskAgain: false,
+      expires: 'never',
+    };
+  },
+
   async requestForegroundPermissionsAsync(): Promise<PermissionResponse> {
     return getPermissionsAsync(true);
   },
@@ -200,8 +217,4 @@ export default {
   async getBackgroundPermissionsAsync(): Promise<PermissionResponse> {
     return getPermissionsAsync();
   },
-
-  // no-op
-  startObserving() {},
-  stopObserving() {},
 };

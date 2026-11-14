@@ -1,8 +1,12 @@
 import chalk from 'chalk';
 import fs from 'fs-extra';
-import glob from 'glob-promise';
+import { glob } from 'node:fs/promises';
 import path from 'path';
 
+import { Podspec } from '../CocoaPods';
+import { EXPO_GO_IOS_DIR } from '../Constants';
+import logger from '../Logger';
+import { Package } from '../Packages';
 import {
   createSpecFromPodspecAsync,
   generateXcodeProjectAsync,
@@ -10,10 +14,6 @@ import {
 } from './XcodeGen';
 import XcodeProject from './XcodeProject';
 import { Flavor, Framework, XcodebuildSettings } from './XcodeProject.types';
-import { Podspec } from '../CocoaPods';
-import { EXPO_GO_IOS_DIR } from '../Constants';
-import logger from '../Logger';
-import { Package } from '../Packages';
 
 const PODS_DIR = path.join(EXPO_GO_IOS_DIR, 'Pods');
 
@@ -23,9 +23,7 @@ export const PACKAGES_TO_PREBUILD = [
   // 'expo-app-auth',
   // 'expo-apple-authentication',
   // 'expo-application',
-  // 'expo-av',
   // 'expo-background-fetch',
-  'expo-barcode-scanner',
   // 'expo-battery',
   // 'expo-blur',
   // 'expo-brightness',
@@ -37,14 +35,12 @@ export const PACKAGES_TO_PREBUILD = [
   // 'expo-crypto',
   // 'expo-device',
   // 'expo-document-picker',
-  // 'expo-face-detector',
   'expo-file-system',
   // 'expo-firebase-analytics',
   // 'expo-firebase-core',
   // 'expo-font',
   'expo-gl',
   // 'expo-haptics',
-  // 'expo-image-loader',
   // 'expo-image-manipulator',
   // 'expo-image-picker',
   // 'expo-keep-awake',
@@ -227,9 +223,7 @@ async function findFrameworkForProjectAsync(projectName: string): Promise<string
     const cwd = path.join(PODS_DIR, name);
 
     if (await fs.pathExists(cwd)) {
-      const paths = await glob(`**/*.framework`, {
-        cwd,
-      });
+      const paths = await Array.fromAsync(glob(`**/*.framework`, { cwd }));
 
       if (paths.length > 0) {
         return path.join(cwd, paths[0]);

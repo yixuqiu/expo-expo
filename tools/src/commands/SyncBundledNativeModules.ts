@@ -2,15 +2,17 @@ import { Command } from '@expo/commander';
 import JsonFile from '@expo/json-file';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
-import fetch from 'node-fetch';
 import path from 'path';
 import semver from 'semver';
 
-import { EXPO_DIR, LOCAL_API_HOST, STAGING_API_HOST, PRODUCTION_API_HOST } from '../Constants';
+import { EXPO_DIR, LOCAL_API_HOST } from '../Constants';
 import logger from '../Logger';
+import * as Versions from '../Versions';
 
 type ActionOptions = {
   env: string;
+  yes?: boolean;
+  dryRun?: boolean;
 };
 
 type Env = 'local' | 'staging' | 'production';
@@ -29,21 +31,26 @@ interface GetBundledNativeModulesResult {
 
 const EXPO_PACKAGE_PATH = path.join(EXPO_DIR, 'packages/expo');
 
-async function main(options: ActionOptions) {
+export async function syncBundledNativeModulesAsync(options: ActionOptions): Promise<void> {
   logger.info('\nSyncing bundledNativeModules.json with www...');
 
   const env = resolveEnv(options);
-  await confirmEnvAsync(env);
-  const secret = await resolveSecretAsync();
+  if (!options.yes && !options.dryRun) await confirmEnvAsync(env);
+  const secret = options.dryRun ? undefined : await resolveSecretAsync(!!options.yes);
 
-  const sdkVersion = await resolveTargetSdkVersionAsync();
+  const sdkVersion = await resolveTargetSdkVersionAsync(!!options.yes || !!options.dryRun);
   const bundledNativeModules = await readBundledNativeModulesAsync();
   const syncPayload = prepareSyncPayload(bundledNativeModules);
 
   const currentBundledNativeModules = await getCurrentBundledNativeModules(env, sdkVersion);
-  await compareAndConfirmAsync(currentBundledNativeModules, syncPayload.nativeModules);
+  const changed = await compareAndConfirmAsync(
+    currentBundledNativeModules,
+    syncPayload.nativeModules,
+    !!options.yes || !!options.dryRun
+  );
+  if (!changed || options.dryRun) return;
 
-  await syncModulesAsync({ env, secret }, sdkVersion, syncPayload);
+  await syncModulesAsync({ env, secret: secret! }, sdkVersion, syncPayload);
   logger.success(`Successfully synced the modules for SDK ${sdkVersion}!`);
 }
 
@@ -70,9 +77,13 @@ async function confirmEnvAsync(env: Env): Promise<void> {
   }
 }
 
-async function resolveSecretAsync(): Promise<string> {
+async function resolveSecretAsync(nonInteractive: boolean): Promise<string> {
   if (process.env.EXPO_SDK_NATIVE_MODULES_SECRET) {
     return process.env.EXPO_SDK_NATIVE_MODULES_SECRET;
+  }
+
+  if (nonInteractive || process.env.CI) {
+    throw new Error('EXPO_SDK_NATIVE_MODULES_SECRET is not set');
   }
 
   logger.info(
@@ -92,12 +103,13 @@ async function resolveSecretAsync(): Promise<string> {
   return secret;
 }
 
-async function resolveTargetSdkVersionAsync(): Promise<string> {
+async function resolveTargetSdkVersionAsync(nonInteractive: boolean): Promise<string> {
   const expoPackageJsonPath = path.join(EXPO_PACKAGE_PATH, 'package.json');
   const contents = await JsonFile.readAsync<Record<string, string>>(expoPackageJsonPath);
   const majorVersion = semver.major(contents.version);
 
   const sdkVersion = `${majorVersion}.0.0`;
+  if (nonInteractive) return sdkVersion;
 
   const { confirmed } = await inquirer.prompt<{ confirmed: boolean }>([
     {
@@ -128,16 +140,30 @@ async function getCurrentBundledNativeModules(
   sdkVersion: string
 ): Promise<BundledNativeModulesList> {
   const baseApiUrl = resolveBaseApiUrl(env);
-  const result = await fetch(`${baseApiUrl}/--/api/v2/sdks/${sdkVersion}/native-modules`);
-  const resultJson: GetBundledNativeModulesResult = await result.json();
+  const result = await fetch(`${baseApiUrl}/v2/sdks/${sdkVersion}/native-modules`);
+  if (!result.ok) {
+    throw new Error(`Failed to read native modules for SDK ${sdkVersion}: HTTP ${result.status}`);
+  }
+  const resultJson = (await result.json()) as GetBundledNativeModulesResult;
+  if (!Array.isArray(resultJson.data)) {
+    throw new Error('Invalid native modules response: expected a data array');
+  }
   return resultJson.data;
 }
 
 async function compareAndConfirmAsync(
   current: BundledNativeModulesList,
-  next: BundledNativeModulesList
-): Promise<void> {
+  next: BundledNativeModulesList,
+  nonInteractive: boolean
+): Promise<boolean> {
   const currentMap = current.reduce(
+    (acc, i) => {
+      acc[i.npmPackage] = i;
+      return acc;
+    },
+    {} as Record<string, NativeModule>
+  );
+  const nextMap = next.reduce(
     (acc, i) => {
       acc[i.npmPackage] = i;
       return acc;
@@ -157,11 +183,18 @@ async function compareAndConfirmAsync(
       );
     }
   }
+  for (const { npmPackage, versionRange } of current) {
+    if (!nextMap[npmPackage]) {
+      hasChanges = true;
+      logger.info(` - ${npmPackage}: ${chalk.red(versionRange)} -> ${chalk.green('(removed)')}`);
+    }
+  }
   if (!hasChanges) {
     logger.info(chalk.gray('(no changes found)'));
-    // there's no need to proceed with the script
-    process.exit(0);
+    return false;
   }
+
+  if (nonInteractive) return true;
 
   const { confirmed } = await inquirer.prompt<{ confirmed: boolean }>([
     {
@@ -175,6 +208,7 @@ async function compareAndConfirmAsync(
     logger.info('No worries, come back soon!');
     process.exit(1);
   }
+  return true;
 }
 
 async function syncModulesAsync(
@@ -183,7 +217,7 @@ async function syncModulesAsync(
   payload: SyncPayload
 ): Promise<void> {
   const baseApiUrl = resolveBaseApiUrl(env);
-  const result = await fetch(`${baseApiUrl}/--/api/v2/sdks/${sdkVersion}/native-modules/sync`, {
+  const result = await fetch(`${baseApiUrl}/v2/sdks/${sdkVersion}/native-modules/sync`, {
     method: 'put',
     body: JSON.stringify(payload),
     headers: {
@@ -199,9 +233,9 @@ async function syncModulesAsync(
 
 function resolveBaseApiUrl(env: Env): string {
   if (env === 'production') {
-    return `https://${PRODUCTION_API_HOST}`;
+    return `https://${Versions.VersionsApiHost.PRODUCTION}`;
   } else if (env === 'staging') {
-    return `https://${STAGING_API_HOST}`;
+    return `https://${Versions.VersionsApiHost.STAGING}`;
   } else {
     return `http://${LOCAL_API_HOST}`;
   }
@@ -238,5 +272,11 @@ export default (program: Command) => {
     )
     .alias('sbnm')
     .option('-e, --env <local|staging|production>', 'www environment', 'staging')
-    .asyncAction(main);
+    .option(
+      '-y, --yes',
+      'Sync without confirmation prompts; requires the secret in the environment.',
+      false
+    )
+    .option('--dry-run', 'Show changes without updating www.', false)
+    .asyncAction(syncBundledNativeModulesAsync);
 };

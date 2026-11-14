@@ -1,4 +1,3 @@
-import { ExpoConfig } from '@expo/config-types';
 import type {
   EASConfig as ManifestsEASConfig,
   ExpoGoConfig as ManifestsExpoGoConfig,
@@ -10,18 +9,27 @@ import type {
   ExpoGoPackagerOpts as ExpoGoPackagerOptsForReExport,
   // @ts-ignore -- optional interface, will gracefully degrade to `any` not installed
 } from 'expo-manifests';
+import type { ExpoConfig } from 'expo/config';
 
 export enum AppOwnership {
   /**
-   * The experience is running inside of the Expo Go app.
+   * The experience is running inside the Expo Go app.
+   * @deprecated Use [`Constants.executionEnvironment`](#executionenvironment) instead.
    */
   Expo = 'expo',
 }
 
-// @docsMissing
+/**
+ * Identifies where the app's JavaScript bundle is currently running.
+ */
 export enum ExecutionEnvironment {
+  /** A project that includes native project directories that you maintain directly in your
+   * [existing React Native project](/bare/overview/).
+   */
   Bare = 'bare',
+  /** Production/release build created with or without Expo Build. */
   Standalone = 'standalone',
+  /** Expo Go or a development build built with `expo-dev-client`. */
   StoreClient = 'storeClient',
 }
 
@@ -39,7 +47,10 @@ export enum UserInterfaceIdiom {
 }
 
 // @needsAudit
-export interface IOSManifest {
+/**
+ * @platform ios
+ */
+export type IOSManifest = {
   /**
    * The build number specified in the embedded **Info.plist** value for `CFBundleVersion` in this app.
    * In a standalone app, you can set this with the `ios.buildNumber` value in **app.json**. This
@@ -49,43 +60,49 @@ export interface IOSManifest {
    */
   buildNumber: string | null;
   /**
-   * The Apple internal model identifier for this device, e.g. `iPhone1,1`.
+   * The Apple internal model identifier for this device.
+   * @example
+   * `iPhone1,1`
    * @deprecated Use `expo-device`'s [`Device.modelId`](./device/#devicemodelid).
    */
   platform: string;
   /**
-   * The human-readable model name of this device, e.g. `"iPhone 7 Plus"` if it can be determined,
+   * The human-readable model name of this device. For example, `"iPhone 7 Plus"` if it can be determined,
    * otherwise will be `null`.
    * @deprecated Moved to `expo-device` as [`Device.modelName`](./device/#devicemodelname).
    */
   model: string | null;
   /**
-   * The user interface idiom of this device, i.e. whether the app is running on an iPhone, iPad, Mac or Apple TV.
+   * The user interface idiom of the current device, such as whether the app is running on an iPhone, iPad, Mac or Apple TV.
    * @deprecated Use `expo-device`'s [`Device.getDeviceTypeAsync()`](./device/#devicegetdevicetypeasync).
    */
   userInterfaceIdiom: UserInterfaceIdiom;
   /**
-   * The version of iOS running on this device, e.g. `10.3`.
+   * The version of iOS running on this device.
+   * @example
+   * `10.3`
    * @deprecated Use `expo-device`'s [`Device.osVersion`](./device/#deviceosversion).
    */
   systemVersion: string;
-  [key: string]: any;
-}
+} & Record<string, any>;
 
 // @needsAudit
-export interface AndroidManifest {
+/**
+ * @platform android
+ */
+export type AndroidManifest = {
   /**
    * The version code set by `android.versionCode` in app.json.
    * The value is set to `null` in case you run your app in Expo Go.
    * @deprecated Use `expo-application`'s [`Application.nativeBuildVersion`](./application/#applicationnativebuildversion).
    */
   versionCode: number;
-  [key: string]: any;
-}
+} & Record<string, any>;
 
-export interface WebManifest {
-  [key: string]: any;
-}
+/**
+ * @platform web
+ */
+export type WebManifest = Record<string, any>;
 
 // type re-exports to prevent breaking change
 
@@ -98,7 +115,7 @@ export type ExpoGoConfig = ManifestsExpoGoConfig;
 export type ExpoGoPackagerOpts = ExpoGoPackagerOptsForReExport;
 
 // @needsAudit @docsMissing
-export interface PlatformManifest {
+export type PlatformManifest = {
   ios?: IOSManifest;
   android?: AndroidManifest;
   web?: WebManifest;
@@ -109,19 +126,22 @@ export interface PlatformManifest {
   scheme?: string;
   hostUri?: string;
   developer?: string;
-  [key: string]: any;
-}
+} & Record<string, any>;
 
 // @needsAudit @docsMissing
-export interface NativeConstants {
+export type NativeConstants = {
   /**
    * @hidden
    */
   name: 'ExponentConstants';
   /**
    * Returns `expo` when running in Expo Go, otherwise `null`.
+   * @deprecated Use [`Constants.executionEnvironment`](#executionenvironment) instead.
    */
   appOwnership: AppOwnership | null;
+  /**
+   * Returns `true` when the app is running in debug mode (`__DEV__`). Otherwise, returns `false`.
+   */
   debugMode: boolean;
   /**
    * A human-readable name for the device type.
@@ -129,38 +149,50 @@ export interface NativeConstants {
   deviceName?: string;
   /**
    * The [device year class](https://github.com/facebook/device-year-class) of this device.
-   * @deprecated Moved to `expo-device` as [`Device.deviceYearClass`](./device/#deviceyearclass).
+   * @deprecated Moved to `expo-device` as [`Device.deviceYearClass`](./device/#devicedeviceyearclass).
    */
   deviceYearClass: number | null;
+  /**
+   * Returns the current execution environment.
+   */
   executionEnvironment: ExecutionEnvironment;
   experienceUrl: string;
-  // only nullable on web
+  /**
+   * Nullable only on the web.
+   */
   expoRuntimeVersion: string | null;
   /**
    * The version string of the Expo Go app currently running.
-   * Returns `null` in bare workflow and web.
+   * Returns `null` in existing React Native projects and on web.
    */
   expoVersion: string | null;
   isDetached?: boolean;
   intentUri?: string;
+  /**
+   * Returns `true` if the app is running in headless mode. Otherwise, returns `false`.
+   */
   isHeadless: boolean;
   linkingUri: string;
 
   /**
    * @hidden
    * Manifest embedded in the build. Returns `null` when `manifest2` is non-null.
-   * @deprecated Use `Constants.expoConfig` instead, which behaves more consistently across EAS Build
-   * and EAS Update.
+   * @deprecated Use `Constants.expoConfig` instead, which behaves more consistently across Expo Build
+   * and Expo Update.
    */
   manifest: EmbeddedManifest | null;
   /**
    * Manifest for Expo apps using modern Expo Updates from a remote source, such as apps that
-   * use EAS Update. `Constants.expoConfig` should be used for accessing the Expo config object.
+   * use Expo Update. `Constants.expoConfig` should be used for accessing the Expo config object.
    */
   manifest2: ExpoUpdatesManifest | null;
   /**
-   * The standard Expo config object defined in `app.json` and `app.config.js` files. For both
-   * classic and modern manifests, whether they are embedded or remote.
+   * The resolved [app config](/workflow/configuration/#reading-configuration-values-in-your-app),
+   * without fields such as `android.config` and `ios.config` that the public config filters out.
+   *
+   * In a build, this is the config embedded at build time. When the app runs an update, this is
+   * the config that comes with that update. During development, this is the config that the
+   * development server serves. To print it for your project, run `npx expo config --type public`.
    */
   expoConfig:
     | (ExpoConfig & {
@@ -175,7 +207,7 @@ export interface NativeConstants {
    */
   expoGoConfig: ManifestsExpoGoConfig | null;
   /**
-   * The standard EAS config object populated when using EAS.
+   * The standard Expo Services config object populated when using Expo Services.
    */
   easConfig: ManifestsEASConfig | null;
   /**
@@ -197,6 +229,11 @@ export interface NativeConstants {
    * @hidden
    */
   supportedExpoSdks?: string[];
+  /**
+   * Returns the specific platform manifest object.
+   *
+   * > **Note**: This is distinct from the `manifest` and `manifest2`.
+   */
   platform?: PlatformManifest;
   /**
    * Gets the user agent string which would be included in requests sent by a web view running on
@@ -204,24 +241,24 @@ export interface NativeConstants {
    * requests.
    */
   getWebViewUserAgentAsync: () => Promise<string | null>;
-  [key: string]: any;
-}
+} & Record<string, any>;
 
-export interface Constants extends NativeConstants {
+/**
+ * @hidden
+ */
+export type Constants = NativeConstants & {
   /**
-   * @hidden
-   * @warning do not use this property. Use `manifest` by default.
+   * > **Warning**: Do not use this property. Use `manifest` by default.
    *
    * In certain cases accessing manifest via this property
    * suppresses important warning about missing manifest.
    */
   __unsafeNoWarnManifest?: EmbeddedManifest;
   /**
-   * @hidden
-   * @warning do not use this property. Use `manifest2` by default.
+   * > **Warning**: Do not use this property. Use `manifest2` by default.
    *
    * In certain cases accessing manifest via this property
    * suppresses important warning about missing manifest.
    */
   __unsafeNoWarnManifest2?: ExpoUpdatesManifest;
-}
+};

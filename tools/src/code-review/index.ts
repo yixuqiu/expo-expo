@@ -1,10 +1,14 @@
 import chalk from 'chalk';
 
+import Git from '../Git';
+import * as GitHub from '../GitHub';
+import logger from '../Logger';
 import { COMMENT_HEADER, generateReportFromOutputs } from './reports';
 import checkMissingChangelogs from './reviewers/checkMissingChangelogs';
 import lintSwiftFiles from './reviewers/lintSwiftFiles';
 import reviewChangelogEntries from './reviewers/reviewChangelogEntries';
 import reviewForbiddenFiles from './reviewers/reviewForbiddenFiles';
+import reviewSeeReferences from './reviewers/reviewSeeReferences';
 import {
   ReviewEvent,
   ReviewComment,
@@ -13,14 +17,15 @@ import {
   ReviewStatus,
   Reviewer,
 } from './types';
-import Git from '../Git';
-import * as GitHub from '../GitHub';
-import logger from '../Logger';
 
 /**
  * An array with functions whose purpose is to check and review the diff.
  */
 const REVIEWERS: Reviewer[] = [
+  {
+    id: 'changeset-references',
+    action: reviewSeeReferences,
+  },
   {
     id: 'changelog-checks',
     action: checkMissingChangelogs,
@@ -51,6 +56,7 @@ const COMMENTS_LIMIT = 10;
 const getMagicCommentForReviewer = (reviewer: Reviewer) => `<!-- disable:${reviewer.id} -->`;
 
 enum Label {
+  // No longer added, but still removed from pull requests that were labeled with it before.
   PASSED_CHECKS = 'bot: passed checks',
   SUGGESTIONS = 'bot: suggestions',
   NEEDS_CHANGES = 'bot: needs changes',
@@ -82,7 +88,14 @@ export async function reviewPullRequestAsync(prNumber: number) {
   logger.info('🕵️‍♀️  Reviewing changes');
   const reviewActions = REVIEWERS.filter(
     (reviewer) => !pr.body?.includes(getMagicCommentForReviewer(reviewer))
-  ).map(({ action }) => action(input));
+  ).map(async ({ id, action }) => {
+    try {
+      return await action(input);
+    } catch (error) {
+      logger.error(`😫 Code review action '${chalk.green(id)}' failed`);
+      throw error;
+    }
+  });
   const outputs = (await Promise.all(reviewActions)).filter(Boolean) as ReviewOutput[];
 
   // Only active (non-passive) outputs will be reported in the review body.
@@ -135,9 +148,9 @@ function getReviewCommentsFromOutputs(outputs: ReviewOutput[]): ReviewComment[] 
 }
 
 /**
- * Returns GitHub's label based on outputs' final status.
+ * Returns GitHub's label based on outputs' final status, or `null` if the pull request passed all checks.
  */
-function getLabelFromOutputs(outputs: ReviewOutput[]): Label {
+function getLabelFromOutputs(outputs: ReviewOutput[]): Label | null {
   const finalStatus = outputs.reduce(
     (acc, output) => Math.max(acc, output.status),
     ReviewStatus.PASSIVE
@@ -148,14 +161,14 @@ function getLabelFromOutputs(outputs: ReviewOutput[]): Label {
     case ReviewStatus.WARN:
       return Label.SUGGESTIONS;
     default:
-      return Label.PASSED_CHECKS;
+      return null;
   }
 }
 
 /**
- * Updates bot's labels of the PR so that only given label is assigned.
+ * Updates bot's labels of the PR so that only given label is assigned, or none if `newLabel` is `null`.
  */
-async function updateLabelsAsync(pr: GitHub.PullRequest, newLabel: Label) {
+async function updateLabelsAsync(pr: GitHub.PullRequest, newLabel: Label | null) {
   const prLabels = pr.labels.map((label) => label.name);
   const botLabels = Object.values(Label);
 
@@ -168,7 +181,7 @@ async function updateLabelsAsync(pr: GitHub.PullRequest, newLabel: Label) {
     logger.info(`🏷  Removing ${chalk.yellow(labelToRemove)} label`);
     await GitHub.removeIssueLabelAsync(pr.number, labelToRemove);
   }
-  if (!prLabels.includes(newLabel)) {
+  if (newLabel && !prLabels.includes(newLabel)) {
     logger.info(`🏷  Adding ${chalk.yellow(newLabel)} label`);
     await GitHub.addIssueLabelsAsync(pr.number, [newLabel]);
   }
@@ -178,6 +191,7 @@ async function updateLabelsAsync(pr: GitHub.PullRequest, newLabel: Label) {
  * Finds all reports made by me and this expotools command in given pull request.
  */
 async function findExistingReportsAsync(prNumber: number, userId: number) {
+  logger.info(`🔍 Finding existing reports`);
   return (await GitHub.listAllCommentsAsync(prNumber)).filter((comment) => {
     return comment.user?.id === userId && comment.body?.startsWith(COMMENT_HEADER);
   });
@@ -187,6 +201,7 @@ async function findExistingReportsAsync(prNumber: number, userId: number) {
  * Finds all reviews submitted by me and this expotools command in given pull request.
  */
 async function findExistingReviewsAsync(prNumber: number, userId: number) {
+  logger.info(`🔍 Finding existing reviews`);
   return (await GitHub.listPullRequestReviewsAsync(prNumber)).filter(
     (review) => review.user?.id === userId
   );

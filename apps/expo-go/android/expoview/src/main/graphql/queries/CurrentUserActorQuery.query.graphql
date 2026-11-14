@@ -1,0 +1,5 @@
+query Home_CurrentUserActor {
+  meActor {
+    ...CurrentUserActorData
+  }
+}

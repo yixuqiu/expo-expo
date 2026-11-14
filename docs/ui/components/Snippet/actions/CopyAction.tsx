@@ -1,5 +1,6 @@
-import { ClipboardIcon } from '@expo/styleguide-icons';
+import { ClipboardIcon } from '@expo/styleguide-icons/outline/ClipboardIcon';
 import { useState } from 'react';
+import { useIntl } from 'react-intl';
 
 import { SnippetAction, SnippetActionProps } from '../SnippetAction';
 
@@ -8,20 +9,26 @@ type CopyActionProps = SnippetActionProps & {
 };
 
 export const CopyAction = ({ text, ...rest }: CopyActionProps) => {
+  const intl = useIntl();
   const [copyDone, setCopyDone] = useState(false);
+
   const onCopyClick = () => {
-    navigator.clipboard?.writeText(text);
+    void navigator.clipboard?.writeText(text);
     setCopyDone(true);
-    setTimeout(() => setCopyDone(false), 1500);
+    setTimeout(() => {
+      setCopyDone(false);
+    }, 1500);
   };
 
   return (
     <SnippetAction
-      leftSlot={<ClipboardIcon className="icon-sm text-icon-default" />}
+      leftSlot={<ClipboardIcon aria-hidden="true" className="icon-sm text-icon-secondary" />}
       onClick={onCopyClick}
       disabled={copyDone}
+      className="max-sm:gap-0 [&_p]:max-sm:hidden"
+      aria-label="Copy content"
       {...rest}>
-      {copyDone ? 'Copied!' : 'Copy'}
+      {intl.formatMessage({ id: copyDone ? 'codeCopied' : 'codeCopy' })}
     </SnippetAction>
   );
 };

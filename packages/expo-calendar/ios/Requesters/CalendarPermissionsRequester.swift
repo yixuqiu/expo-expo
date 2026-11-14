@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import EventKit
+internal import React
 
 public class CalendarPermissionsRequester: NSObject, EXPermissionsRequester {
   private let eventStore: EKEventStore
@@ -13,7 +14,7 @@ public class CalendarPermissionsRequester: NSObject, EXPermissionsRequester {
   }
 
   public func getPermissions() -> [AnyHashable: Any] {
-    var status: CalendarPermissionsStatus
+    var status: EXPermissionStatus
     var permissions: EKAuthorizationStatus
 
     let description = {
@@ -23,22 +24,21 @@ public class CalendarPermissionsRequester: NSObject, EXPermissionsRequester {
       return "NSCalendarsUsageDescription"
     }()
 
-    if let calendarUsageDescription = Bundle.main.object(forInfoDictionaryKey: description) {
+    if Bundle.main.object(forInfoDictionaryKey: description) != nil {
       permissions = EKEventStore.authorizationStatus(for: .event)
     } else {
-      EXFatal(MissingCalendarPListValueException(description))
       permissions = .denied
     }
 
     switch permissions {
-    case .restricted, .denied:
-      status = .denied
+    case .restricted, .denied, .writeOnly:
+      status = EXPermissionStatusDenied
     case .notDetermined:
-      status = .notDetermined
+      status = EXPermissionStatusUndetermined
     case .fullAccess:
-      status = .granted
+      status = EXPermissionStatusGranted
     @unknown default:
-      status = .unknown
+      status = EXPermissionStatusUndetermined
     }
 
     return ["status": status.rawValue]

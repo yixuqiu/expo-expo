@@ -1,3 +1,7 @@
+import ExpoModulesJSI
+
+let DEFAULT_MODULE_VIEW = "DEFAULT_MODULE_VIEW"
+
 /**
  The definition of the module. It is used to define some parameters
  of the module and what it exports to the JavaScript world.
@@ -16,7 +20,7 @@ public final class ModuleDefinition: ObjectDefinition {
 
   let eventListeners: [EventListener]
 
-  let view: AnyViewDefinition?
+  let views: [String: AnyViewDefinition]
 
   /**
    Names of the events that the module can send to JavaScript.
@@ -25,29 +29,51 @@ public final class ModuleDefinition: ObjectDefinition {
 
   let eventObservers: [AnyEventObservingDefinition]
 
+  /// The raw list of definitions used to construct this module. Retained so that `ModuleHolder` can
+  /// merge in the entries from `_synthesizedDefinition()` without losing the user-authored ones.
+  let rawDefinitions: [AnyDefinition]
+
   /**
    Initializer that is called by the `ModuleDefinitionBuilder` results builder.
    */
   override init(definitions: [AnyDefinition]) {
-    self.name = definitions
-      .compactMap { $0 as? ModuleNameDefinition }
-      .last?
-      .name ?? ""
+    self.rawDefinitions = definitions
 
-    self.eventListeners = definitions.compactMap { $0 as? EventListener }
+    var name: String?
+    var eventListeners = [EventListener]()
+    var viewDefinitions = [AnyViewDefinition]()
+    var eventNames = [String]()
+    var eventObservers = [AnyEventObservingDefinition]()
 
-    self.view = definitions
-      .compactMap { $0 as? AnyViewDefinition }
-      .last
+    for definition in definitions {
+      switch definition._definitionClassification.kind {
+      case .moduleName(let nameDefinition):
+        name = nameDefinition.name
+      case .eventListener(let listener):
+        eventListeners.append(listener)
+      case .view(let view):
+        viewDefinitions.append(view)
+      case .events(let events):
+        eventNames.append(contentsOf: events.names)
+      case .eventObserver(let observer):
+        eventObservers.append(observer)
+      case .unknown:
+        // `AnyViewDefinition` is the only element protocol collected here that a type from another module can conform to.
+        if let view = definition as? AnyViewDefinition {
+          viewDefinitions.append(view)
+        }
+      case .function, .staticFunction, .legacyConstants, .constant, .property, .klass, .viewProp, .viewName, .viewLifecycle:
+        break
+      }
+    }
 
-    self.eventNames = Array(
-      definitions
-        .compactMap { ($0 as? EventsDefinition)?.names }
-        .joined()
-    )
-
-    self.eventObservers = definitions
-      .compactMap { $0 as? AnyEventObservingDefinition }
+    self.name = name ?? ""
+    self.eventListeners = eventListeners
+    var viewsDict = Dictionary(uniqueKeysWithValues: viewDefinitions.map { ($0.name, $0) })
+    viewsDict[DEFAULT_MODULE_VIEW] = viewDefinitions.first
+    self.views = viewsDict
+    self.eventNames = eventNames
+    self.eventObservers = eventObservers
 
     super.init(definitions: definitions)
   }
@@ -66,22 +92,21 @@ public final class ModuleDefinition: ObjectDefinition {
     return self
   }
 
+  @JavaScriptActor
   public override func build(appContext: AppContext) throws -> JavaScriptObject {
     // Create an instance of `global.expo.NativeModule`
-    let object = JSIUtils.createNativeModuleObject(try appContext.runtime)
+    let object = try appContext.runtime.createNativeModuleObject()
 
     try super.decorate(object: object, appContext: appContext)
 
-    if let viewDefinition = view {
-      let reactComponentPrototype = try viewDefinition.createReactComponentPrototype(appContext: appContext)
-      object.setProperty("ViewPrototype", value: reactComponentPrototype)
+    let viewPrototypesObject = try appContext.runtime.createObject()
+
+    try views.forEach { key, view in
+      let reactComponentPrototype = try view.createReactComponentPrototype(appContext: appContext)
+      viewPrototypesObject.setProperty(key == DEFAULT_MODULE_VIEW ? name : "\(name)_\(view.name)", value: reactComponentPrototype)
     }
 
-    if !eventObservers.isEmpty {
-      try EventObservingDecorator(definitions: eventObservers)
-        .decorate(object: object, appContext: appContext)
-    }
-
+    object.setProperty("ViewPrototypes", value: viewPrototypesObject)
     // Give the module object a name. It's used for compatibility reasons, see `EventEmitter.ts`.
     object.defineProperty("__expo_module_name__", value: name, options: [])
 
@@ -93,6 +118,10 @@ public final class ModuleDefinition: ObjectDefinition {
  Module's name definition. Returned by `name()` in module's definition.
  */
 internal struct ModuleNameDefinition: AnyDefinition {
+  var _definitionClassification: DefinitionClassification {
+    return DefinitionClassification(kind: .moduleName(self))
+  }
+
   let name: String
 }
 
@@ -100,6 +129,10 @@ internal struct ModuleNameDefinition: AnyDefinition {
  A definition for module's constants. Returned by `constants(() -> SomeType)` in module's definition.
  */
 internal struct ConstantsDefinition: AnyDefinition {
+  var _definitionClassification: DefinitionClassification {
+    return DefinitionClassification(kind: .legacyConstants(self))
+  }
+
   let body: () -> [String: Any?]
 }
 
@@ -107,5 +140,9 @@ internal struct ConstantsDefinition: AnyDefinition {
  A definition for module's events that can be sent to JavaScript.
  */
 public struct EventsDefinition: AnyDefinition {
+  public var _definitionClassification: DefinitionClassification {
+    return DefinitionClassification(kind: .events(self))
+  }
+
   let names: [String]
 }

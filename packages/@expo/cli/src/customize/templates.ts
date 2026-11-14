@@ -3,22 +3,24 @@ import fs from 'fs';
 import path from 'path';
 import resolveFrom from 'resolve-from';
 
-import prompt, { ExpoChoice } from '../utils/prompts';
-
-const debug = require('debug')('expo:customize:templates');
+import type { ExpoChoice } from '../utils/prompts';
+import prompt from '../utils/prompts';
+import { event } from './events';
 
 export type DestinationResolutionProps = {
   /** Web 'public' folder path (defaults to `/web`). This technically can be changed but shouldn't be. */
   webStaticPath: string;
+  /** The Expo Router app directory. */
+  appDirPath: string;
 };
 
 function importFromExpoWebpackConfig(projectRoot: string, folder: string, moduleId: string) {
   try {
     const filePath = resolveFrom(projectRoot, `@expo/webpack-config/${folder}/${moduleId}`);
-    debug(`Using @expo/webpack-config template for "${moduleId}": ${filePath}`);
+    event('webpack_template_resolved', { moduleId, path: filePath });
     return filePath;
   } catch {
-    debug(`@expo/webpack-config template for "${moduleId}" not found, falling back on @expo/cli`);
+    event('webpack_template_fallback', { moduleId });
   }
   return importFromVendor(projectRoot, moduleId);
 }
@@ -26,14 +28,12 @@ function importFromExpoWebpackConfig(projectRoot: string, folder: string, module
 function importFromVendor(projectRoot: string, moduleId: string) {
   try {
     const filePath = resolveFrom(projectRoot, '@expo/cli/static/template/' + moduleId);
-    debug(`Using @expo/cli template for "${moduleId}": ${filePath}`);
+    event('cli_template_resolved', { moduleId, path: filePath });
     return filePath;
   } catch {
     // For dev mode, testing and other cases where @expo/cli is not installed
     const filePath = require.resolve(`@expo/cli/static/template/${moduleId}`);
-    debug(
-      `Local @expo/cli template for "${moduleId}" not found, falling back on template relative to @expo/cli: ${filePath}`
-    );
+    event('cli_template_fallback', { moduleId, path: filePath });
 
     return filePath;
   }
@@ -48,6 +48,9 @@ export const TEMPLATES: {
   destination: (props: DestinationResolutionProps) => string;
   /** List of dependencies to install in the project. These are used inside of the template file. */
   dependencies: string[];
+
+  /** Custom step for configuring the file. Return true to exit early. */
+  configureAsync?: (projectRoot: string) => Promise<boolean>;
 }[] = [
   {
     id: 'babel.config.js',
@@ -59,24 +62,52 @@ export const TEMPLATES: {
     ],
   },
   {
-    id: 'webpack.config.js',
-    file: (projectRoot) =>
-      importFromExpoWebpackConfig(projectRoot, 'template', 'webpack.config.js'),
-    destination: () => 'webpack.config.js',
-    dependencies: ['@expo/webpack-config'],
-  },
-  {
     id: 'metro.config.js',
-    dependencies: ['@expo/metro-config'],
+    dependencies: [],
     destination: () => 'metro.config.js',
     file: (projectRoot) => importFromVendor(projectRoot, 'metro.config.js'),
   },
   {
-    id: 'serve.json',
-    file: (projectRoot) => importFromExpoWebpackConfig(projectRoot, 'web-default', 'serve.json'),
-    // web/serve.json
-    destination: ({ webStaticPath }) => webStaticPath + '/serve.json',
+    // `tsconfig.json` is special-cased and doesn't follow the template.
+    id: 'tsconfig.json',
     dependencies: [],
+    destination: () => 'tsconfig.json',
+    file: () => '',
+    configureAsync: async (projectRoot) => {
+      const { typescript } = require('./typescript') as typeof import('./typescript');
+      await typescript(projectRoot);
+      return true;
+    },
+  },
+  {
+    id: '.eslintrc.js',
+    dependencies: [],
+    destination: () => '.eslintrc.js (deprecated)',
+    file: (projectRoot) => importFromVendor(projectRoot, '.eslintrc.js'),
+    configureAsync: async (projectRoot) => {
+      const { ESLintProjectPrerequisite } =
+        require('../lint/ESlintPrerequisite') as typeof import('../lint/ESlintPrerequisite.js');
+      const prerequisite = new ESLintProjectPrerequisite(projectRoot);
+      if (!(await prerequisite.assertAsync())) {
+        await prerequisite.bootstrapAsync();
+      }
+      return false;
+    },
+  },
+  {
+    id: 'eslint.config.js',
+    dependencies: [],
+    destination: () => 'eslint.config.js',
+    file: (projectRoot) => importFromVendor(projectRoot, 'eslint.config.js'),
+    configureAsync: async (projectRoot) => {
+      const { ESLintProjectPrerequisite } =
+        require('../lint/ESlintPrerequisite') as typeof import('../lint/ESlintPrerequisite.js');
+      const prerequisite = new ESLintProjectPrerequisite(projectRoot);
+      if (!(await prerequisite.assertAsync())) {
+        await prerequisite.bootstrapAsync();
+      }
+      return false;
+    },
   },
   {
     id: 'index.html',
@@ -86,11 +117,23 @@ export const TEMPLATES: {
     dependencies: [],
   },
   {
-    // `tsconfig.json` is special cased and don't not follow the template
-    id: 'tsconfig.json',
+    id: 'webpack.config.js',
+    file: (projectRoot) =>
+      importFromExpoWebpackConfig(projectRoot, 'template', 'webpack.config.js'),
+    destination: () => 'webpack.config.js',
+    dependencies: ['@expo/webpack-config'],
+  },
+  {
+    id: '+html.tsx',
+    file: (projectRoot) => importFromVendor(projectRoot, '+html.tsx'),
+    destination: ({ appDirPath }) => path.join(appDirPath, '+html.tsx'),
     dependencies: [],
-    destination: () => 'tsconfig.json',
-    file: () => '',
+  },
+  {
+    id: '+native-intent.ts',
+    file: (projectRoot) => importFromVendor(projectRoot, '+native-intent.ts'),
+    destination: ({ appDirPath }) => path.join(appDirPath, '+native-intent.ts'),
+    dependencies: [],
   },
 ];
 

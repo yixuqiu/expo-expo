@@ -1,0 +1,45 @@
+import React, { Children } from 'react';
+
+import { isChildOfType } from '../../utils/children';
+import { Protected, type ProtectedProps } from '../../views/Protected';
+import { Screen } from '../../views/Screen';
+import { StackHeaderComponent } from './StackHeaderComponent';
+import { StackScreen, appendScreenStackPropsToOptions } from './StackScreen';
+
+export function mapProtectedScreen(props: ProtectedProps): ProtectedProps {
+  return {
+    ...props,
+    children: Children.toArray(props.children)
+      .map((child, index) => {
+        if (isChildOfType(child, StackScreen)) {
+          const {
+            children,
+            options: childOptions,
+            unstable_requiredScreensBelow,
+            ...rest
+          } = child.props;
+          const screenProps = { children, unstable_requiredScreensBelow };
+          const options =
+            typeof childOptions === 'function'
+              ? (...params: Parameters<typeof childOptions>) =>
+                  appendScreenStackPropsToOptions(childOptions(...params), screenProps)
+              : appendScreenStackPropsToOptions(childOptions ?? {}, screenProps);
+          return <Screen key={rest.name} {...rest} options={options} />;
+        } else if (isChildOfType(child, Protected)) {
+          return <Protected key={`${index}-${props.guard}`} {...mapProtectedScreen(child.props)} />;
+        } else if (isChildOfType(child, StackHeaderComponent)) {
+          // Ignore Stack.Header, because it can be used to set header options for Stack
+          // and we use this function to process children of Stack, as well.
+          return null;
+        } else {
+          if (React.isValidElement(child)) {
+            console.warn(`Unknown child element passed to Stack: ${child.type}`);
+          } else {
+            console.warn(`Unknown child element passed to Stack: ${child}`);
+          }
+        }
+        return null;
+      })
+      .filter(Boolean),
+  };
+}

@@ -8,6 +8,16 @@ jest.mock('../../../../log');
 
 describe(getVersionedNativeModulesAsync, () => {
   const projectRoot = '/test-project';
+  const originalEnv = process.env;
+
+  beforeAll(() => {
+    // Disable fetch caching for now, as it conflicts with `memfs.vol.reset`
+    process.env.EXPO_NO_CACHE = 'true';
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+  });
 
   beforeEach(() => {
     vol.reset();
@@ -63,7 +73,7 @@ describe(getVersionedNativeModulesAsync, () => {
   it('throws an error if api is down and expo is not installed', async () => {
     nock(getExpoApiBaseUrl()).get('/v2/sdks/66.0.0/native-modules').reply(504, 'api is down');
 
-    await expect(getVersionedNativeModulesAsync(projectRoot, '66.0.0')).rejects.toThrowError();
+    await expect(getVersionedNativeModulesAsync(projectRoot, '66.0.0')).rejects.toThrow();
   });
 
   it('skips api versions when requested', async () => {

@@ -1,16 +1,15 @@
 {
-  "platforms": [
-    "ios",
-    "android"
-  ],
-  "ios": {
-    "modules": [
-      "InsightsModule"
-    ]
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["InsightsModule"],
+    "appDelegateSubscribers": ["InsightsAppDelegateSubscriber"]
   },
   "android": {
-    "modules": [
-      "expo.modules.insights.ExpoInsightsModule"
-    ]
+    "modules": ["expo.modules.insights.ExpoInsightsModule"],
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.insights",
+      "repository": "local-maven-repo"
+    }
   }
 }

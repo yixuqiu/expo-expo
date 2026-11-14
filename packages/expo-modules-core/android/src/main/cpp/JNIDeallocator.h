@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include <fbjni/fbjni.h>
+#include "ExpoHeader.pch"
 
 namespace jni = facebook::jni;
 
@@ -19,7 +19,7 @@ public:
 
   void addReference(
     jni::local_ref<Destructible::javaobject> jniObject
-  );
+  ) noexcept;
 };
 
 } // namespace expo

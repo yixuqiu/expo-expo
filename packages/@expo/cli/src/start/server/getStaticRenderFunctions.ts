@@ -4,111 +4,31 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
+import { getMetroServerRoot } from '@expo/config/paths';
+import { flattenSourceMap } from '@expo/metro-config/build/serializer/sourceMap';
+import { evalModule } from '@expo/require-utils';
 import fs from 'fs';
-import fetch from 'node-fetch';
+import Module from 'node:module';
 import path from 'path';
-import requireString from 'require-from-string';
-import resolveFrom from 'resolve-from';
 
-import { logMetroError, logMetroErrorAsync } from './metro/metroErrorInterface';
-import { getMetroServerRoot } from './middleware/ManifestMiddleware';
-import { createBundleUrlPath, ExpoMetroOptions } from './middleware/metroOptions';
-import { augmentLogs } from './serverLogLikeMetro';
-import { stripAnsi } from '../../utils/ansi';
 import { delayAsync } from '../../utils/delay';
+import { isPathInside } from '../../utils/dir';
 import { SilentError } from '../../utils/errors';
-import { memoize } from '../../utils/fn';
+import { toPosixPath } from '../../utils/filePath';
 import { profile } from '../../utils/profile';
+import { IS_METRO_BUNDLE_ERROR_SYMBOL, logMetroError } from './metro/metroErrorInterface';
+import { event } from './metro/ssrEvents';
+import type { ExpoMetroOptions } from './middleware/metroOptions';
+import { createBundleUrlPath } from './middleware/metroOptions';
+import { augmentLogs } from './serverLogLikeMetro';
 
 /** The list of input keys will become optional, everything else will remain the same. */
 export type PickPartial<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
-class MetroNodeError extends Error {
-  constructor(
-    message: string,
-    public rawObject: any
-  ) {
-    super(message);
-  }
-}
-
-const debug = require('debug')('expo:start:server:node-renderer') as typeof console.log;
-
-const cachedSourceMaps: Map<string, { url: string; map: string }> = new Map();
-
-// Support unhandled rejections
-// Detect if running in Bun
-
-// @ts-expect-error: This is a global variable that is set by Bun.
-if (!process.isBun) {
-  require('source-map-support').install({
-    retrieveSourceMap(source: string) {
-      if (cachedSourceMaps.has(source)) {
-        return cachedSourceMaps.get(source);
-      }
-      return null;
-    },
-  });
-}
-
-function wrapBundle(str: string) {
-  // Skip the metro runtime so debugging is a bit easier.
-  // Replace the __r() call with an export statement.
-  // Use gm to apply to the last require line. This is needed when the bundle has side-effects.
-  return str.replace(/^(__r\(.*\);)$/gm, 'module.exports = $1');
-}
-
-// TODO(EvanBacon): Group all the code together and version.
-const getRenderModuleId = (
-  projectRoot: string,
-  entry: string = 'expo-router/node/render.js'
-): string => {
-  const moduleId = resolveFrom.silent(projectRoot, entry);
-  if (!moduleId) {
-    throw new Error(
-      `A version of expo-router with Node.js support is not installed in the project.`
-    );
-  }
-
-  return moduleId;
-};
-
-const moveStaticRenderFunction = memoize(async (projectRoot: string, requiredModuleId: string) => {
-  // Copy the file into the project to ensure it works in monorepos.
-  // This means the file cannot have any relative imports.
-  const tempDir = path.join(projectRoot, '.expo/static');
-  await fs.promises.mkdir(tempDir, { recursive: true });
-  const moduleId = path.join(tempDir, 'render.js');
-  await fs.promises.writeFile(moduleId, await fs.promises.readFile(requiredModuleId, 'utf8'));
-  // Sleep to give watchman time to register the file.
-  await delayAsync(50);
-  return moduleId;
-});
-
-/** @returns the js file contents required to generate the static generation function. */
-async function getStaticRenderFunctionsContentAsync(
-  projectRoot: string,
-  devServerUrl: string,
-  props: PickPartial<ExpoMetroOptions, 'mainModuleName' | 'bytecode'>,
-  entry?: string
-): Promise<{ src: string; filename: string }> {
-  const root = getMetroServerRoot(projectRoot);
-  const requiredModuleId = getRenderModuleId(root, entry);
-  let moduleId = requiredModuleId;
-
-  // Cannot be accessed using Metro's server API, we need to move the file
-  // into the project root and try again.
-  if (path.relative(root, moduleId).startsWith('..')) {
-    moduleId = await moveStaticRenderFunction(projectRoot, requiredModuleId);
-  }
-
-  return requireFileContentsWithMetro(root, devServerUrl, moduleId, props);
-}
-
 async function ensureFileInRootDirectory(projectRoot: string, otherFile: string) {
   // Cannot be accessed using Metro's server API, we need to move the file
   // into the project root and try again.
-  if (!path.relative(projectRoot, otherFile).startsWith('..' + path.sep)) {
+  if (!isPathInside(otherFile, projectRoot)) {
     return otherFile;
   }
 
@@ -153,80 +73,23 @@ export async function createMetroEndpointAsync(
   return url;
 }
 
-export async function requireFileContentsWithMetro(
-  projectRoot: string,
-  devServerUrl: string,
-  absoluteFilePath: string,
-  props: PickPartial<ExpoMetroOptions, 'mainModuleName' | 'bytecode'>
-): Promise<{ src: string; filename: string }> {
-  const url = await createMetroEndpointAsync(projectRoot, devServerUrl, absoluteFilePath, props);
-  return await metroFetchAsync(projectRoot, url);
-}
-
-async function metroFetchAsync(
-  projectRoot: string,
-  url: string
-): Promise<{ src: string; filename: string; map?: any }> {
-  debug('Fetching from Metro:', url);
-  // TODO: Skip the dev server and use the Metro instance directly for better results, faster.
-  const res = await fetch(url);
-
-  // TODO: Improve error handling
-  if (res.status === 500) {
-    const text = await res.text();
-    if (
-      text.startsWith('{"originModulePath"') ||
-      text.startsWith('{"type":"TransformError"') ||
-      text.startsWith('{"type":"InternalError"')
-    ) {
-      const errorObject = JSON.parse(text);
-
-      throw new MetroNodeError(stripAnsi(errorObject.message) ?? errorObject.message, errorObject);
-    }
-    throw new Error(`[${res.status}]: ${res.statusText}\n${text}`);
-  }
-
-  if (!res.ok) {
-    throw new Error(`Error fetching bundle for static rendering: ${res.status} ${res.statusText}`);
-  }
-
-  const content = await res.text();
-
-  const map = await fetch(url.replace('.bundle?', '.map?')).then((r) => r.json());
-  cachedSourceMaps.set(url, { url: projectRoot, map });
-
-  return {
-    src: wrapBundle(content),
-    filename: url,
-    map,
-  };
-}
-
-export async function getStaticRenderFunctionsForEntry<T = any>(
-  projectRoot: string,
-  devServerUrl: string,
-  options: PickPartial<ExpoMetroOptions, 'mainModuleName' | 'bytecode'>,
-  entry: string
-) {
-  const { src: scriptContents, filename } = await getStaticRenderFunctionsContentAsync(
-    projectRoot,
-    devServerUrl,
-    options,
-    entry
-  );
-
-  return {
-    filename,
-    fn: await evalMetroAndWrapFunctions<T>(projectRoot, scriptContents, filename),
-  };
-}
-
-function evalMetroAndWrapFunctions<T = Record<string, any>>(
+export function evalMetroAndWrapFunctions<T = Record<string, any>>(
   projectRoot: string,
   script: string,
-  filename: string
-): Promise<T> {
-  const contents = evalMetro(projectRoot, script, filename);
+  filename: string,
+  sourceMap: string | undefined,
+  isExporting: boolean
+): T {
+  // TODO: Add back stack trace logic that hides traces from metro-runtime and other internal modules.
+  const contents = evalMetroNoHandling(projectRoot, script, filename, sourceMap);
+
+  if (!contents) {
+    // This can happen if ErrorUtils isn't working correctly on web and failing to throw an error when a module throws.
+    // This is unexpected behavior and should not be pretty formatted, therefore we're avoiding CommandError.
+    throw new Error(
+      '[Expo SSR] Module returned undefined, this could be due to a misconfiguration in Metro error handling'
+    );
+  }
   // wrap each function with a try/catch that uses Metro's error formatter
   return Object.keys(contents).reduce((acc, key) => {
     const fn = contents[key];
@@ -239,31 +102,50 @@ function evalMetroAndWrapFunctions<T = Record<string, any>>(
         return await fn.apply(this, props);
       } catch (error: any) {
         await logMetroError(projectRoot, { error });
-        throw new SilentError(error);
+
+        if (isExporting || error[IS_METRO_BUNDLE_ERROR_SYMBOL]) {
+          throw error;
+        } else {
+          // TODO: When does this happen?
+          throw new SilentError(error);
+        }
       }
     };
     return acc;
   }, {} as any);
 }
 
-export function evalMetro(projectRoot: string, src: string, filename: string) {
-  try {
-    return evalMetroNoHandling(projectRoot, src, filename);
-  } catch (error: any) {
-    // Format any errors that were thrown in the global scope of the evaluation.
-    if (error instanceof Error) {
-      logMetroErrorAsync({ projectRoot, error }).catch((internalError) => {
-        debug('Failed to log metro error:', internalError);
-        throw error;
-      });
-    } else {
-      throw error;
-    }
-  }
-}
-
-export function evalMetroNoHandling(projectRoot: string, src: string, filename: string) {
+export function evalMetroNoHandling(
+  projectRoot: string,
+  src: string,
+  filename: string,
+  sourceMap?: string
+) {
   augmentLogs(projectRoot);
 
-  return profile(requireString, 'eval-metro-bundle')(src, filename);
+  // NOTE(@kitten): `require-from-string` derives a base path from the filename we pass it,
+  // but doesn't validate that the filename exists. These debug messages should help identify
+  // these problems, if they occur in user projects without reproductions
+  if (!fs.existsSync(path.dirname(filename))) {
+    event('eval_filename_not_in_dir', { filename: event.path(filename) });
+  } else if (!toPosixPath(path.dirname(filename)).startsWith(toPosixPath(projectRoot))) {
+    event('eval_filename_outside_root', { filename: event.path(filename) });
+  }
+
+  return profile(evalModule, 'eval-metro-bundle')(src, filename, {
+    // Resolve externals from the project root to match the resolver rather than from the bundle's
+    // entry directory.
+    // TODO: DVT-179
+    paths: [...Module._nodeModulePaths(projectRoot)],
+    cache: false,
+    sourceMap: sourceMap && toFlatSourceMap(sourceMap),
+  });
+}
+
+// NOTE(@robhogan): Node can't load an index map (with `sections`), which Metro emits for
+// bundles, so stack traces from the bundle are only source-mapped when given a flat map.
+// This can be removed once Node loads index maps from a `sourceMappingURL`.
+function toFlatSourceMap(sourceMap: string): string {
+  const parsed = JSON.parse(sourceMap);
+  return 'sections' in parsed ? JSON.stringify(flattenSourceMap(parsed)) : sourceMap;
 }

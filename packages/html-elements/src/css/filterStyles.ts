@@ -1,4 +1,5 @@
-import { StyleSheet } from 'react-native';
+import type { CSSProperties } from 'react';
+import { type StyleProp, StyleSheet } from 'react-native';
 
 // Remove the unsupported web styles from the style object
 // to prevent crashing.
@@ -15,7 +16,6 @@ const WEB_STYLES = [
   'backgroundAttachment',
   'backgroundBlendMode',
   'backgroundClip',
-  'backgroundImage',
   'backgroundOrigin',
   'backgroundPosition',
   'backgroundRepeat',
@@ -56,7 +56,7 @@ const WEB_STYLES = [
   'willChange',
 ];
 
-export function filterStyles(styleProp) {
+export function filterStyles(styleProp: StyleProp<any>) {
   if (!styleProp) {
     return styleProp;
   }
@@ -69,7 +69,7 @@ export function filterStyles(styleProp) {
   return processNativeStyles(filteredStyle);
 }
 
-function processNativeStyles(style) {
+function processNativeStyles(style: CSSProperties) {
   if (!style) return style;
 
   if (style.visibility) {

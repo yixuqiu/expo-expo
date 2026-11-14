@@ -1,10 +1,13 @@
 package expo.modules.updates.launcher
 
 import android.content.Context
-import android.os.AsyncTask
-import android.util.Log
 import expo.modules.updates.loader.EmbeddedLoader
-import org.apache.commons.io.FileUtils
+import expo.modules.updates.logging.UpdatesLogger
+import expo.modules.updatesinterface.UpdatesLogMessage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -16,8 +19,10 @@ import java.io.File
  * on [UpdatesModule] should be `true` whenever this class is used.
  */
 class NoDatabaseLauncher @JvmOverloads constructor(
-  context: Context,
-  fatalException: Exception? = null
+  private val context: Context,
+  private val logger: UpdatesLogger,
+  fatalException: Exception? = null,
+  launcherScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) : Launcher {
   override val bundleAssetName = EmbeddedLoader.BARE_BUNDLE_FILENAME
   override val launchedUpdate = null
@@ -25,13 +30,13 @@ class NoDatabaseLauncher @JvmOverloads constructor(
   override val localAssetFiles = null
   override val isUsingEmbeddedAssets = true
 
-  private fun writeErrorToLog(context: Context, fatalException: Exception) {
+  private fun writeErrorToLog(fatalException: Exception) {
     try {
       val errorLogFile = File(context.filesDir, ERROR_LOG_FILENAME)
       val exceptionString = fatalException.toString()
-      FileUtils.writeStringToFile(errorLogFile, exceptionString, "UTF-8", true)
+      errorLogFile.appendText(exceptionString, Charsets.UTF_8)
     } catch (e: Exception) {
-      Log.e(TAG, "Failed to write fatal error to log", e)
+      logger.error(UpdatesLogMessage.ErrorRecoveryLogWriteFailed, e)
     }
   }
 
@@ -40,17 +45,17 @@ class NoDatabaseLauncher @JvmOverloads constructor(
 
     private const val ERROR_LOG_FILENAME = "expo-error.log"
 
-    fun consumeErrorLog(context: Context): String? {
+    fun consumeErrorLog(filesDir: File, logger: UpdatesLogger): String? {
       return try {
-        val errorLogFile = File(context.filesDir, ERROR_LOG_FILENAME)
+        val errorLogFile = File(filesDir, ERROR_LOG_FILENAME)
         if (!errorLogFile.exists()) {
           return null
         }
-        val logContents = FileUtils.readFileToString(errorLogFile, "UTF-8")
+        val logContents = errorLogFile.readText(Charsets.UTF_8)
         errorLogFile.delete()
         logContents
       } catch (e: Exception) {
-        Log.e(TAG, "Failed to read error log", e)
+        logger.warn(UpdatesLogMessage.ErrorRecoveryLogReadFailed, e)
         null
       }
     }
@@ -58,7 +63,7 @@ class NoDatabaseLauncher @JvmOverloads constructor(
 
   init {
     if (fatalException != null) {
-      AsyncTask.execute { writeErrorToLog(context, fatalException) }
+      launcherScope.launch { writeErrorToLog(fatalException) }
     }
   }
 }

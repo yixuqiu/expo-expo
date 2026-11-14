@@ -2,22 +2,21 @@
   xmlns:android="http://schemas.android.com/apk/res/android"
   xmlns:tools="http://schemas.android.com/tools">
 
-  <!-- WHEN_VERSIONING_REMOVE_FROM_HERE -->
   <supports-screens
     android:anyDensity="true"
     android:largeScreens="true"
     android:normalScreens="true"
     android:smallScreens="true"
-    android:xlargeScreens="true"></supports-screens>
-  <!-- WHEN_VERSIONING_REMOVE_TO_HERE -->
+    android:xlargeScreens="true"/>
 
   <uses-permission android:name="android.permission.INTERNET" />
+  <!-- Android 17 gates local network access behind this runtime permission; Home asks before reaching a dev server. -->
+  <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
-  <uses-permission android:name="host.exp.exponent.permission.C2D_MESSAGE" />
+  <uses-permission android:name="${applicationId}.permission.C2D_MESSAGE" />
   <uses-permission android:name="android.permission.READ_INTERNAL_STORAGE" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-  <uses-permission android:name="android.permission.MANAGE_DOCUMENTS" />
   <uses-permission android:name="android.permission.USE_FINGERPRINT" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <!-- Used by react-native-netinfo module -->
@@ -28,14 +27,18 @@
   <uses-permission android:name="android.permission.READ_CONTACTS" />
   <uses-permission android:name="android.permission.READ_CALENDAR" />
   <uses-permission android:name="android.permission.WRITE_CALENDAR" />
-  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
   <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
   <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+  <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
 
+  <!-- Remove permission required for pedometer to avoid incorrectly being classified as a health app -->
+  <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" tools:node="remove"/>
 
   <uses-feature
     android:name="android.hardware.camera"
@@ -65,9 +68,8 @@
     android:name="android.hardware.bluetooth"
     android:required="false" />
 
-  <application>
+  <application android:theme="@style/AppTheme">
 
-    <!-- WHEN_VERSIONING_REMOVE_FROM_HERE -->
     <!-- Scheduled notifications -->
     <receiver
       android:name="host.exp.exponent.notifications.ScheduledNotificationReceiver"
@@ -84,8 +86,6 @@
         <action android:name="android.intent.action.QUICKBOOT_POWERON" />
       </intent-filter>
     </receiver>
-
-    <!-- WHEN_VERSIONING_REMOVE_TO_HERE -->
 
     <provider
       android:name="androidx.core.content.FileProvider"
@@ -117,6 +117,26 @@
         <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
       </intent-filter>
     </receiver>
+
+    <activity
+      android:name="host.exp.exponent.home.auth.AuthActivity"
+      android:exported="true"
+      android:launchMode="singleTask"
+      android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+
+        <data android:scheme="expauth" />
+      </intent-filter>
+    </activity>
+
+    <activity
+      android:name="host.exp.exponent.home.qrScanner.QRScannerActivity"
+      android:exported="false"
+      android:theme="@style/Theme.AppCompat.NoActionBar" />
   </application>
 
 </manifest>

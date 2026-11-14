@@ -1,3 +1,8 @@
-import { requireNativeViewManager } from 'expo-modules-core';
+import { requireNativeView } from 'expo';
+import { Platform } from 'react-native';
 
-export default requireNativeViewManager('ExpoVideo');
+const defaultViewName = Platform.OS === 'android' ? 'SurfaceVideoView' : 'VideoView';
+
+export default requireNativeView('ExpoVideo', defaultViewName);
+export const NativeTextureVideoView =
+  Platform.OS === 'android' ? requireNativeView('ExpoVideo', 'TextureVideoView') : null;

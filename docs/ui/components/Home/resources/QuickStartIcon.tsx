@@ -1,8 +1,7 @@
-import React from 'react';
-
 export const QuickStartIcon = () => (
   <svg
-    style={{ marginRight: 12, marginTop: 6, float: 'left' }}
+    aria-hidden="true"
+    className="float-left mt-1.5 mr-3"
     width="18"
     height="23"
     viewBox="0 0 18 23"

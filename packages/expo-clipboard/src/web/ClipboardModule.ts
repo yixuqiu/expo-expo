@@ -1,3 +1,11 @@
+import type {
+  ClipboardImage,
+  GetImageOptions,
+  GetStringOptions,
+  SetImageOptions,
+  SetStringOptions,
+} from '../Clipboard.types';
+import { StringFormat } from '../Clipboard.types';
 import {
   ClipboardUnavailableException,
   CopyFailureException,
@@ -13,13 +21,6 @@ import {
   htmlToPlainText,
   isClipboardPermissionDeniedAsync,
 } from './Utils';
-import {
-  ClipboardImage,
-  GetImageOptions,
-  GetStringOptions,
-  SetStringOptions,
-  StringFormat,
-} from '../Clipboard.types';
 
 export default {
   async getStringAsync(options: GetStringOptions): Promise<string> {
@@ -51,9 +52,12 @@ export default {
           return text;
         }
       }
-    } catch (e) {
+    } catch (error: any) {
       // it might fail, because user denied permission
-      if (e.name === 'NotAllowedError' || (await isClipboardPermissionDeniedAsync())) {
+      if (
+        (typeof error === 'object' && error?.name === 'NotAllowedError') ||
+        (await isClipboardPermissionDeniedAsync())
+      ) {
         throw new NoPermissionException();
       }
 
@@ -64,21 +68,6 @@ export default {
       } catch {
         return Promise.reject(new Error('Unable to retrieve item from clipboard'));
       }
-    }
-  },
-  // TODO: (barthap) The `setString` was deprecated in SDK 45. Remove this function in a few SDK cycles.
-  setString(text: string): boolean {
-    const textField = document.createElement('textarea');
-    textField.textContent = text;
-    document.body.appendChild(textField);
-    textField.select();
-    try {
-      document.execCommand('copy');
-      return true;
-    } catch {
-      return false;
-    } finally {
-      document.body.removeChild(textField);
     }
   },
   async setStringAsync(text: string, options: SetStringOptions): Promise<boolean> {
@@ -92,12 +81,15 @@ export default {
           const clipboardItemInput = createHtmlClipboardItem(text);
           await navigator.clipboard.write([clipboardItemInput]);
           return true;
-        } catch (e) {
+        } catch (error: any) {
           // it might fail, because user denied permission
-          if (e.name === 'NotAllowedError' || (await isClipboardPermissionDeniedAsync())) {
+          if (
+            (typeof error === 'object' && error?.name === 'NotAllowedError') ||
+            (await isClipboardPermissionDeniedAsync())
+          ) {
             throw new NoPermissionException();
           }
-          throw new CopyFailureException(e.message);
+          throw new CopyFailureException(error.message);
         }
       }
       default: {
@@ -110,7 +102,7 @@ export default {
         } catch {
           // we can fall back to legacy behavior in any kind of failure
           // including navigator.clipboard unavailability
-          return this.setString(text);
+          return legacySetString(text);
         }
       }
     }
@@ -136,15 +128,18 @@ export default {
       ]);
 
       return { data, size };
-    } catch (e) {
+    } catch (error: any) {
       // it might fail, because user denied permission
-      if (e.name === 'NotAllowedError' || (await isClipboardPermissionDeniedAsync())) {
+      if (
+        (typeof error === 'object' && error?.name === 'NotAllowedError') ||
+        (await isClipboardPermissionDeniedAsync())
+      ) {
         throw new NoPermissionException();
       }
-      throw new PasteFailureException(e.message);
+      throw new PasteFailureException(error.message);
     }
   },
-  async setImageAsync(base64image: string): Promise<void> {
+  async setImageAsync(base64image: string, _options?: SetImageOptions): Promise<void> {
     if (!navigator.clipboard) {
       throw new ClipboardUnavailableException();
     }
@@ -182,20 +177,36 @@ async function clipboardHasTypesAsync(types: string[]): Promise<boolean> {
   try {
     const clipboardItems = await navigator.clipboard.read();
     return clipboardItems.flatMap((item) => item.types).some((type) => types.includes(type));
-  } catch (e) {
+  } catch (error: any) {
     // it might fail, because user denied permission
-    if (e.name === 'NotAllowedError' || (await isClipboardPermissionDeniedAsync())) {
+    if (
+      (typeof error === 'object' && error?.name === 'NotAllowedError') ||
+      (await isClipboardPermissionDeniedAsync())
+    ) {
       throw new NoPermissionException();
     }
-    throw e;
+    throw error;
   }
 }
 
 function createHtmlClipboardItem(htmlString: string): ClipboardItem {
   return new ClipboardItem({
-    // @ts-ignore `Blob` from `lib.dom.d.ts` and the one from `@types/react-native` differ
     'text/html': new Blob([htmlString], { type: 'text/html' }),
-    // @ts-ignore `Blob` from `lib.dom.d.ts` and the one from `@types/react-native` differ
     'text/plain': new Blob([htmlToPlainText(htmlString)], { type: 'text/plain' }),
   });
+}
+
+function legacySetString(text: string): boolean {
+  const textField = document.createElement('textarea');
+  textField.textContent = text;
+  document.body.appendChild(textField);
+  textField.select();
+  try {
+    document.execCommand('copy');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textField);
+  }
 }

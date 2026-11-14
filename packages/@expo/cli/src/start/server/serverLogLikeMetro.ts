@@ -7,24 +7,38 @@
 import { INTERNAL_CALLSITES_REGEX } from '@expo/metro-config';
 import chalk from 'chalk';
 import path from 'path';
-import resolveFrom from 'resolve-from';
-// @ts-expect-error
-import { mapSourcePosition } from 'source-map-support';
 import * as stackTraceParser from 'stacktrace-parser';
 
 import { env } from '../../utils/env';
 import { memoize } from '../../utils/fn';
+import { LogBoxLog } from './metro/log-box/LogBoxLog';
+import type { StackFrame } from './metro/log-box/LogBoxSymbolication';
+import { parseErrorStack } from './metro/log-box/LogBoxSymbolication';
+import { getStackAsFormattedLog } from './metro/metroErrorInterface';
+
+const CONSOLE_METHODS = [
+  'trace',
+  'info',
+  'error',
+  'warn',
+  'log',
+  'group',
+  'groupCollapsed',
+  'groupEnd',
+  'debug',
+] as const;
+
+type ConsoleMethod = (typeof CONSOLE_METHODS)[number];
 
 const groupStack: any = [];
 let collapsedGuardTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function logLikeMetro(
   originalLogFunction: (...args: any[]) => void,
-  level: string,
-  platform: string,
+  level: ConsoleMethod,
+  platform: string | null,
   ...data: any[]
 ) {
-  // @ts-expect-error
   const logFunction = console[level] && level !== 'trace' ? level : 'log';
   const color =
     level === 'error'
@@ -64,10 +78,10 @@ export function logLikeMetro(
       data[data.length - 1] = lastItem.trimEnd();
     }
 
-    const modePrefix = chalk.bold`${platform}`;
+    const modePrefix =
+      platform && platform !== 'BRIDGE' && platform !== 'NOBRIDGE' ? chalk.bold`${platform} ` : '';
     originalLogFunction(
       modePrefix +
-        ' ' +
         color.bold(` ${logFunction.toUpperCase()} `) +
         ''.padEnd(groupStack.length * 2, ' '),
       ...data
@@ -80,9 +94,77 @@ const SERVER_STACK_MATCHER = new RegExp(
   `${escapedPathSep}(react-dom|metro-runtime|expo-router)${escapedPathSep}`
 );
 
+export async function maybeSymbolicateAndFormatJSErrorStackLogAsync(
+  projectRoot: string,
+  level: 'error' | 'warn' | (string & {}),
+  error: {
+    message: string;
+    stack: StackFrame[];
+  }
+): Promise<{
+  isFallback: boolean;
+  stack: string;
+}> {
+  const log = new LogBoxLog({
+    level: level as 'error' | 'warn',
+    message: {
+      content: error.message,
+      substitutions: [],
+    },
+    isComponentError: false,
+    stack: error.stack,
+    category: 'static',
+    componentStack: [],
+  });
+
+  await new Promise((res) => log.symbolicate('stack', res));
+
+  const formatted = getStackAsFormattedLog(projectRoot, {
+    stack: log.symbolicated?.stack?.stack ?? [],
+    codeFrame: log.codeFrame,
+  });
+
+  // NOTE: Message is printed above stack by the default Metro logic. So we don't need to include it here.
+  const symbolicatedErrorStackLog = `\n\n${formatted.stack}`;
+
+  return {
+    isFallback: formatted.isFallback,
+    stack: symbolicatedErrorStackLog,
+  };
+}
+
+/**
+ * Attempt to parse an error message string to an unsymbolicated stack.
+ */
+export function parseErrorStringToObject(errorString: string) {
+  // Find the first line of the possible stack trace
+  const stackStartIndex = errorString.indexOf('\n    at ');
+  if (stackStartIndex === -1) {
+    // No stack trace found, return the original error string
+    return null;
+  }
+  const message = errorString.slice(0, stackStartIndex).trim();
+  const stack = errorString.slice(stackStartIndex + 1);
+
+  try {
+    const parsedStack = parseErrorStack(stack);
+
+    return {
+      message,
+      stack: parsedStack,
+    };
+  } catch {
+    // If parsing fails, return the original error string
+    return null;
+  }
+}
+
+type ConsoleLogAugmented = typeof console.log & {
+  __polyfilled?: typeof console.log;
+};
+
 function augmentLogsInternal(projectRoot: string) {
-  const augmentLog = (name: string, fn: typeof console.log) => {
-    // @ts-expect-error: TypeScript doesn't know about polyfilled functions.
+  const augmentLog = (name: ConsoleMethod, fn: ConsoleLogAugmented) => {
     if (fn.__polyfilled) {
       return fn;
     }
@@ -105,44 +187,15 @@ function augmentLogsInternal(projectRoot: string) {
             //    at http://localhost:8081/node_modules/expo-router/node/render.bundle?platform=web&dev=true&hot=false&transform.engine=hermes&transform.routerRoot=app&resolver.environment=node&transform.environment=node:38008:27
             //    at Background (http://localhost:8081/node_modules/expo-router/node/render.bundle?platform=web&dev=true&hot=false&transform.engine=hermes&transform.routerRoot=app&resolver.environment=node&transform.environment=node:151009:7)
             const customStack = args[1];
-            const { parseErrorStack } = require(
-              resolveFrom(projectRoot, '@expo/metro-runtime/symbolicate')
-            );
+
             try {
+              // `error.stack` is already symbolicated by Node's source map support
+              // (registered by `@expo/require-utils` when the SSR bundle is compiled), so the
+              // parsed frames already point at original sources. We just reformat them.
               const parsedStack = parseErrorStack(customStack);
-              const symbolicatedStack = parsedStack.map((line: any) => {
-                const mapped = mapSourcePosition({
-                  source: line.file,
-                  line: line.lineNumber,
-                  column: line.column,
-                }) as {
-                  // '/Users/evanbacon/Documents/GitHub/lab/sdk51-beta/node_modules/react-native-web/dist/exports/View/index.js',
-                  source: string;
-                  line: number;
-                  column: number;
-                  // 'hrefAttrs'
-                  name: string | null;
-                };
-
-                const fallbackName = mapped.name ?? '<unknown>';
-                return {
-                  file: mapped.source,
-                  lineNumber: mapped.line,
-                  column: mapped.column,
-                  // Attempt to preserve the react component name if possible.
-                  methodName: line.methodName
-                    ? line.methodName === '<unknown>'
-                      ? fallbackName
-                      : line.methodName
-                    : fallbackName,
-                  arguments: line.arguments ?? [],
-                };
-              });
-
-              // Replace args[1] with the formatted stack.
-              args[1] = '\n' + formatParsedStackLikeMetro(projectRoot, symbolicatedStack, true);
+              args[1] = '\n' + formatParsedStackLikeMetro(projectRoot, parsedStack, true);
             } catch {
-              // If symbolication fails, log the original stack.
+              // If parsing fails, log the original stack.
               args.push('\n' + formatStackLikeMetro(projectRoot, customStack));
             }
           } else {
@@ -159,12 +212,9 @@ function augmentLogsInternal(projectRoot: string) {
     return logWithStack;
   };
 
-  ['trace', 'info', 'error', 'warn', 'log', 'group', 'groupCollapsed', 'groupEnd', 'debug'].forEach(
-    (name) => {
-      // @ts-expect-error
-      console[name] = augmentLog(name, console[name]);
-    }
-  );
+  for (const name of CONSOLE_METHODS) {
+    console[name] = augmentLog(name, console[name]);
+  }
 }
 
 export function formatStackLikeMetro(projectRoot: string, stack: string) {

@@ -61,7 +61,7 @@ describe(assembleAsync, () => {
         '--build-cache',
         '-PreactNativeDevServerPort=8081',
       ],
-      { cwd: '/android', stdio: 'inherit' }
+      { cwd: '/android', stdio: 'inherit', env: expect.anything() }
     );
   });
   it(`builds with minimum props`, async () => {
@@ -73,7 +73,7 @@ describe(assembleAsync, () => {
     expect(spawnAsync).toHaveBeenCalledWith(
       '/android/gradlew',
       ['app:assembleDebug', '-x', 'lint', '-x', 'test', '--configure-on-demand'],
-      { cwd: '/android', stdio: 'inherit' }
+      { cwd: '/android', stdio: 'inherit', env: expect.anything() }
     );
   });
 });
@@ -85,7 +85,7 @@ describe(installAsync, () => {
     expect(spawnAsync).toHaveBeenCalledWith(
       '/android/gradlew',
       ['foobar:installSomething', '-PreactNativeDevServerPort=8081'],
-      { cwd: '/android', stdio: 'inherit' }
+      { cwd: '/android', stdio: 'inherit', env: expect.anything() }
     );
   });
 });
@@ -98,7 +98,11 @@ describe(spawnGradleAsync, () => {
       args: ['foo', 'bar'],
     });
 
-    expect(spawnAsync).toBeCalledWith('/gradlew', ['foo', 'bar'], { cwd: '/', stdio: 'inherit' });
+    expect(spawnAsync).toHaveBeenCalledWith('/gradlew', ['foo', 'bar'], {
+      cwd: '/',
+      stdio: 'inherit',
+      env: expect.anything(),
+    });
   });
   it(`passes a custom port to the spawned process`, async () => {
     mockPlatform('darwin');
@@ -108,10 +112,10 @@ describe(spawnGradleAsync, () => {
       port: 3000,
     });
 
-    expect(spawnAsync).toBeCalledWith(
+    expect(spawnAsync).toHaveBeenCalledWith(
       '/gradlew',
       ['foo', 'bar', '-PreactNativeDevServerPort=3000'],
-      { cwd: '/', stdio: 'inherit' }
+      { cwd: '/', stdio: 'inherit', env: expect.anything() }
     );
   });
 
@@ -124,6 +128,6 @@ describe(spawnGradleAsync, () => {
         args: ['foo', 'bar'],
         port: 3000,
       })
-    ).rejects.toThrowError(AbortCommandError);
+    ).rejects.toThrow(AbortCommandError);
   });
 });

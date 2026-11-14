@@ -53,8 +53,7 @@ object NotificationHelper {
     manifest: Manifest,
     exponentManifest: ExponentManifest
   ): Int {
-    val colorStringLocal = colorString ?: manifest.getNotificationPreferences()?.getNullable(ExponentManifest.MANIFEST_NOTIFICATION_COLOR_KEY)
-    return if (colorString != null && ColorParser.isValid(colorStringLocal)) {
+    return if (colorString != null && ColorParser.isValid(colorString)) {
       Color.parseColor(colorString)
     } else {
       exponentManifest.getColorFromManifest(manifest)
@@ -67,17 +66,7 @@ object NotificationHelper {
     exponentManifest: ExponentManifest,
     bitmapListener: BitmapListener?
   ) {
-    val notificationPreferences = manifest.getNotificationPreferences()
-    var iconUrl: String?
-    if (url == null) {
-      iconUrl = manifest.getIconUrl()
-      if (notificationPreferences != null) {
-        iconUrl = notificationPreferences.getNullable(ExponentManifest.MANIFEST_NOTIFICATION_ICON_URL_KEY)
-      }
-    } else {
-      iconUrl = url
-    }
-
+    val iconUrl = url ?: manifest.getIconUrl()
     exponentManifest.loadIconBitmap(iconUrl, bitmapListener!!)
   }
 
@@ -102,7 +91,7 @@ object NotificationHelper {
 
         override fun execute() {
           val sharedPreferencesToken = exponentSharedPreferences.getString(ExponentSharedPreferences.ExponentSharedPreferencesKey.FCM_TOKEN_KEY)
-          if (sharedPreferencesToken == null || sharedPreferencesToken.isEmpty()) {
+          if (sharedPreferencesToken.isNullOrEmpty()) {
             var message = "No device token found."
             if (!Constants.FCM_ENABLED) {
               message += " You need to enable FCM in order to get a push token. Follow this guide to set up FCM for your standalone app: https://docs.expo.io/versions/latest/guides/using-fcm"
@@ -489,7 +478,11 @@ object NotificationHelper {
               }
 
               val body: String = try {
-                if (data.containsKey("data")) getJSONString(data["data"]!!) else ""
+                if (data.containsKey("data")) {
+                  getJSONString(data["data"]!!)
+                } else {
+                  ""
+                }
               } catch (e: JSONException) {
                 listener.onFailure(Exception("Couldn't deserialize JSON for experience scope key $experienceScopeKey"))
                 return@Runnable
@@ -501,7 +494,11 @@ object NotificationHelper {
               intent.putExtra(KernelConstants.NOTIFICATION_OBJECT_KEY, notificationEvent.toJSONObject(null).toString())
 
               // We're defaulting to the behaviour prior API 31 (mutable) even though Android recommends immutability
-              val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+              val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_MUTABLE
+              } else {
+                0
+              }
               val contentIntent = PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or mutableFlag)
               builder.setContentIntent(contentIntent)
 
@@ -527,13 +524,21 @@ object NotificationHelper {
               }
 
               builder.color = getColor(
-                if (data.containsKey("color")) data["color"] as String? else null,
+                if (data.containsKey("color")) {
+                  data["color"] as String?
+                } else {
+                  null
+                },
                 manifest,
                 exponentManifest
               )
 
               loadIcon(
-                if (data.containsKey("icon")) data["icon"] as String? else null,
+                if (data.containsKey("icon")) {
+                  data["icon"] as String?
+                } else {
+                  null
+                },
                 manifest,
                 exponentManifest,
                 object : BitmapListener {

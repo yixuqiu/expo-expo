@@ -1,13 +1,15 @@
-import React, { ComponentType, forwardRef, PropsWithChildren } from 'react';
+import type { ComponentType, PropsWithChildren } from 'react';
 import { Platform } from 'react-native';
 
-import Text, { TextProps } from '../primitives/Text';
-import View, { ViewProps } from '../primitives/View';
+import type { TextProps } from '../primitives/Text';
+import Text from '../primitives/Text';
+import type { ViewProps } from '../primitives/View';
+import View from '../primitives/View';
 
 function createView(nativeProps: ViewProps = {}): ComponentType<ViewProps> {
-  return forwardRef((props: ViewProps, ref) => {
-    return <View {...nativeProps} {...props} ref={ref} />;
-  }) as ComponentType<ViewProps>;
+  return function Dom(props: ViewProps) {
+    return <View {...nativeProps} {...props} />;
+  };
 }
 
 export const UL = createView(
@@ -18,6 +20,10 @@ export const UL = createView(
   })
 );
 
+if (__DEV__) {
+  UL.displayName = 'UL';
+}
+
 function isTextProps(props: any): props is TextProps {
   // Treat <li></li> as a Text element.
   return typeof props.children === 'string';
@@ -25,17 +31,17 @@ function isTextProps(props: any): props is TextProps {
 
 type LIProps = TextProps | ViewProps;
 
-export const LI = forwardRef((props: PropsWithChildren<LIProps>, ref: any) => {
+export function LI(props: PropsWithChildren<LIProps>) {
   if (isTextProps(props)) {
     const role: LIProps['role'] = Platform.select({
       web: 'listitem',
       default: props.role,
     });
-    return <Text {...props} role={role} ref={ref} />;
+    return <Text {...props} role={role} />;
   }
   const role: LIProps['role'] = Platform.select({
     web: 'listitem',
     default: props.role,
   });
-  return <View {...props} role={role} ref={ref} />;
-}) as ComponentType<LIProps>;
+  return <View {...props} role={role} />;
+}

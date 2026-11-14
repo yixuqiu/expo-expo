@@ -1,11 +1,12 @@
 import JsonFile from '@expo/json-file';
-import spawnAsync, { SpawnOptions } from '@expo/spawn-async';
+import type { SpawnOptions } from '@expo/spawn-async';
+import spawnAsync from '@expo/spawn-async';
 import npmPackageArg from 'npm-package-arg';
 import path from 'path';
 
-import { BasePackageManager } from './BasePackageManager';
-import { findYarnOrNpmWorkspaceRoot, NPM_LOCK_FILE } from '../utils/nodeWorkspaces';
+import { resolveWorkspaceRoot, NPM_LOCK_FILE } from '../utils/nodeManagers';
 import { createPendingSpawnAsync } from '../utils/spawn';
+import { BasePackageManager } from './BasePackageManager';
 
 export class NpmPackageManager extends BasePackageManager {
   readonly name = 'npm';
@@ -13,7 +14,7 @@ export class NpmPackageManager extends BasePackageManager {
   readonly lockFile = NPM_LOCK_FILE;
 
   workspaceRoot() {
-    const root = findYarnOrNpmWorkspaceRoot(this.ensureCwdDefined('workspaceRoot'));
+    const root = resolveWorkspaceRoot(this.ensureCwdDefined('workspaceRoot'));
     if (root) {
       return new NpmPackageManager({
         ...this.options,
@@ -111,7 +112,8 @@ export class NpmPackageManager extends BasePackageManager {
       .forEach((spec) => {
         // When using a dist-tag version of a library, we need to consider it as "unversioned".
         // Doing so will install that version with `npm install --save(-dev)`, and resolve the dist-tag properly.
-        if (spec && spec.rawSpec && spec.type !== 'tag') {
+        const hasExactSpec = !!spec && spec.rawSpec !== '' && spec.rawSpec !== '*';
+        if (spec && hasExactSpec && spec.type !== 'tag') {
           result.versioned.push(spec);
         } else if (spec) {
           result.unversioned.push(spec);
@@ -121,9 +123,31 @@ export class NpmPackageManager extends BasePackageManager {
     return result;
   }
 
+  /** Sort dependencies by keys (case-insensitive, stable). Sorting algorithm is taken from https://github.com/npm/package-json/blob/f5db81bdfbba5e9d3bfc0732f8bfe511825a20aa/lib/update-dependencies.js#L9 */
+  private orderDependencies(deps: Record<string, string> | undefined): Record<string, string> {
+    if (!deps) {
+      return {};
+    }
+
+    const sorted = Object.keys(deps)
+      .sort((a, b) => a.localeCompare(b, 'en'))
+      .reduce(
+        (res, key) => {
+          const dep = deps[key];
+          if (dep != null) {
+            res[key] = dep;
+          }
+          return res;
+        },
+        {} as Record<string, string>
+      );
+
+    return sorted;
+  }
+
   /**
    * Older npm versions have issues with mismatched nested dependencies when adding exact versions.
-   * This propagates as issues like mismatched `@expo/config-pugins` versions.
+   * This propagates as issues like mismatched `@expo/config-plugins` versions.
    * As a workaround, we update the `package.json` directly and run `npm install`.
    */
   private async updatePackageFileAsync(
@@ -142,6 +166,8 @@ export class NpmPackageManager extends BasePackageManager {
       pkg[packageType] = pkg[packageType] || {};
       pkg[packageType][spec.name!] = spec.rawSpec;
     });
+
+    pkg[packageType] = this.orderDependencies(pkg[packageType]);
 
     await JsonFile.writeAsync(pkgPath, pkg, { json5: false });
   }

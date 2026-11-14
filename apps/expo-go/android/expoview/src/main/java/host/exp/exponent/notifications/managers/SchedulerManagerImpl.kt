@@ -1,8 +1,6 @@
 package host.exp.exponent.notifications.managers
 
 import android.content.Context
-import com.raizlabs.android.dbflow.sql.language.SQLite
-import expo.modules.core.interfaces.Function
 import host.exp.exponent.kernel.ExperienceKey
 import host.exp.exponent.notifications.exceptions.UnableToScheduleException
 import host.exp.exponent.notifications.schedulers.*
@@ -82,7 +80,7 @@ internal class SchedulerManagerImpl(private val applicationContext: Context) : S
     }
   }
 
-  override fun addScheduler(scheduler: Scheduler, handler: Function<String, Boolean>) {
+  override fun addScheduler(scheduler: Scheduler, handler: (String?) -> Boolean) {
     fetchSchedulersMap()
 
     scheduler.setApplicationContext(applicationContext)
@@ -97,15 +95,15 @@ internal class SchedulerManagerImpl(private val applicationContext: Context) : S
       null
     }
 
-    handler.apply(idToApply)
+    handler.invoke(idToApply)
   }
 
   private fun fetchSchedulersMap() {
     if (!fetchedFromDB) {
       fetchedFromDB = true
 
-      val calendarSchedulers: List<SchedulerModel> = SQLite.select().from(CalendarSchedulerModel::class.java).queryList()
-      val intervalSchedulers: List<SchedulerModel> = SQLite.select().from(IntervalSchedulerModel::class.java).queryList()
+      val calendarSchedulers: List<SchedulerModel> = SchedulersDatabase.dao.allCalendarSchedulers()
+      val intervalSchedulers: List<SchedulerModel> = SchedulersDatabase.dao.allIntervalSchedulers()
       for (schedulerModel in calendarSchedulers + intervalSchedulers) {
         val scheduler = SchedulerImpl(schedulerModel)
         schedulersMap[scheduler.idAsString] = scheduler

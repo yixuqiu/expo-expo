@@ -170,35 +170,9 @@ class ExponentManifest @Inject constructor(
     const val MANIFEST_ANDROID_INFO_KEY = "android"
     const val MANIFEST_KEYBOARD_LAYOUT_MODE_KEY = "softwareKeyboardLayoutMode"
 
-    // Statusbar
-    const val MANIFEST_STATUS_BAR_KEY = "androidStatusBar"
-    const val MANIFEST_STATUS_BAR_APPEARANCE = "barStyle"
-    const val MANIFEST_STATUS_BAR_BACKGROUND_COLOR = "backgroundColor"
-    const val MANIFEST_STATUS_BAR_HIDDEN = "hidden"
-    const val MANIFEST_STATUS_BAR_TRANSLUCENT = "translucent"
-
-    // NavigationBar
-    const val MANIFEST_NAVIGATION_BAR_KEY = "androidNavigationBar"
-    const val MANIFEST_NAVIGATION_BAR_VISIBLILITY = "visible"
-    const val MANIFEST_NAVIGATION_BAR_APPEARANCE = "barStyle"
-    const val MANIFEST_NAVIGATION_BAR_BACKGROUND_COLOR = "backgroundColor"
-
-    // Notification
-    const val MANIFEST_NOTIFICATION_INFO_KEY = "notification"
-    const val MANIFEST_NOTIFICATION_ICON_URL_KEY = "iconUrl"
-    const val MANIFEST_NOTIFICATION_COLOR_KEY = "color"
-    const val MANIFEST_NOTIFICATION_ANDROID_MODE = "androidMode"
-    const val MANIFEST_NOTIFICATION_ANDROID_COLLAPSED_TITLE = "androidCollapsedTitle"
-
     // Debugging
     const val MANIFEST_DEBUGGER_HOST_KEY = "debuggerHost"
     const val MANIFEST_MAIN_MODULE_NAME_KEY = "mainModuleName"
-
-    // Splash
-    const val MANIFEST_SPLASH_INFO_KEY = "splash"
-    const val MANIFEST_SPLASH_IMAGE_URL_KEY = "imageUrl"
-    const val MANIFEST_SPLASH_RESIZE_MODE_KEY = "resizeMode"
-    const val MANIFEST_SPLASH_BACKGROUND_COLOR_KEY = "backgroundColor"
 
     // Updates
     const val MANIFEST_UPDATES_INFO_KEY = "updates"
@@ -215,6 +189,9 @@ class ExponentManifest @Inject constructor(
     const val QUERY_PARAM_KEY_RELEASE_CHANNEL = "release-channel"
     const val QUERY_PARAM_KEY_EXPO_UPDATES_RUNTIME_VERSION = "runtime-version"
     const val QUERY_PARAM_KEY_EXPO_UPDATES_CHANNEL_NAME = "channel-name"
+
+    // snack
+    const val QUERY_PARAM_KEY_SNACK_CHANNEL = "snack-channel"
 
     private const val MAX_BITMAP_SIZE = 192
     private const val REDIRECT_SNIPPET = "exp.host/--/to-exp/"

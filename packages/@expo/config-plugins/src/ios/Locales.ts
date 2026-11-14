@@ -1,17 +1,13 @@
-import { ExpoConfig } from '@expo/config-types';
-import JsonFile from '@expo/json-file';
+import type { ExpoConfig } from '@expo/config-types';
 import fs from 'fs';
-import { join, relative } from 'path';
-import { XcodeProject } from 'xcode';
+import path from 'path';
+import type { XcodeProject } from 'xcode';
 
-import { addResourceFileToGroup, ensureGroupRecursively, getProjectName } from './utils/Xcodeproj';
-import { ConfigPlugin } from '../Plugin.types';
+import type { ConfigPlugin } from '../Plugin.types';
 import { withXcodeProject } from '../plugins/ios-plugins';
-import { addWarningIOS } from '../utils/warnings';
-
-type LocaleJson = Record<string, string>;
-type ResolvedLocalesJson = Record<string, LocaleJson>;
-type ExpoConfigLocales = NonNullable<ExpoConfig['locales']>;
+import type { LocaleJson, ResolvedLocalesJson } from '../utils/locales';
+import { getResolvedLocalesAsync } from '../utils/locales';
+import { addResourceFileToGroup, ensureGroupRecursively, getProjectName } from './utils/Xcodeproj';
 
 export const withLocales: ConfigPlugin = (config) => {
   return withXcodeProject(config, async (config) => {
@@ -22,6 +18,57 @@ export const withLocales: ConfigPlugin = (config) => {
     return config;
   });
 };
+
+function escapeStringsLiteral(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+}
+
+export async function writeStringsFile({
+  localesMap,
+  supportingDirectory,
+  fileName,
+  projectName,
+  project,
+}: {
+  localesMap: LocaleJson | ResolvedLocalesJson;
+  supportingDirectory: string;
+  fileName: string;
+  projectName: string;
+  project: XcodeProject;
+}) {
+  for (const [lang, localizationObj] of Object.entries(localesMap)) {
+    if (Object.entries(localizationObj).length === 0) continue;
+    const dir = path.join(supportingDirectory, `${lang}.lproj`);
+    await fs.promises.mkdir(dir, { recursive: true });
+
+    const strings = path.join(dir, fileName);
+    const buffer = [];
+    for (const [plistKey, localVersion] of Object.entries(localizationObj)) {
+      buffer.push(
+        `"${escapeStringsLiteral(plistKey)}" = "${escapeStringsLiteral(String(localVersion))}";`
+      );
+    }
+    // Write the file to the file system.
+    await fs.promises.writeFile(strings, buffer.join('\n'));
+
+    const groupName = `${projectName}/Supporting/${lang}.lproj`;
+    // deep find the correct folder
+    const group = ensureGroupRecursively(project, groupName);
+
+    // Ensure the file doesn't already exist
+    if (!group?.children.some(({ comment }) => comment === fileName)) {
+      // Only write the file if it doesn't already exist.
+      project = addResourceFileToGroup({
+        filepath: path.relative(supportingDirectory, strings),
+        groupName,
+        project,
+        isBuildFile: true,
+        verbose: true,
+      });
+    }
+  }
+  return project;
+}
 
 export function getLocales(
   config: Pick<ExpoConfig, 'locales'>
@@ -38,70 +85,31 @@ export async function setLocalesAsync(
     return project;
   }
   // possibly validate CFBundleAllowMixedLocalizations is enabled
-  const localesMap = await getResolvedLocalesAsync(projectRoot, locales);
+  const { localesMap, localizableStringsIOS: localizableStrings } = await getResolvedLocalesAsync(
+    projectRoot,
+    locales,
+    'ios'
+  );
 
   const projectName = getProjectName(projectRoot);
-  const supportingDirectory = join(projectRoot, 'ios', projectName, 'Supporting');
+  const supportingDirectory = path.join(projectRoot, 'ios', projectName, 'Supporting');
 
   // TODO: Should we delete all before running? Revisit after we land on a lock file.
-  const stringName = 'InfoPlist.strings';
-
-  for (const [lang, localizationObj] of Object.entries(localesMap)) {
-    const dir = join(supportingDirectory, `${lang}.lproj`);
-    // await fs.ensureDir(dir);
-    await fs.promises.mkdir(dir, { recursive: true });
-
-    const strings = join(dir, stringName);
-    const buffer = [];
-    for (const [plistKey, localVersion] of Object.entries(localizationObj)) {
-      buffer.push(`${plistKey} = "${localVersion}";`);
-    }
-    // Write the file to the file system.
-    await fs.promises.writeFile(strings, buffer.join('\n'));
-
-    const groupName = `${projectName}/Supporting/${lang}.lproj`;
-    // deep find the correct folder
-    const group = ensureGroupRecursively(project, groupName);
-
-    // Ensure the file doesn't already exist
-    if (!group?.children.some(({ comment }) => comment === stringName)) {
-      // Only write the file if it doesn't already exist.
-      project = addResourceFileToGroup({
-        filepath: relative(supportingDirectory, strings),
-        groupName,
-        project,
-        isBuildFile: true,
-        verbose: true,
-      });
-    }
+  project = await writeStringsFile({
+    localesMap,
+    supportingDirectory,
+    fileName: 'InfoPlist.strings',
+    projectName,
+    project,
+  });
+  if (localizableStrings && Object.keys(localizableStrings).length) {
+    project = await writeStringsFile({
+      localesMap: localizableStrings,
+      supportingDirectory,
+      fileName: 'Localizable.strings',
+      projectName,
+      project,
+    });
   }
-
   return project;
-}
-
-export async function getResolvedLocalesAsync(
-  projectRoot: string,
-  input: ExpoConfigLocales
-): Promise<ResolvedLocalesJson> {
-  const locales: ResolvedLocalesJson = {};
-  for (const [lang, localeJsonPath] of Object.entries(input)) {
-    if (typeof localeJsonPath === 'string') {
-      try {
-        locales[lang] = await JsonFile.readAsync(join(projectRoot, localeJsonPath));
-      } catch {
-        // Add a warning when a json file cannot be parsed.
-        addWarningIOS(
-          `locales.${lang}`,
-          `Failed to parse JSON of locale file for language: ${lang}`,
-          'https://docs.expo.dev/distribution/app-stores/#localizing-your-ios-app'
-        );
-      }
-    } else {
-      // In the off chance that someone defined the locales json in the config, pass it directly to the object.
-      // We do this to make the types more elegant.
-      locales[lang] = localeJsonPath;
-    }
-  }
-
-  return locales;
 }

@@ -1,14 +1,530 @@
 # Changelog
 
-## Unpublished
+## 58.0.10
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Update `xcode` to 4.0.0. ([#51986](https://github.com/expo/expo/pull/51986) by [@zoontek](https://github.com/zoontek))
+
+## 58.0.9
+
+### Patch Changes
+
+- Updated dependencies. ([#51535](https://github.com/expo/expo/pull/51535))
+  - @expo/require-utils@58.0.4
+
+## 58.0.8
+
+### Patch Changes
+
+- Updated dependencies. ([#50536](https://github.com/expo/expo/pull/50536))
+  - @expo/config-types@58.0.3
+
+## 58.0.7
+
+### Patch Changes
+
+- Fix Android resource qualifiers for Hebrew, Indonesian and Yiddish locales, which Android only resolves under their legacy codes (`iw`, `in`, `ji`), and keep the `zh-rCN`, `zh-rTW` and `zh-rHK` library translations when `supportedLocales` lists `zh-Hans` or `zh-Hant`. ([`0bf5424`](https://github.com/expo/expo/commit/0bf54244ba22f2953bd6e187e39b8d7206f10eb4) by [@expo-bot](https://github.com/expo-bot))
+
+## 58.0.6
+
+### Patch Changes
+
+- Warn when a package's `app.plugin.js` is missing from its `package.json:exports`, since tools that resolve the config plugin through Node can't find it. ([#51080](https://github.com/expo/expo/pull/51080) by [@huntie](https://github.com/huntie))
+- Updated dependencies. ([#51076](https://github.com/expo/expo/pull/51076), [#51080](https://github.com/expo/expo/pull/51080), [#51089](https://github.com/expo/expo/pull/51089))
+  - @expo/require-utils@58.0.3
+
+## 58.0.5
+
+### Patch Changes
+
+- Bump `@expo/sdk-runtime-versions` to `^1.0.1`. ([#50955](https://github.com/expo/expo/pull/50955) by [@kitten](https://github.com/kitten))
+- Bump `semver` to `^7.7.4`. ([#50391](https://github.com/expo/expo/pull/50391) by [@hassankhan](https://github.com/hassankhan))
+
+## 58.0.4
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Added `updates.maxUpdatesToKeep` support for expo-updates native configuration. ([#45964](https://github.com/expo/expo/pull/45964) by [@Kudo](https://github.com/Kudo))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762))
+  - @expo/config-types@58.0.2
+  - @expo/json-file@11.2.1
+  - @expo/plist@0.10.1
+  - @expo/require-utils@58.0.2
+
+## 58.0.3 — 2026-09-28
 
 ### 🐛 Bug fixes
 
+- Replace, instead of duplicate, the generated section in files with CRLF line endings. ([#50381](https://github.com/expo/expo/pull/50381) by [@tahakocal](https://github.com/tahakocal))
+
+## 58.0.2 — 2026-09-16
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.1 — 2026-09-15
+
+### 🐛 Bug fixes
+
+- Keep accented and compatibility characters when deriving iOS project names from the app name ('Árbók' now becomes 'Arbok', not 'rbk'; 'ﬁre' becomes 'fire'). ([#49143](https://github.com/expo/expo/pull/49143) by [@vonovak](https://github.com/vonovak))
+- Escape `?` and `\` in `XML.escapeAndroidString`, so values are not compiled as attribute references or escape sequences. ([#49143](https://github.com/expo/expo/pull/49143) by [@vonovak](https://github.com/vonovak))
+
+## 58.0.0 — 2026-09-10
+
+### 🎉 New features
+
+- [iOS] Add `IOSConfig.DevServer.withMetroPort` to write the `RCTMetroPort` Info.plist key from the `RCT_METRO_PORT` build setting. ([#48098](https://github.com/expo/expo/pull/48098) by [@alanjhughes](https://github.com/alanjhughes))
+
+### 🐛 Bug fixes
+
+- Fix `getApplicationIdAsync` and `setPackageInBuildGradle` failing with the Gradle assignment syntax (`applicationId = '...'`). ([#47711](https://github.com/expo/expo/pull/47711) by [@idoyana](https://github.com/idoyana))
+- [iOS] Quote and escape keys and values written to `.strings` files. ([#49605](https://github.com/expo/expo/pull/49605) by [@jakex7](https://github.com/jakex7))
+- [iOS] Keep writing `locales` after one that has no `Info.plist` keys. ([#49777](https://github.com/expo/expo/pull/49777) by [@giaBaoJS](https://github.com/giaBaoJS))
+
 ### 💡 Others
+
+- [iOS] Documented that `UIRequiresFullScreen` no longer opts an app out of resizing as of iOS 27, and noted it in the iPad multitasking warning. ([#48175](https://github.com/expo/expo/pull/48175) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 57.0.6 - 2026-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-07
+
+### 🐛 Bug fixes
+
+- Honor `ios.version` and `android.version` in `Updates.getAppVersion`, `Updates.getNativeVersion`, and the `appVersion` runtime version policy. Previously the platform-specific overrides were ignored, so projects that used only `ios.version`/`android.version` (with no top-level `version` in `app.json`) received the `package.json` fallback (or `"1.0.0"`) wherever these helpers were consumed. `Updates.getAppVersion` gains an optional `platform` argument; passing it prefers the platform-specific override, and calls without a platform keep the previous behavior. Also fixes `Updates.getNativeVersion` on Android, which previously used the iOS version for the `${version}` component. ([#47416](https://github.com/expo/expo/pull/47416) by [@tlenahan](https://github.com/tlenahan))
+
+## 57.0.1 - 2026-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.9 - 2026-06-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-23
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.7 — 2026-05-20
+
+### 🎉 New features
+
+- Support `.cjs`, `.mjs`, `.ts`, `.cts`, `.mts` extensions for config plugins ([#45989](https://github.com/expo/expo/pull/45989) by [@kitten](https://github.com/kitten))
+
+### 🐛 Bug fixes
+
+- Pass through better error message from `loadModuleSync` when loading/parsing config plugins fails ([#45989](https://github.com/expo/expo/pull/45989) by [@kitten](https://github.com/kitten))
+
+### 💡 Others
+
+- [Internal] Align config-plugin resolution support to `@expo/config` using `@expo/reqire-utils` ([#45989](https://github.com/expo/expo/pull/45989) by [@kitten](https://github.com/kitten))
+- [Internal] Drop `resolve-from` for `@expo/require-utils` ([#45990](https://github.com/expo/expo/pull/45990) by [@kitten](https://github.com/kitten))
+
+## 56.0.6 — 2026-05-19
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-13
+
+### 💡 Others
+
+- Add missing `pathPrefix`, `pathSuffix`, `mimeType`, `pathPattern`, `pathAdvancedPattern`, and `port` to intent filter types ([#45718](https://github.com/expo/expo/pull/45718) by [@kitten](https://github.com/kitten)
+
+## 56.0.4 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Replaced `AndroidConfig.StatusBar` with `AndroidConfig.SystemBars`, which sets transparent defaults for both status and navigation bar colors. ([#44469](https://github.com/expo/expo/pull/44469) by [@zoontek](https://github.com/zoontek))
+
+### 🎉 New features
+
+- Add `ios.deploymentTarget` config support to set the minimum iOS version. ([#43700](https://github.com/expo/expo/pull/43700) by [@evanbacon](https://github.com/evanbacon))
+- Add missing `CFBundleTypeRole` to `URLScheme` type ([#44650](https://github.com/expo/expo/pull/44650) by [@hassankhan](https://github.com/hassankhan))
+
+### 💡 Others
+
+- [Android] Bump `com.google.gms:google-services` Gradle plugin version to `4.4.4`. (by [@vonovak](https://github.com/vonovak)) ([#45320](https://github.com/expo/expo/pull/45320) by [@vonovak](https://github.com/vonovak))
+
+## 55.0.8 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 - 2026-03-18
+
+### 🎉 New features
+
+- Added optional `codeSignIdentity` parameter to `setProvisioningProfileForPbxproj` to allow callers to specify the code signing identity instead of always using `"iPhone Distribution"`. ([#43986](https://github.com/expo/expo/pull/43986) by [@qwertey6](https://github.com/qwertey6))
+
+## 55.0.6 — 2026-02-25
+
+### 💡 Others
+
+- Deprecated and turned into no-ops the `androidStatusBar.backgroundColor` and `androidStatusBar.translucent` app config properties. ([#43276](https://github.com/expo/expo/pull/43276) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.5 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-26
+
+### 💡 Others
+
+- Drop `slash` dependency ([#42484](https://github.com/expo/expo/pull/42484) by [@kitten](https://github.com/kitten))
+
+## 55.0.2 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+### 🐛 Bug fixes
+
+- Add `android:maxSdkVersion="32"` to storage permissions in templates. ([#42401](https://github.com/expo/expo/pull/42401) by [@brentvatne](https://github.com/brentvatne))
+
+## 55.0.0 — 2026-01-21
+
+### 🎉 New features
+
+- [iOS] Add `locales` support for `Localizable.strings`. ([#39022](https://github.com/expo/expo/pull/39022) by [@desii101](https://github.com/desii101))
+
+### 💡 Others
+
+- Remove `newArchEnabled` option. ([#41684](https://github.com/expo/expo/pull/41684) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+- Updated maps config-plugin to support `@main` as the anchor. ([#41868](https://github.com/expo/expo/pull/41868) by [@kudo](https://github.com/kudo))
+
+## 54.0.3 - 2025-12-04
+
+### 💡 Others
+
+- Update to `glob@^13.0.0` ([#41079](https://github.com/expo/expo/pull/41079) by [@kitten](https://github.com/kitten))
+
+## 54.0.2 - 2025-10-01
+
+### 🎉 New features
+
+- add functions for android resource name validation ([#39882](https://github.com/expo/expo/pull/39882) by [@vonovak](https://github.com/vonovak))
+
+## 54.0.1 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 54.0.0 — 2025-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.7 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.6 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.5 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.4 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.3 — 2025-08-19
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 11.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- Support building activities with aliases. ([#38263](https://github.com/expo/expo/pull/38263) by [@EvanBacon](https://github.com/EvanBacon))
+- [Android] Support `android.predictiveBackGestureEnabled` field in app config. ([#38774](https://github.com/expo/expo/pull/38774) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 🐛 Bug fixes
+
+- Improve error handling in plugin resolver ([#38338](https://github.com/expo/expo/pull/38338) by [@hirbod](https://github.com/hirbod))
+
+### 💡 Others
+
+- Export `CodeMod` from `android` directory for use in package config-plugins. ([#37885](https://github.com/expo/expo/pull/37885) by [@aleqsio](https://github.com/aleqsio))
+- Export `CodeGenerator` from `utils/generateCode` for use in package config-plugins. ([#38580](https://github.com/expo/expo/pull/38580) by [@kitten](https://github.com/kitten))
+
+## 10.1.2 - 2025-07-08
+
+### 🐛 Bug fixes
+
+- [Android] Fix build failures when localized strings contain single quotes by wrapping string values in quotes in `strings.xml`. ([#37828](https://github.com/expo/expo/pull/37828) by [@huextrat](https://github.com/huextrat))
+
+## 10.1.1 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 10.1.0 - 2025-07-01
+
+### 🎉 New features
+
+- Add android config plugin for app name translation. ([#37202](https://github.com/expo/expo/pull/37202) by [@aleqsio](https://github.com/aleqsio))
+
+## 10.0.3 - 2025-06-18
+
+### 🐛 Bug fixes
+
+- Update to `getenv@2.0.0` to support upper case boolean environment variables ([#36688](https://github.com/expo/expo/pull/36688) by [@stephenlacy](https://github.com/stephenlacy))
+
+### 💡 Others
+
+- Add missing `package.json:types` and `package.json:exports` fields ([#36774](https://github.com/expo/expo/pull/36774) by [@kitten](https://github.com/kitten))
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+
+## 10.0.2 — 2025-05-01
+
+### 🐛 Bug fixes
+
+- Ensure that the manifest has a valid intent filter before appending schemes. This fixes an issue where the scheme was not being added to the manifest when no `scheme` was provided in the config. ([#36541](https://github.com/expo/expo/pull/36541) by [@brentvatne](https://github.com/brentvatne))
+
+## 10.0.1 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 10.0.0 — 2025-04-30
+
+### 🛠 Breaking changes
+
+- Remove `android.package` from the list of schemes. ([#36472](https://github.com/expo/expo/pull/36472) by [@brentvatne](https://github.com/brentvatne))
+
+### 🎉 New features
+
+- Expose support for `ios.scheme` and `android.scheme` in the config schema. ([#36472](https://github.com/expo/expo/pull/36472) by [@brentvatne](https://github.com/brentvatne))
+
+## 9.1.7 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 9.1.6 — 2025-04-23
+
+_This version does not introduce any user-facing changes._
+
+## 9.1.5 — 2025-04-21
+
+### 💡 Others
+
+- Added some helper for codeMod to support Gradle and Swift. ([#36203](https://github.com/expo/expo/pull/36203) by [@kudo](https://github.com/kudo))
+
+## 9.1.4 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 9.1.3 — 2025-04-11
+
+_This version does not introduce any user-facing changes._
+
+## 9.1.2 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 9.1.1 — 2025-04-08
+
+### 💡 Others
+
+- Enabled `newArchEnabled` by default. ([#35964](https://github.com/expo/expo/pull/35964) by [@kudo](https://github.com/kudo))
+
+## 9.1.0 — 2025-04-04
+
+### 🎉 New features
+
+- Support for updates.useNativeDebug. ([#35468](https://github.com/expo/expo/pull/35468) by [@douglowder](https://github.com/douglowder))
+
+### 🐛 Bug fixes
+
+- Fix orphaned bridging header reference in prebuild. ([#33462](https://github.com/expo/expo/pull/33462) by [@EvanBacon](https://github.com/EvanBacon))
+- Don't apply `react-native-maps` plugin if it's not installed and the API key is not provided. ([#33530](https://github.com/expo/expo/pull/33530) by [@tsapeta](https://github.com/tsapeta))
+
+### 💡 Others
+
+- Add a hint for config plugin resolution error ([#33554](https://github.com/expo/expo/pull/33554) by [@vonovak](https://github.com/vonovak))
+- Only add `UISupportedInterfaceOrientations~ipad` if tablet support is also enabled. ([#32361](https://github.com/expo/expo/pull/32361) by [@EvanBacon](https://github.com/EvanBacon))
+- Removed creating the bridging header from the defaults plugin and added it to the template instead. ([#33539](https://github.com/expo/expo/pull/33539) by [@tsapeta](https://github.com/tsapeta))
+- Throw more descriptive error when string resource tag value is empty. ([#34212](https://github.com/expo/expo/pull/34212) by [@wschurman](https://github.com/wschurman))
+- Update test snapshot for template changes. ([#35661](https://github.com/expo/expo/pull/35661) by [@kudo](https://github.com/kudo))
+
+## 9.0.17 - 2025-03-11
+
+### 🎉 New features
+
+- Allow `version` to be overridden on iOS and Android. ([#33637](https://github.com/expo/expo/pull/33637) by [@Titozzz](https://github.com/Titozzz))
+
+## 9.0.16 - 2025-02-21
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.15 - 2025-02-06
+
+### 💡 Others
+
+- Added `updates.disableAntiBrickingMeasures` support. ([#34428](https://github.com/expo/expo/pull/34428) by [@kudo](https://github.com/kudo))
+
+## 9.0.14 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.13 - 2025-01-08
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.12 - 2024-12-05
+
+### 🐛 Bug fixes
+
+- Resolve iOS build schemes on Windows. ([#33468](https://github.com/expo/expo/pull/33468) by [@byCedric](https://github.com/byCedric))
+
+## 9.0.10 — 2024-11-24
+
+### 💡 Others
+
+- Add foregroundServiceType property to Android ManifestServiceAttributes ([#33166](https://github.com/expo/expo/pull/33166) by [@micaelomota](https://github.com/micaelomota))
+
+## 9.0.10 — 2024-11-20
+
+### 🐛 Bug fixes
+
+- Resolve config plugins using nested module specifiers on Windows. ([#33106](https://github.com/expo/expo/pull/33106) by [@byCedric](https://github.com/byCedric))
+
+## 9.0.9 — 2024-11-12
+
+### 💡 Others
+
+- Remove `DevSettingsActivity` from template and plugin. ([#32774](https://github.com/expo/expo/pull/32774) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 9.0.8 — 2024-11-11
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.7 — 2024-11-07
+
+### 🐛 Bug fixes
+
+- Remove circular import references to index files ([#32671](https://github.com/expo/expo/pull/32671) by [@wschurman](https://github.com/wschurman))
+- Sync base android manifest with template. ([#32639](https://github.com/expo/expo/pull/32639) by [@wschurman](https://github.com/wschurman))
+
+## 9.0.6 — 2024-11-05
+
+### 🐛 Bug fixes
+
+- Avoid using path mutations in glob patterns for Windows. ([#32617](https://github.com/expo/expo/pull/32617) by [@byCedric](https://github.com/byCedric))
+
+## 9.0.5 — 2024-11-04
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.4 — 2024-10-29
+
+### 💡 Others
+
+- Remove deprecation warning for config plugins using `main` entry point as plugin file. ([#32426](https://github.com/expo/expo/pull/32426) by [@byCedric](https://github.com/byCedric))
+
+## 9.0.3 — 2024-10-28
+
+### 🐛 Bug fixes
+
+- bring back resolution from package.json main field ([#32355](https://github.com/expo/expo/pull/32355) by [@vonovak](https://github.com/vonovak))
+
+## 9.0.2 — 2024-10-24
+
+_This version does not introduce any user-facing changes._
+
+## 9.0.1 — 2024-10-22
+
+### 💡 Others
+
+- Fixed check-package test errors. ([#32232](https://github.com/expo/expo/pull/32232) by [@kudo](https://github.com/kudo))
+
+## 9.0.0 — 2024-10-22
+
+### 🎉 New features
+
+- Added `withDevelopmentTeam` to change the Apple development team id. ([#30761](https://github.com/expo/expo/pull/30761) by [@byCedric](https://github.com/byCedric))
+
+### 🐛 Bug fixes
+
+- fix resolution when referring to library plugin file ([#31947](https://github.com/expo/expo/pull/31947) by [@vonovak](https://github.com/vonovak))
+- fix: more strict config plugin resolution ([#31569](https://github.com/expo/expo/pull/31569) by [@vonovak](https://github.com/vonovak))
+
+### 💡 Others
+
+- improve invalid config error message ([#31936](https://github.com/expo/expo/pull/31936) by [@vonovak](https://github.com/vonovak))
+- Upgrade `glob@7` to `glob@10`. ([#29894](https://github.com/expo/expo/pull/29894) by [@byCedric](https://github.com/byCedric))
+- Deprecated the Android style method `getAppThemeLightNoActionBarGroup` and replaced it with `getAppThemeGroup`, which does not override the parent theme if its parent theme changes. ([#30797](https://github.com/expo/expo/pull/30797) by [@zoontek](https://github.com/zoontek))
+- Updated snapshots with iOS deployment target set to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+## 8.0.9 - 2024-09-24
+
+### 🎉 New features
+
+- Add `updates.useEmbeddedUpdate` key ([#31608](https://github.com/expo/expo/pull/31608) by [@brentvatne](https://github.com/brentvatne))
+
+## 8.0.8 - 2024-07-11
+
+### 🐛 Bug fixes
+
+- On `Android`, Build settings related to gradle.properties will now be **merged** (_and deduped_) if they are `Arrays` instead of overwritten. For now the only array value is `extraMavenRepos`. This allows library plugins to use `extraMavenRepos` even if they are not the last plugin called. ([#30269](https://github.com/expo/expo/pull/30269) by [@Titozzz](https://github.com/Titozzz))
+
+## 8.0.7 - 2024-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 8.0.6 - 2024-06-27
+
+### 🐛 Bug fixes
+
+- On `Android`, fix setting `translucent` on the status bar. ([#29803](https://github.com/expo/expo/pull/29803) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 8.0.5 - 2024-06-05
+
+### 🐛 Bug fixes
+
+- Improved android manifest queries, making package optional and changing provider to array ([#29418](https://github.com/expo/expo/pull/29418) by [@Titozzz](https://github.com/Titozzz))
 
 ## 8.0.4 — 2024-05-01
 

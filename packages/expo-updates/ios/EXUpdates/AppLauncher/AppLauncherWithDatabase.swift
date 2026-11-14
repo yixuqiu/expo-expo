@@ -3,9 +3,10 @@
 // swiftlint:disable closure_body_length
 // swiftlint:disable force_unwrapping
 
+import EXUpdatesInterface
 import Foundation
 
-public typealias AppLauncherUpdateCompletionBlock = (_ error: Error?, _ update: Update?) -> Void
+public typealias AppLauncherUpdateCompletionBlock = (_ error: UpdatesError?, _ update: Update?) -> Void
 
 /**
  * Implementation of AppLauncher that uses the SQLite database and expo-updates file store
@@ -28,11 +29,14 @@ public typealias AppLauncherUpdateCompletionBlock = (_ error: Error?, _ update: 
 @objc(EXUpdatesAppLauncherWithDatabase)
 @objcMembers
 public class AppLauncherWithDatabase: NSObject, AppLauncher {
-  private static let ErrorDomain = "AppLauncher"
-
   public var launchedUpdate: Update?
   public var launchAssetUrl: URL?
   public var assetFilesMap: [String: String]?
+
+  /// Set when the launched update is served directly from the embedded app binary. Tracked
+  /// explicitly because `assetFilesMap` is now populated with the bundle-resolved embedded assets,
+  /// so it can no longer double as the "using embedded assets" signal.
+  private var launchedFromEmbeddedBundle = false
 
   private let launcherQueue: DispatchQueue
   private var completedAssets: Int
@@ -43,20 +47,20 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
   public private(set) var completionQueue: DispatchQueue
   public private(set) var completion: AppLauncherCompletionBlock?
 
-  private var launchAssetError: Error?
+  private var launchAssetError: UpdatesError?
 
-  public required init(config: UpdatesConfig, database: UpdatesDatabase, directory: URL, completionQueue: DispatchQueue) {
+  public required init(config: UpdatesConfig, database: UpdatesDatabase, directory: URL, completionQueue: DispatchQueue, logger: UpdatesLogger) {
     self.launcherQueue = DispatchQueue(label: "expo.launcher.LauncherQueue")
     self.completedAssets = 0
     self.config = config
     self.database = database
     self.directory = directory
     self.completionQueue = completionQueue
-    self.logger = UpdatesLogger()
+    self.logger = logger
   }
 
   public func isUsingEmbeddedAssets() -> Bool {
-    return assetFilesMap == nil
+    return launchedFromEmbeddedBundle
   }
 
   public static func launchableUpdate(
@@ -68,19 +72,19 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
   ) {
     database.databaseQueue.async {
       var launchableUpdates: [Update]?
-      var launchableUpdatesError: Error?
+      var launchableUpdatesError: UpdatesError?
       do {
         launchableUpdates = try database.launchableUpdates(withConfig: config)
       } catch {
-        launchableUpdatesError = error
+        launchableUpdatesError = UpdatesError.appLauncherWithDatabaseUnknownError(cause: error)
       }
 
       var manifestFilters: [String: Any]?
-      var manifestFiltersError: Error?
+      var manifestFiltersError: UpdatesError?
       do {
         manifestFilters = try database.manifestFilters(withScopeKey: config.scopeKey)
       } catch {
-        manifestFiltersError = error
+        manifestFiltersError = UpdatesError.appLauncherWithDatabaseUnknownError(cause: error)
       }
 
       completionQueue.async {
@@ -94,18 +98,21 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
           return
         }
 
-        // We can only run an update marked as embedded if it's actually the update embedded in the
-        // current binary. We might have an older update from a previous binary still listed in the
-        // database with Embedded status so we need to filter that out here.
-        let embeddedManifest = EmbeddedAppLoader.embeddedManifest(withConfig: config, database: database)
+        let embeddedManifest = EmbeddedAppLoader.originalEmbeddedManifest(withConfig: config, database: database)
         var filteredLaunchableUpdates: [Update] = []
-
         for update in launchableUpdates {
-          if update.status == UpdateStatus.StatusEmbedded {
-            if embeddedManifest != nil && update.updateId != embeddedManifest!.updateId {
-              continue
-            }
+          // We can only run an update marked as embedded if it's actually the update embedded in the
+          // current binary. We might have an older update from a previous binary still listed in the
+          // database with Embedded status so we need to filter that out here.
+          if update.status == UpdateStatus.StatusEmbedded && update.updateId != embeddedManifest?.updateId {
+            continue
           }
+
+          // If embedded update is disabled, we should exclude embedded update from launchable updates
+          if !config.hasEmbeddedUpdate && embeddedManifest?.updateId == update.updateId {
+            continue
+          }
+
           filteredLaunchableUpdates.append(update)
         }
 
@@ -139,13 +146,8 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
         if error != nil || launchableUpdate == nil {
           if let completionInner = self.completion {
             self.completionQueue.async {
-              var userInfo: [String: Any] = [
-                NSLocalizedDescriptionKey: "No launchable updates found in database"
-              ]
-              if let error = error {
-                userInfo[NSUnderlyingErrorKey] = error
-              }
-              completionInner(NSError(domain: AppLauncherWithDatabase.ErrorDomain, code: 1011, userInfo: userInfo), false)
+              let cause = UpdatesError.appLauncherNoLaunchableUpdates(cause: error)
+              completionInner(cause, false)
             }
           }
         } else {
@@ -171,7 +173,7 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
       do {
         try self.database.markUpdateAccessed(self.launchedUpdate!)
       } catch {
-        self.logger.warn(message: "Failed to mark update as recently accessed: \(error.localizedDescription)")
+        self.logger.warn(.localMarkAccessedFailed, cause: error)
       }
     }
   }
@@ -182,14 +184,21 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
     }
 
     if launchedUpdate.status == UpdateStatus.StatusEmbedded {
-      precondition(assetFilesMap == nil, "assetFilesMap should be null for embedded updates")
-      launchAssetUrl = Bundle.main.url(
+      launchedFromEmbeddedBundle = true
+      // The embedded update's assets aren't copied into the cache, so resolve them from the app
+      // binary. Populating the map here keeps `Updates.localAssets` available instead of empty.
+      assetFilesMap = UpdatesUtils.embeddedAssetsMap(withConfig: config, database: database, logger: logger)
+      launchAssetUrl = updatesBundle.url(
         forResource: EmbeddedAppLoader.EXUpdatesBareEmbeddedBundleFilename,
         withExtension: EmbeddedAppLoader.EXUpdatesBareEmbeddedBundleFileType
       )
 
       completionQueue.async {
-        self.completion!(self.launchAssetError, self.launchAssetUrl != nil)
+        var error = self.launchAssetError
+        if error == nil && self.launchAssetUrl == nil {
+          error = UpdatesError.appLauncherLaunchAssetNotFound(updateId: launchedUpdate.updateId)
+        }
+        self.completion!(error, self.launchAssetUrl != nil)
         self.completion = nil
       }
       return
@@ -207,6 +216,16 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
     self.assetFilesMap = UpdatesUtils.embeddedAssetsMap(withConfig: config, database: database, logger: logger)
 
     let assets = launchedUpdate.assets()!
+    if assets.isEmpty {
+      // a ready update with no assets cannot launch, and an empty loop below would never
+      // invoke the completion
+      completionQueue.async {
+        self.completion!(UpdatesError.appLauncherLaunchAssetNotFound(updateId: launchedUpdate.updateId), false)
+        self.completion = nil
+      }
+      return
+    }
+
     let totalAssetCount = assets.count
     for asset in assets {
       let assetLocalUrl = directory.appendingPathComponent(asset.filename)
@@ -226,7 +245,12 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
 
         if self.completedAssets == totalAssetCount {
           self.completionQueue.async {
-            self.completion!(self.launchAssetError, self.launchAssetUrl != nil)
+            var error = self.launchAssetError
+            if error == nil && self.launchAssetUrl == nil {
+              // completing without an error and without a launch asset would fail the launch silently
+              error = UpdatesError.appLauncherLaunchAssetNotFound(updateId: launchedUpdate.updateId)
+            }
+            self.completion!(error, self.launchAssetUrl != nil)
             self.completion = nil
           }
         }
@@ -248,7 +272,7 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
         }
 
         if let error = error {
-          self.logger.warn(message: "AppLauncherWithDatabase: Error copying embedded asset \(asset.key ?? ""): \(error.localizedDescription)")
+          self.logger.warn(.embeddedAssetCopyFailed, cause: error, values: ["assetKey": asset.key ?? asset.filename])
         }
 
         self.downloadAsset(asset, withLocalUrl: assetLocalUrl) { downloadAssetError, downloadAssetAsset, _ in
@@ -258,7 +282,13 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
               // so we want to propagate this error
               self.launchAssetError = downloadAssetError
             }
-            self.logger.warn(message: "AppLauncherWithDatabase: Failed to load missing asset \(downloadAssetAsset.key ?? ""): \(downloadAssetError.localizedDescription)")
+            self.logger.error(
+              .localAssetMissing,
+              cause: downloadAssetError,
+              values: ["assetKey": downloadAssetAsset.key ?? downloadAssetAsset.filename],
+              updateId: self.launchedUpdate?.loggingId(),
+              assetId: downloadAssetAsset.key ?? downloadAssetAsset.filename
+            )
             completion(false)
           } else {
             // attempt to update the database record to match the newly downloaded asset
@@ -267,7 +297,11 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
               do {
                 try self.database.updateAsset(downloadAssetAsset)
               } catch {
-                self.logger.warn(message: "AppLauncherWithDatabase: Could not write data for downloaded asset to database: \(error.localizedDescription)")
+                self.logger.warn(
+                  .localAssetDatabaseWriteFailed,
+                  cause: error,
+                  values: ["assetKey": downloadAssetAsset.key ?? downloadAssetAsset.filename]
+                )
               }
             }
             completion(true)
@@ -289,7 +323,7 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
   private func maybeCopyAssetFromMainBundle(
     _ asset: UpdateAsset,
     withLocalUrl assetLocalUrl: URL,
-    completion: @escaping (Bool, Error?) -> Void
+    completion: @escaping (Bool, UpdatesError?) -> Void
   ) {
     guard let embeddedManifest = EmbeddedAppLoader.embeddedManifest(withConfig: config, database: database) else {
       completion(false, nil)
@@ -306,11 +340,7 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
           self.launcherQueue.async {
             completion(
               false,
-              NSError(
-                domain: AppLauncherWithDatabase.ErrorDomain,
-                code: 1013,
-                userInfo: [NSLocalizedDescriptionKey: "Asset bundlePath was unexpectedly nil"]
-              )
+              UpdatesError.appLauncherWithDatabaseAssetBundlePathNil
             )
           }
           return
@@ -325,11 +355,7 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
           self.launcherQueue.async {
             completion(
               false,
-              NSError(
-                domain: AppLauncherWithDatabase.ErrorDomain,
-                code: 1013,
-                userInfo: [NSLocalizedDescriptionKey: "Asset copy failed"]
-              )
+              UpdatesError.appLauncherWithDatabaseAssetCopyFailed
             )
           }
         }
@@ -341,14 +367,10 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
     }
   }
 
-  private func downloadAsset(_ asset: UpdateAsset, withLocalUrl assetLocalUrl: URL, completion: @escaping (Error?, UpdateAsset, URL) -> Void) {
+  private func downloadAsset(_ asset: UpdateAsset, withLocalUrl assetLocalUrl: URL, completion: @escaping (UpdatesError?, UpdateAsset, URL) -> Void) {
     guard let assetUrl = asset.url else {
       completion(
-        NSError(
-          domain: AppLauncherWithDatabase.ErrorDomain,
-          code: 1007,
-          userInfo: [NSLocalizedDescriptionKey: "Failed to download asset with no URL provided"]
-        ),
+        UpdatesError.appLauncherWithDatabaseAssetMissingUrl,
         asset,
         assetLocalUrl
       )
@@ -357,16 +379,16 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
 
     FileDownloader.assetFilesQueue.async {
       self.downloader.downloadAsset(
+        asset: asset,
         fromURL: assetUrl,
         verifyingHash: asset.expectedHash,
         toPath: assetLocalUrl.path,
-        extraHeaders: asset.extraRequestHeaders ?? [:]
-      ) { _, response, base64URLEncodedSHA256Hash in
+        extraHeaders: asset.extraRequestHeaders ?? [:],
+        allowPatch: false,
+        launchedUpdate: self.launchedUpdate
+      ) { data, _, _ in
         self.launcherQueue.async {
-          if let response = response as? HTTPURLResponse {
-            asset.headers = response.allHeaderFields as? [String: Any]
-          }
-          asset.contentHash = base64URLEncodedSHA256Hash
+          asset.contentHash = UpdatesUtils.hexEncodedSHA256WithData(data)
           asset.downloadTime = Date()
           completion(nil, asset, assetLocalUrl)
         }
@@ -379,7 +401,12 @@ public class AppLauncherWithDatabase: NSObject, AppLauncher {
   }
 
   private lazy var downloader: FileDownloader = {
-    FileDownloader(config: config)
+    FileDownloader(
+      config: config,
+      logger: self.logger,
+      updatesDirectory: self.directory,
+      database: self.database
+    )
   }()
 }
 // swiftlint:enable closure_body_length

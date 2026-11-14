@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { OnErrorEvent } from './ImageWrapper.types';
-import { ImageNativeProps, ImageSource } from '../Image.types';
+import type { ImageNativeProps, ImageSource } from '../Image.types';
 import { useBlurhash } from '../utils/blurhash/useBlurhash';
 import { isThumbhashString } from '../utils/resolveSources';
 import { thumbHashStringToDataURL } from '../utils/thumbhash/thumbhash';
+import type { OnErrorEvent } from './ImageWrapper.types';
 
 export function useThumbhash(source: ImageSource | null | undefined) {
   const isThumbhash = isThumbhashString(source?.uri || '');
@@ -13,19 +13,24 @@ export function useThumbhash(source: ImageSource | null | undefined) {
     () => (isThumbhash ? { uri: thumbHashStringToDataURL(strippedThumbhashString) } : null),
     [strippedThumbhashString, isThumbhash]
   );
-  return thumbhashSource;
+  return [thumbhashSource, isThumbhash] as const;
 }
 
 export function useImageHashes(source: ImageSource | null | undefined) {
-  const thumbhash = useThumbhash(source);
-  const blurhash = useBlurhash(source);
-  return useMemo(
-    () => ({
-      resolvedSource: blurhash ?? thumbhash ?? source,
-      isImageHash: !!blurhash || !!thumbhash,
-    }),
-    [blurhash, thumbhash]
-  );
+  const [thumbhash, isThumbhashString] = useThumbhash(source);
+  const [blurhash, isBlurhashString] = useBlurhash(source);
+  return useMemo(() => {
+    if (!isThumbhashString && !isBlurhashString) {
+      return { resolvedSource: source, isImageHash: false };
+    }
+    if (!blurhash && !thumbhash) {
+      return { resolvedSource: null, isImageHash: true };
+    }
+    return {
+      resolvedSource: blurhash ?? thumbhash,
+      isImageHash: true,
+    };
+  }, [blurhash, thumbhash, isThumbhashString, isBlurhashString, source]);
 }
 
 export function useHeaders(
@@ -55,8 +60,7 @@ export function useHeaders(
           }
           return URL.createObjectURL(blob);
         });
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (error) {
+      } catch {
         onError?.forEach((e) => e?.({ source }));
       }
     })();

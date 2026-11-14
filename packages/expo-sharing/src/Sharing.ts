@@ -1,27 +1,7 @@
-import { UnavailabilityError } from 'expo-modules-core';
+import { UnavailabilityError } from 'expo';
 
-import Sharing from './ExpoSharing';
-
-// @needsAudit
-export type SharingOptions = {
-  /**
-   * Sets `mimeType` for `Intent`.
-   * @platform android
-   */
-  mimeType?: string;
-  /**
-   * [Uniform Type Identifier](https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/understanding_utis/understand_utis_conc/understand_utis_conc.html)
-   *  - the type of the target file.
-   * @platform ios
-   */
-  UTI?: string;
-  /**
-   * Sets share dialog title.
-   * @platform android
-   * @platform web
-   */
-  dialogTitle?: string;
-};
+import type { ResolvedSharePayload, SharePayload, SharingOptions } from './Sharing.types';
+import SharingNativeModule from './SharingNativeModule';
 
 // @needsAudit
 /**
@@ -29,9 +9,9 @@ export type SharingOptions = {
  * @return A promise that fulfills with `true` if the sharing API can be used, and `false` otherwise.
  */
 export async function isAvailableAsync(): Promise<boolean> {
-  if (Sharing) {
-    if (Sharing.isAvailableAsync) {
-      return await Sharing.isAvailableAsync();
+  if (SharingNativeModule) {
+    if (SharingNativeModule.isAvailableAsync) {
+      return await SharingNativeModule.isAvailableAsync();
     }
     return true;
   }
@@ -46,8 +26,44 @@ export async function isAvailableAsync(): Promise<boolean> {
  * @param options A map of share options.
  */
 export async function shareAsync(url: string, options: SharingOptions = {}): Promise<void> {
-  if (!Sharing || !Sharing.shareAsync) {
+  if (!SharingNativeModule || !SharingNativeModule.shareAsync) {
     throw new UnavailabilityError('Sharing', 'shareAsync');
   }
-  return await Sharing.shareAsync(url, options);
+  return await SharingNativeModule.shareAsync(url, options);
+}
+
+/**
+ * Returns raw data shared with the app. Returns an empty array if no data has been shared with the app.
+ *
+ * @platform android
+ * @platform ios
+ * @experimental
+ */
+export function getSharedPayloads(): SharePayload[] {
+  return SharingNativeModule.getSharedPayloads();
+}
+
+/**
+ * Returns resolved data shared with the app. Compared to data returned from [`getSharedPayloads`](#sharinggetsharedpayloads) contains additional
+ * information useful for reading and displaying the data. For example, when a web `URL` is shared with the app,
+ * a resolved payload will contain additional information about the URL contents.
+ *
+ * > Depending on what has been shared, this method may require a network connection to resolve content details.
+ *
+ * @platform android
+ * @platform ios
+ * @experimental
+ */
+export async function getResolvedSharedPayloadsAsync(): Promise<ResolvedSharePayload[]> {
+  return await SharingNativeModule.getResolvedSharedPayloadsAsync();
+}
+
+/**
+ * Clears the data shared with the app.
+ * On Android and iOS, it also deletes the copies of shared files that `expo-sharing` keeps in a cache directory.
+ *
+ * > **Note:** Copy the files you want to keep before you call this method. After it runs, the `contentUri` of a file shared into the app no longer points to a file.
+ */
+export function clearSharedPayloads(): void {
+  SharingNativeModule.clearSharedPayloads();
 }

@@ -1,15 +1,15 @@
 import { mergeClasses } from '@expo/styleguide';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import * as RawRadixDropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import type { ReactNode } from 'react';
 
 import { Item } from '~/ui/components/Dropdown/Item';
 
 // note(simek): Radix Jest ESM issue workaround: https://github.com/radix-ui/primitives/issues/1848
-let sanitizedRadixDropdownMenu = { default: undefined, ...DropdownMenu };
-sanitizedRadixDropdownMenu = sanitizedRadixDropdownMenu.default ?? sanitizedRadixDropdownMenu;
-const { Trigger, Root, Portal, Content, Arrow } = sanitizedRadixDropdownMenu;
+let RadixDropdownMenuPrimitive = { default: undefined, ...RawRadixDropdownMenuPrimitive };
+RadixDropdownMenuPrimitive = RadixDropdownMenuPrimitive.default ?? RadixDropdownMenuPrimitive;
+const { Trigger, Root, Portal, Content, Arrow } = RadixDropdownMenuPrimitive;
 
-type Props = DropdownMenu.DropdownMenuContentProps & {
+type Props = RawRadixDropdownMenuPrimitive.DropdownMenuContentProps & {
   trigger: ReactNode;
 };
 
@@ -23,12 +23,12 @@ export function Dropdown({
   ...rest
 }: Props) {
   return (
-    <Root>
+    <Root modal={false}>
       <Trigger asChild>{trigger}</Trigger>
-      <Portal className="bg-danger">
+      <Portal>
         <Content
           className={mergeClasses(
-            'flex min-w-[180px] flex-col gap-0.5 rounded-md border border-default bg-default p-1 shadow-md',
+            'flex min-w-45 flex-col gap-1 rounded-xl border border-default bg-default p-2 shadow-md',
             'will-change-[opacity,transform] data-[side=bottom]:animate-slideUpAndFadeIn',
             className
           )}
@@ -37,7 +37,7 @@ export function Dropdown({
           collisionPadding={collisionPadding}
           {...rest}>
           <Arrow asChild>
-            <div className="relative -top-1 size-2.5 rotate-45 border-b border-r border-default bg-default" />
+            <div className="relative -top-1 size-2.5 rotate-45 border-r border-b border-default bg-default" />
           </Arrow>
           {children}
         </Content>

@@ -1,14 +1,24 @@
-import { ConfigPlugin } from 'expo/config-plugins';
+import { WarningAggregator, type ConfigPlugin } from 'expo/config-plugins';
 
 import {
   withAndroidBuildProperties,
+  withAndroidCleartextTraffic,
+  withAndroidDayNightTheme,
+  withAndroidPrecompiledHeaders,
   withAndroidProguardRules,
   withAndroidPurgeProguardRulesOnce,
-  withAndroidCleartextTraffic,
   withAndroidQueries,
+  withAndroidSettingsGradle,
 } from './android';
-import { withIosBuildProperties, withIosDeploymentTarget } from './ios';
-import { PluginConfigType, validateConfig } from './pluginConfig';
+import { withIosBuildProperties, withIosDeploymentTarget, withIosInfoPlist } from './ios';
+import { withIosSceneSupport } from './iosSceneSupport';
+import type { PluginConfigType } from './pluginConfig';
+import { resolveConfigValue, validateConfig } from './pluginConfig';
+
+const USE_HERMES_V1_DEPRECATION_MESSAGE =
+  '`useHermesV1` is deprecated and has no effect. ' +
+  'React Native 0.88 and newer always use Hermes V1. ' +
+  'Remove `useHermesV1` from the expo-build-properties config.';
 
 /**
  * Config plugin allowing customizing native Android and iOS build properties for managed apps.
@@ -18,10 +28,18 @@ import { PluginConfigType, validateConfig } from './pluginConfig';
 export const withBuildProperties: ConfigPlugin<PluginConfigType> = (config, props) => {
   const pluginConfig = validateConfig(props || {});
 
+  if (resolveConfigValue(pluginConfig, 'android', 'useHermesV1') !== undefined) {
+    WarningAggregator.addWarningAndroid('useHermesV1', USE_HERMES_V1_DEPRECATION_MESSAGE);
+  }
+  if (resolveConfigValue(pluginConfig, 'ios', 'useHermesV1') !== undefined) {
+    WarningAggregator.addWarningIOS('useHermesV1', USE_HERMES_V1_DEPRECATION_MESSAGE);
+  }
+
   config = withAndroidBuildProperties(config, pluginConfig);
 
   config = withAndroidProguardRules(config, pluginConfig);
   config = withAndroidCleartextTraffic(config, pluginConfig);
+  config = withAndroidSettingsGradle(config, pluginConfig);
   config = withAndroidQueries(config, pluginConfig);
   // Assuming `withBuildProperties` could be called multiple times from different config-plugins,
   // the `withAndroidProguardRules` always appends new rules by default.
@@ -30,9 +48,13 @@ export const withBuildProperties: ConfigPlugin<PluginConfigType> = (config, prop
   //
   // plugins order matter: the later one would run first
   config = withAndroidPurgeProguardRulesOnce(config);
+  config = withAndroidDayNightTheme(config, pluginConfig);
+  config = withAndroidPrecompiledHeaders(config, pluginConfig);
 
   config = withIosBuildProperties(config, pluginConfig);
   config = withIosDeploymentTarget(config, pluginConfig);
+  config = withIosInfoPlist(config, pluginConfig);
+  config = withIosSceneSupport(config, pluginConfig);
 
   return config;
 };

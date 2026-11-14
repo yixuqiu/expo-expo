@@ -2,11 +2,13 @@
 package host.exp.exponent
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import expo.modules.core.utilities.EmulatorUtilities
+import expo.modules.easclient.EASClientID
 import expo.modules.updates.UpdatesConfiguration
 import expo.modules.updates.UpdatesUtils
-import expo.modules.updates.db.DatabaseHolder
+import expo.modules.updates.db.UpdatesDatabase
 import expo.modules.updates.db.entity.UpdateEntity
 import expo.modules.updates.launcher.Launcher
 import expo.modules.updates.loader.FileDownloader
@@ -18,6 +20,7 @@ import expo.modules.manifests.core.Manifest
 import expo.modules.updates.codesigning.CODE_SIGNING_METADATA_ALGORITHM_KEY
 import expo.modules.updates.codesigning.CODE_SIGNING_METADATA_KEY_ID_KEY
 import expo.modules.updates.codesigning.CodeSigningAlgorithm
+import expo.modules.updates.logging.UpdatesLogger
 import expo.modules.updates.selectionpolicy.LoaderSelectionPolicyFilterAware
 import expo.modules.updates.selectionpolicy.ReaperSelectionPolicyDevelopmentClient
 import expo.modules.updates.selectionpolicy.SelectionPolicy
@@ -27,17 +30,25 @@ import host.exp.exponent.kernel.ExperienceKey
 import host.exp.exponent.kernel.ExpoViewKernel
 import host.exp.exponent.kernel.Kernel
 import host.exp.exponent.kernel.KernelConfig
+import host.exp.exponent.services.SessionRepository
 import host.exp.exponent.storage.ExponentSharedPreferences
+import host.exp.exponent.utils.HermesBundleUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.File
-import java.util.*
+import java.net.URI
 import javax.inject.Inject
+import kotlin.time.DurationUnit
+import kotlin.time.toDuration
 
 private const val UPDATE_AVAILABLE_EVENT = "updateAvailable"
 private const val UPDATE_NO_UPDATE_AVAILABLE_EVENT = "noUpdateAvailable"
 private const val UPDATE_ERROR_EVENT = "error"
+private val EAS_UPDATE_HOSTS = setOf("u.expo.dev", "staging-u.expo.dev")
 
 /**
  * Entry point to expo-updates in Expo Go. Fulfills many of the
@@ -53,13 +64,17 @@ private const val UPDATE_ERROR_EVENT = "error"
 class ExpoUpdatesAppLoader @JvmOverloads constructor(
   private val manifestUrl: String,
   private val callback: AppLoaderCallback,
-  private val useCacheOnly: Boolean = false
+  private val useCacheOnly: Boolean = false,
+  private val loaderScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {
   @Inject
   lateinit var exponentSharedPreferences: ExponentSharedPreferences
 
   @Inject
-  lateinit var databaseHolder: DatabaseHolder
+  lateinit var sessionRepository: SessionRepository
+
+  @Inject
+  lateinit var database: UpdatesDatabase
 
   @Inject
   lateinit var kernel: Kernel
@@ -72,17 +87,31 @@ class ExpoUpdatesAppLoader @JvmOverloads constructor(
   var isUpToDate = true
     private set
   var status: AppLoaderStatus? = null
-    private set
+    private set(value) {
+      field = value
+      callback.updateStatus(value)
+    }
+
   var shouldShowAppLoaderStatus = true
     private set
   private var isStarted = false
+  private var startupStartTimeMillis: Long? = null
+  private var startupEndTimeMillis: Long? = null
+  val launchDuration
+    get() = startupStartTimeMillis?.let { start ->
+      startupEndTimeMillis?.let { end ->
+        (end - start).toDuration(
+          DurationUnit.MILLISECONDS
+        )
+      }
+    }
 
   interface AppLoaderCallback {
     fun onOptimisticManifest(optimisticManifest: Manifest)
     fun onManifestCompleted(manifest: Manifest)
     fun onBundleCompleted(localBundlePath: String)
     fun emitEvent(params: JSONObject)
-    fun updateStatus(status: AppLoaderStatus)
+    fun updateStatus(status: AppLoaderStatus?)
     fun onError(e: Exception)
   }
 
@@ -92,14 +121,10 @@ class ExpoUpdatesAppLoader @JvmOverloads constructor(
   lateinit var launcher: Launcher
     private set
 
-  private fun updateStatus(status: AppLoaderStatus) {
-    this.status = status
-    callback.updateStatus(status)
-  }
-
   fun start(context: Context) {
     check(!isStarted) { "AppLoader for $manifestUrl was started twice. AppLoader.start() may only be called once per instance." }
     isStarted = true
+    startupStartTimeMillis = System.currentTimeMillis()
     status = AppLoaderStatus.CHECKING_FOR_UPDATE
     kernel.addAppLoaderForManifestUrl(manifestUrl, this)
 
@@ -117,8 +142,8 @@ class ExpoUpdatesAppLoader @JvmOverloads constructor(
         this[UpdatesConfiguration.UPDATES_CONFIGURATION_CHECK_ON_LAUNCH_KEY] = "ALWAYS"
         this[UpdatesConfiguration.UPDATES_CONFIGURATION_LAUNCH_WAIT_MS_KEY] = 60000
       }
-      this[UpdatesConfiguration.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY] = requestHeaders
-      this[UpdatesConfiguration.UPDATES_CONFIGURATION_RUNTIME_VERSION_KEY] = "exposdk:${Constants.TEMPORARY_SDK_VERSION}"
+      this[UpdatesConfiguration.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY] = requestHeaders(httpManifestUrl)
+      this[UpdatesConfiguration.UPDATES_CONFIGURATION_RUNTIME_VERSION_KEY] = "exposdk:${Constants.SDK_VERSION}"
       // in Expo Go, embed the Expo Root Certificate and get the Expo Go intermediate certificate and development certificates from the multipart manifest response part
       this[UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_CERTIFICATE] = context.assets.open("expo-root.pem").readBytes().decodeToString()
       this[UpdatesConfiguration.UPDATES_CONFIGURATION_CODE_SIGNING_METADATA] = mapOf(
@@ -132,12 +157,12 @@ class ExpoUpdatesAppLoader @JvmOverloads constructor(
     }.toMap()
 
     val configuration = UpdatesConfiguration(null, configMap)
-    val sdkVersionsList = (Constants.SDK_VERSIONS_LIST + listOf(RNObject.UNVERSIONED)).flatMap {
+    val sdkVersionsList = listOf(Constants.SDK_VERSION, RNObject.UNVERSIONED).flatMap {
       listOf(it, "exposdk:$it")
     }
     val selectionPolicy = SelectionPolicy(
       ExpoGoLauncherSelectionPolicyFilterAware(sdkVersionsList),
-      LoaderSelectionPolicyFilterAware(),
+      LoaderSelectionPolicyFilterAware(configuration),
       ReaperSelectionPolicyDevelopmentClient()
     )
     val directory: File = try {
@@ -146,30 +171,43 @@ class ExpoUpdatesAppLoader @JvmOverloads constructor(
       callback.onError(e)
       return
     }
-    val fileDownloader = FileDownloader(context, configuration)
-    startLoaderTask(configuration, fileDownloader, directory, selectionPolicy, context)
+    val logger = UpdatesLogger(context.filesDir)
+    val fileDownloader = FileDownloader(
+      context.filesDir,
+      EASClientID(context).uuid.toString(),
+      configuration,
+      logger,
+      database
+    )
+    loaderScope.launch {
+      startLoaderTask(configuration, fileDownloader, directory, selectionPolicy, context, logger)
+    }
   }
 
-  private fun startLoaderTask(
+  private suspend fun startLoaderTask(
     configuration: UpdatesConfiguration,
     fileDownloader: FileDownloader,
     directory: File,
     selectionPolicy: SelectionPolicy,
-    context: Context
+    context: Context,
+    logger: UpdatesLogger
   ) {
     updatesConfiguration = configuration
     LoaderTask(
+      context,
       configuration,
-      databaseHolder,
+      database,
       directory,
       fileDownloader,
       selectionPolicy,
+      logger,
       object : LoaderTaskCallback {
         private var didAbort = false
         override fun onFailure(e: Exception) {
           if (didAbort) {
             return
           }
+          this@ExpoUpdatesAppLoader.startupEndTimeMillis = System.currentTimeMillis()
           var exception = e
           try {
             val errorJson = JSONObject(e.message!!)
@@ -216,13 +254,14 @@ class ExpoUpdatesAppLoader @JvmOverloads constructor(
           }
           setShouldShowAppLoaderStatus(update.manifest)
           callback.onOptimisticManifest(update.manifest)
-          updateStatus(AppLoaderStatus.DOWNLOADING_NEW_UPDATE)
+          status = AppLoaderStatus.DOWNLOADING_NEW_UPDATE
         }
 
         override fun onSuccess(launcher: Launcher, isUpToDate: Boolean) {
           if (didAbort) {
             return
           }
+          this@ExpoUpdatesAppLoader.startupEndTimeMillis = System.currentTimeMillis()
           this@ExpoUpdatesAppLoader.launcher = launcher
           this@ExpoUpdatesAppLoader.isUpToDate = isUpToDate
           try {
@@ -232,7 +271,18 @@ class ExpoUpdatesAppLoader @JvmOverloads constructor(
 
             // ReactAndroid will load the bundle on its own in development mode
             if (!manifest.isDevelopmentMode()) {
-              callback.onBundleCompleted(launcher.launchAssetFile!!)
+              val launchAssetFile = launcher.launchAssetFile!!
+              val isEasUpdate = runCatching { URI(manifestUrl).host }
+                .getOrNull()
+                ?.let(EAS_UPDATE_HOSTS::contains) == true
+              if (!isEasUpdate && HermesBundleUtils.isHermesBundle(File(launchAssetFile))) {
+                val errorJson = JSONObject().apply {
+                  put("errorCode", "EXPERIENCE_HERMES_BUNDLE_NOT_SUPPORTED")
+                  put("message", "Hermes bytecode bundle is not supported by Expo Go")
+                }
+                throw ManifestException(null, manifestUrl, errorJson)
+              }
+              callback.onBundleCompleted(launchAssetFile)
             }
           } catch (e: Exception) {
             callback.onError(e)
@@ -273,8 +323,9 @@ class ExpoUpdatesAppLoader @JvmOverloads constructor(
             Log.e(TAG, "Failed to emit event to JS", e)
           }
         }
-      }
-    ).start(context)
+      },
+      CoroutineScope(Dispatchers.IO)
+    ).start()
   }
 
   private fun setShouldShowAppLoaderStatus(manifest: Manifest) {
@@ -286,31 +337,43 @@ class ExpoUpdatesAppLoader @JvmOverloads constructor(
     shouldShowAppLoaderStatus = !manifest.isDevelopmentSilentLaunch()
   }
 
-  // XDL expects the full "exponent-" header names
-  private val requestHeaders: Map<String, String?>
-    get() {
-      val headers = mutableMapOf<String, String>()
-      headers["Expo-Updates-Environment"] = clientEnvironment
-      headers["Expo-Client-Environment"] = clientEnvironment
-      val versionName = ExpoViewKernel.instance.versionName
-      if (versionName != null) {
-        headers["Exponent-Version"] = versionName
-      }
-      val sessionSecret = exponentSharedPreferences.sessionSecret
-      if (sessionSecret != null) {
-        headers["Expo-Session"] = sessionSecret
-      }
+  private fun requestHeaders(manifestUrl: Uri): Map<String, String?> =
+    requestHeaders(manifestUrl, ExpoViewKernel.instance.versionName)
 
-      // XDL expects the full "exponent-" header names
-      headers["Exponent-Accept-Signature"] = "true"
-      headers["Exponent-Platform"] = "android"
-      if (KernelConfig.FORCE_UNVERSIONED_PUBLISHED_EXPERIENCES) {
-        headers["Exponent-SDK-Version"] = "UNVERSIONED"
-      } else {
-        headers["Exponent-SDK-Version"] = Constants.SDK_VERSIONS
-      }
-      return headers
+  // XDL expects the full "exponent-" header names
+  internal fun requestHeaders(manifestUrl: Uri, versionName: String?): Map<String, String?> {
+    val headers = mutableMapOf<String, String>()
+    headers["Expo-Updates-Environment"] = clientEnvironment
+    headers["Expo-Client-Environment"] = clientEnvironment
+    headers.putAll(getForwardedHeaders(manifestUrl))
+    if (versionName != null) {
+      headers["Exponent-Version"] = versionName
     }
+    val sessionSecret = sessionRepository.getActiveSessionSecret()
+    if (sessionSecret != null) {
+      headers["Expo-Session"] = sessionSecret
+    }
+
+    // XDL expects the full "exponent-" header names
+    headers["Exponent-Accept-Signature"] = "true"
+    headers["Exponent-Platform"] = "android"
+    if (KernelConfig.FORCE_UNVERSIONED_PUBLISHED_EXPERIENCES) {
+      headers["Exponent-SDK-Version"] = "UNVERSIONED"
+    } else {
+      headers["Exponent-SDK-Version"] = Constants.SDK_VERSION
+    }
+    return headers
+  }
+
+  private fun getForwardedHeaders(url: Uri): Map<String, String> {
+    val authority = url.encodedAuthority ?: return emptyMap()
+    val scheme = url.scheme ?: return emptyMap()
+    return mutableMapOf(
+      "Forwarded" to "host=\"$authority\";proto=$scheme",
+      "X-Forwarded-Host" to authority,
+      "X-Forwarded-Proto" to scheme
+    )
+  }
 
   private val clientEnvironment: String
     get() = if (EmulatorUtilities.isRunningOnEmulator()) {
@@ -326,10 +389,8 @@ class ExpoUpdatesAppLoader @JvmOverloads constructor(
     if (RNObject.UNVERSIONED == sdkVersion) {
       return true
     }
-    for (version in Constants.SDK_VERSIONS_LIST) {
-      if (version == sdkVersion) {
-        return true
-      }
+    if (Constants.SDK_VERSION == sdkVersion) {
+      return true
     }
     return false
   }
@@ -340,7 +401,7 @@ class ExpoUpdatesAppLoader @JvmOverloads constructor(
       errorJson.put("message", "Invalid SDK version")
       if (sdkVersion == null) {
         errorJson.put("errorCode", "NO_SDK_VERSION_SPECIFIED")
-      } else if (ABIVersion.toNumber(sdkVersion) > ABIVersion.toNumber(Constants.SDK_VERSIONS_LIST[0])) {
+      } else if (ABIVersion.toNumber(sdkVersion) > ABIVersion.toNumber(Constants.SDK_VERSION)) {
         errorJson.put("errorCode", "EXPERIENCE_SDK_VERSION_TOO_NEW")
       } else {
         errorJson.put("errorCode", "EXPERIENCE_SDK_VERSION_OUTDATED")

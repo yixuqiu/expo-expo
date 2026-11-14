@@ -9,6 +9,8 @@ import androidx.core.app.AlarmManagerCompat
 import expo.modules.notifications.notifications.interfaces.SchedulableNotificationTrigger
 import expo.modules.notifications.notifications.model.Notification
 import expo.modules.notifications.notifications.model.NotificationRequest
+import expo.modules.notifications.notifications.triggers.AlarmClockAwareTrigger
+import expo.modules.notifications.notifications.triggers.ChannelAwareTrigger
 import expo.modules.notifications.service.NotificationsService
 import expo.modules.notifications.service.interfaces.SchedulingDelegate
 import java.io.IOException
@@ -23,7 +25,7 @@ class ExpoSchedulingDelegate(protected val context: Context) : SchedulingDelegat
       try {
         scheduleNotification(it)
       } catch (e: Exception) {
-        Log.w("expo-notifications", "Notification ${it.identifier} could not have been scheduled: ${e.message}")
+        Log.w("expo-notifications", "Notification ${it.identifier} could not be scheduled: ${e.message}")
         e.printStackTrace()
       }
     }
@@ -50,6 +52,10 @@ class ExpoSchedulingDelegate(protected val context: Context) : SchedulingDelegat
     }
 
     if (request.trigger !is SchedulableNotificationTrigger) {
+      if (request.trigger is ChannelAwareTrigger) {
+        NotificationsService.receive(context, Notification(request))
+        return
+      }
       throw IllegalArgumentException("Notification request \"${request.identifier}\" does not have a schedulable trigger (it's ${request.trigger}). Refusing to schedule.")
     }
 
@@ -59,7 +65,11 @@ class ExpoSchedulingDelegate(protected val context: Context) : SchedulingDelegat
         NotificationsService.removeScheduledNotification(context, request.identifier)
       } else {
         store.saveNotificationRequest(request)
-        setupAlarm(nextTriggerDate.time, NotificationsService.createNotificationTrigger(context, request.identifier))
+        setupAlarm(
+          nextTriggerDate.time,
+          NotificationsService.createNotificationTrigger(context, request.identifier),
+          (request.trigger as? AlarmClockAwareTrigger)?.alarmClock == true
+        )
       }
     }
   }
@@ -97,21 +107,37 @@ class ExpoSchedulingDelegate(protected val context: Context) : SchedulingDelegat
     }
   }
 
-  private fun setupAlarm(triggerAtMillis: Long, operation: PendingIntent) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()) {
-      AlarmManagerCompat.setExactAndAllowWhileIdle(
+  private fun setupAlarm(triggerAtMillis: Long, operation: PendingIntent, alarmClock: Boolean) {
+    val canScheduleExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
+    when {
+      !canScheduleExact -> AlarmManagerCompat.setAndAllowWhileIdle(
         alarmManager,
         AlarmManager.RTC_WAKEUP,
         triggerAtMillis,
         operation
       )
-    } else {
-      AlarmManagerCompat.setAndAllowWhileIdle(
+      // setAlarmClock() alarms are never adjusted by the system. OEM battery policies defer
+      // setExactAndAllowWhileIdle() alarms by minutes on some devices but leave these alone.
+      alarmClock -> alarmManager.setAlarmClock(
+        AlarmManager.AlarmClockInfo(triggerAtMillis, launchAppIntent()),
+        operation
+      )
+      else -> AlarmManagerCompat.setExactAndAllowWhileIdle(
         alarmManager,
         AlarmManager.RTC_WAKEUP,
         triggerAtMillis,
         operation
       )
     }
+  }
+
+  private fun launchAppIntent(): PendingIntent? {
+    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return null
+    return PendingIntent.getActivity(
+      context,
+      0,
+      intent,
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
   }
 }

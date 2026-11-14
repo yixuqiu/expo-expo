@@ -1,0 +1,9 @@
+{
+  "extends": "@expo/internal-scripts/tsconfig.node",
+  "include": ["./src", "./ts-declarations"],
+  "compilerOptions": {
+    "rootDir": "./src",
+    "noEmit": true,
+    "sourceMap": true
+  }
+}

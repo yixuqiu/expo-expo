@@ -1,30 +1,25 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
-import './Preclude.fx';
-
-import chalk from 'chalk';
 import { Command } from 'commander';
 import path from 'node:path';
+import { chalk } from 'zx';
 
-import { packExpoBareTemplateTarballAsync, setupExpoRepoAsync } from './ExpoRepo';
-import { getNpmVersionAsync } from './Npm';
-import {
-  addLinkablePackagesToAppAsync,
-  getExpoPackagesAsync,
-  getReactNativeTransitivePackagesAsync,
-  registerPackageLinkingAsync,
-  reinstallPackagesAsync,
-} from './Packages';
-import { setDefaultVerbose } from './Processes';
+import packageJSON from '../package.json';
+import { packExpoBareTemplateTarballAsync } from './ExpoRepo.js';
+import { getNpmVersionAsync } from './Npm.js';
+import { reinstallPackagesAsync } from './Packages.js';
+import { applyPatchesGlobAsync } from './Patch.js';
+import { setDefaultVerbose } from './Processes.js';
 import {
   type ProjectProperties,
   createExpoApp,
   installCocoaPodsAsync,
   prebuildAppAsync,
-} from './Project';
-import { checkRequiredToolsAsync } from './SanityChecks';
+  setupGradleForNightlyAsync,
+} from './Project.js';
+import { checkRequiredToolsAsync } from './SanityChecks.js';
 
-const packageJSON = require('../package.json');
+const PACKAGE_ROOT = path.dirname(import.meta.dirname);
 
 const program = new Command(packageJSON.name)
   .version(packageJSON.version)
@@ -42,7 +37,6 @@ const program = new Command(packageJSON.name)
     'dev.expo.testnightlies'
   )
   .option('--no-install', 'Skip installing CocoaPods.')
-  .option('--enable-new-architecture', 'Enable the New Architecture mode.')
   .parse(process.argv);
 
 async function runAsync(programName: string) {
@@ -52,12 +46,12 @@ async function runAsync(programName: string) {
 
   const projectName = programOpts.name;
   const projectRoot = path.join(path.resolve(program.args[0] || '.'), projectName);
+  const nightlyVersion = await getNpmVersionAsync('react-native', 'nightly');
   const projectProps: ProjectProperties = {
     appId: programOpts.appId,
-    newArchEnabled: !!programOpts.enableNewArchitecture,
+    nightlyVersion,
+    useExpoRepoPath: programOpts.expoRepo,
   };
-  const expoRepoPath = programOpts.expoRepo ?? path.join(projectRoot, 'expo');
-  const nightlyVersion = await getNpmVersionAsync('react-native', 'nightly');
   console.log(
     chalk.cyan(
       `Setting up app at ${chalk.bold(projectRoot)} with ${chalk.bold(
@@ -65,27 +59,39 @@ async function runAsync(programName: string) {
       )}`
     )
   );
-  await createExpoApp(projectRoot, expoRepoPath, projectProps);
-  await setupExpoRepoAsync(expoRepoPath, nightlyVersion);
-
-  const packages = [
-    ...(await getExpoPackagesAsync(expoRepoPath)),
-    ...(await getReactNativeTransitivePackagesAsync(expoRepoPath)),
-  ];
-
-  console.log(chalk.cyan(`Registering bun links`));
-  for (const pkg of packages) {
-    console.log(`  ${pkg.name}`);
-    await registerPackageLinkingAsync(expoRepoPath, pkg);
-  }
-  await addLinkablePackagesToAppAsync(projectRoot, packages);
+  const expoRepoPath = await createExpoApp(projectRoot, projectProps);
 
   console.log(chalk.cyan(`Reinstalling packages`));
   await reinstallPackagesAsync(projectRoot);
 
+  await applyPatchesGlobAsync({
+    patchGlobPattern: 'packages/**/*.patch',
+    patchRoot: path.join(PACKAGE_ROOT, 'patches'),
+    cwd: expoRepoPath,
+    // Assume the patches have `a/packages/b/c/d.patch` format,
+    // so we need to strip 1 level of prefixes into the expo repo path.
+    stripPrefixNum: 1,
+  });
+  await applyPatchesGlobAsync({
+    patchGlobPattern: 'node_modules/**/*.patch',
+    patchRoot: path.join(PACKAGE_ROOT, 'patches'),
+    cwd: projectRoot,
+    destination: 'node_modules',
+    // Assume the patches have `a/node_modules/b/c/d.patch` format,
+    // so we need to strip 2 levels of prefixes into the node_modules directory.
+    stripPrefixNum: 2,
+  });
+
+  console.log(chalk.cyan(`Creating expo-template-bare-minimum tarball`));
+  const tarballPath = await packExpoBareTemplateTarballAsync(
+    expoRepoPath,
+    path.join(projectRoot, '.expo')
+  );
   console.log(chalk.cyan(`Running prebuild`));
-  const tarballPath = await packExpoBareTemplateTarballAsync(expoRepoPath, projectRoot);
   await prebuildAppAsync(projectRoot, tarballPath);
+
+  console.log(chalk.cyan(`Setting up Gradle for nightly`));
+  await setupGradleForNightlyAsync(projectRoot, expoRepoPath);
 
   if (programOpts.install) {
     if (process.platform === 'darwin') {

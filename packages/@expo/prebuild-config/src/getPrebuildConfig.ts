@@ -1,5 +1,5 @@
 import { getConfig } from '@expo/config';
-import { ModPlatform } from '@expo/config-plugins';
+import type { ModPlatform } from '@expo/config-plugins';
 
 import { getAutolinkedPackagesAsync } from './getAutolinkedPackages';
 import {
@@ -75,6 +75,7 @@ function getPrebuildConfig(
     // Add all built-in plugins
     config = withAndroidExpoPlugins(config, {
       package: config.android.package,
+      projectRoot,
     });
   }
 

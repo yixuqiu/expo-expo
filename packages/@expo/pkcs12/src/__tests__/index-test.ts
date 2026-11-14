@@ -1,3 +1,5 @@
+import type * as forge from 'node-forge';
+
 import {
   getAsn1Hash,
   getCertificateFingerprint,
@@ -162,12 +164,22 @@ describe('getting the ASN.1 representation of a X.509 certificate from PKCS#12 f
   });
 });
 describe('reading X.509 certificates from PKCS#12 files', () => {
+  const removeModulus = (certificate: forge.pki.Certificate) => {
+    // The modulus BigInt is the product of two large prime numbers that were generated during the key creation process.
+    // its internal structure can change between implementations of the BigInt so we remove it from the snapshot.
+    if ('n' in certificate.publicKey) {
+      const { n: _n, ...publicKeyWithoutModulus } = certificate.publicKey;
+      certificate.publicKey = publicKeyWithoutModulus as forge.pki.PublicKey;
+    }
+    return certificate;
+  };
+
   it('is unable to parse a DSA X.509 certificate (limitation)', async () => {
     const { base64EncodedP12, password, alias } = dsaKeystoreP12;
     const p12 = parsePKCS12(base64EncodedP12, password);
     expect(() => {
       getX509CertificateByFriendlyName(p12, alias);
-    }).toThrowError();
+    }).toThrow();
   });
   it('reads X.509 certificate serial numbers from conventional p12 files', async () => {
     const { base64EncodedP12, password, serialNumber: expectedSerialNumber } = conventionalP12;
@@ -180,20 +192,20 @@ describe('reading X.509 certificates from PKCS#12 files', () => {
     const { base64EncodedP12, password } = conventionalP12;
     const p12 = parsePKCS12(base64EncodedP12, password);
     const certificate = getX509Certificate(p12);
-    expect(certificate).toMatchSnapshot();
+    expect(removeModulus(certificate)).toMatchSnapshot();
   });
   it('reads X.509 certificates from p12 keystores using #getX509Certificate', async () => {
     const { base64EncodedP12, password } = keystoreP12;
     const p12 = parsePKCS12(base64EncodedP12, password);
     // gets an arbitrary certificate from the keystore
     const certificate = getX509Certificate(p12);
-    expect(certificate).toMatchSnapshot();
+    expect(removeModulus(certificate)).toMatchSnapshot();
   });
   it('reads X.509 certificates from p12 keystores using #getX509CertificateByFriendlyName', async () => {
     const { base64EncodedP12, password, alias } = keystoreP12;
     const p12 = parsePKCS12(base64EncodedP12, password);
     const certificate = getX509CertificateByFriendlyName(p12, alias);
-    expect(certificate).toMatchSnapshot();
+    expect(removeModulus(certificate!)).toMatchSnapshot();
   });
   it('returns null if there are no X.509 certificates under friendly name for p12 keystores using #getX509CertificateByFriendlyName', async () => {
     const { base64EncodedP12, password } = conventionalP12;
@@ -205,6 +217,6 @@ describe('reading X.509 certificates from PKCS#12 files', () => {
     const { base64EncodedP12, password, alias } = uppercaseAliasKeystoreP12;
     const p12 = parsePKCS12(base64EncodedP12, password);
     const certificate = getX509CertificateByFriendlyName(p12, alias);
-    expect(certificate).toMatchSnapshot();
+    expect(removeModulus(certificate!)).toMatchSnapshot();
   });
 });

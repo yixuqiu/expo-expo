@@ -1,42 +1,28 @@
+import type { HashedAssetData } from '@expo/metro-config/build/transform-worker/getAssets';
+import { drawableFileTypes, getAndroidResourceIdentifier } from '@react-native/asset-utils';
+import crypto from 'crypto';
+import type { EmbeddedManifest } from 'expo-manifests';
+import { resolveEntryPoint } from 'expo/config/paths';
 import {
   createMetroServerAndBundleRequestAsync,
   exportEmbedAssetsAsync,
-} from '@expo/cli/build/src/export/embed/exportEmbedAsync';
-import { drawableFileTypes } from '@expo/cli/build/src/export/metroAssetLocalPath';
-import { resolveEntryPoint } from '@expo/config/paths';
-import { HashedAssetData } from '@expo/metro-config/build/transform-worker/getAssets';
-import crypto from 'crypto';
-import { EmbeddedManifest } from 'expo-manifests';
+} from 'expo/internal/unstable-expo-updates-cli-exports';
 import fs from 'fs';
-import Server from 'metro/src/Server';
-import type { BundleOptions } from 'metro/src/shared/types';
 import path from 'path';
 
 import { filterPlatformAssetScales } from './filterPlatformAssetScales';
 
 export async function createManifestForBuildAsync(
   platform: 'ios' | 'android',
-  possibleProjectRoot: string,
+  projectRoot: string,
   destinationDir: string,
   entryFileArg?: string
 ): Promise<void> {
   const entryFile =
     entryFileArg ||
     process.env.ENTRY_FILE ||
-    getRelativeEntryPoint(possibleProjectRoot, platform) ||
+    resolveEntryPoint(projectRoot, { platform }) ||
     'index.js';
-
-  // Remove projectRoot validation when we no longer support React Native <= 62
-  let projectRoot: string;
-  if (fs.existsSync(path.join(possibleProjectRoot, entryFile))) {
-    projectRoot = path.resolve(possibleProjectRoot);
-  } else if (fs.existsSync(path.join(possibleProjectRoot, '..', entryFile))) {
-    projectRoot = path.resolve(possibleProjectRoot, '..');
-  } else {
-    throw new Error(
-      'Error loading application entry point. If your entry point is not index.js, please set ENTRY_FILE environment variable with your app entry point.'
-    );
-  }
 
   process.chdir(projectRoot);
 
@@ -46,15 +32,13 @@ export async function createManifestForBuildAsync(
     minify: false,
     dev: process.env.CONFIGURATION === 'Debug', // ensures debug assets packaged correctly for iOS and native debug
     sourcemapUseAbsolutePath: false,
+    resetCache: false,
   };
 
-  const { server, bundleRequest } = (await createMetroServerAndBundleRequestAsync(
+  const { server, bundleRequest } = await createMetroServerAndBundleRequestAsync(
     projectRoot,
     options
-  )) as {
-    server: Server;
-    bundleRequest: BundleOptions;
-  };
+  );
 
   let assets: HashedAssetData[];
   try {
@@ -80,7 +64,11 @@ export async function createManifestForBuildAsync(
         'The hashAssetFiles Metro plugin is not configured. You need to add a metro.config.js to your project that configures Metro to use this plugin. See https://github.com/expo/expo/blob/main/packages/expo-updates/README.md#metroconfigjs for an example.'
       );
     }
-    filterPlatformAssetScales(platform, asset.scales).forEach(function (scale, index) {
+    const platformScales = new Set(filterPlatformAssetScales(platform, asset.scales));
+    asset.scales.forEach(function (scale, index) {
+      if (!platformScales.has(scale)) {
+        return;
+      }
       const baseAssetInfoForManifest = {
         name: asset.name,
         type: asset.type,
@@ -108,29 +96,8 @@ export async function createManifestForBuildAsync(
   fs.writeFileSync(path.join(destinationDir, 'app.manifest'), JSON.stringify(manifest));
 }
 
-/**
- * Resolve the relative entry file using Expo's resolution method.
- */
-function getRelativeEntryPoint(projectRoot: string, platform: 'ios' | 'android'): string {
-  const entry = resolveEntryPoint(projectRoot, { platform });
-  if (entry) {
-    return path.relative(projectRoot, entry);
-  }
-  return entry;
-}
-
 function getAndroidResourceFolderName(asset: HashedAssetData) {
-  return (drawableFileTypes as Set<string>).has(asset.type) ? 'drawable' : 'raw';
-}
-
-// copied from react-native/Libraries/Image/assetPathUtils.js
-function getAndroidResourceIdentifier(asset: HashedAssetData) {
-  const folderPath = getBasePath(asset);
-  return (folderPath + '/' + asset.name)
-    .toLowerCase()
-    .replace(/\//g, '_') // Encode folder structure in file name
-    .replace(/([^a-z0-9_])/g, '') // Remove illegal chars
-    .replace(/^assets_/, ''); // Remove "assets_" prefix
+  return drawableFileTypes.has(asset.type) ? 'drawable' : 'raw';
 }
 
 function getIosDestinationDir(asset: HashedAssetData) {
@@ -139,11 +106,7 @@ function getIosDestinationDir(asset: HashedAssetData) {
   return getBasePath(asset).replace(/\.\.\//g, '_');
 }
 
-// copied from react-native/Libraries/Image/assetPathUtils.js
 function getBasePath(asset: HashedAssetData) {
-  let basePath = asset.httpServerLocation;
-  if (basePath[0] === '/') {
-    basePath = basePath.substr(1);
-  }
-  return basePath;
+  const basePath = asset.httpServerLocation;
+  return basePath.startsWith('/') ? basePath.slice(1) : basePath;
 }

@@ -1,5 +1,5 @@
-import { Step } from '~/ui/components/Step';
 import { Terminal } from '~/ui/components/Snippet';
+import { Step } from '~/ui/components/Step';
 
 import { BuildEnvironmentSwitch } from '../BuildEnvironmentSwitch';
 
@@ -13,7 +13,14 @@ import { BuildEnvironmentSwitch } from '../BuildEnvironmentSwitch';
 
 To build your app, you will need to install EAS CLI. You can do this by running the following command in your terminal:
 
-<Terminal cmd={['$ npm install -g eas-cli']} />
+<Terminal
+  cmd={{
+    npm: ['$ npm install --global eas-cli'],
+    yarn: ['$ yarn global add eas-cli'],
+    pnpm: ['$ pnpm add --global eas-cli'],
+    bun: ['$ bun add --global eas-cli'],
+  }}
+/>
 
 </Step>
 
@@ -32,7 +39,7 @@ To build your app, you will need to create an Expo account and login to the EAS 
 <Step label="3">
 ### Configure your project
 
-Run the following command to create an EAS config in your project:
+Run the following command to create an **eas.json** file in your project:
 
 <Terminal cmd={['$ eas build:configure']} />
 
@@ -49,6 +56,6 @@ Run the following command to create a development build:
 <Step label="5">
 ### Install the development build on your device
 
-After the build is complete, scan the QR code in your terminal or open the link on your device. Tap "Install" to download the build onto your device, then tap "Open" to install it.
+After the build is complete, scan the QR code in your terminal or open the link on your device. Tap **Install** to download the build on your device, then tap **Open** to install it.
 
 </Step>

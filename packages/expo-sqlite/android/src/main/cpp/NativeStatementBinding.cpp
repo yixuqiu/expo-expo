@@ -1,8 +1,11 @@
 // Copyright 2015-present 650 Industries. All rights reserved.
 
+#include <fbjni/ByteBuffer.h>
 #include "NativeStatementBinding.h"
 
 #include <android/log.h>
+#include "Exceptions.h"
+#include "SQLiteError.h"
 
 namespace jni = facebook::jni;
 
@@ -32,6 +35,8 @@ void NativeStatementBinding::registerNatives() {
       makeNativeMethod("sqlite3_step", NativeStatementBinding::sqlite3_step),
       makeNativeMethod("bindStatementParam",
                        NativeStatementBinding::bindStatementParam),
+      makeNativeMethod("getLastErrorMessage",
+                       NativeStatementBinding::getLastErrorMessage),
       makeNativeMethod("getColumnNames",
                        NativeStatementBinding::getColumnNames),
       makeNativeMethod("getColumnValues",
@@ -41,52 +46,96 @@ void NativeStatementBinding::registerNatives() {
 
 int NativeStatementBinding::sqlite3_bind_parameter_index(
     const std::string &name) {
-  return ::sqlite3_bind_parameter_index(stmt, name.c_str());
+  return ::exsqlite3_bind_parameter_index(stmt, name.c_str());
 }
 
 int NativeStatementBinding::sqlite3_clear_bindings() {
-  return ::sqlite3_clear_bindings(stmt);
+  return ::exsqlite3_clear_bindings(stmt);
 }
 
 int NativeStatementBinding::sqlite3_column_count() {
-  return ::sqlite3_column_count(stmt);
+  return ::exsqlite3_column_count(stmt);
 }
 
 std::string NativeStatementBinding::sqlite3_column_name(int index) {
-  return ::sqlite3_column_name(stmt, index);
+  return ::exsqlite3_column_name(stmt, index);
 }
 
 int NativeStatementBinding::sqlite3_finalize() {
-  return ::sqlite3_finalize(stmt);
+  if (!stmt) {
+    lastErrorMessage.clear();
+    return SQLITE_OK;
+  }
+  if (!db) {
+    lastErrorMessage = sqliteErrorMessage(SQLITE_MISUSE);
+    return SQLITE_MISUSE;
+  }
+  SQLiteDatabaseLock lock(db);
+  int ret = ::exsqlite3_finalize(stmt);
+  stmt = nullptr;
+  lastErrorMessage = ret == SQLITE_OK ? "" : sqliteErrorMessage(db, ret);
+  return ret;
 }
 
-int NativeStatementBinding::sqlite3_reset() { return ::sqlite3_reset(stmt); }
+int NativeStatementBinding::sqlite3_reset() {
+  if (!stmt) {
+    lastErrorMessage.clear();
+    return SQLITE_OK;
+  }
+  if (!db) {
+    lastErrorMessage = sqliteErrorMessage(SQLITE_MISUSE);
+    return SQLITE_MISUSE;
+  }
+  SQLiteDatabaseLock lock(db);
+  int ret = ::exsqlite3_reset(stmt);
+  lastErrorMessage = ret == SQLITE_OK ? "" : sqliteErrorMessage(db, ret);
+  return ret;
+}
 
-int NativeStatementBinding::sqlite3_step() { return ::sqlite3_step(stmt); }
+int NativeStatementBinding::sqlite3_step() {
+  if (!stmt || !db) {
+    lastErrorMessage = sqliteErrorMessage(SQLITE_MISUSE);
+    return SQLITE_MISUSE;
+  }
+  SQLiteDatabaseLock lock(db);
+  int ret = ::exsqlite3_step(stmt);
+  lastErrorMessage = ret == SQLITE_ROW || ret == SQLITE_DONE
+                         ? ""
+                         : sqliteErrorMessage(db, ret);
+  return ret;
+}
+
+std::string NativeStatementBinding::getLastErrorMessage() {
+  return lastErrorMessage;
+}
 
 int NativeStatementBinding::bindStatementParam(
     int index, jni::alias_ref<jni::JObject> param) {
   int ret = -1;
   if (param == nullptr) {
-    ret = sqlite3_bind_null(stmt, index);
+    ret = exsqlite3_bind_null(stmt, index);
   } else if (param->isInstanceOf(jni::JInteger::javaClassStatic())) {
-    ret = sqlite3_bind_int(stmt, index,
+    ret = exsqlite3_bind_int(stmt, index,
                            jni::static_ref_cast<jni::JInteger>(param)->value());
   } else if (param->isInstanceOf(jni::JLong::javaClassStatic())) {
-    ret = sqlite3_bind_int64(stmt, index,
+    ret = exsqlite3_bind_int64(stmt, index,
                              jni::static_ref_cast<jni::JLong>(param)->value());
   } else if (param->isInstanceOf(jni::JDouble::javaClassStatic())) {
-    ret = sqlite3_bind_double(
+    ret = exsqlite3_bind_double(
         stmt, index, jni::static_ref_cast<jni::JDouble>(param)->value());
   } else if (param->isInstanceOf(jni::JBoolean::javaClassStatic())) {
-    ret = sqlite3_bind_int(
+    ret = exsqlite3_bind_int(
         stmt, index,
         jni::static_ref_cast<jni::JBoolean>(param)->value() ? 1 : 0);
   } else if (param->isInstanceOf(jni::JArrayByte::javaClassStatic())) {
     auto byteArray = jni::static_ref_cast<jni::JArrayByte>(param);
     auto data = byteArray->getRegion(0, byteArray->size());
-    ret = sqlite3_bind_blob(stmt, index, data.get(), byteArray->size(),
-                            SQLITE_TRANSIENT);
+    ret = exsqlite3_bind_blob(stmt, index, data.get(), byteArray->size(),
+                              SQLITE_TRANSIENT);
+  } else if (param->isInstanceOf(jni::JByteBuffer::javaClassStatic())) {
+    auto byteBuffer = jni::static_ref_cast<jni::JByteBuffer>(param);
+    ret = exsqlite3_bind_blob(stmt, index, byteBuffer->getDirectAddress(), byteBuffer->getDirectSize(),
+                              SQLITE_TRANSIENT);
   } else {
     std::string stringArg;
     if (param->isInstanceOf(jni::JString::javaClassStatic())) {
@@ -94,7 +143,7 @@ int NativeStatementBinding::bindStatementParam(
     } else {
       stringArg = param->toString();
     }
-    ret = sqlite3_bind_text(stmt, index, stringArg.c_str(), stringArg.length(),
+    ret = exsqlite3_bind_text(stmt, index, stringArg.c_str(), stringArg.length(),
                             SQLITE_TRANSIENT);
   }
   return ret;
@@ -102,17 +151,17 @@ int NativeStatementBinding::bindStatementParam(
 
 jni::local_ref<jni::JArrayList<jni::JString>>
 NativeStatementBinding::getColumnNames() {
-  int columnCount = sqlite3_column_count();
+  int columnCount = this->sqlite3_column_count();
   auto columnNames = jni::JArrayList<jni::JString>::create(columnCount);
   for (int i = 0; i < columnCount; ++i) {
-    columnNames->add(jni::make_jstring(sqlite3_column_name(i)));
+    columnNames->add(jni::make_jstring(this->sqlite3_column_name(i)));
   }
   return columnNames;
 }
 
 jni::local_ref<jni::JArrayList<jni::JObject>>
 NativeStatementBinding::getColumnValues() {
-  int columnCount = sqlite3_column_count();
+  int columnCount = this->sqlite3_column_count();
   auto columnValues = jni::JArrayList<jni::JObject>::create(columnCount);
   for (int i = 0; i < columnCount; ++i) {
     columnValues->add(getColumnValue(i));
@@ -127,27 +176,29 @@ NativeStatementBinding::initHybrid(jni::alias_ref<jhybridobject> jThis) {
 }
 
 jni::local_ref<jni::JObject> NativeStatementBinding::getColumnValue(int index) {
-  int type = ::sqlite3_column_type(stmt, index);
+  int type = ::exsqlite3_column_type(stmt, index);
   switch (type) {
   case SQLITE_INTEGER: {
-    return jni::JLong::valueOf(sqlite3_column_int64(stmt, index));
+    return jni::JLong::valueOf(exsqlite3_column_int64(stmt, index));
   }
   case SQLITE_FLOAT: {
-    return jni::JDouble::valueOf(sqlite3_column_double(stmt, index));
+    return jni::JDouble::valueOf(exsqlite3_column_double(stmt, index));
   }
   case SQLITE_TEXT: {
     std::string text(
-        reinterpret_cast<const char *>(sqlite3_column_text(stmt, index)),
-        static_cast<size_t>(sqlite3_column_bytes(stmt, index)));
+        reinterpret_cast<const char *>(exsqlite3_column_text(stmt, index)),
+        static_cast<size_t>(exsqlite3_column_bytes(stmt, index)));
     return jni::make_jstring(text);
   }
   case SQLITE_BLOB: {
-    size_t length = static_cast<size_t>(sqlite3_column_bytes(stmt, index));
-    auto byteArray = jni::JArrayByte::newArray(length);
-    byteArray->setRegion(
-        0, length,
-        static_cast<const signed char *>(sqlite3_column_blob(stmt, index)));
-    return byteArray;
+    size_t length = static_cast<size_t>(exsqlite3_column_bytes(stmt, index));
+    auto byteBuffer = jni::JByteBuffer::allocateDirect(length);
+    memcpy(
+      byteBuffer->getDirectAddress(),
+      exsqlite3_column_blob(stmt, index),
+      length
+    );
+    return byteBuffer;
   }
   case SQLITE_NULL: {
     return nullptr;

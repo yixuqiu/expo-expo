@@ -1,4 +1,4 @@
-const eslint = require('eslint');
+const eslint = require('eslint8');
 const path = require('path');
 
 const checkPrettierRulesAsync = require('./tools/checkPrettierRulesAsync');
@@ -23,16 +23,15 @@ it(`lints with the default config`, async () => {
     {
       baseConfig: getBaseConfig(),
       overrideConfigFile: configFile,
-      fix: true,
       ignore: false,
       useEslintrc: false,
     },
-    ['__tests__/fixtures/*all*'],
+    ['fixtures/*all*'],
   );
   for (const result of results) {
-    const relativeFilePath = path.relative(__dirname, result.filePath);
+    const platformIndependentPath = path.relative(__dirname, result.filePath).replace(/\\/g, '/');
     delete result.filePath;
-    expect(result).toMatchSnapshot(relativeFilePath);
+    expect(result).toMatchSnapshot(platformIndependentPath);
   }
 }, 20000);
 

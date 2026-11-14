@@ -1,7 +1,8 @@
 import { registerRootComponent } from 'expo';
-import * as SplashScreen from 'expo-splash-screen';
-import React from 'react';
-import { Platform, View } from 'react-native';
+import * as React from 'react';
+import { View } from 'react-native';
+
+import * as SplashScreen from './utils/splash';
 
 function isBaseObject(obj: any) {
   if (Object.prototype.toString.call(obj) !== '[object Object]') {
@@ -51,19 +52,18 @@ function convertError(error: any) {
  */
 export function renderRootComponent(Component: React.ComponentType<any>) {
   try {
+    if (process.env.NODE_ENV !== 'production') {
+      require('@expo/log-box/lib').setupLogBox();
+    }
+
     // This must be delayed so the user has a chance to call it first.
     setTimeout(() => {
-      // @ts-expect-error: This function is native-only and for internal-use only.
       SplashScreen._internal_preventAutoHideAsync?.();
     });
 
-    if (process.env.NODE_ENV !== 'production') {
-      const { withErrorOverlay } =
-        require('@expo/metro-runtime/error-overlay') as typeof import('@expo/metro-runtime/error-overlay');
-      registerRootComponent(withErrorOverlay(Component));
-    } else {
+    React.startTransition(() => {
       registerRootComponent(Component);
-    }
+    });
   } catch (e) {
     // Hide the splash screen if there was an error so the user can see it.
     SplashScreen.hideAsync();
@@ -76,7 +76,7 @@ export function renderRootComponent(Component: React.ComponentType<any>) {
     registerRootComponent(() => <View />);
 
     // Console is pretty useless on native, on web you get interactive stack traces.
-    if (Platform.OS === 'web') {
+    if (process.env.EXPO_OS === 'web') {
       console.error(error);
       console.error(`A runtime error has occurred while rendering the root component.`);
     }

@@ -9,17 +9,23 @@ public class StoreReviewModule: Module {
       return !isRunningFromTestFlight()
     }
 
-    AsyncFunction("requestReview") {
-      if #available(iOS 14, *) {
-        guard let currentScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene else {
-          throw MissingCurrentWindowSceneException()
-        }
-
-        SKStoreReviewController.requestReview(in: currentScene)
-      } else {
-        SKStoreReviewController.requestReview()
+    AsyncFunction("requestReview") { @MainActor () async throws in
+      guard let currentScene = getForegroundActiveScene() else {
+        // If no valid foreground scene is found, throw an exception
+        // as the review prompt won't be visible in background
+        throw MissingCurrentWindowSceneException()
       }
-    }.runOnQueue(DispatchQueue.main)
+      if #available(iOS 16.0, *) {
+        AppStore.requestReview(in: currentScene)
+      } else {
+        SKStoreReviewController.requestReview(in: currentScene)
+      }
+    }
+  }
+
+  @MainActor
+  private func getForegroundActiveScene() -> UIWindowScene? {
+    return SceneGeometry.foregroundScene()
   }
 
   private func isRunningFromTestFlight() -> Bool {
@@ -27,7 +33,7 @@ public class StoreReviewModule: Module {
     return false
     #endif
 
-    // For apps distributed through TestFlight or intalled from Xcode the receipt file is named "StoreKit/sandboxReceipt"
+    // For apps distributed through TestFlight or installed from Xcode the receipt file is named "StoreKit/sandboxReceipt"
     // instead of "StoreKit/receipt"
     let isSandboxEnv = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
 

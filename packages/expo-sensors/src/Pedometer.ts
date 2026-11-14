@@ -1,16 +1,12 @@
 import {
-  PermissionExpiration,
-  PermissionResponse,
+  type PermissionResponse,
   PermissionStatus,
-  EventEmitter,
-  Subscription,
+  type EventSubscription,
   UnavailabilityError,
-} from 'expo-modules-core';
+} from 'expo';
 import invariant from 'invariant';
 
 import ExponentPedometer from './ExponentPedometer';
-
-const PedometerEventEmitter = new EventEmitter(ExponentPedometer);
 
 export type PedometerResult = {
   /**
@@ -31,9 +27,13 @@ export type PedometerUpdateCallback = (result: PedometerResult) => void;
  * provided with a single argument that is [`PedometerResult`](#pedometerresult).
  * @return Returns a [`Subscription`](#subscription) that enables you to call
  * `remove()` when you would like to unsubscribe the listener.
+ *
+ * > Pedometer updates will not be delivered while the app is in the background. As an alternative, on Android, use another solution based on
+ * > [`Health Connect API`](https://developer.android.com/health-and-fitness/guides/health-connect).
+ * > On iOS, the `getStepCountAsync` method can be used to get the step count between two dates.
  */
-export function watchStepCount(callback: PedometerUpdateCallback): Subscription {
-  return PedometerEventEmitter.addListener('Exponent.pedometerUpdate', callback);
+export function watchStepCount(callback: PedometerUpdateCallback): EventSubscription {
+  return ExponentPedometer.addListener('Exponent.pedometerUpdate', callback);
 }
 
 // @needsAudit
@@ -94,4 +94,9 @@ const defaultPermissionsResponse: PermissionResponse = {
   status: PermissionStatus.GRANTED,
 };
 
-export { Subscription, PermissionResponse, PermissionStatus, PermissionExpiration };
+export {
+  type PermissionResponse,
+  PermissionStatus,
+  type PermissionExpiration,
+  type EventSubscription as Subscription,
+} from 'expo';

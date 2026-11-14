@@ -6,10 +6,12 @@ import { mockSpawnPromise, STUB_SPAWN_CHILD } from '../../__tests__/spawn-utils'
 import { YarnPackageManager } from '../YarnPackageManager';
 
 jest.mock('@expo/spawn-async');
-jest.mock('fs');
+// Jest doesn't mock `node:fs` when mocking `fs`
+jest.mock('fs', () => require('memfs').fs);
+jest.mock('node:fs', () => require('memfs').fs);
 
 beforeAll(() => {
-  // Disable logging to clean up test ouput
+  // Disable logging to clean up test output
   jest.spyOn(console, 'log').mockImplementation();
 });
 
@@ -26,7 +28,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.installAsync();
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
         expect.objectContaining({
@@ -39,7 +41,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot, env: { ADBLOCK: '0' } });
       await yarn.installAsync();
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
         expect.objectContaining({
@@ -74,7 +76,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.runAsync(['install']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
         expect.objectContaining({ stdio: 'inherit' })
@@ -85,7 +87,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot, silent: true });
       await yarn.runAsync(['install']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
         expect.objectContaining({ stdio: undefined })
@@ -96,7 +98,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.runAsync(['add', '--peer', '@babel/core']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['add', '--peer', '@babel/core'],
         expect.objectContaining({ cwd: projectRoot })
@@ -107,7 +109,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.runAsync(['add', '--peer', '@babel/core', '@babel/runtime']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['add', '--peer', '@babel/core', '@babel/runtime'],
         expect.objectContaining({ cwd: projectRoot })
@@ -124,7 +126,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
 
       expect(await yarn.versionAsync()).toBe('4.2.0');
-      expect(spawnAsync).toBeCalledWith('yarnpkg', ['--version'], expect.anything());
+      expect(spawnAsync).toHaveBeenCalledWith('yarnpkg', ['--version'], expect.anything());
     });
   });
 
@@ -139,7 +141,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
 
       expect(await yarn.getConfigAsync('registry')).toBe('https://custom.registry.org/');
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['config', 'get', 'registry'],
         expect.anything()
@@ -152,7 +154,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.installAsync();
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['install'],
         expect.objectContaining({ cwd: projectRoot })
@@ -163,7 +165,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.installAsync(['--ignore-scripts']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['install', '--ignore-scripts'],
         expect.objectContaining({ cwd: projectRoot })
@@ -209,7 +211,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.addAsync();
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['install'],
         expect.objectContaining({ cwd: projectRoot })
@@ -228,7 +230,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.addAsync(['@react-navigation/native']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['add', '@react-navigation/native'],
         expect.objectContaining({ cwd: projectRoot })
@@ -239,7 +241,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.addAsync(['@react-navigation/native', '@react-navigation/drawer']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['add', '@react-navigation/native', '@react-navigation/drawer'],
         expect.objectContaining({ cwd: projectRoot })
@@ -252,7 +254,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.addDevAsync();
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['install'],
         expect.objectContaining({ cwd: projectRoot })
@@ -271,7 +273,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.addDevAsync(['eslint']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['add', '--dev', 'eslint'],
         expect.objectContaining({ cwd: projectRoot })
@@ -282,7 +284,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.addDevAsync(['eslint', 'prettier']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['add', '--dev', 'eslint', 'prettier'],
         expect.objectContaining({ cwd: projectRoot })
@@ -295,7 +297,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.addGlobalAsync();
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['install'],
         expect.objectContaining({ cwd: projectRoot })
@@ -314,7 +316,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.addGlobalAsync(['expo-cli@^5']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['global', 'add', 'expo-cli@^5'],
         expect.anything()
@@ -325,7 +327,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.addGlobalAsync(['expo-cli@^5', 'eas-cli']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['global', 'add', 'expo-cli@^5', 'eas-cli'],
         expect.anything()
@@ -338,7 +340,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.removeAsync(['metro']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['remove', 'metro'],
         expect.objectContaining({ cwd: projectRoot })
@@ -349,7 +351,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.removeAsync(['metro', 'jest-haste-map']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['remove', 'metro', 'jest-haste-map'],
         expect.objectContaining({ cwd: projectRoot })
@@ -362,7 +364,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.removeDevAsync(['metro']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['remove', 'metro'],
         expect.objectContaining({ cwd: projectRoot })
@@ -373,7 +375,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.removeDevAsync(['metro', 'jest-haste-map']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['remove', 'metro', 'jest-haste-map'],
         expect.objectContaining({ cwd: projectRoot })
@@ -386,7 +388,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.removeGlobalAsync(['expo-cli']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['global', 'remove', 'expo-cli'],
         expect.objectContaining({ cwd: projectRoot })
@@ -397,7 +399,7 @@ describe('YarnPackageManager', () => {
       const yarn = new YarnPackageManager({ cwd: projectRoot });
       await yarn.removeGlobalAsync(['expo-cli', 'eas-cli']);
 
-      expect(spawnAsync).toBeCalledWith(
+      expect(spawnAsync).toHaveBeenCalledWith(
         'yarnpkg',
         ['global', 'remove', 'expo-cli', 'eas-cli'],
         expect.objectContaining({ cwd: projectRoot })

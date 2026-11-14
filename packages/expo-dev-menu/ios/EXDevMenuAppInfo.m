@@ -1,6 +1,5 @@
 // Copyright 2015-present 650 Industries. All rights reserved.
 #import <EXDevMenu/EXDevMenuAppInfo.h>
-#import <React/RCTBridge+Private.h>
 #if __has_include(<EXDevMenu/EXDevMenu-Swift.h>)
 #import <EXDevMenu/EXDevMenu-Swift.h>
 #else
@@ -16,7 +15,7 @@
   NSMutableDictionary *appInfo = [NSMutableDictionary new];
 
   NSString *appIcon = [EXDevMenuAppInfo getAppIcon];
-  NSString *runtimeVersion = [EXDevMenuAppInfo getUpdatesConfigForKey:@"EXUpdatesRuntimeVersion"];
+  NSString *runtimeVersion = @"";
   NSString *appVersion = [EXDevMenuAppInfo getFormattedAppVersion];
   NSString *appName = [[NSBundle mainBundle] objectForInfoDictionaryKey: @"CFBundleDisplayName"] ?: [[NSBundle mainBundle] objectForInfoDictionaryKey: @"CFBundleExecutable"];
 
@@ -25,25 +24,25 @@
   if (manager.currentManifest != nil) {
     appName = [manager.currentManifest name];
     appVersion = [manager.currentManifest version];
+
+    NSString *manifestIcon = [manager.currentManifest iosAppIconUrl];
+    if (manifestIcon) {
+      appIcon = manifestIcon;
+    }
+
+    if ([manager.currentManifest isKindOfClass:[EXManifestsExpoUpdatesManifest class]]) {
+      runtimeVersion = [(EXManifestsExpoUpdatesManifest *)manager.currentManifest runtimeVersion];
+    }
   }
 
   NSString *engine;
-  NSString *bridgeDescription = [[[manager currentBridge] batchedBridge] bridgeDescription];
-
-  // In bridgeless mode the bridgeDescription always is "BridgeProxy" instead of actual engine name
-  if ([bridgeDescription containsString:@"BridgeProxy"]) {
-  #if USE_HERMES
-    engine = @"Hermes";
-  #else
-    engine = @"JSC";
-  #endif
-  } else if ([bridgeDescription containsString:@"Hermes"]) {
-    engine = @"Hermes";
-  } else if ([bridgeDescription containsString:@"V8"]) {
-    engine = @"V8";
-  } else {
-    engine = @"JSC";
-  }
+#if USE_HERMES
+  engine = @"Hermes";
+#elif USE_QUICKJS
+  engine = @"QuickJS";
+#else
+  engine = @"JSC";
+#endif
 
   NSString *hostUrl = [manager.currentManifestURL absoluteString] ?: @"";
 
@@ -60,31 +59,20 @@
 +(NSString *)getAppIcon
 {
   NSString *appIcon = @"";
-  NSString *appIconName = [[[[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleIcons"] objectForKey:@"CFBundlePrimaryIcon"] objectForKey:@"CFBundleIconFiles"]  lastObject];
+  NSString *appIconName = nil;
+  // For some projects, the CFBundlePrimaryIcon value can be a string, leading to a crash
+  // We wrap this in a try/catch to prevent the crash
+  @try {
+    appIconName = [[[[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleIcons"] objectForKey:@"CFBundlePrimaryIcon"] objectForKey:@"CFBundleIconFiles"]  lastObject];
+  } @catch(NSException *_e) {}
 
   if (appIconName != nil) {
     NSString *resourcePath = [[NSBundle mainBundle] resourcePath];
-    NSString *appIconPath = [[resourcePath stringByAppendingString:appIconName] stringByAppendingString:@".png"];
+    NSString *appIconPath = [resourcePath stringByAppendingPathComponent:[appIconName stringByAppendingPathExtension:@"png"]];
     appIcon = [@"file://" stringByAppendingString:appIconPath];
   }
 
   return appIcon;
-}
-
-+(NSString *)getUpdatesConfigForKey:(NSString *)key
-{
-  NSString *value = @"";
-  NSString *path = [[NSBundle mainBundle] pathForResource:@"Expo" ofType:@"plist"];
-
-  if (path != nil) {
-    NSDictionary *expoConfig = [NSDictionary dictionaryWithContentsOfFile:path];
-
-    if (expoConfig != nil) {
-      value = [expoConfig objectForKey:key] ?: @"";
-    }
-  }
-
-  return value;
 }
 
 +(NSString *)getFormattedAppVersion

@@ -14,13 +14,17 @@ private const val SNACK_STAGING = "2dce2748-c51f-4865-bae0-392af794d60a"
 private const val SNACK_PROD = "933fd9c0-1666-11e7-afca-d980795c5824"
 
 class ManifestException : ExponentException {
-  private val manifestUrl: String
   private var errorJSON: JSONObject? = null
-  private lateinit var errorMessage: String
-  private var fixInstructions: String? = null
   private val isSnackURL: Boolean
     get() =
       manifestUrl.contains(SNACK_STAGING) || manifestUrl.contains(SNACK_PROD)
+
+  val manifestUrl: String
+  lateinit var errorMessage: String
+    private set
+
+  var fixInstructions: String? = null
+    private set
 
   var canRetry: Boolean = true
   val errorHeader: String?
@@ -28,11 +32,16 @@ class ManifestException : ExponentException {
       try {
         when (it.getString("errorCode")) {
           "EXPERIENCE_SDK_VERSION_OUTDATED" -> {
-            val projectType = if (isSnackURL) "This Snack" else "Project"
+            val projectType = if (isSnackURL) {
+              "This Snack"
+            } else {
+              "Project"
+            }
             "$projectType is incompatible with this version of Expo Go"
           }
           "EXPERIENCE_SDK_VERSION_TOO_NEW" -> "Project is incompatible with this version of Expo Go"
           "SNACK_NOT_FOUND_FOR_SDK_VERSION" -> "This Snack is incompatible with this version of Expo Go"
+          "EXPERIENCE_HERMES_BUNDLE_NOT_SUPPORTED" -> "Project is incompatible with Expo Go"
           else -> null
         }
       } catch (e: JSONException) {
@@ -62,16 +71,8 @@ class ManifestException : ExponentException {
     }
 
     var formattedMessage = "Could not load $manifestUrl.$extraMessage"
-    val supportedSdks = Constants.SDK_VERSIONS_LIST.map {
+    val supportedSdk = Constants.SDK_VERSION.let {
       it.substring(0, it.indexOf('.')).toInt()
-    }.sorted()
-    val supportedSdksString = { conjunction: String ->
-      if (supportedSdks.size == 1) {
-        supportedSdks[0]
-      } else {
-        supportedSdks.subList(0, supportedSdks.size - 1)
-          .joinToString(", ") + " $conjunction ${supportedSdks.last()}"
-      }
     }
 
     errorJSON?.let { errorJSON ->
@@ -90,25 +91,24 @@ class ManifestException : ExponentException {
             val sdkVersionRequired = availableSDKVersions.getString(0).let {
               it.substring(0, it.indexOf('.'))
             }
-            val maybePluralSDKsString = "SDK${"s".takeIf { supportedSdks.size > 1 } ?: ""}"
             val expoDevLink =
               "https://expo.dev/go?sdkVersion=$sdkVersionRequired&platform=android&device=${!isRunningOnEmulator()}"
 
-            val projectType = if (isSnackURL) "snack" else "project"
+            val projectType = if (isSnackURL) {
+              "snack"
+            } else {
+              "project"
+            }
 
             formattedMessage =
-              "• The installed version of Expo Go is for <b>$maybePluralSDKsString ${
-                supportedSdksString(
-                  "and"
-                )
-              }</b>.<br>" +
+              "• The installed version of Expo Go is for <b>SDK $supportedSdk</b>.<br>" +
               "• The $projectType you opened uses <b>SDK $sdkVersionRequired</b>."
             fixInstructions = if (isSnackURL) {
-              "Either select SDK ${supportedSdksString("or")} on <a href='https:/snack.expo.dev/'>https:/snack.expo.dev/</a> or install an older version of Expo Go that is compatible with your project." +
+              "Either select SDK $supportedSdk on <a href='https:/snack.expo.dev/'>https:/snack.expo.dev/</a> or install an older version of Expo Go that is compatible with your project." +
                 "<br>If your required SDK version is not listed on Snack, use an emulator or one of the online emulators inside of Snack<br><br>"
             } else {
-              "Either upgrade this project to SDK ${supportedSdksString("or")} or install an older version of Expo Go that is compatible with ${if (isSnackURL) "this" else "your"} $projectType.<br><br>" +
-                "<a href='https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/'>Learn how to upgrade to SDK ${supportedSdks.last()}.</a><br><br>"
+              "Either upgrade this project to SDK $supportedSdk or install an older version of Expo Go that is compatible with ${if (isSnackURL) "this" else "your"} $projectType.<br><br>" +
+                "<a href='https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/'>Learn how to upgrade to SDK $supportedSdk.</a><br><br>"
             } + "<a href='$expoDevLink'>Learn how to install Expo Go for SDK $sdkVersionRequired</a>."
             canRetry = false
           }
@@ -125,6 +125,13 @@ class ManifestException : ExponentException {
               "You need to log in. If the snack is still unavailable after logging in, ask the owner to grant you access."
           }
 
+          "EXPERIENCE_HERMES_BUNDLE_NOT_SUPPORTED" -> {
+            formattedMessage = "This project was published with a precompiled Hermes bytecode bundle. Expo Go runs plain JavaScript bundles, so it can't load this update."
+            fixInstructions =
+              "Open this project in a <a href='https://docs.expo.dev/develop/development-builds/introduction/'>development build</a> instead, or use <b>eas update --no-bytecode</b>."
+            canRetry = false
+          }
+
           "USER_SNACK_NOT_FOUND", "SNACK_NOT_FOUND" ->
             formattedMessage = "No snack found at $manifestUrl."
 
@@ -137,7 +144,6 @@ class ManifestException : ExponentException {
             val fullName = metadata["fullName"] ?: ""
             val snackSdkVersion =
               (metadata["sdkVersions"] as? JSONArray)?.get(0) as? String ?: "unknown"
-            val maybePluralSDKsString = "SDK${"s".takeIf { supportedSdks.size > 1 } ?: ""}"
 
             if (snackSdkVersion == "unknown" || snackSdkVersion.indexOf(".") == -1) {
               formattedMessage = rawMessage
@@ -151,13 +157,9 @@ class ManifestException : ExponentException {
               return@closure
             }
             formattedMessage =
-              "The snack \"${fullName}\" was found, but it is not compatible with your version of Expo Go. It was released for SDK $snackSdkVersionValue, but your Expo Go supports only $maybePluralSDKsString ${
-                supportedSdksString(
-                  "and"
-                )
-              }."
+              "The snack \"${fullName}\" was found, but it is not compatible with your version of Expo Go. It was released for SDK $snackSdkVersionValue, but your Expo Go supports only SDK $supportedSdk."
 
-            fixInstructions = if (supportedSdks.last() < snackSdkVersionValue) {
+            fixInstructions = if (supportedSdk < snackSdkVersionValue) {
               "You need to update your Expo Go app in order to run this Snack."
             } else {
               "Snack needs to be upgraded to a current SDK version. To do it, open the project at <a href='https://snack.expo.dev'>Expo Snack website</a>. It will be automatically upgraded to a supported SDK version."

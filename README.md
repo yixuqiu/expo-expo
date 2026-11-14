@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://expo.dev/">
-    <img alt="expo sdk" height="128" src="./.github/resources/banner.png">
+    <img alt="Expo logo" height="128" src="./.github/resources/banner.png">
     <h1 align="center">Expo</h1>
   </a>
 </p>
@@ -27,7 +27,7 @@
 &ensp;•&ensp;
   <a aria-label="expo documentation" href="https://docs.expo.dev">Read the Documentation</a>
 &ensp;•&ensp;
-  <a aria-label="expo documentation" href="https://blog.expo.dev">Learn more on our blog</a>
+  <a aria-label="expo documentation" href="https://expo.dev/blog">Learn more on our blog</a>
 &ensp;•&ensp;
   <a aria-label="expo documentation" href="https://expo.canny.io/feature-requests">Request a feature</a>
 </p>
@@ -44,7 +44,7 @@
     <img alt="Expo on Reddit" src="https://img.shields.io/badge/Reddit-FF4500?style=for-the-badge&logo=reddit&logoColor=white" target="_blank" />
   </a>&nbsp;
   <a aria-label="Follow @expo on Bluesky" href="https://bsky.app/profile/expo.dev" target="_blank">
-    <img alt="Expo on LinkedIn" src="https://img.shields.io/badge/Bluesky-1DA1F2?style=for-the-badge&logo=bluesky&logoColor=white" target="_blank" />
+    <img alt="Expo on Bluesky" src="https://img.shields.io/badge/Bluesky-1DA1F2?style=for-the-badge&logo=bluesky&logoColor=white" target="_blank" />
   </a>&nbsp;
   <a aria-label="Follow @expo on LinkedIn" href="https://www.linkedin.com/company/expo-dev" target="_blank">
     <img alt="Expo on LinkedIn" src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" target="_blank" />
@@ -71,7 +71,7 @@ Read the [Expo Community Guidelines](https://expo.dev/guidelines) before interac
 
 ## 📚 Documentation
 
-<p>Learn about building and deploying universal apps <a aria-label="expo documentation" href="https://docs.expo.dev">in our official docs!</a></p>
+<p>Learn about building and deploying universal apps <a aria-label="expo documentation" href="https://docs.expo.dev">in our official docs</a>!</p>
 
 - [Getting Started](https://docs.expo.dev/)
 - [API Reference](https://docs.expo.dev/versions/latest/)
@@ -82,12 +82,12 @@ Read the [Expo Community Guidelines](https://expo.dev/guidelines) before interac
 - [`packages`](/packages) All the source code for Expo modules, if you want to edit a library or just see how it works this is where you'll find it.
 - [`apps`](/apps) This is where you can find Expo projects which are linked to the development modules. You'll do most of your testing in here.
 - [`apps/expo-go`](/apps/expo-go) This is where you can find the source code for Expo Go.
-- [`apps/expo-go/ios/Exponent.xcworkspace`](/ios) is the Xcode workspace. When developing iOS, always open this instead of `Exponent.xcodeproj` because the workspace also loads the CocoaPods dependencies.
+- [`apps/expo-go/ios/Exponent.xcworkspace`](/apps/expo-go/ios) is the Xcode workspace. When developing iOS, always open this instead of `Exponent.xcodeproj` because the workspace also loads the CocoaPods dependencies.
 - [`docs`](/docs) The source code for **https://docs.expo.dev**
 - [`templates`](/templates) The template projects you get when you run `npx create-expo-app`
 - [`react-native-lab`](/react-native-lab) This is our fork of `react-native` used to build Expo Go.
 - [`guides`](/guides) In-depth tutorials for advanced topics like contributing to the client.
-- [`tools`](/tools) contains build and configuration tools.
+- [`tools`](/tools) contain build and configuration tools.
 - [`template-files`](/template-files) contains templates for files that require private keys. They are populated using the keys in `template-files/keys.json`.
 - [`template-files/ios/dependencies.json`](/template-files/ios/dependencies.json) specifies the CocoaPods dependencies of the app.
 
@@ -114,7 +114,7 @@ If you like Expo and want to help make it better then check out our [contributin
 
 If you have questions about Expo and want answers, then check out our [Frequently Asked Questions](https://docs.expo.dev/faq/)!
 
-If you still have questions you can ask them on our [Discord and Forums](https://chat.expo.dev) or on Twitter [@Expo](https://twitter.com/expo).
+If you still have questions you can ask them on our [Discord and Forums](https://chat.expo.dev) or X [@expo](https://x.com/expo).
 
 ## 💙 The Team
 
@@ -123,6 +123,5 @@ Curious about who makes Expo? Here are our [team members](https://expo.dev/about
 ## License
 
 The Expo source code is made available under the [MIT license](LICENSE). Some of the dependencies are licensed differently, with the BSD license, for example.
-
 
 <img alt="Star the Expo repo on GitHub to support the project" src="https://user-images.githubusercontent.com/9664363/185428788-d762fd5d-97b3-4f59-8db7-f72405be9677.gif" width="50%">

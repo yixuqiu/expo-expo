@@ -1,17 +1,23 @@
-import { ExpoConfig, PackageJSONConfig } from '@expo/config';
+import type { ExpoConfig, PackageJSONConfig } from '@expo/config';
 import assert from 'assert';
 import chalk from 'chalk';
+import npmPackageArg from 'npm-package-arg';
 import semver from 'semver';
+import semverRangeSubset from 'semver/ranges/subset';
 
-import { BundledNativeModules } from './bundledNativeModules';
-import { getCombinedKnownVersionsAsync } from './getVersionedPackages';
-import { resolveAllPackageVersionsAsync } from './resolvePackages';
 import * as Log from '../../../log';
 import { env } from '../../../utils/env';
+import { debugEvent } from '../events';
+import type { BundledNativeModules } from './bundledNativeModules';
+import { getCombinedKnownVersionsAsync } from './getVersionedPackages';
+import {
+  correctReactNativeTvVersion,
+  isReactNativeTvProjectAsync,
+  reactNativeTvVersionMatchesBundled,
+} from './reactNativeTv';
+import { resolveAllPackageVersionsAsync } from './resolvePackages';
 
-const debug = require('debug')('expo:doctor:dependencies:validate') as typeof console.log;
-
-type IncorrectDependency = {
+export type IncorrectDependency = {
   packageName: string;
   packageType: 'dependencies' | 'devDependencies';
   expectedVersionOrRange: string;
@@ -38,6 +44,8 @@ export async function validateDependenciesVersionsAsync(
 ): Promise<boolean | null> {
   if (env.EXPO_OFFLINE) {
     Log.warn('Skipping dependency validation in offline mode');
+    return null;
+  } else if (env.EXPO_NO_DEPENDENCY_VALIDATION) {
     return null;
   }
 
@@ -103,35 +111,82 @@ export async function getVersionedDependenciesAsync(
       getFilteredObject(packagesToCheck, { ...pkg.dependencies, ...pkg.devDependencies })
     : // If no packages are provided, check against the `package.json` `dependencies` + `devDependencies` object.
       { ...pkg.dependencies, ...pkg.devDependencies };
-  debug(`Checking dependencies for ${exp.sdkVersion}: %O`, resolvedDependencies);
+  debugEvent('validate_checking_deps', {
+    sdkVersion: exp.sdkVersion,
+    deps: resolvedDependencies as Record<string, string>,
+  });
 
   // intersection of packages from package.json and bundled native modules
-  const { known: resolvedPackagesToCheck, unknown } = getPackagesToCheck(
+  const { known: resolvedPackagesToCheck } = getPackagesToCheck(
     combinedKnownPackages,
     resolvedDependencies
   );
-  debug(`Comparing known versions: %O`, resolvedPackagesToCheck);
-  debug(`Skipping packages that cannot be versioned automatically: %O`, unknown);
+  debugEvent('validate_known_versions', { packages: resolvedPackagesToCheck });
   // read package versions from the file system (node_modules)
   const packageVersions = await resolveAllPackageVersionsAsync(
     projectRoot,
     resolvedPackagesToCheck
   );
-  debug(`Package versions: %O`, packageVersions);
+  // Detect TV projects via the installed `react-native` package's `name`, since
+  // `pkg.dependencies['react-native']` can vary across package managers.
+  const isReactNativeTvProject = await isReactNativeTvProjectAsync(projectRoot);
   // find incorrect dependencies by comparing the actual package versions with the bundled native module version ranges
-  let incorrectDeps = findIncorrectDependencies(pkg, packageVersions, combinedKnownPackages);
-  debug(`Incorrect dependencies: %O`, incorrectDeps);
+  let incorrectDeps = await findIncorrectDependencies(
+    pkg,
+    packageVersions,
+    combinedKnownPackages,
+    isReactNativeTvProject
+  );
 
   if (pkg?.expo?.install?.exclude) {
     const packagesToExclude = pkg.expo.install.exclude;
-    const incorrectAndExcludedDeps = incorrectDeps.filter((dep) =>
-      packagesToExclude.includes(dep.packageName)
+
+    // Parse the exclude list to ensure we can factor in any specified version ranges
+    const parsedPackagesToExclude = packagesToExclude.reduce(
+      (acc: Record<string, npmPackageArg.Result>, packageName: string) => {
+        const npaResult = npmPackageArg(packageName);
+        if (typeof npaResult.name === 'string') {
+          acc[npaResult.name] = npaResult;
+        } else {
+          acc[packageName] = npaResult;
+        }
+        return acc;
+      },
+      {}
     );
-    debug(
-      `Incorrect dependency warnings filtered out by expo.install.exclude: %O`,
-      incorrectAndExcludedDeps.map((dep) => dep.packageName)
+
+    const incorrectAndExcludedDeps = incorrectDeps
+      .filter((dep) => {
+        if (parsedPackagesToExclude[dep.packageName]) {
+          const { name, raw, rawSpec, type } = parsedPackagesToExclude[dep.packageName];
+          const suggestedRange = combinedKnownPackages[name]!;
+
+          // If only the package name itself is specified, then we keep it in the exclude list
+          if (name === raw) {
+            return true;
+          } else if (type === 'version') {
+            return suggestedRange === rawSpec;
+          } else if (type === 'range') {
+            // Fall through exclusions if the suggested range is invalid
+            if (!semver.validRange(suggestedRange)) {
+              debugEvent('validate_exclude_invalid_range', { name, range: suggestedRange });
+              return false;
+            }
+
+            return semverRangeSubset(suggestedRange, rawSpec);
+          } else {
+            debugEvent('validate_exclude_unsupported_type', { name, type });
+          }
+        }
+
+        return false;
+      })
+      .map((dep) => dep.packageName);
+
+    debugEvent('validate_excluded_deps', { packages: incorrectAndExcludedDeps });
+    incorrectDeps = incorrectDeps.filter(
+      (dep) => !incorrectAndExcludedDeps.includes(dep.packageName)
     );
-    incorrectDeps = incorrectDeps.filter((dep) => !packagesToExclude.includes(dep.packageName));
   }
 
   return incorrectDeps;
@@ -139,7 +194,7 @@ export async function getVersionedDependenciesAsync(
 
 function getFilteredObject(keys: string[], object: Record<string, string>) {
   return keys.reduce<Record<string, string>>((acc, key) => {
-    acc[key] = object[key];
+    acc[key] = object[key]!;
     return acc;
   }, {});
 }
@@ -161,16 +216,47 @@ function getPackagesToCheck(
   return { known, unknown };
 }
 
-function findIncorrectDependencies(
+async function findIncorrectDependencies(
   pkg: PackageJSONConfig,
   packageVersions: Record<string, string>,
-  bundledNativeModules: BundledNativeModules
-): IncorrectDependency[] {
+  bundledNativeModules: BundledNativeModules,
+  isReactNativeTvProject: boolean
+): Promise<IncorrectDependency[]> {
+  // For TV projects, compare the installed `major.minor` against the bundled
+  // `react-native` `major.minor` — `react-native-tvos` follows the upstream
+  // minor lines via a `<major>.<minor>-stable` dist-tag, so a matching minor
+  // means the TV variant is up to date.
+  //
+  // Resolve the install spec for the TV variant once up front so the inner
+  // loop stays synchronous and we don't hit the npm registry per dependency.
+  const bundledReactNativeVersion = bundledNativeModules['react-native'];
+  const reactNativeTvExpectedVersionOrRange =
+    isReactNativeTvProject && bundledReactNativeVersion
+      ? await correctReactNativeTvVersion(bundledReactNativeVersion)
+      : undefined;
+
   const packages = Object.keys(packageVersions);
   const incorrectDeps: IncorrectDependency[] = [];
   for (const packageName of packages) {
-    const expectedVersionOrRange = bundledNativeModules[packageName];
-    const actualVersion = packageVersions[packageName];
+    const actualVersion = packageVersions[packageName]!;
+
+    if (isReactNativeTvProject && packageName === 'react-native') {
+      if (
+        bundledReactNativeVersion &&
+        reactNativeTvExpectedVersionOrRange &&
+        !reactNativeTvVersionMatchesBundled(actualVersion, bundledReactNativeVersion)
+      ) {
+        incorrectDeps.push({
+          packageName,
+          packageType: findDependencyType(pkg, packageName),
+          expectedVersionOrRange: reactNativeTvExpectedVersionOrRange,
+          actualVersion,
+        });
+      }
+      continue;
+    }
+
+    const expectedVersionOrRange = bundledNativeModules[packageName]!;
     if (isDependencyVersionIncorrect(packageName, actualVersion, expectedVersionOrRange)) {
       incorrectDeps.push({
         packageName,
@@ -183,7 +269,7 @@ function findIncorrectDependencies(
   return incorrectDeps;
 }
 
-function isDependencyVersionIncorrect(
+export function isDependencyVersionIncorrect(
   packageName: string,
   actualVersion: string,
   expectedVersionOrRange?: string
@@ -197,8 +283,12 @@ function isDependencyVersionIncorrect(
     return semver.ltr(actualVersion, expectedVersionOrRange);
   }
 
-  // all other packages: version range is based on Expo SDK version, so we always want to match range
-  return !semver.intersects(expectedVersionOrRange, actualVersion);
+  // For all other packages, check if the actual version satisfies the expected range
+  const satisfies = semver.satisfies(actualVersion, expectedVersionOrRange, {
+    includePrerelease: true,
+  });
+
+  return !satisfies;
 }
 
 function findDependencyType(

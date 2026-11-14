@@ -1,0 +1,19 @@
+query Home_AccountApps($accountName: String!, $first: Int!, $after: String, $platform: AppPlatform!) {
+  account {
+    byName(accountName: $accountName) {
+      id
+      appCount
+      appsPaginated(first: $first, after: $after) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        edges {
+          node {
+            ...CommonAppData
+          }
+        }
+      }
+    }
+  }
+}

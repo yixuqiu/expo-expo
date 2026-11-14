@@ -1,10 +1,11 @@
-import { NativeStatement } from './NativeStatement';
+import type { NativeSession } from './NativeSession';
+import type { NativeStatement } from './NativeStatement';
 
 /**
  * A class that represents an instance of the SQLite database.
  */
 export declare class NativeDatabase {
-  constructor(databaseName: string, options?: SQLiteOpenOptions, serializedData?: Uint8Array);
+  constructor(databasePath: string, options?: SQLiteOpenOptions, serializedData?: Uint8Array);
 
   //#region Asynchronous API
 
@@ -12,8 +13,10 @@ export declare class NativeDatabase {
   public isInTransactionAsync(): Promise<boolean>;
   public closeAsync(): Promise<void>;
   public execAsync(source: string): Promise<void>;
-  public serializeAsync(databaseName: string): Promise<Uint8Array>;
+  public serializeAsync(databaseName: string): Promise<Uint8Array | ArrayBuffer>;
   public prepareAsync(nativeStatement: NativeStatement, source: string): Promise<NativeStatement>;
+  public createSessionAsync(nativeSession: NativeSession, dbName: string): Promise<NativeSession>;
+  public loadExtensionAsync(libPath: string, entryPoint?: string): Promise<void>;
 
   //#endregion
 
@@ -22,9 +25,12 @@ export declare class NativeDatabase {
   public initSync(): void;
   public isInTransactionSync(): boolean;
   public closeSync(): void;
+  public interruptSync(): void;
   public execSync(source: string): void;
-  public serializeSync(databaseName: string): Uint8Array;
+  public serializeSync(databaseName: string): Uint8Array | ArrayBuffer;
   public prepareSync(nativeStatement: NativeStatement, source: string): NativeStatement;
+  public createSessionSync(nativeSession: NativeSession, dbName: string): NativeSession;
+  public loadExtensionSync(libPath: string, entryPoint?: string): void;
 
   //#endregion
 }
@@ -33,12 +39,6 @@ export declare class NativeDatabase {
  * Options for opening a database.
  */
 export interface SQLiteOpenOptions {
-  /**
-   * Whether to enable the CR-SQLite extension.
-   * @default false
-   */
-  enableCRSQLite?: boolean;
-
   /**
    * Whether to call the [`sqlite3_update_hook()`](https://www.sqlite.org/c3ref/update_hook.html) function and enable the `onDatabaseChange` events. You can later subscribe to the change events by [`addDatabaseChangeListener`](#sqliteadddatabasechangelistenerlistener).
    * @default false

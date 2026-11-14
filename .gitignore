@@ -9,8 +9,19 @@ bare-apps
 
 # Node
 node_modules
+.expo-prebuild
+.expo-prebuild-android
 npm-debug.log
 yarn-error.log
+
+# pnpm
+.pnpm-debug.log*
+
+# Turborepo
+.turbo/
+
+# build outputs
+/packages/**/build/
 
 # Ruby
 .direnv
@@ -46,6 +57,9 @@ xcuserdata
 .gradle
 .idea
 
+# Kotlin compiler daemon session files
+.kotlin/
+
 # Eclipse
 .project
 .settings
@@ -75,6 +89,7 @@ templates/**/android/app/build
 templates/**/Pods/**
 templates/**/Podfile.lock
 templates/**/yarn.lock
+templates/expo-template-bare-minimum/*.tgz
 
 # Codemod
 .codemod.bookmark
@@ -121,10 +136,25 @@ docs/pages/versions/*/react-native/*.diff
 /apps/expo-go/src/dist
 
 # Prebuilds
-/packages/**/*.xcframework
+/packages/expo/template.tgz
+/packages/**/prebuilds/
+/packages/**/local-maven-repo/
+/packages/**/xcframeworks/
 /packages/**/*.spec.json
 /packages/**/Info-generated.plist
+/packages/**/.build/
+/packages/precompile/.cache/
 !crsqlite.xcframework
 
 # iOS
 **/ios/.xcode.env.local
+
+# TypeScript state
+*.tsbuildinfo
+
+# SWC cache outputs
+.swc/
+
+# Secrets - contains real secrets fetched from GCP
+/secrets/keys.json
+/secrets/expotools.env

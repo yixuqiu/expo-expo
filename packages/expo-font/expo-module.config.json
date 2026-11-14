@@ -1,9 +1,13 @@
 {
   "platforms": ["apple", "android", "web"],
   "apple": {
-    "modules": ["FontLoaderModule"]
+    "modules": ["FontLoaderModule", "FontUtilsModule"]
   },
   "android": {
-    "modules": ["expo.modules.font.FontLoaderModule"]
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.font",
+      "repository": "local-maven-repo"
+    }
   }
 }

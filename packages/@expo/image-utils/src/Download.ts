@@ -1,21 +1,27 @@
-import fs from 'fs-extra';
+import { randomBytes } from 'crypto';
+import fs from 'fs';
 // @ts-ignore
 import Jimp from 'jimp-compact';
-import fetch from 'node-fetch';
+import os from 'os';
 import path from 'path';
 import stream from 'stream';
-import temporary from 'tempy';
 import util from 'util';
 
 // cache downloaded images into memory
 const cacheDownloadedKeys: Record<string, string> = {};
 
 function stripQueryParams(url: string): string {
-  return url.split('?')[0].split('#')[0];
+  return url.split('?')[0]?.split('#')[0] ?? '';
+}
+
+function temporaryDirectory() {
+  const directory = path.join(os.tmpdir(), randomBytes(16).toString('hex'));
+  fs.mkdirSync(directory, { recursive: true });
+  return directory;
 }
 
 export async function downloadOrUseCachedImage(url: string): Promise<string> {
-  if (url in cacheDownloadedKeys) {
+  if (cacheDownloadedKeys[url] != null) {
     return cacheDownloadedKeys[url];
   }
   if (url.startsWith('http')) {
@@ -27,24 +33,34 @@ export async function downloadOrUseCachedImage(url: string): Promise<string> {
 }
 
 export async function downloadImage(url: string): Promise<string> {
-  const outputPath = temporary.directory();
+  const outputPath = temporaryDirectory();
 
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`It was not possible to download image from '${url}'`);
   }
+  if (!response.body) {
+    throw new Error(`No response received from '${url}'`);
+  }
 
   // Download to local file
   const streamPipeline = util.promisify(stream.pipeline);
   const localPath = path.join(outputPath, path.basename(stripQueryParams(url)));
-  await streamPipeline(response.body, fs.createWriteStream(localPath));
+  // Type casting is required, see: https://github.com/DefinitelyTyped/DefinitelyTyped/discussions/65542
+  const readableBody = stream.Readable.fromWeb(response.body);
+  await streamPipeline(readableBody, fs.createWriteStream(localPath));
 
   // If an image URL doesn't have a name, get the mime type and move the file.
   const img = await Jimp.read(localPath);
   const mime = img.getMIME().split('/').pop()!;
   if (!localPath.endsWith(mime)) {
     const newPath = path.join(outputPath, `image.${mime}`);
-    await fs.move(localPath, newPath);
+    const parentPath = path.dirname(newPath);
+    if (!fs.existsSync(parentPath)) {
+      await fs.promises.mkdir(parentPath, { recursive: true });
+    }
+    // NOTE: EXDEV can't happen since we're just renaming the file in the same directory
+    await fs.promises.rename(localPath, newPath);
     return newPath;
   }
 

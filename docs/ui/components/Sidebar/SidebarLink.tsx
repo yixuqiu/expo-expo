@@ -1,7 +1,9 @@
-import { css } from '@emotion/react';
-import { theme, typography, LinkBase } from '@expo/styleguide';
-import { spacing } from '@expo/styleguide-base';
-import { ArrowUpRightIcon } from '@expo/styleguide-icons';
+import { LinkBase, mergeClasses } from '@expo/styleguide';
+import { PlaySquareDuotoneIcon } from '@expo/styleguide-icons/duotone/PlaySquareDuotoneIcon';
+import { AlertTriangleIcon } from '@expo/styleguide-icons/outline/AlertTriangleIcon';
+import { ArrowUpRightIcon } from '@expo/styleguide-icons/outline/ArrowUpRightIcon';
+import { PlaySquareIcon } from '@expo/styleguide-icons/outline/PlaySquareIcon';
+import { AlertTriangleSolidIcon } from '@expo/styleguide-icons/solid/AlertTriangleSolidIcon';
 import { useRouter } from 'next/compat/router';
 import { useEffect, useRef, type PropsWithChildren } from 'react';
 
@@ -10,6 +12,7 @@ import { NavigationRoute } from '~/types/common';
 
 type SidebarLinkProps = PropsWithChildren<{
   info: NavigationRoute;
+  className?: string;
 }>;
 
 const HEAD_NAV_HEIGHT = 160;
@@ -24,16 +27,24 @@ const isLinkInViewport = (element: HTMLAnchorElement) => {
   );
 };
 
-export const SidebarLink = ({ info, children }: SidebarLinkProps) => {
+export const SidebarLink = ({ info, className, children }: SidebarLinkProps) => {
   const router = useRouter();
   const ref = useRef<HTMLAnchorElement>(null);
 
   const isSelected = isRouteActive(info, router?.asPath, router?.pathname);
 
   useEffect(() => {
-    if (isSelected && ref?.current && !isLinkInViewport(ref?.current)) {
-      setTimeout(() => ref?.current && ref.current.scrollIntoView({ behavior: 'smooth' }), 50);
+    if (!isSelected || !ref?.current) {
+      return;
     }
+    const timeoutId = setTimeout(() => {
+      if (ref?.current && !isLinkInViewport(ref.current)) {
+        ref.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 50);
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   if (info.hidden) {
@@ -46,63 +57,87 @@ export const SidebarLink = ({ info, children }: SidebarLinkProps) => {
   const isExternal = info.href.startsWith('http');
 
   return (
-    <div css={STYLES_CONTAINER}>
-      <LinkBase
-        href={info.href as string}
-        ref={ref}
-        css={[STYLES_LINK, isSelected && STYLES_LINK_ACTIVE]}
-        {...customDataAttributes}>
-        <div css={[STYLES_BULLET, isSelected && STYLES_ACTIVE_BULLET]} />
-        {children}
-        {isExternal && <ArrowUpRightIcon className="icon-sm text-icon-secondary ml-auto" />}
-      </LinkBase>
-    </div>
+    <LinkBase
+      href={info.href}
+      ref={ref}
+      className={mergeClasses(
+        'group -ml-2.5 flex w-full scroll-m-15 items-center p-1 pr-0 text-sm text-secondary decoration-0',
+        'hocus:text-link [&_svg]:hocus:text-icon-info',
+        isSelected && 'text-link [&_svg]:text-icon-info',
+        info.isDeprecated && 'line-through',
+        className
+      )}
+      {...customDataAttributes}>
+      <div
+        className={mergeClasses(
+          'mx-1.5 my-2 size-1.5 shrink-0 self-start rounded-full',
+          isSelected && 'bg-palette-blue11'
+        )}
+      />
+      {children}
+      {info.isDeprecated && <span className="sr-only">Deprecated</span>}
+      {info.hasVideoLink && !isSelected && (
+        <PlaySquareIcon className="ml-1.5 icon-xs text-icon-secondary" aria-hidden="true" />
+      )}
+      {info.hasVideoLink && isSelected && (
+        <PlaySquareDuotoneIcon className="ml-1.5 icon-xs text-palette-blue11" aria-hidden="true" />
+      )}
+      {info.isDeprecated && !isSelected && (
+        <AlertTriangleIcon className="ml-1.5 icon-xs text-icon-warning!" aria-hidden="true" />
+      )}
+      {info.isDeprecated && isSelected && (
+        <AlertTriangleSolidIcon className="ml-1.5 icon-xs text-icon-warning!" aria-hidden="true" />
+      )}
+      {info.isNew && (
+        <div
+          className={mergeClasses(
+            'ml-2 inline-flex h-4.25 items-center rounded-full border border-palette-blue10 px-1.25 text-[10px] leading-none font-semibold text-palette-white',
+            isSelected
+              ? 'border-palette-blue11 bg-palette-blue11 text-palette-white dark:text-palette-black'
+              : 'border-palette-blue10 bg-none text-palette-blue11 dark:border-palette-blue9 dark:text-palette-blue9'
+          )}>
+          NEW
+        </div>
+      )}
+      {info.isAlpha && (
+        <div
+          className={mergeClasses(
+            'ml-2 inline-flex h-4.25 items-center rounded-full border border-palette-purple10 px-1.25 text-[10px] leading-none font-semibold text-palette-white',
+            isSelected
+              ? 'bg-palette-purple10 text-palette-white dark:text-palette-black'
+              : 'border-palette-purple10 bg-none text-palette-purple11 dark:border-palette-purple9 dark:text-palette-purple10'
+          )}>
+          ALPHA
+        </div>
+      )}
+      {info.isBeta && (
+        <div
+          className={mergeClasses(
+            'ml-2 inline-flex h-4.25 items-center rounded-full border border-palette-purple10 px-1.25 text-[10px] leading-none font-semibold text-palette-white',
+            isSelected
+              ? 'bg-palette-purple10 text-palette-white dark:text-palette-black'
+              : 'border-palette-purple10 bg-none text-palette-purple11 dark:border-palette-purple9 dark:text-palette-purple10'
+          )}>
+          BETA
+        </div>
+      )}
+      {info.isPreview && (
+        <div
+          className={mergeClasses(
+            'ml-2 inline-flex h-4.25 items-center rounded-full border border-palette-purple10 px-1.25 text-[10px] leading-none font-semibold text-palette-white',
+            isSelected
+              ? 'bg-palette-purple10 text-palette-white dark:text-palette-black'
+              : 'border-palette-purple10 bg-none text-palette-purple11 dark:border-palette-purple9 dark:text-palette-purple10'
+          )}>
+          PREVIEW
+        </div>
+      )}
+      {isExternal && (
+        <ArrowUpRightIcon
+          aria-hidden="true"
+          className="ml-auto icon-sm text-icon-secondary group-hover:text-icon-info"
+        />
+      )}
+    </LinkBase>
   );
 };
-
-const STYLES_LINK = css`
-  ${typography.fontSizes[14]}
-  display: flex;
-  flex-direction: row;
-  text-decoration: none;
-  color: ${theme.text.secondary};
-  transition: 50ms ease color;
-  align-items: center;
-  scroll-margin: 60px;
-  width: 100%;
-  margin-left: -${spacing[2] + spacing[0.5]}px;
-
-  &:hover {
-    color: ${theme.text.link};
-  }
-
-  &:hover svg {
-    color: ${theme.button.tertiary.icon};
-  }
-`;
-
-const STYLES_LINK_ACTIVE = css`
-  color: ${theme.text.link};
-`;
-
-const STYLES_CONTAINER = css`
-  display: flex;
-  min-height: 32px;
-  align-items: center;
-  padding: ${spacing[1]}px;
-  padding-right: ${spacing[2]}px;
-`;
-
-const STYLES_BULLET = css`
-  height: 6px;
-  width: 6px;
-  min-height: 6px;
-  min-width: 6px;
-  border-radius: 100%;
-  margin: ${spacing[2]}px ${spacing[1.5]}px;
-  align-self: self-start;
-`;
-
-const STYLES_ACTIVE_BULLET = css`
-  background-color: ${theme.text.link};
-`;

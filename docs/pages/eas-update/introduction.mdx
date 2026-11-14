@@ -1,50 +1,209 @@
 ---
-title: EAS Update
+title: Expo Update
 sidebar_title: Introduction
-hideTOC: true
-description: An introduction to EAS Update which is a hosted service for projects using the expo-updates library.
+description: Expo Update is a cloud service that serves updates for projects using the expo-updates library.
+searchRank: 99
+searchPosition: 2
 ---
 
+import { GraduationHat02DuotoneIcon } from '@expo/styleguide-icons/duotone/GraduationHat02DuotoneIcon';
+import { LayersTwo02Icon } from '@expo/styleguide-icons/outline/LayersTwo02Icon';
+
 import { BoxLink } from '~/ui/components/BoxLink';
-import { LayersTwo02Icon } from '@expo/styleguide-icons';
+import { Collapsible } from '~/ui/components/Collapsible';
+import { ContentSpotlight } from '~/ui/components/ContentSpotlight';
+import { NoIcon, YesIcon } from '~/ui/components/DocIcons';
+import { FAQ } from '~/ui/components/FAQ';
+import { RelatedSkills } from '~/ui/components/RelatedSkills';
+import { Terminal } from '~/ui/components/Snippet';
 
-**EAS Update** is a hosted service that serves updates for projects using the [`expo-updates`](/versions/latest/sdk/updates) library.
+**Expo Update** is a cloud service from Expo Services that serves updates for projects using the [`expo-updates`](/versions/latest/sdk/updates/) library.
 
-EAS Update makes fixing small bugs and pushing quick fixes a snap in between app store submissions. It accomplishes this by allowing an end-user's app to swap out the non-native parts of their app (for example, JS, styling, and image changes) with a new update that contains bug fixes and other updates.
+Expo Update makes fixing small bugs and pushing quick fixes a snap in between app store submissions. It accomplishes this by enabling an app to update its own non-native pieces (such as JS, styling, and images) over-the-air. All apps that include the `expo-updates` library have the ability to receive updates.
 
-All apps running the `expo-updates` library have the ability to receive updates. To start using EAS Update, continue to the [Getting Started](/eas-update/getting-started) guide.
+## Quick start
 
-## Pitch
+> **info** The commands for Expo Update start with `eas` and require EAS CLI. See [How to install EAS CLI](/eas/cli/#installation) for more information.
 
-### Improve user experience
+Install the `expo-updates` library and configure Expo Update:
 
-EAS Update allows you to release hotfixes and enhancements in response to user feedback or market trends. It helps you keep users engaged and satisfied with your app. Don't wait for the next planned update or manual update request.
+<Terminal
+  cmd={{
+    npm: ['$ npx expo install expo-updates', '', '$ eas update:configure'],
+    yarn: ['$ yarn expo install expo-updates', '', '$ eas update:configure'],
+    pnpm: ['$ pnpm expo install expo-updates', '', '$ eas update:configure'],
+    bun: ['$ bun expo install expo-updates', '', '$ eas update:configure'],
+  }}
+/>
 
-### Broad compatibility
+You need to create a new build for Android or iOS to include the `expo-updates` library in your build. After that, you can push an update to the production channel:
 
-EAS Update works with vanilla React Native apps. All you need to do is install the lightweight `expo` npm package as a prerequisite, making it a compelling alternative to solutions such as [Codepush](/eas-update/codepush).
+<Terminal cmd={['$ eas update --channel production --message "Fix login button alignment"']} />
 
-### Tailored for Expo
+This command publishes your JavaScript bundle and assets so users receive the new version on their next app launch.
 
-EAS Update is designed for Expo apps, making integration easy and workflows efficient. Use the website UIs to check app status and debug, especially for developers using EAS Build.
+For complete steps to start using Expo Update, see [Get started with Expo Update](/eas-update/getting-started/).
 
-### Customizable update strategies
+### Expo Skills for AI agents
 
-Apply updates through [`expo-updates` API](/versions/latest/sdk/updates) and [app config](/versions/latest/config/app/#updates) if the default behavior is not suitable for you. You will always have the upper hand in shaping the update process without compromising your users' experience.
+If you use an AI agent, install [Expo Skills](/skills/) to teach it how to check the health of your published updates:
+
+<RelatedSkills names={['eas-update-insights']} />
+
+## Key features
+
+### JS API for update management
+
+<ContentSpotlight
+  alt="Updates JavaScript API example"
+  src="/static/images/eas-update/frontpage/critical-update.webp"
+  className="max-w-[480px]"
+/>
+
+The updates [JavaScript API](/versions/latest/sdk/updates/) includes a React hook called `useUpdates()`. This hook provides detailed information about the currently running update and any new updates that are available or have been downloaded. In addition, you can view any errors that were encountered during the update process to help you debug any issues while the app is attempting to update.
+
+The API also provides methods such as `checkForUpdateAsync()` and `fetchUpdateAsync()` which allow you to control when your app checks for and downloads updates.
+
+### Insight tracking
+
+<ContentSpotlight
+  alt="Website dashboard deployment insights"
+  src="/static/images/eas-update/frontpage/insights.png"
+  className="max-w-[640px]"
+/>
+
+You'll get a [deployments dashboard](https://expo.dev/accounts/[account]/projects/[project]/deployments) that helps visualize which updates are being sent to builds. Updates work in concert with [insights](/eas-insights/introduction/) to provide data on the adoption rates of your updates with your users.
+
+### Republish for reverting mistakes
+
+<ContentSpotlight
+  alt="Republishing button on an update"
+  src="/static/images/eas-update/frontpage/republish.png"
+  className="max-w-[480px]"
+/>
+
+If an update isn't performing as expected, you can [republish](/eas-update/eas-cli/#republish-a-previous-update-within-a-branch) a previous, stable version on top of the problematic one, much like a new "commit" in version control systems.
+
+## When to use Expo Update
+
+| Scenario                                                                                   | Recommendation |
+| ------------------------------------------------------------------------------------------ | -------------- |
+| Fix a bug or crash in JavaScript code and deploy updates in minutes                        | <YesIcon />    |
+| Update copy, translations, UI styling, or screen layouts                                   | <YesIcon />    |
+| Roll out changes to a percentage of users using [rollouts](/eas-update/rollouts/)          | <YesIcon />    |
+| Publish updates from [CI or automated workflows](/eas/workflows/pre-packaged-jobs/#update) | <YesIcon />    |
+| Test updates with internal teams before production release                                 | <YesIcon />    |
+| Change to native code or native dependencies                                               | <NoIcon />     |
+| Change to app permissions (camera, location, and others)                                   | <NoIcon />     |
+| Update the Expo SDK version                                                                | <NoIcon />     |
+| Anything that requires a new app binary version                                            | <NoIcon />     |
+
+For scenarios marked with <NoIcon />, use [Expo Build](/build/introduction/) to create and submit a new app binary.
+
+## Frequently asked questions (FAQ)
+
+<FAQ>
+
+<Collapsible summary="What guidelines must I follow when publishing updates?" open>
+
+One of the rules of Expo Update is that you need to follow the rules of the platforms and app stores you are building for. This means your updates need to follow the App Store and Play Store guidelines, including the content of the updates and how you use them. This usually means changes to your app's behavior need to be reviewed.
+
+App Store rules regularly change and just as you need to follow them if you were writing an app without Expo, you need to follow them when you are using Expo and Expo Update.
+
+Expo Update is a great way to quickly deliver improvements to the people who use your apps. For example, consider an app that has a critical bug that needs to be fixed. With Expo Update, you can quickly get the fix out and later follow up with a new submission that includes the fix built in.
+
+</Collapsible>
+
+<Collapsible summary={<>How are "monthly active users" counted for a billing cycle?</>}>
+
+> **info** **Note**: 1 monthly active user equals 1 unique installation of an app that downloads at least 1 update during your billing cycle.
+
+- An app install counts as 1 monthly active user no matter how many updates it downloads during your billing cycle.
+- An app install that does not download any new updates during your billing cycle counts as 0 monthly active users.
+- Uninstalling and reinstalling an app (and downloading updates in each during your billing cycle) counts as 2 monthly active users.
+- A single device that has two apps owned by a single Expo account, both of which use updates, is considered 2 monthly active users for the account.
+
+</Collapsible>
+
+<Collapsible summary="How can I implement a custom update strategy for my app?">
+
+By default, `expo-updates` checks for updates every time the app is loaded. You can implement a custom update strategy with the [Updates API](/versions/latest/sdk/updates) and [app config](/versions/latest/config/app/#updates).
+
+</Collapsible>
+
+<Collapsible summary="Can I use Expo Update with my existing React Native project?">
+
+Yes. Expo Update works with both projects that use [Continuous Native Generation (CNG)](/workflow/continuous-native-generation/) and [existing React Native projects](/bare/installing-updates/) that have the [`expo-updates`](/versions/latest/sdk/updates) library installed.
+
+</Collapsible>
+
+<Collapsible summary="Do my app users need to reinstall the app to receive updates?">
+
+No. Updates are downloaded inside the app and applied based on your configuration. App users see the new version on their next app launch or reload.
+
+</Collapsible>
+
+<Collapsible summary="How does Expo Update handle native code compatibility?">
+
+Expo Update uses [runtime version policies](/eas-update/runtime-versions/) to ensure updates are only sent to builds with compatible native code. If your native code changes, you create a new runtime version.
+
+</Collapsible>
+
+<Collapsible summary="Can I use Expo Update inside Expo Workflows or from other CI/CD pipelines?">
+
+Yes. Expo Update works with [Expo Workflows](/eas/workflows/get-started/). You still need to configure and create a new build for Android or iOS. After that, you can add an update job to your workflow configuration. For example:
+
+```yaml
+jobs:
+  publish_update:
+    type: update
+    params:
+      message: 'Fix login button alignment'
+      channel: production
+```
+
+For more information, see [Expo Workflows pre-packaged jobs](/eas/workflows/pre-packaged-jobs/#update).
+
+To automate publishing updates with GitHub Actions, see the [GitHub Action for PR previews](/eas-update/github-actions/) guide.
+
+</Collapsible>
+
+<Collapsible summary="What's the difference between Expo Update and CodePush?">
+
+Expo Update is a native solution that also integrates with [Expo Build](/build/introduction/) and provides a unified workflow. CodePush uses a slightly different approach. To learn more about the differences between Expo Update and CodePush, see [Conceptual differences between CodePush and Expo Update](/eas-update/codepush/#conceptual-differences-between-codepush-and-expo-update).
+
+</Collapsible>
+
+<Collapsible summary="Are Classic Updates still supported?">
+
+The Classic Updates service was available before December 2021 and is now deprecated. New updates cannot be published via `expo publish`, however, existing apps will continue to receive Classic Updates that have already been published and are actively used.
+
+We recommend transitioning to Expo Update or using a [self-hosted update service](/versions/latest/sdk/updates/).
+
+</Collapsible>
+
+</FAQ>
 
 ## Get started
 
 <BoxLink
-  title="Get started with EAS Update"
-  description="Learn how to get started with the setup required to configure and use EAS Update in your project."
+  title="Get started with Expo Update"
+  description="Learn how to get started with the setup required to configure and use Expo Update in your project."
   href="/eas-update/getting-started/"
   Icon={LayersTwo02Icon}
 />
 
 <BoxLink
   title="Publish an update"
-  description="Learn how to publish an update to a specific branch with EAS Update."
-  href="/eas-update/publish/"
+  description="Learn how to publish an update to a specific branch with Expo Update."
+  href="/eas-update/getting-started/#publish-an-update"
+  Icon={LayersTwo02Icon}
+/>
+
+<BoxLink
+  title="Preview updates"
+  description="View your teammate's changes with Expo Update."
+  href="/eas-update/preview/"
   Icon={LayersTwo02Icon}
 />
 
@@ -56,8 +215,15 @@ Apply updates through [`expo-updates` API](/versions/latest/sdk/updates) and [ap
 />
 
 <BoxLink
-  title="Develop faster"
-  description="View your teammate's changes with EAS Update."
-  href="/eas-update/develop-faster/"
+  title="Migrate from CodePush"
+  description="Learn how to migrate from CodePush to Expo Update."
+  href="/eas-update/codepush/"
   Icon={LayersTwo02Icon}
+/>
+
+<BoxLink
+  title="Using Expo Update with other Expo Services"
+  description="For a complete tutorial of using Expo Update with other Expo Services, refer to this Expo Services tutorial."
+  href="/tutorial/eas/introduction/"
+  Icon={GraduationHat02DuotoneIcon}
 />

@@ -1,8 +1,13 @@
-import { NotificationChannel, NotificationChannelInput } from './NotificationChannelManager.types';
+import type {
+  NotificationChannel,
+  NotificationChannelInput,
+} from './NotificationChannelManager.types';
 
 /**
  * Assigns the channel configuration to a channel of a specified name (creating it if need be).
  * This method lets you assign given notification channel to a notification channel group.
+ *
+ * > **Note:** After a channel has been created, you can modify only its name and description. This limitation is imposed by the Android OS.
  *
  * > **Note:** For some settings to be applied on all Android versions, it may be necessary to duplicate the configuration across both
  * > a single notification and its respective notification channel.
@@ -14,12 +19,12 @@ import { NotificationChannel, NotificationChannelInput } from './NotificationCha
  * see [Set custom notification sounds on Android](#set-custom-notification-sounds).
  * @param channelId The channel identifier.
  * @param channel Object representing the channel's configuration.
- * @return A Promise which resolving to the object (of type [`NotificationChannel`](#notificationchannel)) describing the modified channel
+ * @return A Promise which resolves to the object (of type [`NotificationChannel`](#notificationchannel)) describing the modified channel
  * or to `null` if the platform does not support notification channels.
  * @platform android
  * @header channels
  */
-export default async function setNotificationChannelAsync(
+export async function setNotificationChannelAsync(
   channelId: string,
   channel: NotificationChannelInput
 ): Promise<NotificationChannel | null> {

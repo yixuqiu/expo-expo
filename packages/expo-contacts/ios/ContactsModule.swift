@@ -2,21 +2,37 @@ import ExpoModulesCore
 import Contacts
 import ContactsUI
 
+let onContactsChangeEventName = "onContactsChange"
+
 public class ContactsModule: Module, OnContactPickingResultHandler {
-  private let contactStore = CNContactStore()
+  private lazy var contactStore = CNContactStore()
   private let delegate = ContactControllerDelegate()
   private var presentingViewController: UIViewController?
   private var contactPickerDelegate: ContactPickerControllerDelegate?
   private var contactPickingPromise: Promise?
   private var contactManipulationPromise: Promise?
+  private var contactChangeObserver: NSObjectProtocol?
 
   public func definition() -> ModuleDefinition {
     Name("ExpoContacts")
+    Events(onContactsChangeEventName)
 
     OnCreate {
       appContext?.permissions?.register([
         ContactsPermissionRequester()
       ])
+    }
+
+    OnDestroy {
+      stopObservingContactChanges()
+    }
+
+    OnStartObserving(onContactsChangeEventName) {
+      startObservingContactChanges()
+    }
+
+    OnStopObserving(onContactsChangeEventName) {
+      stopObservingContactChanges()
     }
 
     AsyncFunction("getDefaultContainerIdentifierAsync") {
@@ -27,7 +43,7 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
       let keys = contactKeysToFetch(from: options.fields)
       let payload = fetchContactsData(options: options, keys: keys, isWriting: true)
 
-      if let error = payload["error"] {
+      if payload["error"] != nil {
         throw FailedToFetchContactsException()
       }
 
@@ -84,7 +100,7 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
 
       if let identifier {
         if let foundContact = try? getContact(withId: identifier) {
-          controller = ContactsViewController.init(forNewContact: foundContact)
+          controller = ContactsViewController(for: foundContact)
         }
       } else {
         var contact = CNMutableContact()
@@ -103,7 +119,8 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
         return
       }
 
-      let cancelButtonTitle = options.cancelButtonTitle != nil ? options.cancelButtonTitle : "Cancel"
+      let cancelButtonTitle = options.cancelButtonTitle ?? "Cancel"
+      controller.setCloseButton(title: cancelButtonTitle)
       controller.contactStore = contactStore
       controller.delegate = delegate
 
@@ -130,18 +147,21 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
         controller.parentGroup = try group(with: groupId)
       }
 
-      let parent = appContext?.utilities?.currentViewController()
-      let navController = UINavigationController(rootViewController: controller)
-      presentingViewController = navController
-      let animated = options.preventAnimation == true ? false : true
+      if let parent = appContext?.utilities?.currentViewController() {
+        let navController = UINavigationController(rootViewController: controller)
+        presentingViewController = navController
 
-      controller.onViewDisappeared = {
-        promise.resolve()
-        self.contactManipulationPromise = nil
+        controller.onViewDisappeared = {
+          promise.resolve()
+          self.contactManipulationPromise = nil
+        }
+
+        contactManipulationPromise = promise
+        parent.present(navController, animated: options.preventAnimation != true)
+      } else {
+        contactManipulationPromise = nil
+        promise.reject(MissingViewControllerException())
       }
-
-      contactManipulationPromise = promise
-      parent?.present(navController, animated: animated)
     }.runOnQueue(.main)
 
     AsyncFunction("presentContactPickerAsync") { (promise: Promise) in
@@ -166,7 +186,7 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
       let saveRequest = CNSaveRequest()
       let keysToFetch = contactKeysToFetch(from: nil)
 
-      if var contact = try getContact(with: identifier, keysToFetch: keysToFetch) {
+      if let contact = try getContact(with: identifier, keysToFetch: keysToFetch) {
         let group = try group(with: groupId)
         saveRequest.addMember(contact, to: group)
         try executeSaveRequest(saveRequest)
@@ -209,7 +229,7 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
     AsyncFunction("updateGroupNameAsync") { (groupName: String, groupId: String) in
       let saveRequest = CNSaveRequest()
       let group = try group(with: groupId)
-      guard var mutatbleGroup = group as? CNMutableGroup else {
+      guard let mutatbleGroup = group as? CNMutableGroup else {
         return
       }
       mutatbleGroup.name = groupName
@@ -229,7 +249,7 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
 
     AsyncFunction("createGroupAsync") { (name: String, containerId: String) -> String in
       let saveRequest = CNSaveRequest()
-      var group = CNMutableGroup()
+      let group = CNMutableGroup()
       group.name = name
       saveRequest.add(group, toContainerWithIdentifier: containerId)
       try executeSaveRequest(saveRequest)
@@ -308,10 +328,26 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
       return try serializeContactPayload(payload: payload, keys: keysToFetch, options: options)
     }
 
+    AsyncFunction("hasContactsAsync") { (promise: Promise) in
+      let keysToFetch = [CNContactIdentifierKey]
+      let fetchRequest = CNContactFetchRequest(keysToFetch: getDescriptors(for: keysToFetch))
+      
+      do {
+        var hasAnyContact = false
+        try contactStore.enumerateContacts(with: fetchRequest) { _, stop in
+          hasAnyContact = true
+          stop.pointee = true
+        }
+        promise.resolve(hasAnyContact)
+      } catch {
+        promise.reject(ContactsCheckFailedException())
+      }
+    }
+
     AsyncFunction("getPermissionsAsync") { (promise: Promise) in
       appContext?.permissions?.getPermissionUsingRequesterClass(
         ContactsPermissionRequester.self,
-        resolve: promise.resolver,
+        resolve: promise.legacyResolver,
         reject: promise.legacyRejecter
       )
     }
@@ -319,10 +355,21 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
     AsyncFunction("requestPermissionsAsync") { (promise: Promise) in
       appContext?.permissions?.askForPermission(
         usingRequesterClass: ContactsPermissionRequester.self,
-        resolve: promise.resolver,
+        resolve: promise.legacyResolver,
         reject: promise.legacyRejecter
       )
     }
+
+    AsyncFunction("presentAccessPickerAsync") { (promise: Promise) in
+      guard #available(iOS 18.0, *) else {
+        return promise.reject(AccessPickerUnavailableException())
+      }
+      guard let currentViewController = appContext?.utilities?.currentViewController() else {
+        return promise.reject(MissingCurrentViewControllerException())
+      }
+      ContactAccessPicker.present(inViewController: currentViewController, promise: promise)
+    }
+    .runOnQueue(.main)
   }
 
   func didPickContact(contact: CNContact) throws {
@@ -330,8 +377,15 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
       contactPickingPromise = nil
     }
 
-    let serializedContact = try serializeContact(person: contact, keys: nil, directory: nil)
-    contactPickingPromise?.resolve(serializedContact)
+    let directory = appContext?.config.cacheDirectory?.appendingPathComponent("Contacts")
+    FileSystemUtilities.ensureDirExists(at: directory)
+
+    do {
+      let serializedContact = try serializeContact(person: contact, keys: nil, directory: directory)
+      contactPickingPromise?.resolve(serializedContact)
+    } catch {
+      contactPickingPromise?.reject(error)
+    }
   }
 
   func didCancelPickingContact() {
@@ -382,12 +436,14 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
 
   private func serializeContactPayload(payload: [String: Any], keys: [String], options: ContactsQuery) throws -> [String: Any]? {
     if let error = payload["error"] {
-      return nil
+      let errorMessage = String(describing: error)
+      throw ContactSerializationException(errorMessage)
     }
     var mutablePayload = payload
     var response = [[String: Any]]()
     guard let contacts = payload["data"] as? [CNContact] else {
-      return nil
+      mutablePayload["data"] = response
+      return mutablePayload
     }
 
     let directory = appContext?.config.cacheDirectory?.appendingPathComponent("Contacts")
@@ -410,7 +466,6 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
 
   private func group(with identifier: String) throws -> CNGroup {
     let predicate = CNGroup.predicateForGroups(withIdentifiers: [identifier])
-    var error: NSError?
 
     do {
       let groups = try contactStore.groups(matching: predicate)
@@ -523,10 +578,14 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
       throw FilePermissionException(uri)
     }
 
+    guard url.isFileURL else {
+      throw RemoteImageUriException(uri)
+    }
+
     let path = url.path
     let standardizedPath = NSString(string: path).standardizingPath
 
-    guard FileSystemUtilities.permissions(appContext, for: url).contains(.read) else {
+    guard FileSystemUtilities.isReadableFile(appContext, url) else {
       return nil
     }
 
@@ -561,13 +620,13 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
       predicate = CNContact.predicateForContacts(withIdentifiers: [containerId])
     }
 
-    var descriptors = getDescriptors(for: keys, isWriting: isWriting)
+    let descriptors = getDescriptors(for: keys, isWriting: isWriting)
     return queryContacts(with: predicate, keys: descriptors, options: options)
   }
 
   private func queryContacts(with predicate: NSPredicate?, keys: [CNKeyDescriptor], options: ContactsQuery) -> [String: Any] {
-    var pageOffset = options.pageOffset ?? 0
-    var pageSize = options.pageSize ?? 0
+    let pageOffset = options.pageOffset ?? 0
+    let pageSize = options.pageSize ?? 0
 
     let fetchRequest = buildFetchRequest(sort: options.sort, keys: keys)
     fetchRequest.predicate = predicate
@@ -578,9 +637,8 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
     }
 
     var currentIndex = 0
-    var error: NSError
     var response = [CNContact]()
-    var endIndex = pageOffset + pageSize
+    let endIndex = pageOffset + pageSize
 
     do {
       try contactStore.enumerateContacts(with: fetchRequest) { contact, _ in
@@ -624,5 +682,32 @@ public class ContactsModule: Module, OnContactPickingResultHandler {
     }
 
     return fetchRequest
+  }
+
+  private func startObservingContactChanges() {
+    guard contactChangeObserver == nil else { return }
+
+    contactChangeObserver = NotificationCenter.default.addObserver(
+      forName: .CNContactStoreDidChange,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.handleContactStoreChange()
+    }
+  }
+
+  private func stopObservingContactChanges() {
+    if let observer = contactChangeObserver {
+      NotificationCenter.default.removeObserver(observer)
+      contactChangeObserver = nil
+    }
+  }
+
+  private func handleContactStoreChange() {
+    // Send event when contacts change - CNContactStoreDidChangeNotification
+    // only tells us that something changed, not what specifically changed
+    sendEvent(onContactsChangeEventName, [
+      "body": nil
+    ])
   }
 }

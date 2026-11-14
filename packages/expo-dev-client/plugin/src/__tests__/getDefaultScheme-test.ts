@@ -7,17 +7,17 @@ it(`generates a valid URI scheme from slug`, () => {
 });
 
 it(`removes unallowed characters`, () => {
-  // scheme      = ALPHA *( ALPHA /` DIGIT / "+" / "-" / "." )
+  // scheme      = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
   expect(getDefaultScheme({ slug: 'miun äppi!1!!!!!@' })).toMatch(/^[A-Za-z][A-Za-z0-9+\-.]*/);
 });
 
 it(`doesn't start with a number or special character`, () => {
-  // scheme      = ALPHA *( ALPHA /` DIGIT / "+" / "-" / "." )
+  // scheme      = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
   expect(getDefaultScheme({ slug: '650-industries' })).toMatch(/^[A-Za-z][A-Za-z0-9+\-.]*/);
 });
 
 it(`bails out if there aren't any ASCII characters in the slug to work with`, () => {
   expect(() => getDefaultScheme({ slug: '👋' })).toThrowErrorMatchingInlineSnapshot(
-    `"Could not autogenerate a scheme. Please make sure the "slug" property in app config consists of URL friendly characters."`
+    `"Unable to generate a scheme based on the "slug" (👋), because it does not contain any URL-friendly characters."`
   );
 });

@@ -10,7 +10,11 @@ Pod::Spec.new do |s|
   s.license        = package['license']
   s.author         = package['author']
   s.homepage       = package['homepage']
-  s.platform       = :ios, '11.0'
+  s.platforms      = {
+    :ios => '16.4',
+    :tvos => '16.4',
+    :osx => '13.4'
+  }
   s.source         = { git: 'https://github.com/expo/expo.git' }
   s.static_framework = true
   s.header_dir     = 'EXDevClient'

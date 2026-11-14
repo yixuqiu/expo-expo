@@ -1,0 +1,13 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["AgeRangeModule"]
+  },
+  "android": {
+    "publication": {
+      "groupId": "expo.modules.agerange",
+      "artifactId": "expo.modules.agerange",
+      "repository": "local-maven-repo"
+    }
+  }
+}

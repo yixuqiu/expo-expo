@@ -1,6 +1,7 @@
-import { CodedError, Platform, Subscription } from 'expo-modules-core';
+import { CodedError, Platform, type EventSubscription } from 'expo-modules-core';
 
-import { KeepAwakeEventState, KeepAwakeListener } from './KeepAwake.types';
+import type { KeepAwakeListener } from './KeepAwake.types';
+import { KeepAwakeEventState } from './KeepAwake.types';
 
 const wakeLockMap: Record<string, WakeLockSentinel> = {};
 
@@ -49,7 +50,7 @@ export default {
       );
     }
   },
-  addListenerForTag(tag: string, listener: KeepAwakeListener): Subscription {
+  addListenerForTag(tag: string, listener: KeepAwakeListener): EventSubscription {
     const eventListener = () => {
       listener({ state: KeepAwakeEventState.RELEASE });
     };

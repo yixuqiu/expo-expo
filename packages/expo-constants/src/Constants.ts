@@ -1,6 +1,6 @@
-import { ExpoConfig } from '@expo/config-types';
+// TODO(@kitten): Add missing optional peers
+
 // @ts-ignore -- optional interface, will gracefully degrade to `any` if not installed
-import type { Manifest as DevLauncherManifest } from 'expo-dev-launcher';
 import type {
   EmbeddedManifest,
   EASConfig,
@@ -11,32 +11,24 @@ import type {
 import { CodedError, requireOptionalNativeModule } from 'expo-modules-core';
 // @ts-ignore -- optional interface, will gracefully degrade to `any` if not installed
 import type { Manifest as UpdatesManifest, ExpoUpdatesModule } from 'expo-updates';
+import type { ExpoConfig } from 'expo/config';
 import { Platform, NativeModules } from 'react-native';
 
-import {
-  AndroidManifest,
-  AppOwnership,
-  Constants,
-  ExecutionEnvironment,
-  IOSManifest,
-  NativeConstants,
-  PlatformManifest,
-  UserInterfaceIdiom,
-  WebManifest,
-} from './Constants.types';
+import { type Constants, ExecutionEnvironment } from './Constants.types';
 import ExponentConstants from './ExponentConstants';
+type DevLauncherManifest = ExpoUpdatesManifest;
 
 export {
-  AndroidManifest,
+  type AndroidManifest,
   AppOwnership,
-  Constants,
+  type Constants,
   ExecutionEnvironment,
-  IOSManifest,
-  NativeConstants,
-  PlatformManifest,
+  type IOSManifest,
+  type NativeConstants,
+  type PlatformManifest,
   UserInterfaceIdiom,
-  WebManifest,
-};
+  type WebManifest,
+} from './Constants.types';
 
 if (!ExponentConstants) {
   console.warn(

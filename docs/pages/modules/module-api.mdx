@@ -2,14 +2,16 @@
 title: Module API Reference
 description: An API reference of Expo modules API.
 sidebar_title: Module API
+maxHeadingDepth: 2
 ---
 
 import { CodeBlocksTable } from '~/components/plugins/CodeBlocksTable';
-import { APIBox } from '~/components/plugins/APIBox';
-import { PlatformTags, StatusTag } from '~/ui/components/Tag';
-import { A, CALLOUT } from '~/ui/components/Text';
-import { APIMethod } from '~/components/plugins/api/APISectionMethods';
+import { PaddedAPIBox } from '~/components/plugins/PaddedAPIBox';
+import { APIMethod } from '~/components/plugins/api/APIMethod';
 import { FileTree } from '~/ui/components/FileTree';
+import { PlatformTags } from '~/ui/components/Tag/PlatformTags';
+import { StatusTag } from '~/ui/components/Tag/StatusTag';
+import { A, CALLOUT } from '~/ui/components/Text';
 
 The native modules API is an abstraction layer on top of [JSI](https://reactnative.dev/architecture/glossary#javascript-interfaces-jsi) and other low-level primitives that React Native is built upon. It is built with modern languages (Swift and Kotlin) and provides an easy-to-use and convenient API that is consistent across platforms where possible.
 
@@ -18,7 +20,7 @@ The native modules API is an abstraction layer on top of [JSI](https://reactnati
 As you might have noticed in the snippets on the [Get Started](/modules/get-started) page, each module class must implement the `definition` function.
 The module definition consists of the DSL components that describe the module's functionality and behavior.
 
-<APIBox header="Name">
+<PaddedAPIBox header="Name">
 
 Sets the name of the module that JavaScript code will use to refer to the module. Takes a string as an argument. This can be inferred from the module's class name, but it's recommended to set it explicitly for clarity.
 
@@ -26,8 +28,30 @@ Sets the name of the module that JavaScript code will use to refer to the module
 Name("MyModuleName")
 ```
 
-</APIBox>
-<APIBox header="Constants">
+</PaddedAPIBox>
+<PaddedAPIBox header="Constant">
+
+Defines a constant property on the JavaScript object. The property is computed only once when it's first accessed, and subsequent accesses return the cached value.
+
+<CodeBlocksTable>
+
+```swift
+Constant("PI") {
+  Double.pi
+}
+```
+
+```kotlin
+Constant("PI") {
+  Math.PI
+}
+```
+
+</CodeBlocksTable>
+</PaddedAPIBox>
+<PaddedAPIBox header="Constants">
+
+> **warning** **[Deprecated](/more/release-statuses/#deprecated):** Use [`Constant`](#constant) instead.
 
 Sets constant properties on the module. Can take a dictionary or a closure that returns a dictionary.
 
@@ -62,8 +86,8 @@ Constants {
 ```
 
 </CodeBlocksTable>
-</APIBox>
-<APIBox header="Function">
+</PaddedAPIBox>
+<PaddedAPIBox header="Function">
 
 Defines a native synchronous function that will be exported to JavaScript. Synchronous means that when the function is executed in JavaScript, its native code is run on the same thread and blocks further execution of the script until the native function returns.
 
@@ -79,13 +103,13 @@ See the [Argument types](#argument-types) section for more details on what types
 <CodeBlocksTable>
 
 ```swift
-Function("syncFunction") { (message: String) in
+Function("mySyncFunction") { (message: String) in
   return message
 }
 ```
 
 ```kotlin
-Function("syncFunction") { message: String ->
+Function("mySyncFunction") { message: String ->
   return@Function message
 }
 ```
@@ -99,12 +123,12 @@ import { requireNativeModule } from 'expo-modules-core';
 const MyModule = requireNativeModule('MyModule');
 
 function getMessage() {
-  return MyModule.syncFunction('bar');
+  return MyModule.mySyncFunction('bar');
 }
 ```
 
-</APIBox>
-<APIBox header="AsyncFunction">
+</PaddedAPIBox>
+<PaddedAPIBox header="AsyncFunction">
 
 Defines a JavaScript function that always returns a `Promise` and whose native code is by default dispatched on a different thread than the JavaScript runtime runs on.
 
@@ -127,26 +151,27 @@ It is recommended to use `AsyncFunction` over `Function` when it:
 <CodeBlocksTable>
 
 ```swift
-AsyncFunction("asyncFunction") { (message: String) in
+AsyncFunction("myAsyncFunction") { (message: String) in
   return message
 }
 
 // or
 
-AsyncFunction("asyncFunction") { (message: String, promise: Promise) in
+AsyncFunction("myAsyncFunction") { (message: String, promise: Promise) in
   promise.resolve(message)
 }
 
 ```
 
 ```kotlin
-AsyncFunction("asyncFunction") { message: String ->
+AsyncFunction("myAsyncFunction") { message: String ->
   return@AsyncFunction message
 }
 
 // or
 
-AsyncFunction("asyncFunction") { message: String, promise: Promise ->
+// Make sure to import `Promise` class from `expo.modules.kotlin` instead of `expo.modules.core`.
+AsyncFunction("myAsyncFunction") { message: String, promise: Promise ->
   promise.resolve(message)
 }
 
@@ -161,7 +186,7 @@ import { requireNativeModule } from 'expo-modules-core';
 const MyModule = requireNativeModule('MyModule');
 
 async function getMessageAsync() {
-  return await MyModule.asyncFunction('bar');
+  return await MyModule.myAsyncFunction('bar');
 }
 ```
 
@@ -170,13 +195,13 @@ It is possible to change the native queue of `AsyncFunction` by calling the `.ru
 <CodeBlocksTable>
 
 ```swift
-AsyncFunction("asyncFunction") { (message: String) in
+AsyncFunction("myAsyncFunction") { (message: String) in
   return message
 }.runOnQueue(.main)
 ```
 
 ```kotlin
-AsyncFunction("asyncFunction") { message: String ->
+AsyncFunction("myAsyncFunction") { message: String ->
   return@AsyncFunction message
 }.runOnQueue(Queues.MAIN)
 ```
@@ -204,29 +229,8 @@ AsyncFunction("suspendFunction") Coroutine { message: String ->
 }
 ```
 
-</APIBox>
-<APIBox header="Events">
-
-Defines event names that the module can send to JavaScript.
-
-> **Note**: This component can be used inside of the [`View`](#view) block to define callback names. See [`View callbacks`](#view-callbacks)
-
-<CodeBlocksTable>
-
-```swift
-Events("onCameraReady", "onPictureSaved", "onBarCodeScanned")
-```
-
-```kotlin
-Events("onCameraReady", "onPictureSaved", "onBarCodeScanned")
-```
-
-</CodeBlocksTable>
-
-See [Sending events](#sending-events) to learn how to send events from the native code to JavaScript/TypeScript.
-
-</APIBox>
-<APIBox header="Property">
+</PaddedAPIBox>
+<PaddedAPIBox header="Property">
 
 Defines a new property directly on the JavaScript object that represents a native module. It is the same as calling [`Object.defineProperty`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/defineProperty) on the module object.
 
@@ -290,8 +294,8 @@ MyModule.foo;
 MyModule.foo = 'foobar';
 ```
 
-</APIBox>
-<APIBox header="View">
+</PaddedAPIBox>
+<PaddedAPIBox header="View">
 
 Enables the module to be used as a native view. Definition components that are accepted as part of the view definition: [`Prop`](#prop), [`Events`](#events), [`GroupView`](#groupview) and [`AsyncFunction`](#asyncfunction).
 
@@ -300,14 +304,14 @@ Such async functions automatically receive an instance of the native view as the
 
 #### Arguments
 
-- **viewType** — The class of the native view that will be rendered. Note: On Android, the provided class must inherit from the [`ExpoView`](#expoview), on iOS it's optional. See [`Extending ExpoView`](#extending--expoview).
+- **viewType** — The class of the native view that will be rendered. Note: On Android, the provided class must inherit from the [`ExpoView`](#expoview), on iOS it's optional. See [`Extending ExpoView`](#extending-expoview).
 - **definition**: `() -> ViewDefinition` — A builder of the view definition.
 
 <CodeBlocksTable>
 
 ```swift
 View(UITextView.self) {
-  Prop("text") { ... }
+  Prop("text") { /* @hide ... */ /* @end */ }
 
   AsyncFunction("focus") { (view: UITextView) in
     view.becomeFirstResponder()
@@ -317,7 +321,7 @@ View(UITextView.self) {
 
 ```kotlin
 View(TextView::class) {
-  Prop("text") { ... }
+  Prop("text") { /* @hide ... */ /* @end */ }
 
   AsyncFunction("focus") { view: TextView ->
     view.requestFocus()
@@ -329,19 +333,253 @@ View(TextView::class) {
 
 > **Info** Support for rendering SwiftUI views is planned. For now, you can use [`UIHostingController`](https://developer.apple.com/documentation/swiftui/uihostingcontroller) and add its content view to your UIKit view.
 
-> **Info** View functions are available as of SDK 49.
+</PaddedAPIBox>
 
-</APIBox>
-<APIBox header="Prop">
+### Event observing
+
+<PaddedAPIBox header="Events" headerNestingLevel={4}>
+
+Defines event names that the module can send to JavaScript.
+
+> **Note:** This component can be used inside of the [`View`](#view) block to define callback names. See [`View callbacks`](#view-callbacks)
+
+<CodeBlocksTable>
+
+```swift
+Events("onCameraReady", "onPictureSaved", "onBarCodeScanned")
+```
+
+```kotlin
+Events("onCameraReady", "onPictureSaved", "onBarCodeScanned")
+```
+
+</CodeBlocksTable>
+
+See [Sending events](#sending-events) to learn how to send events from the native code to JavaScript/TypeScript.
+
+</PaddedAPIBox>
+<PaddedAPIBox header="OnStartObserving" headerNestingLevel={4}>
+
+Defines the function that is invoked when the first event listener is added.
+
+You need to pass an event name to scope the listener to a specific event. This is useful when you need to set up or tear down resources per-event rather than globally.
+
+<CodeBlocksTable>
+
+```swift
+// Called when a listener for "onURLReceived" is added
+OnStartObserving("onURLReceived") {
+  /* @hide ... */ /* @end */
+}
+```
+
+```kotlin
+// Called when a listener for "onURLReceived" is added
+OnStartObserving("onURLReceived") {
+  /* @hide ... */ /* @end */
+}
+```
+
+</CodeBlocksTable>
+</PaddedAPIBox>
+<PaddedAPIBox header="OnStopObserving" headerNestingLevel={4}>
+
+Defines the function that is invoked when all event listeners for a given event are removed.
+
+Like `OnStartObserving`, you need to pass an event name to scope the listener to a specific event.
+
+<CodeBlocksTable>
+
+```swift
+// Called when listeners for "onURLReceived" are removed
+OnStopObserving("onURLReceived") {
+  /* @hide ... */ /* @end */
+}
+```
+
+```kotlin
+// Called when listeners for "onURLReceived" are removed
+OnStopObserving("onURLReceived") {
+  /* @hide ... */ /* @end */
+}
+```
+
+</CodeBlocksTable>
+
+</PaddedAPIBox>
+
+### Lifecycle listeners
+
+<PaddedAPIBox header="OnCreate" headerNestingLevel={4}>
+
+Defines module's lifecycle listener that is called right after module initialization. If you need to set up something when the module gets initialized, use this instead of module's class initializer.
+
+</PaddedAPIBox>
+<PaddedAPIBox header="OnDestroy" headerNestingLevel={4}>
+
+Defines module's lifecycle listener that is called when the module is about to be deallocated. Use it instead of module's class destructor.
+
+</PaddedAPIBox>
+<PaddedAPIBox header="OnAppContextDestroys" headerNestingLevel={4}>
+
+Defines module's lifecycle listener that is called when the app context owning the module is about to be deallocated.
+
+</PaddedAPIBox>
+<PaddedAPIBox header="OnAppEntersForeground" platforms={["ios"]} headerNestingLevel={4}>
+
+Defines the listener that is called when the app is about to enter the foreground mode.
+
+> **Note:** This function is not available on Android — you may want to use [`OnActivityEntersForeground`](#onactivityentersforeground) instead.
+
+</PaddedAPIBox>
+<PaddedAPIBox header="OnAppEntersBackground" platforms={["ios"]} headerNestingLevel={4}>
+
+Defines the listener that is called when the app enters the background mode.
+
+> **Note:** This function is not available on Android — you may want to use [`OnActivityEntersBackground`](#onactivityentersbackground) instead.
+
+</PaddedAPIBox>
+<PaddedAPIBox header="OnAppBecomesActive" platforms={["ios"]} headerNestingLevel={4}>
+
+Defines the listener that is called when the app becomes active again (after `OnAppEntersForeground`).
+
+> **Note:** This function is not available on Android — you may want to use [`OnActivityEntersForeground`](#onactivityentersforeground) instead.
+
+</PaddedAPIBox>
+<PaddedAPIBox header="OnActivityEntersForeground" platforms={["android"]} headerNestingLevel={4}>
+
+Defines the activity lifecycle listener that is called right after the activity is resumed.
+
+> **Note:** This function is not available on iOS — you may want to use [`OnAppEntersForeground`](#onappentersforeground) instead.
+
+</PaddedAPIBox>
+<PaddedAPIBox header="OnActivityEntersBackground" platforms={["android"]} headerNestingLevel={4}>
+
+Defines the activity lifecycle listener that is called right after the activity is paused.
+
+> **Note:** This function is not available on iOS — you may want to use [`OnAppEntersBackground`](#onappentersbackground) instead.
+
+</PaddedAPIBox>
+<PaddedAPIBox header="OnActivityDestroys" platforms={["android"]} headerNestingLevel={4}>
+
+Defines the activity lifecycle listener that is called when the activity owning the JavaScript context is about to be destroyed.
+
+> **Note:** This function is not available on iOS — you may want to use [`OnAppEntersBackground`](#onappentersbackground) instead.
+
+</PaddedAPIBox>
+
+<PaddedAPIBox header="OnActivityResult" platforms={["android"]} headerNestingLevel={4}>
+
+Defines the activity lifecycle listener that is called when the activity launched with `startActivityForResult` returns a result.
+
+#### Arguments
+
+- **activity** — The Android activity that received the result.
+- **payload** — An object containing data about the activity result.
+  - **requestCode**: `Int` — The request code originally supplied to `startActivityForResult`, used to identify the source of the result.
+  - **resultCode**: `Int` — The result code returned by the child activity (for example, `Activity.RESULT_OK` or `Activity.RESULT_CANCELED`).
+  - **data** — An optional intent that carries the result data returned from the launched activity. Can be `null`.
+
+```kotlin Kotlin
+AsyncFunction('someFunc') {
+  /* @hide ... */ /* @end */
+  activity.startActivityForResult(someIntent, SOME_REQUEST_CODE)
+}
+
+OnActivityResult { activity, payload ->
+  /* @hide ... */ /* @end */
+}
+```
+
+</PaddedAPIBox>
+<PaddedAPIBox header="OnNewIntent" platforms={["android"]} headerNestingLevel={4}>
+
+Defines the activity lifecycle listener that is called when the activity receives a new intent (for example, from a deep link).
+
+#### Arguments
+
+- **intent**: `Intent` — The new intent was delivered to the activity. For more information about the `Intent` type, visit: [https://developer.android.com/reference/android/content/Intent](https://developer.android.com/reference/android/content/Intent).
+
+```kotlin Kotlin
+OnNewIntent { intent ->
+  val data = intent.data
+  // Handle the incoming intent
+}
+```
+
+</PaddedAPIBox>
+<PaddedAPIBox header="OnUserLeavesActivity" platforms={["android"]} headerNestingLevel={4}>
+
+Defines the activity lifecycle listener called during the activity lifecycle when an activity is about to go into the background because of user choice. For example, when the user presses the Home key, `OnUserLeavesActivity` will be called, but when an incoming phone call causes the in-call Activity to be automatically brought to the foreground, `OnUserLeavesActivity` will not be called on the activity being interrupted.
+
+```kotlin Kotlin
+OnUserLeavesActivity {
+  // Your implementation
+}
+```
+
+</PaddedAPIBox>
+<PaddedAPIBox header="RegisterActivityContracts" platforms={["android"]} headerNestingLevel={4}>
+
+Registers Android [activity result contracts](https://developer.android.com/training/basics/intents/result) that let you launch activities and handle their results in a type-safe way. This is the modern replacement for `startActivityForResult`.
+
+Inside the `RegisterActivityContracts` block, use `registerForActivityResult` to register each contract. The registered launchers can then be used in async functions to launch activities.
+
+```kotlin Kotlin
+class ImagePickerModule : Module() {
+  private lateinit var cameraLauncher: ActivityResultLauncher<CameraContractOptions>
+  private lateinit var imageLibraryLauncher: ActivityResultLauncher<ImageLibraryContractOptions>
+
+  override fun definition() = ModuleDefinition {
+    Name("ImagePicker")
+
+    RegisterActivityContracts {
+      cameraLauncher = registerForActivityResult(
+        CameraContract(this@ImagePickerModule)
+      ) { input, result ->
+        handleResult(result, input.options)
+      }
+
+      imageLibraryLauncher = registerForActivityResult(
+        ImageLibraryContract(this@ImagePickerModule)
+      ) { input, result ->
+        handleResult(result, input.options)
+      }
+    }
+
+    AsyncFunction("launchCameraAsync") { options: PickerOptions ->
+      cameraLauncher.launch(CameraContractOptions(options))
+    }
+  }
+}
+```
+
+</PaddedAPIBox>
+
+## View definition components
+
+The view definition consists of the DSL components that describe the view's functionality and behavior. Those components can only be used within a [`View`](#view) closure.
+
+<PaddedAPIBox header="Name">
+
+Sets the name of the view that JavaScript code will use to refer to the view. Takes a string as an argument. This can be inferred from the view's class name, but it's recommended to set it explicitly for clarity.
+
+```swift Swift / Kotlin
+Name("MyViewName")
+```
+
+</PaddedAPIBox>
+<PaddedAPIBox header="Prop">
 
 Defines a setter for the view prop of given name.
 
 #### Arguments
 
 - **name**: `String` — Name of view prop that you want to define a setter.
+- **defaultValue**: `ValueType` — Optional default value used when the setter is called with `null`.
 - **setter**: `(view: ViewType, value: ValueType) -> ()` — Closure that is invoked when the view rerenders.
 
-This property can only be used within a [`ViewManager`](#viewmanager) closure.
+This property can only be used within a [`View`](#view) closure.
 
 <CodeBlocksTable>
 
@@ -359,78 +597,141 @@ Prop("background") { view: View, @ColorInt color: Int ->
 
 </CodeBlocksTable>
 
-> **Note** Props of function type (callbacks) are not supported yet.
+Prop definition with default value.
 
-</APIBox>
-<APIBox header="OnCreate">
+<CodeBlocksTable>
 
-Defines module's lifecycle listener that is called right after module initialization. If you need to set up something when the module gets initialized, use this instead of module's class initializer.
+```swift
+Prop("background", UIColor.black) { (view: UIView, color: UIColor) in
+  view.backgroundColor = color
+}
+```
 
-</APIBox>
-<APIBox header="OnDestroy">
+```kotlin
+Prop("background", Color.BLACK) { view: View, @ColorInt color: Int ->
+  view.setBackgroundColor(color)
+}
+```
 
-Defines module's lifecycle listener that is called when the module is about to be deallocated. Use it instead of module's class destructor.
+</CodeBlocksTable>
 
-</APIBox>
-<APIBox header="OnStartObserving">
+> **Note:** Props of function type (callbacks) are not supported yet.
 
-Defines the function that is invoked when the first event listener is added.
+</PaddedAPIBox>
+<PaddedAPIBox header="PropGroup" platforms={["android"]}>
 
-</APIBox>
-<APIBox header="OnStopObserving">
+Batch-registers multiple props that share a common setter pattern. Instead of defining each prop individually, you can register them all at once with a single handler.
 
-Defines the function that is invoked when all event listeners are removed.
+Two overloads are available:
 
-</APIBox>
-<APIBox header="OnAppContextDestroys">
+- **Pair-based**: Each prop is a `Pair<String, CustomValueType>`. The handler receives the view, the mapped custom value, and the prop value.
+- **String-based**: Each prop is a name string. The handler receives the view, the positional index, and the prop value.
 
-Defines module's lifecycle listener that is called when the app context owning the module is about to be deallocated.
+```kotlin Kotlin
+// Pair-based: map each prop name to a custom value
+PropGroup(
+  "borderTopColor" to LogicalEdge.TOP,
+  "borderBottomColor" to LogicalEdge.BOTTOM,
+  "borderLeftColor" to LogicalEdge.LEFT,
+  "borderRightColor" to LogicalEdge.RIGHT
+) { view: View, edge: LogicalEdge, color: Int? ->
+  BackgroundStyleApplicator.setBorderColor(view, edge, color)
+}
 
-</APIBox>
-<APIBox header="OnAppEntersForeground" platforms={["ios"]}>
+// String-based: use positional index
+PropGroup(
+  "borderWidth", "borderLeftWidth", "borderRightWidth",
+  "borderTopWidth", "borderBottomWidth"
+) { view: View, index: Int, width: Float? ->
+  val edge = LogicalEdge.entries[index]
+  BackgroundStyleApplicator.setBorderWidth(view, edge, width ?: Float.NaN)
+}
+```
 
-Defines the listener that is called when the app is about to enter the foreground mode.
+> **Note:** `PropGroup` is used internally by the CSS prop decorators. Most modules should use individual `Prop` definitions unless they have many props with a shared setter pattern.
 
-> **Note** This function is not available on Android — you may want to use [`OnActivityEntersForeground`](#onactivityentersforeground) instead.
+</PaddedAPIBox>
 
-</APIBox>
-<APIBox header="OnAppEntersBackground" platforms={["ios"]}>
+### Lifecycle
 
-Defines the listener that is called when the app enters the background mode.
+<PaddedAPIBox header="OnViewDidUpdateProps" headerNestingLevel={4}>
 
-> **Note** This function is not available on Android — you may want to use [`OnActivityEntersBackground`](#onactivityentersbackground) instead.
+Defines the view lifecycle method that is called when the view finished updating all props.
 
-</APIBox>
-<APIBox header="OnAppBecomesActive" platforms={["ios"]}>
+```swift
+OnViewDidUpdateProps { view: MyView in
+  /* @hide ... */ /* @end */
+}
+```
 
-Defines the listener that is called when the app becomes active again (after `OnAppEntersForeground`).
+```kotlin
+OnViewDidUpdateProps { view: MyView ->
+  /* @hide ... */ /* @end */
+}
+```
 
-> **Note** This function is not available on Android — you may want to use [`OnActivityEntersForeground`](#onactivityentersforeground) instead.
+</PaddedAPIBox>
 
-</APIBox>
-<APIBox header="OnActivityEntersForeground" platforms={["android"]}>
+<PaddedAPIBox header="OnViewDestroys" platforms={["android"]} headerNestingLevel={4}>
 
-Defines the activity lifecycle listener that is called right after the activity is resumed.
+Creates a view's lifecycle listener that is called right after the view is no longer used by React Native.
 
-> **Note** This function is not available on iOS — you may want to use [`OnAppEntersForeground`](#onappentersforeground) instead.
+```kotlin
+View(MyView::class) {
+  OnViewDestroys { view: MyView ->
+    /* @hide ... */ /* @end */
+  }
+}
+```
 
-</APIBox>
-<APIBox header="OnActivityEntersBackground" platforms={["android"]}>
+> **Note:** This function is not available on iOS. You may want to use the destructor of the native view to achieve similar results.
 
-Defines the activity lifecycle listener that is called right after the activity is paused.
+</PaddedAPIBox>
+<PaddedAPIBox header="AsyncFunction">
 
-> **Note** This function is not available on iOS — you may want to use [`OnAppEntersBackground`](#onappentersbackground) instead.
+Similarly to the [`AsyncFunction`](#asyncfunction) inside the module definition, you can define functions attached to the view ref to allow direct modification of the native view.
 
-</APIBox>
-<APIBox header="OnActivityDestroys" platforms={["android"]}>
+View async functions will always be dispatched on the main queue and can receive the view instance as the first argument.
 
-Defines the activity lifecycle listener that is called when the activity owning the JavaScript context is about to be destroyed.
+<CodeBlocksTable>
 
-> **Note** This function is not available on iOS — you may want to use [`OnAppEntersBackground`](#onappentersbackground) instead.
+```swift
+View(MyView.self) {
+  AsyncFunction("myAsyncFunction") { (view: MyView, message: String) in
+    view.displayMessage(message)
+  }
+}
+```
 
-</APIBox>
+```kotlin
+View(MyView::class) {
+  AsyncFunction("myAsyncFunction") { view: MyView, message: String ->
+    view.displayMessage(message);
+  }
+}
+```
 
-<APIBox header="GroupView" platforms={["android"]}>
+</CodeBlocksTable>
+
+```js JavaScript
+const MyNativeView = requireNativeViewManager('MyView');
+
+function MyComponent() {
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    ref.current?.myAsyncFunction();
+  }, [ref]);
+
+  return <MyNativeView ref={ref} />;
+}
+```
+
+</PaddedAPIBox>
+
+### View groups
+
+<PaddedAPIBox header="GroupView" platforms={["android"]} headerNestingLevel={4}>
 
 Enables the view to be used as a view group. Definition components that are accepted as part of the group view definition: [`AddChildView`](#addchildview), [`GetChildCount`](#getchildcount), [`GetChildViewAt`](#getchildviewat), [`RemoveChildView`](#removechildview), [`RemoveChildViewAt`](#removechildviewat).
 
@@ -443,13 +744,13 @@ This property can only be used within a [`View`](#view) closure.
 
 ```kotlin Kotlin
 GroupView<ViewGroup> {
-  AddChildView { parent, child, index -> ... }
+  AddChildView { parent, child, index -> /* @hide ... */ /* @end */}
 }
 ```
 
-</APIBox>
+</PaddedAPIBox>
 
-<APIBox header="AddChildView" platforms={["android"]}>
+<PaddedAPIBox header="AddChildView" platforms={["android"]} headerNestingLevel={4}>
 
 Defines action that adds a child view to the view group.
 
@@ -465,9 +766,9 @@ AddChildView { parent, child: View, index ->
 }
 ```
 
-</APIBox>
+</PaddedAPIBox>
 
-<APIBox header="GetChildCount" platforms={["android"]}>
+<PaddedAPIBox header="GetChildCount" platforms={["android"]} headerNestingLevel={4}>
 
 Defines action the retrieves the number of child views in the view group.
 
@@ -483,9 +784,9 @@ GetChildCount { parent ->
 }
 ```
 
-</APIBox>
+</PaddedAPIBox>
 
-<APIBox header="GetChildViewAt" platforms={["android"]}>
+<PaddedAPIBox header="GetChildViewAt" platforms={["android"]} headerNestingLevel={4}>
 
 Defines action that retrieves a child view at a specific index from the view group.
 
@@ -501,9 +802,9 @@ GetChildViewAt { parent, index ->
 }
 ```
 
-</APIBox>
+</PaddedAPIBox>
 
-<APIBox header="RemoveChildView" platforms={["android"]}>
+<PaddedAPIBox header="RemoveChildView" platforms={["android"]} headerNestingLevel={4}>
 
 Defines action that removes a specific child view from the view group.
 
@@ -519,9 +820,9 @@ RemoveChildView { parent, child: View ->
 }
 ```
 
-</APIBox>
+</PaddedAPIBox>
 
-<APIBox header="RemoveChildViewAt" platforms={["android"]}>
+<PaddedAPIBox header="RemoveChildViewAt" platforms={["android"]} headerNestingLevel={4}>
 
 Defines action that removes a child view at a specific index from the view group.
 
@@ -537,31 +838,112 @@ RemoveChildViewAt { parent, index ->
 }
 ```
 
-</APIBox>
+</PaddedAPIBox>
 
 ## Argument types
 
 Fundamentally, only primitive and serializable data can be passed back and forth between the runtimes. However, usually native modules need to receive custom data structures — more sophisticated than just the dictionary/map where the values are of unknown (`Any`) type and so each value has to be validated and cast on its own. The Expo Modules API provides protocols to make it more convenient to work with data objects, to provide automatic validation, and finally, to ensure native type-safety on each object member.
 
-<APIBox header="Primitives">
+<PaddedAPIBox header="Primitives">
 
 All functions and view prop setters accept all common primitive types in Swift and Kotlin as the arguments. This includes arrays, dictionaries/maps and optionals of these primitive types.
 
 | Language | Supported primitive types                                                                                                      |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | Swift    | `Bool`, `Int`, `Int8`, `Int16`, `Int32`, `Int64`, `UInt`, `UInt8`, `UInt16`, `UInt32`, `UInt64`, `Float32`, `Double`, `String` |
-| Kotlin   | `Boolean`, `Int`, `Long`, `Float`, `Double`, `String`, `Pair`                                                          |
+| Kotlin   | `Boolean`, `Int`, `Long`, `Float`, `Double`, `String`, `Pair`                                                                  |
 
-</APIBox>
-<APIBox header="Convertibles">
+</PaddedAPIBox>
+<PaddedAPIBox header="Convertibles">
 
 _Convertibles_ are native types that can be initialized from certain specific kinds of data received from JavaScript. Such types are allowed to be used as an argument type in `Function`'s body. For example, when the `CGPoint` type is used as a function argument type, its instance can be created from an array of two numbers `(x, y)` or a JavaScript object with numeric `x` and `y` properties.
 
----
+The built-in Convertibles are documented [further below](#built-in-convertibles).
 
-Some common iOS types from `CoreGraphics` and `UIKit` system frameworks are already made convertible.
+You can define additional Convertibles by making native Swift types conform to the `Convertible` protocol:
 
-| Native iOS Type         | TypeScript                                                                                                                                                                        |
+<PaddedAPIBox header="Convertible" platforms={["ios"]} headerNestingLevel={4}>
+
+`Convertible` is a Swift protocol with one static method:
+
+<APIMethod
+  name="convert"
+  comment="A static method that converts a dynamically typed value from JavaScript to an instance of the Swift type conforming to `Convertible`. Implementers should throw an exception when the given value is invalid or of an unsupported type."
+  returnTypeName="Self"
+  exposeInSidebar={false}
+  parameters={[
+    {
+      name: 'value',
+      comment: 'A value from JavaScript to convert',
+      typeName: 'Any?',
+    },
+    {
+      name: 'appContext',
+      comment: 'The context object for the currently running Expo app instance',
+      typeName: 'AppContext',
+    },
+  ]}
+/>
+
+#### Example
+
+```swift Swift
+import ExpoModulesCore
+
+extension CMTime: @retroactive Convertible {
+  public static func convert(from value: Any?, appContext: AppContext) throws -> CMTime {
+    if let seconds = value as? Double {
+      return CMTime(seconds: seconds, preferredTimescale: .max)
+    }
+    throw Conversions.ConvertingException<CMTime>(value)
+  }
+}
+```
+
+</PaddedAPIBox>
+
+In Kotlin, extending an existing type with a protocol isn't possible. To extend available types, you can use the `ModuleConverters` builder:
+
+<PaddedAPIBox header="ModuleConverters" platforms={["android"]} headerNestingLevel={4}>
+
+On Android, modules can define custom type converters that allow non-standard types to be used as function arguments. Override the `converters()` method in your `Module` class and use the `ModuleConverters` builder to register converters with `.from<SourceType> { }` chains.
+
+```kotlin Kotlin
+class MyModule : Module() {
+  override fun converters() = ModuleConverters {
+    TypeConverter(CustomType::class)
+      .from { number: Int ->
+        CustomType.fromInt(number)
+      }
+      .from { string: String ->
+        CustomType.parse(string)
+      }
+  }
+
+  override fun definition() = ModuleDefinition {
+    Name("MyModule")
+
+    // CustomType can now be used as an argument type
+    Function("process") { value: CustomType ->
+      value.doSomething()
+    }
+  }
+}
+```
+
+Each `.from<T> { }` call registers a converter from type `T` to your custom type. At runtime, the framework tries each registered converter until one matches the incoming JavaScript value.
+
+> **Note:** On iOS, use the `Convertible` protocol instead (documented above).
+
+</PaddedAPIBox>
+
+</PaddedAPIBox>
+
+### Built-in Convertibles
+
+Some common iOS types from the `CoreGraphics` and `UIKit` system frameworks are already made convertible.
+
+| Native iOS type         | TypeScript                                                                                                                                                                        |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `URL`                   | `string` with a URL. When a scheme is not provided, it's assumed to be a file URL.                                                                                                |
 | `CGFloat`               | `number`                                                                                                                                                                          |
@@ -576,17 +958,21 @@ Some common iOS types from `CoreGraphics` and `UIKit` system frameworks are alre
 
 Similarly, some common Android types from packages like `java.io`, `java.net`, or `android.graphics` are also made convertible.
 
-| Native Android Type                                                           | TypeScript                                                                                                                                                                        |
-| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `java.net.URL`                                                                | `string` with a URL. Note that the scheme has to be provided                                                                                                                      |
-| `android.net.Uri`<br/>`java.net.URI`                                          | `string` with a URI. Note that the scheme has to be provided                                                                                                                      |
-| `java.io.File`<br/>`java.nio.file.Path` (is only available on Android API 26) | `string` with a path to the file                                                                                                                                                  |
-| `android.graphics.Color`                                                      | Color hex strings (`#RRGGBB`, `#RRGGBBAA`, `#RGB`, `#RGBA`), named colors following the [CSS3/SVG specification](https://www.w3.org/TR/css-color-3/#svg-color) or `"transparent"` |
-| `kotlin.Pair<A, B>`                                                           | Array with two values, where the first one is of type _A_ and the second is of type _B_                                                                                           |
-| `kotlin.ByteArray`                                                            | `Uint8Array` <StatusTag note="SDK 50+" />                                                                                                                                         |
+> **Note:** On Android, primitive arrays should be used whenever possible.
 
-</APIBox>
-<APIBox header="Records">
+| Native Android type                                                                       | TypeScript                                                                                                                                                                        |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `java.net.URL`                                                                            | `string` with a URL. Note that the scheme has to be provided (URL should not contain any unencoded `%` character)                                                                 |
+| `android.net.Uri`<br/>`java.net.URI`                                                      | `string` with a URI. Note that the scheme has to be provided (URI should not contain any unencoded `%` character)                                                                 |
+| `java.io.File`<br/>`java.nio.file.Path` (is only available on Android API 26)             | `string` with a path to the file                                                                                                                                                  |
+| `android.graphics.Color`                                                                  | Color hex strings (`#RRGGBB`, `#RRGGBBAA`, `#RGB`, `#RGBA`), named colors following the [CSS3/SVG specification](https://www.w3.org/TR/css-color-3/#svg-color) or `"transparent"` |
+| `kotlin.Pair<A, B>`                                                                       | Array with two values, where the first one is of type _A_ and the second is of type _B_                                                                                           |
+| `kotlin.ByteArray`                                                                        | `Uint8Array` <StatusTag note="SDK 50+" />                                                                                                                                         |
+| `kotlin.BooleanArray`                                                                     | `boolean[]`                                                                                                                                                                       |
+| `kotlin.IntArray`<br/>`kotlin.FloatArray`<br/>`kotlin.LongArray`<br/>`kotlin.DoubleArray` | `number[]`                                                                                                                                                                        |
+| `kotlin.time.Duration`                                                                    | `number` represents a duration in seconds <StatusTag note="SDK 52+" />                                                                                                            |
+
+<PaddedAPIBox header="Records">
 
 _Record_ is a convertible type and an equivalent of the dictionary (Swift) or map (Kotlin), but represented as a struct where each field can have its type and provide a default value.
 It is a better way to represent a JavaScript object with the native type safety.
@@ -630,8 +1016,198 @@ Function("readFile") { path: String, options: FileReadOptions ->
 ```
 
 </CodeBlocksTable>
-</APIBox>
-<APIBox header="Enums">
+</PaddedAPIBox>
+
+<PaddedAPIBox header="Formatter">
+
+> **important** **This feature is [experimental](/more/release-statuses/#experimental).**
+
+The Formatter API allows you to customize how a Record is serialized when returned from a native function. This is useful when you need to transform property values before sending them to JavaScript, or conditionally exclude certain properties from the output.
+
+#### Operations
+
+- **map**: Transform a property's value before serialization.
+- **skip**: Exclude a property from the output entirely.
+
+#### Basic usage
+
+<CodeBlocksTable>
+
+```swift
+struct UserInfo: Record {
+  @Field var id: Int = 0
+  @Field var email: String = ""
+  @Field var password: String = ""
+}
+
+Function("getUser") {
+  let user = UserInfo(id: 1, email: "user@example.com", password: "secret123")
+
+  // Return user without exposing the password
+  return user.format { formatter in
+    formatter.property("password", keyPath: \.password).skip()
+  }
+}
+```
+
+```kotlin
+class UserInfo(
+  @Field val id: Int = 0,
+  @Field val email: String = "",
+  @Field val password: String = ""
+) : Record
+
+Function("getUser") {
+  val user = UserInfo(id = 1, email = "user@example.com", password = "secret123")
+
+  // Return user without exposing the password
+  formatter {
+    property(UserInfo::password).skip()
+  }.format(user)
+}
+```
+
+</CodeBlocksTable>
+
+```js JavaScript
+const user = MyModule.getUser();
+console.log(user);
+// Output: { id: 1, email: "user@example.com" }
+// Note: password is not present in the object
+```
+
+#### Transforming values with `map`
+
+Use `map` to transform property values before they are sent to JavaScript:
+
+<CodeBlocksTable>
+
+```swift
+struct Product: Record {
+  @Field var name: String = ""
+  @Field var price: Double = 0.0
+}
+
+Function("getProduct") {
+  let product = Product(name: "Widget", price: 19.99)
+
+  return product.format { formatter in
+    // Transform price to include currency symbol
+    formatter.property("price", keyPath: \.price).map { value in
+      "$\(String(format: "%.2f", value))"
+    }
+  }
+}
+```
+
+```kotlin
+class Product(
+  @Field val name: String = "",
+  @Field val price: Double = 0.0
+) : Record
+
+Function("getProduct") {
+  val product = Product(name = "Widget", price = 19.99)
+
+  formatter {
+    // Transform price to include currency symbol
+    property(Product::price).map { value ->
+      "${"$"}${String.format("%.2f", value)}"
+    }
+  }.format(product)
+}
+```
+
+</CodeBlocksTable>
+
+#### Conditional skipping
+
+You can conditionally skip properties based on their values or the record's state:
+
+<CodeBlocksTable>
+
+```swift
+struct Settings: Record {
+  @Field var theme: String = "light"
+  @Field var debugMode: Bool = false
+  @Field var apiKey: String? = nil
+}
+
+Function("getSettings") {
+  let settings = Settings(theme: "dark", debugMode: true, apiKey: "secret")
+
+  return settings.format { formatter in
+    // Skip apiKey if nil
+    formatter.property("apiKey", keyPath: \.apiKey).skip { value in
+      value == nil
+    }
+  }
+}
+```
+
+```kotlin
+class Settings(
+  @Field val theme: String = "light",
+  @Field val debugMode: Boolean = false,
+  @Field val apiKey: String? = null
+) : Record
+
+Function("getSettings") {
+  val settings = Settings(theme = "dark", debugMode = true, apiKey = "secret")
+
+  formatter {
+    // Skip apiKey if null
+    property(Settings::apiKey).skip { value ->
+      value == null
+    }
+  }.format(settings)
+}
+```
+
+</CodeBlocksTable>
+
+#### Chaining operations
+
+You can chain multiple operations on the same property:
+
+<CodeBlocksTable>
+
+```swift
+struct Data: Record {
+  @Field var value: Int? = nil
+}
+
+Function("getData") {
+  let data = Data(value: nil)
+
+  return data.format { formatter in
+    formatter.property("value", keyPath: \.value)
+      .map { $0 ?? 0 }  // Default to 0 if nil
+      .map { $0 * 2 }   // Double the value
+  }
+}
+```
+
+```kotlin
+class Data(
+  @Field val value: Int? = null
+) : Record
+
+Function("getData") {
+  val data = Data(value = null)
+
+  formatter {
+    property(Data::value)
+      .map { it ?: 0 }  // Default to 0 if null
+      .map { it * 2 }   // Double the value
+  }.format(data)
+}
+```
+
+</CodeBlocksTable>
+</PaddedAPIBox>
+
+<PaddedAPIBox header="Enums">
 
 With enums, we can go even further with the above example (with `FileReadOptions` record) and limit supported encodings to `"utf8"` and `"base64"`. To use an enum as an argument or record field, it must represent a primitive value (for example, `String`, `Int`) and conform to `Enumerable`.
 
@@ -646,7 +1222,7 @@ enum FileEncoding: String, Enumerable {
 struct FileReadOptions: Record {
   @Field
   var encoding: FileEncoding = .utf8
-  // ...
+  /* @hide ... */ /* @end */
 }
 ```
 
@@ -660,13 +1236,13 @@ enum class FileEncoding(val value: String) : Enumerable {
 class FileReadOptions : Record {
   @Field
   val encoding: FileEncoding = FileEncoding.utf8
-  // ...
+  /* @hide ... */ /* @end */
 }
 ```
 
 </CodeBlocksTable>
-</APIBox>
-<APIBox header="Eithers">
+</PaddedAPIBox>
+<PaddedAPIBox header="Eithers">
 
 There are some use cases where you want to pass various types for a single function argument. This is where Either types might come in handy.
 They act as a container for a value of one of a couple of types.
@@ -703,10 +1279,111 @@ The implementation for three Either types is currently provided out of the box, 
 - `EitherOfThree<FirstType, SecondType, ThirdType>` — A container for one of three types.
 - `EitherOfFour<FirstType, SecondType, ThirdType, FourthType>` — A container for one of four types.
 
-> **Info** Either types are available as of SDK 47.
+</PaddedAPIBox>
 
-</APIBox>
-<APIBox header="JavaScript values">
+<PaddedAPIBox header="ValueOrUndefined">
+
+> **important** **This feature is [experimental](/more/release-statuses/#experimental).**
+
+`ValueOrUndefined` is a wrapper type that allows you to distinguish between a JavaScript `undefined` value and an actual value.
+
+With regular optional types, both `undefined` and `null` from JavaScript are converted to `null` on the native side, making it impossible to tell them apart. `ValueOrUndefined` solves this by preserving the distinction.
+
+#### Properties
+
+<APIMethod
+  name="isUndefined"
+  comment="Returns `true` if the JavaScript value was `undefined`, `false` otherwise."
+  returnTypeName="Bool"
+  isProperty
+/>
+
+<APIMethod
+  name="optional"
+  comment="Returns the unwrapped value if present, or `null` if the value was `undefined`."
+  returnTypeName="InnerType?"
+  isProperty
+/>
+
+<CodeBlocksTable>
+
+```swift
+Function("configure") { (timeout: ValueOrUndefined<Int>) in
+  if timeout.isUndefined {
+    // Argument was not provided, use default behavior
+  } else if let value = timeout.optional {
+    // Argument was provided with a value
+  }
+}
+```
+
+```kotlin
+Function("configure") { timeout: ValueOrUndefined<Int> ->
+  if (timeout.isUndefined) {
+    // Argument was not provided, use default behavior
+  } else {
+    timeout.optional?.let { value ->
+      // Argument was provided with a value
+    }
+  }
+}
+```
+
+</CodeBlocksTable>
+
+#### Distinguishing `undefined` from `null`
+
+When using `ValueOrUndefined` with an optional inner type, you can distinguish between three states:
+
+<CodeBlocksTable>
+
+```swift
+Function("setName") { (name: ValueOrUndefined<String?>) in
+  switch name {
+  case .undefined:
+    // name argument was not provided
+    break
+  case .value(let unwrapped) where unwrapped == nil:
+    // name was explicitly set to null
+    break
+  case .value(let unwrapped):
+    // name was set to a string value
+    print("Name: \(unwrapped!)")
+  }
+}
+```
+
+```kotlin
+Function("setName") { name: ValueOrUndefined<String?> ->
+  when {
+    name.isUndefined -> {
+      // name argument was not provided
+    }
+    name.optional == null -> {
+      // name was explicitly set to null
+    }
+    else -> {
+      // name was set to a string value
+      println("Name: ${name.optional}")
+    }
+  }
+}
+```
+
+</CodeBlocksTable>
+
+```js JavaScript
+import { requireNativeModule } from 'expo-modules-core';
+
+const MyModule = requireNativeModule('MyModule');
+
+MyModule.setName('Alice'); // name is a value
+MyModule.setName(null); // name is null (but not undefined)
+MyModule.setName(undefined); // name is undefined
+```
+
+</PaddedAPIBox>
+<PaddedAPIBox header="JavaScript values">
 
 It's also possible to use a `JavaScriptValue` type which is a holder for any value that can be represented in JavaScript.
 This type is useful when you want to mutate the given argument or when you want to omit type validations and conversions.
@@ -749,13 +1426,11 @@ Function("mutateMe") { jsObject: JavaScriptObject ->
 
 </CodeBlocksTable>
 
-> **Info** JavaScript types are available as of SDK 49.
-
-</APIBox>
+</PaddedAPIBox>
 
 ## Native classes
 
-<APIBox header="Module">
+<PaddedAPIBox header="Module">
 
 A base class for a native module.
 
@@ -765,8 +1440,10 @@ A base class for a native module.
   name="appContext"
   comment="Provides access to the [`AppContext`](#appcontext)."
   returnTypeName="AppContext"
-  isProperty={true}
-  isReturnTypeReference={true}
+  exposeInSidebar
+  baseNestingLevel={4}
+  isProperty
+  isReturnTypeReference
 />
 
 #### Methods
@@ -775,6 +1452,8 @@ A base class for a native module.
   name="sendEvent"
   comment="Sends an event with a given name and a payload to JavaScript. See [`Sending events`](#sending-events)"
   returnTypeName="void"
+  exposeInSidebar
+  baseNestingLevel={4}
   parameters={[
     {
       name: 'eventName',
@@ -789,9 +1468,9 @@ A base class for a native module.
   ]}
 />
 
-</APIBox>
+</PaddedAPIBox>
 
-<APIBox header="AppContext">
+<PaddedAPIBox header="AppContext">
 
 The app context is an interface to a single Expo app.
 
@@ -801,68 +1480,27 @@ The app context is an interface to a single Expo app.
   name="constants"
   comment="Provides access to app's constants from legacy module registry."
   returnTypeName="Android: ConstantsInterface? iOS: EXConstantsInterface?"
-  isProperty={true}
+  exposeInSidebar
+  baseNestingLevel={4}
+  isProperty
 />
 
 <APIMethod
   name="permissions"
   comment="Provides access to the permissions manager from legacy module registry."
   returnTypeName="Android: Permissions? iOS: EXPermissionsInterface?"
-  isProperty={true}
-/>
-
-<APIMethod
-  name="imageLoader"
-  comment="Provides access to the image loader from the legacy module registry."
-  returnTypeName="Android: ImageLoaderInterface? iOS: EXImageLoaderInterface?"
-  isProperty={true}
-/>
-
-<APIMethod
-  name="barcodeScanner"
-  comment="Provides access to the bar code scanner manager from the legacy module registry."
-  returnTypeName="ImageLoaderInterface?"
-  isProperty={true}
-  platforms={['Android']}
-/>
-
-<APIMethod
-  name="camera"
-  comment="Provides access to the camera view manager from the legacy module registry."
-  returnTypeName="CameraViewInterface?"
-  isProperty={true}
-  platforms={['Android']}
-/>
-
-<APIMethod
-  name="font"
-  comment="Provides access to the font manager from the legacy module registry."
-  returnTypeName="FontManagerInterface?"
-  isProperty={true}
-  platforms={['Android']}
-/>
-
-<APIMethod
-  name="sensor"
-  comment="Provides access to the sensor manager from the legacy module registry."
-  returnTypeName="SensorServiceInterface?"
-  isProperty={true}
-  platforms={['Android']}
-/>
-
-<APIMethod
-  name="taskManager"
-  comment="Provides access to the task manager from the legacy module registry."
-  returnTypeName="TaskManagerInterface?"
-  isProperty={true}
-  platforms={['Android']}
+  exposeInSidebar
+  baseNestingLevel={4}
+  isProperty
 />
 
 <APIMethod
   name="activityProvider"
   comment="Provides access to the activity provider from the legacy module registry."
   returnTypeName="ActivityProvider?"
-  isProperty={true}
+  exposeInSidebar
+  baseNestingLevel={4}
+  isProperty
   platforms={['Android']}
 />
 
@@ -870,15 +1508,19 @@ The app context is an interface to a single Expo app.
   name="reactContext"
   comment="Provides access to the react application context."
   returnTypeName="Context?"
-  isProperty={true}
+  exposeInSidebar
+  baseNestingLevel={4}
+  isProperty
   platforms={['Android']}
 />
 
 <APIMethod
   name="hasActiveReactInstance"
-  comment="Checks if there is an not-null, alive react native instance."
+  comment="Checks if there is a non-null, alive React Native instance."
   returnTypeName="Boolean"
-  isProperty={true}
+  exposeInSidebar
+  baseNestingLevel={4}
+  isProperty
   platforms={['Android']}
 />
 
@@ -886,13 +1528,15 @@ The app context is an interface to a single Expo app.
   name="utilities"
   comment="Provides access to the utilities from legacy module registry."
   returnTypeName="EXUtilitiesInterface?"
-  isProperty={true}
+  exposeInSidebar
+  baseNestingLevel={4}
+  isProperty
   platforms={['iOS']}
 />
 
-</APIBox>
+</PaddedAPIBox>
 
-<APIBox header="ExpoView">
+<PaddedAPIBox header="ExpoView">
 
 A base class that should be used by all exported views.
 
@@ -904,8 +1548,8 @@ On iOS, `ExpoView` extends the `RCTView` which handles some styles (for example,
   name="appContext"
   comment="Provides access to the [`AppContext`](#appcontext)."
   returnTypeName="AppContext"
-  isProperty={true}
-  isReturnTypeReference={true}
+  isProperty
+  isReturnTypeReference
 />
 
 #### Extending `ExpoView`
@@ -920,7 +1564,7 @@ class LinearGradientView: ExpoView {}
 public class LinearGradientModule: Module {
   public func definition() -> ModuleDefinition {
     View(LinearGradientView.self) {
-      // ...
+      /* @hide ... */ /* @end */
     }
   }
 }
@@ -935,7 +1579,7 @@ class LinearGradientView(
 class LinearGradientModule : Module() {
   override fun definition() = ModuleDefinition {
     View(LinearGradientView::class) {
-      // ...
+      /* @hide ... */ /* @end */
     }
   }
 }
@@ -943,11 +1587,11 @@ class LinearGradientModule : Module() {
 
 </CodeBlocksTable>
 
-</APIBox>
+</PaddedAPIBox>
 
 ## Guides
 
-<APIBox>
+<PaddedAPIBox>
 ### Sending events
 
 While JavaScript/TypeScript to Native communication is mostly covered by native functions, you might also want to let the JavaScript/TypeScript code know about certain system events, for example, when the clipboard content changes.
@@ -1024,29 +1668,39 @@ class ClipboardModule : Module() {
 
 </CodeBlocksTable>
 
-To subscribe to these events in JavaScript/TypeScript, you need to wrap the native module with `EventEmitter` class as shown:
+To subscribe to these events in JavaScript/TypeScript, use [`addListener`](/versions/latest/sdk/expo/#addlistenereventname-listener) on the module object returned by `requireNativeModule`. Modules are extending the built-in [`EventEmitter`](/versions/latest/sdk/expo/#eventemittertype) class.
+Alternatively, you can use [`useEvent`](/versions/latest/sdk/expo/#useeventeventemitter-eventname-initialvalue) or [`useEventListener`](/versions/latest/sdk/expo/#useeventlistenereventemitter-eventname-listener) hooks.
 
 ```ts TypeScript
-import { requireNativeModule, EventEmitter, Subscription } from 'expo-modules-core';
+import { requireNativeModule, NativeModule } from 'expo';
 
-const ClipboardModule = requireNativeModule('Clipboard');
-const emitter = new EventEmitter(ClipboardModule);
+type ClipboardChangeEvent = {
+  contentTypes: string[];
+};
 
-export function addClipboardListener(listener: (event) => void): Subscription {
-  return emitter.addListener('onClipboardChanged', listener);
-}
+type ClipboardModuleEvents = {
+  onClipboardChanged(event: ClipboardChangeEvent): void;
+};
+
+declare class ClipboardModule extends NativeModule<ClipboardModuleEvents> {}
+
+const Clipboard = requireNativeModule<ClipboardModule>('Clipboard');
+
+Clipboard.addListener('onClipboardChanged', (event: ClipboardChangeEvent) => {
+  alert('Clipboard has changed');
+});
 ```
 
-</APIBox>
+</PaddedAPIBox>
 
-<APIBox>
+<PaddedAPIBox>
 ### View callbacks
 
 Some events are connected to a certain view. For example, the touch event should be sent only to the underlying JavaScript view which was pressed. In that case, you can't use `sendEvent` described in [`Sending events`](#sending-events). The `expo-modules-core` introduces a view callbacks mechanism to handle view-bound events.
 
 To use it, in the view definition, you need to provide the event names that the view can send using the [Events](#events) definition component. After that, you need to declare a property of type `EventDispatcher` in your view class. The name of the declared property has to be the same as the name exported in the `Events` component. Later, you can call it as a function and pass a payload of type `[String: Any?]` on iOS and `Map<String, Any?>` on Android.
 
-> **Note**: On Android, it's possible to specify the payload type. In case of types that don't convert into objects, the payload will be encapsulated and stored under the `payload` key: `{payload: <provided value>}`.
+> **Note:**: On Android, it's possible to specify the payload type. In case of types that don't convert into objects, the payload will be encapsulated and stored under the `payload` key: `{payload: <provided value>}`.
 
 <CodeBlocksTable>
 
@@ -1057,8 +1711,7 @@ class CameraViewModule: Module {
       Events(
         "onCameraReady"
       )
-
-      // ...
+      /* @hide ... */ /* @end */
     }
   }
 }
@@ -1081,8 +1734,7 @@ class CameraViewModule : Module() {
       Events(
         "onCameraReady"
       )
-
-      // ...
+      /* @hide ... */ /* @end */
     }
   }
 }
@@ -1105,7 +1757,7 @@ class CameraView(
 
 To subscribe to these events in JavaScript/TypeScript, you need to pass a function to the native view as shown:
 
-```ts TypeScript
+```tsx TypeScript
 import { requireNativeViewManager } from 'expo-modules-core';
 
 const CameraView = requireNativeViewManager('CameraView');
@@ -1121,7 +1773,7 @@ export default function MainView() {
 
 Provided payload is available under the `nativeEvent` key.
 
-</APIBox>
+</PaddedAPIBox>
 
 ## Examples
 
@@ -1157,61 +1809,101 @@ For more examples from real modules, you can refer to Expo modules that already 
 
 <FileTree
   files={[
-    ['expo-battery', <A href="https://github.com/expo/expo/tree/main/packages/expo-battery/ios">Swift</A>],
+    [
+      'expo-battery',
+      <A href="https://github.com/expo/expo/tree/main/packages/expo-battery/ios">Swift</A>,
+    ],
     [
       'expo-cellular',
       <CALLOUT>
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-cellular/android/src/main/java/expo/modules/cellular">Kotlin</A>,{' '}
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-cellular/ios">Swift</A>
-      </CALLOUT>
+        <A href="https://github.com/expo/expo/tree/main/packages/expo-cellular/android/src/main/java/expo/modules/cellular">
+          Kotlin
+        </A>
+        , <A href="https://github.com/expo/expo/tree/main/packages/expo-cellular/ios">Swift</A>
+      </CALLOUT>,
     ],
     [
       'expo-clipboard',
       <CALLOUT>
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-clipboard/android/src/main/java/expo/modules/clipboard">Kotlin</A>,{' '}
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-clipboard/ios">Swift</A>
-      </CALLOUT>
+        <A href="https://github.com/expo/expo/tree/main/packages/expo-clipboard/android/src/main/java/expo/modules/clipboard">
+          Kotlin
+        </A>
+        , <A href="https://github.com/expo/expo/tree/main/packages/expo-clipboard/ios">Swift</A>
+      </CALLOUT>,
     ],
     [
       'expo-crypto',
       <CALLOUT>
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-crypto/android/src/main/java/expo/modules/crypto">Kotlin</A>,{' '}
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-crypto/ios">Swift</A>
-      </CALLOUT>
+        <A href="https://github.com/expo/expo/tree/main/packages/expo-crypto/android/src/main/java/expo/modules/crypto">
+          Kotlin
+        </A>
+        , <A href="https://github.com/expo/expo/tree/main/packages/expo-crypto/ios">Swift</A>
+      </CALLOUT>,
     ],
-    ['expo-device', <A href="https://github.com/expo/expo/tree/main/packages/expo-device/ios">Swift</A>],
-    ['expo-haptics', <A href="https://github.com/expo/expo/tree/main/packages/expo-haptics/ios">Swift</A>],
-    ['expo-image-manipulator', <A href="https://github.com/expo/expo/tree/main/packages/expo-image-manipulator/ios">Swift</A>],
+    [
+      'expo-device',
+      <A href="https://github.com/expo/expo/tree/main/packages/expo-device/ios">Swift</A>,
+    ],
+    [
+      'expo-haptics',
+      <A href="https://github.com/expo/expo/tree/main/packages/expo-haptics/ios">Swift</A>,
+    ],
+    [
+      'expo-image-manipulator',
+      <A href="https://github.com/expo/expo/tree/main/packages/expo-image-manipulator/ios">
+        Swift
+      </A>,
+    ],
     [
       'expo-image-picker',
       <CALLOUT>
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-image-picker/android/src/main/java/expo/modules/imagepicker">Kotlin</A>,{' '}
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-image-picker/ios">Swift</A>
-      </CALLOUT>
+        <A href="https://github.com/expo/expo/tree/main/packages/expo-image-picker/android/src/main/java/expo/modules/imagepicker">
+          Kotlin
+        </A>
+        , <A href="https://github.com/expo/expo/tree/main/packages/expo-image-picker/ios">Swift</A>
+      </CALLOUT>,
     ],
     [
       'expo-linear-gradient',
       <CALLOUT>
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-linear-gradient/android/src/main/java/expo/modules/lineargradient">Kotlin</A>,{' '}
+        <A href="https://github.com/expo/expo/tree/main/packages/expo-linear-gradient/android/src/main/java/expo/modules/lineargradient">
+          Kotlin
+        </A>
+        ,{' '}
         <A href="https://github.com/expo/expo/tree/main/packages/expo-linear-gradient/ios">Swift</A>
-      </CALLOUT>
+      </CALLOUT>,
     ],
     [
       'expo-localization',
       <CALLOUT>
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-localization/android/src/main/java/expo/modules/localization">Kotlin</A>,{' '}
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-localization/ios">Swift</A>
-      </CALLOUT>
+        <A href="https://github.com/expo/expo/tree/main/packages/expo-localization/android/src/main/java/expo/modules/localization">
+          Kotlin
+        </A>
+        , <A href="https://github.com/expo/expo/tree/main/packages/expo-localization/ios">Swift</A>
+      </CALLOUT>,
     ],
-    ['expo-store-review', <A href="https://github.com/expo/expo/tree/main/packages/expo-store-review/ios">Swift</A>],
-    ['expo-system-ui', <A href="https://github.com/expo/expo/tree/main/packages/expo-system-ui/ios/ExpoSystemUI">Swift</A>],
-    ['expo-video-thumbnails', <A href="https://github.com/expo/expo/tree/main/packages/expo-video-thumbnails/ios">Swift</A>],
+    [
+      'expo-store-review',
+      <A href="https://github.com/expo/expo/tree/main/packages/expo-store-review/ios">Swift</A>,
+    ],
+    [
+      'expo-system-ui',
+      <A href="https://github.com/expo/expo/tree/main/packages/expo-system-ui/ios/ExpoSystemUI">
+        Swift
+      </A>,
+    ],
+    [
+      'expo-video-thumbnails',
+      <A href="https://github.com/expo/expo/tree/main/packages/expo-video-thumbnails/ios">Swift</A>,
+    ],
     [
       'expo-web-browser',
       <CALLOUT>
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-web-browser/android/src/main/java/expo/modules/webbrowser">Kotlin</A>,{' '}
-        <A href="https://github.com/expo/expo/tree/main/packages/expo-web-browser/ios">Swift</A>
-      </CALLOUT>
-    ]
+        <A href="https://github.com/expo/expo/tree/main/packages/expo-web-browser/android/src/main/java/expo/modules/webbrowser">
+          Kotlin
+        </A>
+        , <A href="https://github.com/expo/expo/tree/main/packages/expo-web-browser/ios">Swift</A>
+      </CALLOUT>,
+    ],
   ]}
 />

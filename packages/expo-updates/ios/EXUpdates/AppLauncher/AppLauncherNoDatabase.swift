@@ -1,7 +1,5 @@
 //  Copyright © 2019 650 Industries. All rights reserved.
 
-// swiftlint:disable force_unwrapping
-
 import Foundation
 
 /**
@@ -23,7 +21,7 @@ public final class AppLauncherNoDatabase: NSObject, AppLauncher {
 
   public func launchUpdate() {
     precondition(assetFilesMap == nil, "assetFilesMap should be null for embedded updates")
-    launchAssetUrl = Bundle.main.url(
+    launchAssetUrl = updatesBundle.url(
       forResource: EmbeddedAppLoader.EXUpdatesBareEmbeddedBundleFilename,
       withExtension: EmbeddedAppLoader.EXUpdatesBareEmbeddedBundleFileType
     )

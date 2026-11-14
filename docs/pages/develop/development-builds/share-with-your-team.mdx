@@ -4,11 +4,12 @@ description: Learn how to install and share the development with your team or ru
 sidebar_title: Share with your team
 ---
 
-import ImageSpotlight from '~/components/plugins/ImageSpotlight';
+import { Cube01Icon } from '@expo/styleguide-icons/outline/Cube01Icon';
+
 import { BoxLink } from '~/ui/components/BoxLink';
-import { CODE } from '~/ui/components/Text';
-import { BookOpen02Icon } from '@expo/styleguide-icons';
+import { ContentSpotlight } from '~/ui/components/ContentSpotlight';
 import { Terminal } from '~/ui/components/Snippet';
+import { CODE } from '~/ui/components/Text';
 
 Android and iOS both offer ways to install a build of your application directly on devices. This gives you full control of putting specific builds on devices, allowing you to iterate quickly and have multiple builds of your application available for review at the same time. You can also share it with your team or run it on multiple test devices.
 
@@ -16,7 +17,7 @@ Android and iOS both offer ways to install a build of your application directly 
 
 When a development build is ready, a shareable URL is generated for your build with instructions on how to get it up and running. You can use this URL with a teammate or send it to your test device to install the build. The URL generated is unique to the build for your project.
 
-<ImageSpotlight
+<ContentSpotlight
   alt="An example of shareable development build URL after the Android internal distribution build is ready."
   src="/static/images/share-dev-build/shareable-url.png"
 />
@@ -27,9 +28,10 @@ When a development build is ready, a shareable URL is generated for your build w
 
 You can also direct your teammate to the build page in the Expo dashboard. From there, they can download the build artifact directly on their device.
 
-<ImageSpotlight
+<ContentSpotlight
   alt="An example of shareable development build URL from Expo dashboard."
-  src="/static/images/share-dev-build/expo-dashboard.png"
+  src="/static/images/tutorial/eas/android-development-build-qr-code.webp"
+  className="max-w-[480px]"
 />
 
 ### Use EAS CLI
@@ -58,12 +60,12 @@ You can use `eas build:resign` to codesign an existing **.ipa** for iOS to a new
     </>
   }
   href="/build-reference/variants/"
-  Icon={BookOpen02Icon}
+  Icon={Cube01Icon}
 />
 
 <BoxLink
   title="Sharing pre-release versions of your app"
   description="Learn more about sharing pre-release versions of your app."
-  href="/guides/sharing-preview-releases"
-  Icon={BookOpen02Icon}
+  href="/build/internal-distribution"
+  Icon={Cube01Icon}
 />

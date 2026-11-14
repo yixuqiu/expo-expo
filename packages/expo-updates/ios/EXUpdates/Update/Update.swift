@@ -35,6 +35,7 @@ public extension Optional {
   }
 }
 
+// swiftlint:disable identifier_name
 /**
  * Download status that indicates whether or under what conditions an
  * update is able to be launched.
@@ -71,11 +72,25 @@ public enum UpdateStatus: Int {
    */
   case StatusDevelopment = 6
 }
+// swiftlint:enable identifier_name
 
-@objc(EXUpdatesUpdateError)
-public enum UpdateError: Int, Error {
-  case invalidExpoProtocolVersion
+public enum UpdateError: Error, Sendable, LocalizedError {
+  case invalidExpoProtocolVersion(protocolVersion: Int)
   case legacyManifestInstantiationInvalid
+  case unsafeAssetFilename(updateId: String, filename: String)
+
+  public var errorDescription: String? {
+    switch self {
+    case let .invalidExpoProtocolVersion(protocolVersion):
+      return "Invalid Expo Updates protocol version: \(protocolVersion)"
+    case .legacyManifestInstantiationInvalid:
+      return "This version of expo-updates can no longer load legacy manifests"
+    case let .unsafeAssetFilename(updateId, filename):
+      return "Update \(updateId) could not be loaded because the asset filename \"\(filename)\" " +
+        "is not a valid filename. Assets are stored under their key and file extension, so neither " +
+        "may contain a path separator. Check the server that produced this manifest."
+    }
+  }
 }
 
 @objc(EXUpdatesUpdate)
@@ -95,6 +110,8 @@ public class Update: NSObject {
   public var lastAccessed: Date
   public var successfulLaunchCount: Int
   public var failedLaunchCount: Int
+  public var url: URL?
+  public var requestHeaders: [String: String]?
 
   private let config: UpdatesConfig
   private let database: UpdatesDatabase?
@@ -110,7 +127,9 @@ public class Update: NSObject {
     keep: Bool,
     status: UpdateStatus,
     isDevelopmentMode: Bool,
-    assetsFromManifest: [UpdateAsset]?
+    assetsFromManifest: [UpdateAsset]?,
+    url: URL?,
+    requestHeaders: [String: String]?
   ) {
     self.updateId = updateId
     self.commitTime = commitTime
@@ -122,6 +141,8 @@ public class Update: NSObject {
     self.scopeKey = scopeKey
     self.status = status
     self.assetsFromManifest = assetsFromManifest
+    self.url = url
+    self.requestHeaders = requestHeaders
 
     self.lastAccessed = Date()
     self.successfulLaunchCount = 0
@@ -136,19 +157,28 @@ public class Update: NSObject {
     config: UpdatesConfig,
     database: UpdatesDatabase
   ) throws -> Update {
-    let protocolVersion = responseHeaderData.protocolVersion
-    switch protocolVersion {
-    case nil:
+    guard let protocolVersion = responseHeaderData.protocolVersion else {
       throw UpdateError.legacyManifestInstantiationInvalid
+    }
+    switch protocolVersion {
     case 0, 1:
-      return ExpoUpdatesUpdate.update(
+      let update = ExpoUpdatesUpdate.update(
         withExpoUpdatesManifest: ExpoUpdatesManifest(rawManifestJSON: withManifest),
         extensions: extensions,
         config: config,
         database: database
       )
+      try update.assets()?.forEach { asset in
+        guard UpdatesUtils.isSafeFilename(asset.filename) else {
+          throw UpdateError.unsafeAssetFilename(
+            updateId: update.updateId.uuidString,
+            filename: asset.filename
+          )
+        }
+      }
+      return update
     default:
-      throw UpdateError.invalidExpoProtocolVersion
+      throw UpdateError.invalidExpoProtocolVersion(protocolVersion: protocolVersion)
     }
   }
 

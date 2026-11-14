@@ -5,12 +5,12 @@ export function Trigger({ children, asChild, ...rest }: TooltipPrimitive.Tooltip
   if (process.env.NODE_ENV === 'development' && !asChild) {
     Children.forEach(children, child => {
       if (
-        isValidElement(child) &&
+        isValidElement<{ href: string }>(child) &&
         !child.props?.href &&
         typeof child.type === 'object' &&
         (child.type as NamedExoticComponent)?.displayName === 'Button'
       ) {
-        throw Error(
+        throw new Error(
           'If wrapping button with tooltip trigger use `asChild` prop to prevent hydration issues'
         );
       }

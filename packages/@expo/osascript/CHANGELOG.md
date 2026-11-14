@@ -1,14 +1,140 @@
 # Changelog
 
-## Unpublished
+## 2.8.1
 
-### 🛠 Breaking changes
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+
+## 2.8.0 — 2026-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 2.7.1 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 2.7.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 2.6.0 — 2026-05-20
 
 ### 🎉 New features
 
+- Add `escapeString` helper for safely interpolating values into AppleScript double-quoted string literals ([#45890](https://github.com/expo/expo/pull/45890) by [@kitten](https://github.com/kitten))
+
 ### 🐛 Bug fixes
 
+- Fix `openItermToSpecificFolderAsync`, `openTerminalToSpecificFolderAsync`, and `openInAppAsync` mis-quoting paths/app names that contain `'`, `"`, or `\` ([#45890](https://github.com/expo/expo/pull/45890) by [@kitten](https://github.com/kitten))
+
 ### 💡 Others
+
+- Bump to `@expo/spawn-async@^1.8.0` ([#45999](https://github.com/expo/expo/pull/45999) by [@kitten](https://github.com/kitten))
+
+## 2.5.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 2.5.0 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 2.4.3 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 2.4.2 — 2026-01-26
+
+### 💡 Others
+
+- Drop `exec-async` and call into `@expo/spawn-async` instead ([#42483](https://github.com/expo/expo/pull/42483) by [@kitten](https://github.com/kitten))
+
+## 2.4.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 2.4.0 — 2026-01-21
+
+_This version does not introduce any user-facing changes._
+
+## 2.3.8 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 2.3.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 2.3.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 2.3.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 2.3.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 2.3.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 2.3.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 2.3.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 2.3.0 — 2025-08-13
+
+_This version does not introduce any user-facing changes._
+
+## 2.2.5 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 2.2.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 2.2.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 2.2.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 2.2.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 2.2.0 — 2025-04-08
+
+_This version does not introduce any user-facing changes._
+
+## 2.1.6 - 2025-02-14
+
+_This version does not introduce any user-facing changes._
+
+## 2.1.5 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 2.1.4 — 2024-10-22
+
+_This version does not introduce any user-facing changes._
+
+## 2.1.3 — 2024-05-02
+
+### 🐛 Bug fixes
+
+- Replace deprecated `util.isArray` helper. ([#28927](https://github.com/expo/expo/pull/28927) by [@hirbod](https://github.com/hirbod))
 
 ## 2.1.2 — 2024-04-23
 

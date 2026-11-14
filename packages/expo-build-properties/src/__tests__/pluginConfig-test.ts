@@ -1,4 +1,5 @@
-import { validateConfig } from '../pluginConfig';
+import type { PluginConfigType } from '../pluginConfig';
+import { validateConfig, resolveConfigValue } from '../pluginConfig';
 
 describe(validateConfig, () => {
   it('should throw error from invalid config type', () => {
@@ -40,7 +41,7 @@ describe(validateConfig, () => {
     expect(() =>
       validateConfig({ ios: { deploymentTarget: '9.0' } })
     ).toThrowErrorMatchingInlineSnapshot(
-      `"\`ios.deploymentTarget\` needs to be at least version 13.4."`
+      `"\`ios.deploymentTarget\` needs to be at least version 16.4."`
     );
   });
 
@@ -68,6 +69,64 @@ describe(validateConfig, () => {
     ).toThrow();
   });
 
+  it('should use `enableShrinkResourcesInReleaseBuilds` with `enableMinifyInReleaseBuilds`', () => {
+    expect(() =>
+      validateConfig({ android: { enableShrinkResourcesInReleaseBuilds: true } })
+    ).toThrow();
+
+    expect(() =>
+      validateConfig({
+        android: {
+          enableShrinkResourcesInReleaseBuilds: true,
+          enableMinifyInReleaseBuilds: true,
+        },
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      validateConfig({
+        android: {
+          enableShrinkResourcesInReleaseBuilds: true,
+          enableMinifyInReleaseBuilds: false,
+        },
+      })
+    ).toThrow();
+  });
+
+  it('should validate android.enablePngCrunchInReleaseBuilds', () => {
+    expect(() =>
+      validateConfig({
+        android: {
+          enablePngCrunchInReleaseBuilds: true,
+        },
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      validateConfig({
+        android: {
+          enablePngCrunchInReleaseBuilds: false,
+        },
+      })
+    ).not.toThrow();
+  });
+
+  it('should validate Android image format support properties', () => {
+    expect(() =>
+      validateConfig({
+        android: {
+          gifEnabled: false,
+          webpEnabled: false,
+          webpAnimated: true,
+        },
+      })
+    ).not.toThrow();
+
+    expect(() => validateConfig({ android: { gifEnabled: 'yes' as any } })).toThrow();
+    expect(() => validateConfig({ android: { webpEnabled: 'yes' as any } })).toThrow();
+    expect(() => validateConfig({ android: { webpAnimated: 'yes' as any } })).toThrow();
+  });
+
   it('should validate ios.extraPods', () => {
     expect(() => {
       validateConfig({ ios: { extraPods: [{ name: 'Protobuf' }] } });
@@ -79,6 +138,44 @@ describe(validateConfig, () => {
 
     expect(() => {
       validateConfig({ ios: { extraPods: [{}] } });
+    }).toThrow();
+  });
+
+  it('should validate ios.enableSceneSupport', () => {
+    expect(() => {
+      validateConfig({ ios: { enableSceneSupport: true } });
+    }).not.toThrow();
+    expect(() => {
+      validateConfig({ ios: { enableSceneSupport: false } });
+    }).not.toThrow();
+    expect(() => {
+      validateConfig({ ios: { enableSceneSupport: 'yes' } });
+    }).toThrow();
+  });
+
+  it('should validate ios.forceStaticLinking', () => {
+    expect(() => {
+      validateConfig({ ios: {} });
+    }).not.toThrow();
+
+    expect(() => {
+      validateConfig({ ios: { forceStaticLinking: ['SomePod'] } });
+    }).not.toThrow();
+
+    expect(() => {
+      validateConfig({ ios: { forceStaticLinking: [] } });
+    }).not.toThrow();
+
+    expect(() => {
+      validateConfig({ ios: { forceStaticLinking: ['SomePod', 'AnotherPod'] } });
+    }).not.toThrow();
+
+    expect(() => {
+      validateConfig({ ios: { forceStaticLinking: [123] as any } });
+    }).toThrow();
+
+    expect(() => {
+      validateConfig({ ios: { forceStaticLinking: 'SomePod' as any } });
     }).toThrow();
   });
 
@@ -156,5 +253,66 @@ describe(validateConfig, () => {
         },
       });
     }).not.toThrow();
+  });
+});
+
+describe('shared config resolution', () => {
+  it('should validate top-level buildReactNativeFromSource', () => {
+    expect(() => validateConfig({ buildReactNativeFromSource: true })).not.toThrow();
+  });
+
+  it('should validate top-level reactNativeReleaseLevel', () => {
+    expect(() => validateConfig({ reactNativeReleaseLevel: 'canary' })).not.toThrow();
+  });
+
+  it('should validate combined top-level and platform-specific config', () => {
+    expect(() =>
+      validateConfig({
+        buildReactNativeFromSource: true,
+        reactNativeReleaseLevel: 'experimental',
+        android: {
+          minSdkVersion: 24,
+        },
+        ios: {
+          deploymentTarget: '16.4',
+        },
+      })
+    ).not.toThrow();
+  });
+});
+
+describe(resolveConfigValue, () => {
+  describe('buildReactNativeFromSource resolution', () => {
+    it('returns top-level value when platform-specific not set', () => {
+      const config: PluginConfigType = { buildReactNativeFromSource: true };
+      expect(resolveConfigValue(config, 'android', 'buildReactNativeFromSource')).toBe(true);
+      expect(resolveConfigValue(config, 'ios', 'buildReactNativeFromSource')).toBe(true);
+    });
+
+    it('allows per-platform override', () => {
+      const config: PluginConfigType = {
+        buildReactNativeFromSource: true,
+        ios: { buildReactNativeFromSource: false },
+      };
+      expect(resolveConfigValue(config, 'android', 'buildReactNativeFromSource')).toBe(true);
+      expect(resolveConfigValue(config, 'ios', 'buildReactNativeFromSource')).toBe(false);
+    });
+  });
+
+  describe('reactNativeReleaseLevel resolution', () => {
+    it('returns top-level value when platform-specific not set', () => {
+      const config: PluginConfigType = { reactNativeReleaseLevel: 'canary' };
+      expect(resolveConfigValue(config, 'android', 'reactNativeReleaseLevel')).toBe('canary');
+      expect(resolveConfigValue(config, 'ios', 'reactNativeReleaseLevel')).toBe('canary');
+    });
+
+    it('allows per-platform override', () => {
+      const config: PluginConfigType = {
+        reactNativeReleaseLevel: 'stable',
+        android: { reactNativeReleaseLevel: 'experimental' },
+      };
+      expect(resolveConfigValue(config, 'android', 'reactNativeReleaseLevel')).toBe('experimental');
+      expect(resolveConfigValue(config, 'ios', 'reactNativeReleaseLevel')).toBe('stable');
+    });
   });
 });

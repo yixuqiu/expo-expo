@@ -1,13 +1,17 @@
-import { Platform, UnavailabilityError } from 'expo-modules-core';
+import { Platform, UnavailabilityError } from 'expo';
 
-import { ApplicationReleaseType, PushNotificationServiceEnvironment } from './Application.types';
+import type {
+  ApplicationReleaseType,
+  PushNotificationServiceEnvironment,
+  AppleAppStoreEnvironment,
+} from './Application.types';
 import ExpoApplication from './ExpoApplication';
 
 // @needsAudit
 /**
  * The human-readable version of the native application that may be displayed in the app store.
- * This is the `Info.plist` value for `CFBundleShortVersionString` on iOS and the version name set
- * by `version` in `app.json` on Android at the time the native app was built.
+ * At time when native app is built, on Android, this is the version name set by `version`
+ * in app config, and on iOS, the `Info.plist` value for `CFBundleShortVersionString`.
  * On web, this value is `null`.
  * @example
  * `"2.11.0"`
@@ -18,13 +22,13 @@ export const nativeApplicationVersion: string | null = ExpoApplication
 
 // @needsAudit
 /**
- * The internal build version of the native application that the app store may use to distinguish
- * between different binaries. This is the `Info.plist` value for `CFBundleVersion` on iOS (set with
- * `ios.buildNumber` value in `app.json` in a standalone app) and the version code set by
- * `android.versionCode` in `app.json` on Android at the time the native app was built. On web, this
- * value is `null`. The return type on Android and iOS is `string`.
+ * The internal build version of the native application that the app stores may use to distinguish
+ * between different binaries. At the time when native app is built, on Android, this is the version
+ * code set by `android.versionCode` in app config, and on iOS, the `Info.plist` value for
+ * `CFBundleVersion` (set with `ios.buildNumber` value in app config in a standalone app).
+ * On web, this value is `null`. The return type on Android and iOS is `string`.
  * @example
- * Android: `"114"`, iOS: `"2.11.0"`
+ * `"114"`
  */
 export const nativeBuildVersion: string | null = ExpoApplication
   ? ExpoApplication.nativeBuildVersion || null
@@ -65,7 +69,10 @@ export const applicationId: string | null = ExpoApplication
  * > for the lifetime of the user's device. See the [ANDROID_ID](https://developer.android.com/reference/android/provider/Settings.Secure.html#ANDROID_ID)
  * > official docs for more information.
  * @example
- * `"dd96dec43fb81c97"`
+ * ```ts
+ * Application.getAndroidId();
+ * // "dd96dec43fb81c97"
+ * ```
  * @platform android
  */
 export function getAndroidId(): string {
@@ -126,7 +133,7 @@ export async function getIosIdForVendorAsync(): Promise<string | null> {
 // @needsAudit
 /**
  * Gets the iOS application release type.
- * @return Returns a promise which fulfills with an [`ApplicationReleaseType`](#applicationreleasetype).
+ * @return A `Promise` which fulfills with an [`ApplicationReleaseType`](#applicationreleasetype).
  * @platform ios
  */
 export async function getIosApplicationReleaseTypeAsync(): Promise<ApplicationReleaseType> {
@@ -136,11 +143,35 @@ export async function getIosApplicationReleaseTypeAsync(): Promise<ApplicationRe
   return await ExpoApplication.getApplicationReleaseTypeAsync();
 }
 
+/**
+ * Gets the App Store environment of the running build. Unlike
+ * [`getIosApplicationReleaseTypeAsync`](#applicationgetiosapplicationreleasetypeasync), which
+ * reports `APP_STORE` for both a TestFlight build and an App Store release, this tells them apart.
+ * In Expo Go, this reports Expo Go's own environment.
+ *
+ * @example
+ * ```ts
+ * if ((await Application.getAppleStoreEnvironmentAsync()) === 'sandbox') {
+ *   // Show settings for TestFlight testers, App Review and development builds
+ * }
+ * ```
+ * @return A `Promise` which fulfills with an
+ * [`AppleAppStoreEnvironment`](#appleappstoreenvironment).
+ * @platform ios
+ * @platform tvos
+ */
+export async function getAppleStoreEnvironmentAsync(): Promise<AppleAppStoreEnvironment> {
+  if (!ExpoApplication.getStoreEnvironmentAsync) {
+    throw new UnavailabilityError('expo-application', 'getStoreEnvironmentAsync');
+  }
+  return await ExpoApplication.getStoreEnvironmentAsync();
+}
+
 // @needsAudit
 /**
  * Gets the current [Apple Push Notification (APN)](https://developer.apple.com/documentation/bundleresources/entitlements/aps-environment?language=objc)
  * service environment.
- * @return Returns a promise fulfilled with the string, either `'development'` or `'production'`,
+ * @return A `Promise` that fulfills with the string, either `'development'` or `'production'`,
  * based on the current APN environment, or `null` on the simulator as it does not support registering with APNs.
  * @platform ios
  */
@@ -155,12 +186,12 @@ export async function getIosPushNotificationServiceEnvironmentAsync(): Promise<P
 /**
  * Gets the time the app was installed onto the device, not counting subsequent updates. If the app
  * is uninstalled and reinstalled, this method returns the time the app was reinstalled.
+ * - On Android, this method uses [`PackageInfo.firstInstallTime`](https://developer.android.com/reference/android/content/pm/PackageInfo.html#firstInstallTime).
  * - On iOS, this method uses the [`NSFileCreationDate`](https://developer.apple.com/documentation/foundation/nsfilecreationdate?language=objc)
  * of the app's document root directory.
- * - On Android, this method uses [`PackageInfo.firstInstallTime`](https://developer.android.com/reference/android/content/pm/PackageInfo.html#firstInstallTime).
  * - On web, this method returns `null`.
  *
- * @return Returns a `Promise` that fulfills with a `Date` object that specifies the time the app
+ * @return A `Promise` that fulfills with a `Date` object that specifies the time the app
  * was installed on the device.
  *
  * @example
@@ -180,8 +211,8 @@ export async function getInstallationTimeAsync(): Promise<Date> {
 // @needsAudit
 /**
  * Gets the last time the app was updated from the Google Play Store.
- * @return Returns a `Promise` that fulfills with a `Date` object that specifies the last time
- * the app was updated via the Google Play Store).
+ * @return A `Promise` that fulfills with a `Date` object that specifies the last time
+ * the app was updated via the Google Play Store.
  *
  * @example
  * ```ts
@@ -198,4 +229,8 @@ export async function getLastUpdateTimeAsync(): Promise<Date> {
   return new Date(lastUpdateTime);
 }
 
-export { ApplicationReleaseType, PushNotificationServiceEnvironment };
+export {
+  ApplicationReleaseType,
+  type PushNotificationServiceEnvironment,
+  type AppleAppStoreEnvironment,
+} from './Application.types';

@@ -1,4 +1,7 @@
-import { FileCode01Icon, FolderIcon, LayoutAlt01Icon, PackageIcon } from '@expo/styleguide-icons';
+import { FileCode01Icon } from '@expo/styleguide-icons/outline/FileCode01Icon';
+import { FolderIcon } from '@expo/styleguide-icons/outline/FolderIcon';
+import { LayoutAlt01Icon } from '@expo/styleguide-icons/outline/LayoutAlt01Icon';
+import { PackageIcon } from '@expo/styleguide-icons/outline/PackageIcon';
 import { HTMLAttributes, ReactNode } from 'react';
 
 import { TextWithNote } from './TextWithNote';
@@ -16,7 +19,7 @@ type FileObject = {
 export function FileTree({ files = [], ...rest }: FileTreeProps) {
   return (
     <div
-      className="text-xs border border-default rounded-md bg-default mb-4 p-2 pr-4 pb-4 whitespace-nowrap overflow-x-auto"
+      className="mb-4 overflow-x-auto rounded-3xl border border-default bg-default p-2 pr-4 pb-4 text-sm whitespace-nowrap"
       {...rest}>
       {renderStructure(generateStructure(files))}
     </div>
@@ -54,9 +57,9 @@ function generateStructure(files: FileTreeProps['files'] = []): FileObject[] {
 
   files.forEach(path => {
     if (Array.isArray(path)) {
-      return modifyPath(path[0], path[1]);
+      modifyPath(path[0], path[1]);
     } else {
-      return modifyPath(path);
+      modifyPath(path);
     }
   });
 
@@ -66,22 +69,31 @@ function generateStructure(files: FileTreeProps['files'] = []): FileObject[] {
 function renderStructure(structure: FileObject[], level = 0): ReactNode {
   return structure.map(({ name, note, files }, index) => {
     const FileIcon = getIconForFile(name);
-    return files.length ? (
-      <div key={name + '_' + index} className="mt-1 pt-1 pl-2 rounded-sm flex flex-col">
-        <div className="flex items-center">
-          {' '.repeat(level)}
-          <FolderIcon className="text-icon-tertiary mr-2 opacity-60 min-w-[20px]" />
-          <TextWithNote name={name} note={note} className="text-secondary" />
+
+    if (files.length > 0) {
+      return (
+        <div key={name + '_' + index} className="mt-1 flex flex-col rounded-sm pt-1 pl-2">
+          <div className="flex items-center">
+            {' '.repeat(level)}
+            <FolderIcon aria-hidden="true" className="mr-2 min-w-5 text-icon-tertiary opacity-60" />
+            <TextWithNote name={name} note={note} className="text-secondary" />
+          </div>
+          {renderStructure(files, level + 1)}
         </div>
-        {renderStructure(files, level + 1)}
-      </div>
-    ) : (
-      <div key={name + '_' + index} className="mt-1 pt-1 pl-2 rounded-sm flex items-center">
-        {' '.repeat(Math.max(level, 0))}
-        <FileIcon className="text-icon-tertiary mr-2 min-w-[20px]" />
-        <TextWithNote name={name} note={note} className="text-default" />
-      </div>
-    );
+      );
+    }
+
+    if (name.length > 0) {
+      return (
+        <div key={name + '_' + index} className="mt-1 flex items-center rounded-sm pt-1 pl-2">
+          {' '.repeat(Math.max(level, 0))}
+          <FileIcon aria-hidden="true" className="mr-2 min-w-5 text-icon-tertiary" />
+          <TextWithNote name={name} note={note} className="text-default" />
+        </div>
+      );
+    }
+
+    return null;
   });
 }
 

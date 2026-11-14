@@ -1,28 +1,34 @@
-import { EventEmitter, Subscription } from 'expo-modules-core';
+import type { EventSubscription } from 'expo';
+import { Platform } from 'react-native';
 
-import ExpoSQLite from './ExpoSQLiteNext';
-import { NativeDatabase, SQLiteOpenOptions } from './NativeDatabase';
+import ExpoSQLite from './ExpoSQLite';
+import { type NativeDatabase, type SQLiteOpenOptions } from './NativeDatabase';
 import {
+  registerDatabaseForDevToolsAsync,
+  unregisterDatabaseForDevToolsAsync,
+} from './SQLiteDevToolsClient';
+import { SQLiteSession } from './SQLiteSession';
+import type {
   SQLiteBindParams,
   SQLiteExecuteAsyncResult,
   SQLiteExecuteSyncResult,
   SQLiteRunResult,
-  SQLiteStatement,
   SQLiteVariadicBindParams,
 } from './SQLiteStatement';
+import { SQLiteStatement } from './SQLiteStatement';
+import { SQLiteTaggedQuery } from './SQLiteTaggedQuery';
+import { createDatabasePath } from './pathUtils';
 
-export { SQLiteOpenOptions };
-
-const emitter = new EventEmitter(ExpoSQLite);
+export type { SQLiteOpenOptions } from './NativeDatabase';
 
 /**
  * A SQLite database.
  */
 export class SQLiteDatabase {
   constructor(
-    public readonly databaseName: string,
+    public readonly databasePath: string,
     public readonly options: SQLiteOpenOptions,
-    private readonly nativeDatabase: NativeDatabase
+    public readonly nativeDatabase: NativeDatabase
   ) {}
 
   /**
@@ -36,6 +42,9 @@ export class SQLiteDatabase {
    * Close the database.
    */
   public closeAsync(): Promise<void> {
+    if (this.options.useNewConnection !== true) {
+      unregisterDatabaseForDevToolsAsync(this);
+    }
     return this.nativeDatabase.closeAsync();
   }
 
@@ -54,8 +63,8 @@ export class SQLiteDatabase {
    *
    * @param databaseName The name of the current attached databases. The default value is `main` which is the default database name.
    */
-  public serializeAsync(databaseName: string = 'main'): Promise<Uint8Array> {
-    return this.nativeDatabase.serializeAsync(databaseName);
+  public async serializeAsync(databaseName: string = 'main'): Promise<Uint8Array> {
+    return toUint8Array(await this.nativeDatabase.serializeAsync(databaseName));
   }
 
   /**
@@ -70,9 +79,45 @@ export class SQLiteDatabase {
   }
 
   /**
+   * Create a new session for the database.
+   * @see [`sqlite3session_create`](https://www.sqlite.org/session/sqlite3session_create.html)
+   * @param dbName The name of the database to create a session for. The default value is `main`.
+   */
+  public async createSessionAsync(dbName: string = 'main'): Promise<SQLiteSession> {
+    const nativeSession = new ExpoSQLite.NativeSession();
+    await this.nativeDatabase.createSessionAsync(nativeSession, dbName);
+    return new SQLiteSession(this.nativeDatabase, nativeSession);
+  }
+
+  /**
+   * Load a SQLite extension.
+   * @param libPath The path to the extension library file.
+   * @param entryPoint The entry point of the extension. If not provided, the default entry point is inferred by [`sqlite3_load_extension`](https://www.sqlite.org/c3ref/load_extension.html).
+   *
+   * @platform android
+   * @platform ios
+   * @platform macos
+   * @platform tvos
+   *
+   * @example
+   * ```ts
+   * // Load `sqlite-vec` from `bundledExtensions`. You need to enable `withSQLiteVecExtension` to include `sqlite-vec`.
+   * const extension = SQLite.bundledExtensions['sqlite-vec'];
+   * await db.loadExtensionAsync(extension.libPath, extension.entryPoint);
+   *
+   * // You can also load a custom extension.
+   * await db.loadExtensionAsync('/path/to/extension');
+   * ```
+   */
+  public loadExtensionAsync(libPath: string, entryPoint?: string): Promise<void> {
+    return this.nativeDatabase.loadExtensionAsync(libPath, entryPoint);
+  }
+
+  /**
    * Execute a transaction and automatically commit/rollback based on the `task` result.
    *
    * > **Note:** This transaction is not exclusive and can be interrupted by other async queries.
+   *
    * @example
    * ```ts
    * db.withTransactionAsync(async () => {
@@ -83,7 +128,7 @@ export class SQLiteDatabase {
    *   // The following UPDATE query out of transaction may be executed here and break the expectation.
    *   //
    *
-   *   const result = await db.getAsync<{ name: string }>('SELECT name FROM Users');
+   *   const result = await db.getFirstAsync<{ name: string }>('SELECT name FROM Users');
    *   expect(result?.name).toBe('aaa');
    * });
    * db.execAsync('UPDATE test SET name = "bbb"');
@@ -98,7 +143,12 @@ export class SQLiteDatabase {
       await task();
       await this.execAsync('COMMIT');
     } catch (e) {
-      await this.execAsync('ROLLBACK');
+      try {
+        await this.execAsync('ROLLBACK');
+      } catch {
+        // SQLite may already have rolled back (for example, after an interrupted write).
+        // Preserve the original error if rollback also fails.
+      }
       throw e;
     }
   }
@@ -110,8 +160,17 @@ export class SQLiteDatabase {
    * As long as the transaction is converted into a write transaction,
    * the other async write queries will abort with `database is locked` error.
    *
+   * > **Note:** This function is not supported on web.
+   *
+   * > **Note:** This method runs on a new database connection, so connection settings made on the original database, such as `PRAGMA foreign_keys = ON`, do not apply inside the transaction.
+   *
    * @param task An async function to execute within a transaction. Any queries inside the transaction must be executed on the `txn` object.
    * The `txn` object has the same interfaces as the [`SQLiteDatabase`](#sqlitedatabase) object. You can use `txn` like a [`SQLiteDatabase`](#sqlitedatabase) object.
+   *
+   * @platform android
+   * @platform ios
+   * @platform macos
+   * @platform tvos
    *
    * @example
    * ```ts
@@ -123,6 +182,9 @@ export class SQLiteDatabase {
   public async withExclusiveTransactionAsync(
     task: (txn: Transaction) => Promise<void>
   ): Promise<void> {
+    if (Platform.OS === 'web') {
+      throw new Error('withExclusiveTransactionAsync is not supported on web');
+    }
     const transaction = await Transaction.createAsync(this);
     let error;
     try {
@@ -130,7 +192,11 @@ export class SQLiteDatabase {
       await task(transaction);
       await transaction.execAsync('COMMIT');
     } catch (e) {
-      await transaction.execAsync('ROLLBACK');
+      try {
+        await transaction.execAsync('ROLLBACK');
+      } catch {
+        // SQLite may already have rolled back; preserve the original error.
+      }
       error = e;
     } finally {
       await transaction.closeAsync();
@@ -148,9 +214,34 @@ export class SQLiteDatabase {
   }
 
   /**
+   * Interrupt running async operations on this connection. Returns immediately; await the operations
+   * to observe their errors before closing or reusing the connection.
+   *
+   * Affects all running statements on the connection, including shared cached handles. Interrupting
+   * a write rolls back its entire explicit transaction. Has no effect when idle; an operation that
+   * is nearly finished may still complete successfully.
+   *
+   * Throws if closing is already in progress. Interrupt and await pending operations before calling
+   * `closeAsync()` or `closeSync()`. Closing does not automatically cancel operations.
+   * For `withExclusiveTransactionAsync()`, call this on the callback's `txn` connection.
+   *
+   * @see https://www.sqlite.org/c3ref/interrupt.html
+   * @platform android
+   * @platform ios
+   * @platform macos
+   * @platform tvos
+   */
+  public interruptSync(): void {
+    return this.nativeDatabase.interruptSync();
+  }
+
+  /**
    * Close the database.
    */
   public closeSync(): void {
+    if (this.options.useNewConnection !== true) {
+      unregisterDatabaseForDevToolsAsync(this);
+    }
     return this.nativeDatabase.closeSync();
   }
 
@@ -175,7 +266,7 @@ export class SQLiteDatabase {
    * @param databaseName The name of the current attached databases. The default value is `main` which is the default database name.
    */
   public serializeSync(databaseName: string = 'main'): Uint8Array {
-    return this.nativeDatabase.serializeSync(databaseName);
+    return toUint8Array(this.nativeDatabase.serializeSync(databaseName));
   }
 
   /**
@@ -192,6 +283,45 @@ export class SQLiteDatabase {
   }
 
   /**
+   * Create a new session for the database.
+   *
+   * > **Note:** Running heavy tasks with this function can block the JavaScript thread and affect performance.
+   *
+   * @see [`sqlite3session_create`](https://www.sqlite.org/session/sqlite3session_create.html)
+   * @param dbName The name of the database to create a session for. The default value is `main`.
+   */
+  public createSessionSync(dbName: string = 'main'): SQLiteSession {
+    const nativeSession = new ExpoSQLite.NativeSession();
+    this.nativeDatabase.createSessionSync(nativeSession, dbName);
+    return new SQLiteSession(this.nativeDatabase, nativeSession);
+  }
+
+  /**
+   * Load a SQLite extension.
+   * @param libPath The path to the extension library file.
+   * @param entryPoint The entry point of the extension. If not provided, the default entry point is inferred by [`sqlite3_load_extension`](https://www.sqlite.org/c3ref/load_extension.html).
+   *
+   * @platform android
+   * @platform ios
+   * @platform macos
+   * @platform tvos
+   *
+   * @example
+   * ```ts
+   * // Load `sqlite-vec` from `bundledExtensions`. You need to enable `withSQLiteVecExtension` to include `sqlite-vec`.
+   * const extension = SQLite.bundledExtensions['sqlite-vec'];
+   * db.loadExtensionSync(extension.libPath, extension.entryPoint);
+   *
+   * // You can also load a custom extension.
+   * db.loadExtensionSync('/path/to/extension');
+   * ```
+
+   */
+  public loadExtensionSync(libPath: string, entryPoint?: string): void {
+    this.nativeDatabase.loadExtensionSync(libPath, entryPoint);
+  }
+
+  /**
    * Execute a transaction and automatically commit/rollback based on the `task` result.
    *
    * > **Note:** Running heavy tasks with this function can block the JavaScript thread and affect performance.
@@ -204,10 +334,50 @@ export class SQLiteDatabase {
       task();
       this.execSync('COMMIT');
     } catch (e) {
-      this.execSync('ROLLBACK');
+      try {
+        this.execSync('ROLLBACK');
+      } catch {
+        // SQLite may already have rolled back; preserve the original error.
+      }
       throw e;
     }
   }
+
+  /**
+   * Execute SQL queries using tagged template literals (Bun-style API).
+   * Queries are automatically protected against SQL injection using prepared statements.
+   *
+   * The query result is directly awaitable and returns an array of objects by default.
+   * Use `.values()`, `.first()`, or `.each()` for different result formats.
+   *
+   * @example
+   * ```ts
+   * // Direct await - returns array of objects
+   * const users = await sql<User>`SELECT * FROM users WHERE age > ${21}`;
+   *
+   * // Get first row only
+   * const user = await sql<User>`SELECT * FROM users WHERE id = ${userId}`.first();
+   *
+   * // Get values as arrays
+   * const rows = await sql`SELECT name, age FROM users`.values();
+   * // Returns: [["Alice", 30], ["Bob", 25]]
+   *
+   * // INSERT/UPDATE/DELETE - returns SQLiteRunResult
+   * const result = await sql`INSERT INTO users (name, age) VALUES (${name}, ${age})` as SQLiteRunResult;
+   * console.log('Inserted row:', result.lastInsertRowId);
+   *
+   * // Iteration
+   * for await (const user of db<User>`SELECT * FROM users`.each()) {
+   *   console.log(user.name);
+   * }
+   *
+   * // Synchronous API
+   * const users = sql<User>`SELECT * FROM users WHERE age > ${21}`.allSync();
+   * const user = sql<User>`SELECT * FROM users WHERE id = ${userId}`.firstSync();
+   * ```
+   */
+  public sql = <T = unknown>(strings: TemplateStringsArray, ...values: unknown[]) =>
+    new SQLiteTaggedQuery<T>(this, strings, values);
 
   //#region Statement API shorthands
 
@@ -410,37 +580,69 @@ export class SQLiteDatabase {
 }
 
 /**
+ * The default directory for SQLite databases.
+ */
+export const defaultDatabaseDirectory = ExpoSQLite.defaultDatabaseDirectory;
+
+/**
+ * The pre-bundled SQLite extensions.
+ */
+export const bundledExtensions: Record<
+  string,
+  { libPath: string; entryPoint: string } | undefined
+> = ExpoSQLite.bundledExtensions;
+
+/**
  * Open a database.
  *
  * @param databaseName The name of the database file to open.
  * @param options Open options.
+ * @param directory The directory where the database file is located. The default value is `defaultDatabaseDirectory`. This parameter is not supported on web.
  */
 export async function openDatabaseAsync(
   databaseName: string,
-  options?: SQLiteOpenOptions
+  options?: SQLiteOpenOptions,
+  directory?: string
 ): Promise<SQLiteDatabase> {
   const openOptions = options ?? {};
-  const nativeDatabase = new ExpoSQLite.NativeDatabase(databaseName, openOptions);
+  const databasePath = createDatabasePath(databaseName, directory);
+  await ExpoSQLite.ensureDatabasePathExistsAsync(databasePath);
+  const nativeDatabase = new ExpoSQLite.NativeDatabase(databasePath, openOptions);
   await nativeDatabase.initAsync();
-  return new SQLiteDatabase(databaseName, openOptions, nativeDatabase);
+  const database = new SQLiteDatabase(databasePath, openOptions, nativeDatabase);
+  if (options?.useNewConnection !== true) {
+    registerDatabaseForDevToolsAsync(database);
+  }
+  return database;
 }
 
 /**
  * Open a database.
  *
  * > **Note:** Running heavy tasks with this function can block the JavaScript thread and affect performance.
+ * > On web, this package starts the SQLite worker on the next turn.
+ * > While the worker is loading, this call throws immediately and does not block the main thread.
+ * > A later call works only after the worker has finished loading.
  *
  * @param databaseName The name of the database file to open.
  * @param options Open options.
+ * @param directory The directory where the database file is located. The default value is `defaultDatabaseDirectory`. This parameter is not supported on web.
  */
 export function openDatabaseSync(
   databaseName: string,
-  options?: SQLiteOpenOptions
+  options?: SQLiteOpenOptions,
+  directory?: string
 ): SQLiteDatabase {
   const openOptions = options ?? {};
-  const nativeDatabase = new ExpoSQLite.NativeDatabase(databaseName, openOptions);
+  const databasePath = createDatabasePath(databaseName, directory);
+  ExpoSQLite.ensureDatabasePathExistsSync(databasePath);
+  const nativeDatabase = new ExpoSQLite.NativeDatabase(databasePath, openOptions);
   nativeDatabase.initSync();
-  return new SQLiteDatabase(databaseName, openOptions, nativeDatabase);
+  const database = new SQLiteDatabase(databasePath, openOptions, nativeDatabase);
+  if (options?.useNewConnection !== true) {
+    registerDatabaseForDevToolsAsync(database);
+  }
+  return database;
 }
 
 /**
@@ -481,9 +683,11 @@ export function deserializeDatabaseSync(
  * Delete a database file.
  *
  * @param databaseName The name of the database file to delete.
+ * @param directory The directory where the database file is located. The default value is `defaultDatabaseDirectory`.
  */
-export async function deleteDatabaseAsync(databaseName: string): Promise<void> {
-  return await ExpoSQLite.deleteDatabaseAsync(databaseName);
+export async function deleteDatabaseAsync(databaseName: string, directory?: string): Promise<void> {
+  const databasePath = createDatabasePath(databaseName, directory);
+  return await ExpoSQLite.deleteDatabaseAsync(databasePath);
 }
 
 /**
@@ -492,9 +696,73 @@ export async function deleteDatabaseAsync(databaseName: string): Promise<void> {
  * > **Note:** Running heavy tasks with this function can block the JavaScript thread and affect performance.
  *
  * @param databaseName The name of the database file to delete.
+ * @param directory The directory where the database file is located. The default value is `defaultDatabaseDirectory`.
  */
-export function deleteDatabaseSync(databaseName: string): void {
-  return ExpoSQLite.deleteDatabaseSync(databaseName);
+export function deleteDatabaseSync(databaseName: string, directory?: string): void {
+  const databasePath = createDatabasePath(databaseName, directory);
+  return ExpoSQLite.deleteDatabaseSync(databasePath);
+}
+
+/**
+ * Backup a database to another database.
+ *
+ * @see https://www.sqlite.org/c3ref/backup_finish.html
+ *
+ * @param options - The backup options
+ * @param options.sourceDatabase - The source database to backup from
+ * @param options.sourceDatabaseName - The name of the source database. The default value is `main`
+ * @param options.destDatabase - The destination database to backup to
+ * @param options.destDatabaseName - The name of the destination database. The default value is `main`
+ */
+export function backupDatabaseAsync({
+  sourceDatabase,
+  sourceDatabaseName,
+  destDatabase,
+  destDatabaseName,
+}: {
+  sourceDatabase: SQLiteDatabase;
+  sourceDatabaseName?: string;
+  destDatabase: SQLiteDatabase;
+  destDatabaseName?: string;
+}): Promise<void> {
+  return ExpoSQLite.backupDatabaseAsync(
+    destDatabase.nativeDatabase,
+    destDatabaseName ?? 'main',
+    sourceDatabase.nativeDatabase,
+    sourceDatabaseName ?? 'main'
+  );
+}
+
+/**
+ * Backup a database to another database.
+ *
+ * > **Note:** Running heavy tasks with this function can block the JavaScript thread and affect performance.
+ *
+ * @see https://www.sqlite.org/c3ref/backup_finish.html
+ *
+ * @param options - The backup options
+ * @param options.sourceDatabase - The source database to backup from
+ * @param options.sourceDatabaseName - The name of the source database. The default value is `main`
+ * @param options.destDatabase - The destination database to backup to
+ * @param options.destDatabaseName - The name of the destination database. The default value is `main`
+ */
+export function backupDatabaseSync({
+  sourceDatabase,
+  sourceDatabaseName,
+  destDatabase,
+  destDatabaseName,
+}: {
+  sourceDatabase: SQLiteDatabase;
+  sourceDatabaseName?: string;
+  destDatabase: SQLiteDatabase;
+  destDatabaseName?: string;
+}): void {
+  return ExpoSQLite.backupDatabaseSync(
+    destDatabase.nativeDatabase,
+    destDatabaseName ?? 'main',
+    sourceDatabase.nativeDatabase,
+    sourceDatabaseName ?? 'main'
+  );
 }
 
 /**
@@ -523,8 +791,8 @@ export type DatabaseChangeEvent = {
  */
 export function addDatabaseChangeListener(
   listener: (event: DatabaseChangeEvent) => void
-): Subscription {
-  return emitter.addListener('onDatabaseChange', listener);
+): EventSubscription {
+  return ExpoSQLite.addListener('onDatabaseChange', listener);
 }
 
 /**
@@ -534,8 +802,16 @@ export function addDatabaseChangeListener(
 class Transaction extends SQLiteDatabase {
   public static async createAsync(db: SQLiteDatabase): Promise<Transaction> {
     const options = { ...db.options, useNewConnection: true };
-    const nativeDatabase = new ExpoSQLite.NativeDatabase(db.databaseName, options);
+    const nativeDatabase = new ExpoSQLite.NativeDatabase(db.databasePath, options);
     await nativeDatabase.initAsync();
-    return new Transaction(db.databaseName, options, nativeDatabase);
+    return new Transaction(db.databasePath, options, nativeDatabase);
   }
+}
+
+/**
+ * The native database hands serialized bytes over as a `Uint8Array` on iOS and as an `ArrayBuffer`
+ * on Android.
+ */
+function toUint8Array(data: Uint8Array | ArrayBuffer): Uint8Array {
+  return data instanceof Uint8Array ? data : new Uint8Array(data);
 }

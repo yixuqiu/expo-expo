@@ -1,8 +1,9 @@
 import { Picker, PickerProps, PickerIOS } from '@react-native-picker/picker';
-import { Platform } from 'expo-modules-core';
+import { Platform } from 'expo';
 import * as React from 'react';
-import { Text, Button } from 'react-native';
+import { Button } from 'react-native';
 
+import { BodyText } from '../components/BodyText';
 import { ScrollPage, Section } from '../components/Page';
 
 export default function PickerScreen() {
@@ -98,14 +99,14 @@ function GenericPicker(props: React.PropsWithChildren<PickerProps>) {
         <Picker.Item label="Swift" value="swift" />
         {props.children}
       </Picker>
-      <Text>Selected: {value}</Text>
+      <BodyText>Selected: {value}</BodyText>
     </>
   );
 }
 
 function FocusPicker(props: Partial<React.ComponentProps<typeof Picker>>) {
   const [value, setValue] = React.useState<any>('java');
-  const pickerRef = React.useRef<any>();
+  const pickerRef = React.useRef<any>(null);
 
   return (
     <>
@@ -119,14 +120,14 @@ function FocusPicker(props: Partial<React.ComponentProps<typeof Picker>>) {
         <Picker.Item label="Objective C" value="objc" />
         <Picker.Item label="Swift" value="swift" />
       </Picker>
-      <Text>Selected: {value}</Text>
+      <BodyText>Selected: {value}</BodyText>
 
       <Button title="Focus" onPress={() => pickerRef.current?.focus()} />
     </>
   );
 }
-function GenericPickerIOS(props: any) {
-  const [value, setValue] = React.useState<any>('java');
+function GenericPickerIOS(props: PickerProps) {
+  const [value, setValue] = React.useState<PickerProps['selectedValue']>('java');
 
   return (
     <>
@@ -137,7 +138,7 @@ function GenericPickerIOS(props: any) {
         <Picker.Item label="Swift" value="swift" />
         {props.children}
       </PickerIOS>
-      <Text>Selected: {value}</Text>
+      <BodyText>Selected: {String(value)}</BodyText>
     </>
   );
 }

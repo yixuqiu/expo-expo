@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { ISA, PBXShellScriptBuildPhase, build as xcbuild, parse as xcparse } from 'xcparse';
+import type { PBXShellScriptBuildPhase } from 'xcparse';
+import { ISA, build as xcbuild, parse as xcparse } from 'xcparse';
 
 import {
   updateAndroidGradleFile,
@@ -13,6 +14,7 @@ import {
 } from '../withCliIntegration';
 
 const fixturesPath = path.resolve(__dirname, 'fixtures');
+const iosFixturesPath = path.resolve(__dirname, '../../ios/__tests__/fixtures');
 
 describe(updateAndroidGradleFile, () => {
   it('should update the `android/app/build.gradle` file', async () => {
@@ -50,7 +52,7 @@ describe(updateMetroConfig, () => {
     );
     const spy = jest.spyOn(console, 'warn');
     expect(updateMetroConfig(rawContents)).toEqual(rawContents);
-    expect(spy).toBeCalled();
+    expect(spy).toHaveBeenCalled();
   });
 });
 
@@ -71,6 +73,13 @@ describe(updateVirtualMetroEntryIos, () => {
       fs.promises.readFile(path.join(fixturesPath, 'AppDelegate-rn072-updated.mm'), 'utf8'),
     ]);
     expect(updateVirtualMetroEntryIos(rawContents)).toEqual(expectContents);
+  });
+  it('should update the `AppDelegate.swift` for virtual-metro-point', async () => {
+    const rawContents = await fs.promises.readFile(
+      path.join(iosFixturesPath, 'AppDelegate-rn077.swift'),
+      'utf8'
+    );
+    expect(updateVirtualMetroEntryIos(rawContents)).toMatchSnapshot();
   });
 });
 

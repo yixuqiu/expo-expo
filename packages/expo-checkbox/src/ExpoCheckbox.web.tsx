@@ -10,6 +10,7 @@
  */
 
 import React from 'react';
+// @ts-expect-error: TODO(@kitten): We optimally shouldn't pull in all of react-native-web just for expo-checkbox. It's excessive
 import { StyleSheet, View, unstable_createElement as createElement } from 'react-native-web';
 
 import type { CheckboxProps, CheckboxEvent } from './Checkbox.types';
@@ -75,7 +76,7 @@ const styles = StyleSheet.create({
     cursor: 'inherit',
   },
   fakeControl: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     pointerEvents: 'none',
     alignItems: 'center',
     backgroundColor: '#fff',
@@ -103,7 +104,7 @@ const styles = StyleSheet.create({
     borderColor: '#AAB8C2',
   },
   nativeControl: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     height: '100%',
     margin: 0,
     padding: 0,

@@ -6,9 +6,11 @@
 @objc(EXReactDelegate)
 public class ExpoReactDelegate: NSObject {
   private let handlers: [ExpoReactDelegateHandler]
+  public let reactNativeFactory: ExpoReactNativeFactoryProtocol
 
-  public init(handlers: [ExpoReactDelegateHandler]) {
+  public init(handlers: [ExpoReactDelegateHandler], reactNativeFactory: ExpoReactNativeFactoryProtocol) {
     self.handlers = handlers
+    self.reactNativeFactory = reactNativeFactory
   }
 
   @objc
@@ -17,20 +19,12 @@ public class ExpoReactDelegate: NSObject {
     initialProperties: [AnyHashable: Any]?,
     launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> UIView {
-    return self.handlers.lazy
+    return self.handlers
       .compactMap { $0.createReactRootView(reactDelegate: self, moduleName: moduleName, initialProperties: initialProperties, launchOptions: launchOptions) }
       .first(where: { _ in true })
       ?? {
-        guard let rctAppDelegate = (UIApplication.shared.delegate as? RCTAppDelegate) else {
-          fatalError("The `UIApplication.shared.delegate` is not a `RCTAppDelegate` instance.")
-        }
-        return rctAppDelegate.recreateRootView(
-          withBundleURL: nil,
-          moduleName: moduleName,
-          initialProps: initialProperties,
-          launchOptions: launchOptions
-        )
-      }()
+      return reactNativeFactory.recreateRootView(withBundleURL: nil, moduleName: moduleName, initialProps: initialProperties, launchOptions: launchOptions)
+    }()
   }
 
   @objc
@@ -43,7 +37,7 @@ public class ExpoReactDelegate: NSObject {
   @objc
   public func createRootViewController() -> UIViewController {
     return self.handlers.lazy
-      .compactMap { $0.createRootViewController(reactDelegate: self) }
-      .first(where: { _ in true }) ?? UIViewController()
+      .compactMap { $0.createRootViewController() }
+      .first(where: { _ in true }) ?? ExpoRootViewController()
   }
 }

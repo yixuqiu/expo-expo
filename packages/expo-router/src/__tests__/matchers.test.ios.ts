@@ -1,11 +1,48 @@
 import {
+  getContextKey,
   matchDynamicName,
-  matchDeepDynamicRouteName,
   getNameFromFilePath,
   matchGroupName,
   stripGroupSegmentsFromPath,
+  stripInvisibleSegmentsFromPath,
   matchArrayGroupName,
+  matchLastGroupName,
+  getPlatformFromFilePath,
+  VALID_PLATFORMS,
 } from '../matchers';
+
+describe(getPlatformFromFilePath, () => {
+  it.each([...VALID_PLATFORMS])('returns the supported .%s extension', (platform) => {
+    expect(getPlatformFromFilePath(`./folder/page.${platform}.tsx`)).toBe(platform);
+  });
+
+  it('ignores unsupported and non-trailing extensions', () => {
+    expect(getPlatformFromFilePath('./page.custom.tsx')).toBeUndefined();
+    expect(getPlatformFromFilePath('./page.web.archive.tsx')).toBeUndefined();
+    expect(getPlatformFromFilePath('./web.tsx')).toBeUndefined();
+  });
+});
+
+describe(getContextKey, () => {
+  it.each([
+    ['./page.web.tsx', '/page'],
+    ['./page.ios.tsx', '/page'],
+    ['./page.android.tsx', '/page'],
+    ['./page.native.tsx', '/page'],
+    ['./(website)/blog/[...slug].web.tsx', '/(website)/blog/[...slug]'],
+    ['./(website)/_layout.web.tsx', '/(website)'],
+  ])('strips the platform extension from %s', (filePath, contextKey) => {
+    expect(getContextKey(filePath)).toBe(contextKey);
+  });
+
+  it.each([
+    ['./page.custom.tsx', '/page.custom'],
+    ['./page.web.archive.tsx', '/page.web.archive'],
+    ['./releases/version.2.tsx', '/releases/version.2'],
+  ])('preserves unsupported dotted route names in %s', (filePath, contextKey) => {
+    expect(getContextKey(filePath)).toBe(contextKey);
+  });
+});
 
 describe(stripGroupSegmentsFromPath, () => {
   it(`strips group segments, preserving initial slash`, () => {
@@ -13,6 +50,26 @@ describe(stripGroupSegmentsFromPath, () => {
       '/[[...foobar]]/bar/[bax]'
     );
     expect(stripGroupSegmentsFromPath('(foo)/(bar)')).toBe('');
+  });
+
+  it('preserves parentheses in the query string and hash', () => {
+    expect(stripGroupSegmentsFromPath('/test?a=(a)&b=b')).toBe('/test?a=(a)&b=b');
+    expect(stripGroupSegmentsFromPath('/(foo)/test?a=(a)')).toBe('/test?a=(a)');
+    expect(stripGroupSegmentsFromPath('/test#(x)')).toBe('/test#(x)');
+    expect(stripGroupSegmentsFromPath('/(foo)/test?a=1#(x)')).toBe('/test?a=1#(x)');
+    expect(stripGroupSegmentsFromPath('/(foo)?a=(a)')).toBe('/?a=(a)');
+  });
+});
+
+describe(stripInvisibleSegmentsFromPath, () => {
+  it('strips index route segments', () => {
+    expect(stripInvisibleSegmentsFromPath('index')).toBe('');
+    expect(stripInvisibleSegmentsFromPath('/index')).toBe('');
+    expect(stripInvisibleSegmentsFromPath('nested/index')).toBe('nested');
+  });
+
+  it.each(['/reindex', 'someindex'])('preserves the route name %s', (path) => {
+    expect(stripInvisibleSegmentsFromPath(path)).toBe(path);
   });
 });
 
@@ -38,25 +95,53 @@ describe(matchGroupName, () => {
     expect(matchGroupName('leading/(...foobar)/trailing')).toEqual('...foobar');
     expect(matchGroupName('leading/(foo,bar)/trailing)')).toEqual('foo,bar');
     expect(matchGroupName('leading/(foo,bar)/(fruit,apple)')).toEqual('foo,bar');
+    expect(matchGroupName('leading/(foo bar)/trailing')).toEqual('foo bar');
+  });
+});
+describe(matchLastGroupName, () => {
+  it(`matches`, () => {
+    expect(matchLastGroupName('[[...foobar]]')).toEqual(undefined);
+    expect(matchLastGroupName('[[foobar]]')).toEqual(undefined);
+    expect(matchLastGroupName('[...foobar]')).toEqual(undefined);
+    expect(matchLastGroupName('[foobar]')).toEqual(undefined);
+    expect(matchLastGroupName('(foobar)')).toEqual('foobar');
+    expect(matchLastGroupName('(foo,bar)')).toEqual('foo,bar');
+    expect(matchLastGroupName('((foobar))')).toEqual('(foobar)');
+    expect(matchLastGroupName('(...foobar)')).toEqual('...foobar');
+    expect(matchLastGroupName('foobar')).toEqual(undefined);
+    expect(matchLastGroupName('leading/foobar')).toEqual(undefined);
+    expect(matchLastGroupName('(leading)/(foobar)')).toEqual('foobar');
+    expect(matchLastGroupName('(leading)/((foobar))')).toEqual('(foobar)');
+    expect(matchLastGroupName('(leading)/(...foobar)')).toEqual('...foobar');
+    expect(matchLastGroupName('(leading)/(foo,bar)')).toEqual('foo,bar');
+    expect(matchLastGroupName('(leading)/foobar/trailing')).toEqual('leading');
+    expect(matchLastGroupName('(leading)/(foobar)/trailing')).toEqual('foobar');
+    expect(matchLastGroupName('(leading)/((foobar))/trailing')).toEqual('(foobar)');
+    expect(matchLastGroupName('(leading)/(...foobar)/trailing')).toEqual('...foobar');
+    expect(matchLastGroupName('(leading)/(foo,bar)/trailing)')).toEqual('foo,bar');
+    expect(matchLastGroupName('(leading)/(foo,bar)/(fruit,apple)')).toEqual('fruit,apple');
+    expect(matchLastGroupName('(leading)/(foo,bar)/preceding(fruit,apple)')).toEqual('foo,bar');
+    expect(matchLastGroupName('(leading)/(foo,bar)/preceding(fruit,apple)trailing')).toEqual(
+      'foo,bar'
+    );
+    expect(matchLastGroupName('leading/(app)/(foo/,bar)')).toEqual('app');
+    expect(matchLastGroupName('leading/(app)/(foo(,bar)')).toEqual('foo(,bar');
+    expect(matchLastGroupName('leading/(app)/(foo(,bar)/trailing')).toEqual('foo(,bar');
+    expect(matchLastGroupName('leading/(foo bar)/trailing')).toEqual('foo bar');
   });
 });
 describe(matchDynamicName, () => {
-  it(`matches`, () => {
+  it(`matches dynamic names`, () => {
     expect(matchDynamicName('[[...foobar]]')).toEqual(undefined);
     expect(matchDynamicName('[[foobar]]')).toEqual(undefined);
-    expect(matchDynamicName('[...foobar]')).toEqual(undefined);
-    expect(matchDynamicName('[foobar]')).toEqual('foobar');
+    expect(matchDynamicName('[foobar]')).toEqual({ name: 'foobar', deep: false });
     expect(matchDynamicName('foobar')).toEqual(undefined);
   });
-});
 
-describe(matchDeepDynamicRouteName, () => {
-  it(`matches`, () => {
-    expect(matchDeepDynamicRouteName('[[...foobar]]')).toEqual(undefined);
-    expect(matchDeepDynamicRouteName('[[foobar]]')).toEqual(undefined);
-    expect(matchDeepDynamicRouteName('[...foobar]')).toEqual('foobar');
-    expect(matchDeepDynamicRouteName('[foobar]')).toEqual(undefined);
-    expect(matchDeepDynamicRouteName('foobar')).toEqual(undefined);
+  it(`matches deep dynamic names`, () => {
+    expect(matchDynamicName('[[...foobar]]')).toEqual(undefined);
+    expect(matchDynamicName('[[foobar]]')).toEqual(undefined);
+    expect(matchDynamicName('[...foobar]')).toEqual({ name: 'foobar', deep: true });
   });
 });
 

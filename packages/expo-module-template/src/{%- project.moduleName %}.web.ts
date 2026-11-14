@@ -1,13 +1,15 @@
-import { EventEmitter } from 'expo-modules-core';
+<% if (project.platforms.includes('web')) { -%>
+import { registerWebModule, NativeModule } from 'expo';
+<%- webEventImport %>
+class <%- project.moduleName %> extends NativeModule<<%- webEventType %>><% if (webModuleSnippets) { %> {
+<%- webModuleSnippets %>}<% } else { %> {}<% } %>
 
-const emitter = new EventEmitter({} as any);
+export default registerWebModule(<%- project.moduleName %>, '<%- project.moduleName %>');
+<% } else { -%>
+import { registerWebModule, NativeModule } from 'expo';
+<%- webEventImport %>
+// <%- project.moduleName %> is not available on the web platform.
+class <%- project.moduleName %> extends NativeModule<<%- webEventType %>> {}
 
-export default {
-  PI: Math.PI,
-  async setValueAsync(value: string): Promise<void> {
-    emitter.emit('onChange', { value });
-  },
-  hello() {
-    return 'Hello world! 👋';
-  },
-};
+export default registerWebModule(<%- project.moduleName %>, '<%- project.moduleName %>');
+<% } -%>

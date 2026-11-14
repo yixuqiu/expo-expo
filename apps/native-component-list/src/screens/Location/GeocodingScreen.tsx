@@ -1,18 +1,10 @@
 import * as Location from 'expo-location';
 import React from 'react';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 
+import { BodyText } from '../../components/BodyText';
 import SimpleActionDemo from '../../components/SimpleActionDemo';
-import TitleSwitch from '../../components/TitledSwitch';
 import usePermissions from '../../utilities/usePermissions';
-
-// Provide your own Google Maps API Key here to verify.  Note: this requires a
-// paid Google Maps API plan. It is not required to test this during QA.
-const GOOGLE_MAPS_API_KEY = null;
-
-if (GOOGLE_MAPS_API_KEY) {
-  Location.setGoogleApiKey(GOOGLE_MAPS_API_KEY);
-}
 
 const forwardGeocodingAddresses = [
   '1 Hacker Way, CA',
@@ -33,46 +25,27 @@ const reverseGeocodingCoords = [
 export default function GeocodingScreen() {
   usePermissions(Location.requestForegroundPermissionsAsync);
 
-  const [useGoogleMaps, setGoogleMaps] = React.useState(false);
-
-  const toggleGoogleMaps = () => {
-    if (!GOOGLE_MAPS_API_KEY) {
-      throw new Error(
-        'Must supply GOOGLE_MAPS_API_KEY in GeocodingScreen.tsx to use Google Maps API'
-      );
-    } else {
-      setGoogleMaps((value) => !value);
-    }
-  };
-
   return (
     <ScrollView style={styles.container}>
-      <TitleSwitch
-        style={styles.switch}
-        title="Use Google Maps API"
-        value={useGoogleMaps}
-        setValue={toggleGoogleMaps}
-      />
-
       <View style={styles.headerContainer}>
-        <Text style={styles.headerText}>Forward-Geocoding</Text>
+        <BodyText style={styles.headerText}>Forward-Geocoding</BodyText>
       </View>
       {forwardGeocodingAddresses.map((address, index) => (
         <SimpleActionDemo
           key={index}
           title={address}
-          action={() => Location.geocodeAsync(address, { useGoogleMaps })}
+          action={() => Location.geocodeAsync(address)}
         />
       ))}
 
       <View style={styles.headerContainer}>
-        <Text style={styles.headerText}>Reverse-Geocoding</Text>
+        <BodyText style={styles.headerText}>Reverse-Geocoding</BodyText>
       </View>
       {reverseGeocodingCoords.map((coords, index) => (
         <SimpleActionDemo
           key={index}
           title={`${coords.latitude}, ${coords.longitude}`}
-          action={() => Location.reverseGeocodeAsync(coords, { useGoogleMaps })}
+          action={() => Location.reverseGeocodeAsync(coords)}
         />
       ))}
       <SimpleActionDemo
@@ -81,7 +54,7 @@ export default function GeocodingScreen() {
           const location = await Location.getCurrentPositionAsync({
             accuracy: Location.LocationAccuracy.Lowest,
           });
-          return Location.reverseGeocodeAsync(location.coords, { useGoogleMaps });
+          return Location.reverseGeocodeAsync(location.coords);
         }}
       />
     </ScrollView>

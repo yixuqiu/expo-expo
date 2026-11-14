@@ -1,6 +1,6 @@
-import type { PackagerAsset } from '@react-native/assets-registry/registry';
 import { Platform } from 'expo-modules-core';
-import { PixelRatio, NativeModules } from 'react-native';
+import { getBundleOrigin } from 'expo/internal/bundle-origin';
+import { PixelRatio, NativeModules, type PackagerAsset } from 'react-native';
 
 import AssetSourceResolver from './AssetSourceResolver';
 import { getManifest2, manifestBaseUrl } from './PlatformUtils';
@@ -20,6 +20,21 @@ export type AssetSource = {
   hash: string;
 };
 
+function resolveDevServerUrl(
+  manifest2: NonNullable<ReturnType<typeof getManifest2>>
+): string | null {
+  const bundleOrigin = getBundleOrigin();
+  if (bundleOrigin) {
+    return bundleOrigin;
+  }
+  const debuggerHost = manifest2.extra?.expoGo?.debuggerHost;
+  if (!debuggerHost) {
+    return null;
+  }
+  const scheme = manifestBaseUrl?.startsWith('https://') ? 'https://' : 'http://';
+  return scheme + debuggerHost;
+}
+
 /**
  * Selects the best file for the given asset (ex: choosing the best scale for images) and returns
  * a { uri, hash } pair for the specific asset file.
@@ -31,10 +46,10 @@ export function selectAssetSource(meta: AssetMetadata): AssetSource {
   // explicitly provided URIs
   const scale = AssetSourceResolver.pickScale(meta.scales, PixelRatio.get());
   const index = meta.scales.findIndex((s) => s === scale);
-  const hash = meta.fileHashes ? meta.fileHashes[index] ?? meta.fileHashes[0] : meta.hash;
+  const hash = meta.fileHashes?.[index] ?? meta.fileHashes?.[0] ?? meta.hash;
 
   // Allow asset processors to directly provide the URL to load
-  const uri = meta.fileUris ? meta.fileUris[index] ?? meta.fileUris[0] : meta.uri;
+  const uri = meta.fileUris ? (meta.fileUris[index] ?? meta.fileUris[0]) : meta.uri;
   if (uri) {
     return { uri: resolveUri(uri), hash };
   }
@@ -56,10 +71,7 @@ export function selectAssetSource(meta: AssetMetadata): AssetSource {
 
   // For assets during development using manifest2, we use the development server's URL origin
   const manifest2 = getManifest2();
-
-  const devServerUrl = manifest2?.extra?.expoGo?.developer
-    ? 'http://' + manifest2.extra.expoGo.debuggerHost
-    : null;
+  const devServerUrl = manifest2?.extra?.expoGo?.developer ? resolveDevServerUrl(manifest2) : null;
   if (devServerUrl) {
     const baseUrl = new URL(meta.httpServerLocation + suffix, devServerUrl);
 
@@ -72,7 +84,7 @@ export function selectAssetSource(meta: AssetMetadata): AssetSource {
   }
 
   // Temporary fallback for loading assets in Expo Go home
-  if (NativeModules.ExponentKernel) {
+  if (NativeModules['ExponentKernel']) {
     return { uri: `https://classic-assets.eascdn.net/~assets/${encodeURIComponent(hash)}`, hash };
   }
 
@@ -91,31 +103,4 @@ export function selectAssetSource(meta: AssetMetadata): AssetSource {
 export function resolveUri(uri: string): string {
   // `manifestBaseUrl` is always an absolute URL or `null`.
   return manifestBaseUrl ? new URL(uri, manifestBaseUrl).href : uri;
-}
-
-// A very cheap path canonicalization like path.join but without depending on a `path` polyfill.
-export function pathJoin(...paths: string[]): string {
-  // Start by simply combining paths, without worrying about ".." or "."
-  const combined = paths
-    .map((part, index) => {
-      if (index === 0) {
-        return part.trim().replace(/\/*$/, '');
-      }
-      return part.trim().replace(/(^\/*|\/*$)/g, '');
-    })
-    .filter((part) => part.length > 0)
-    .join('/')
-    .split('/');
-
-  // Handle ".." and "." in paths
-  const resolved: string[] = [];
-  for (const part of combined) {
-    if (part === '..') {
-      resolved.pop(); // Remove the last element from the result
-    } else if (part !== '.') {
-      resolved.push(part);
-    }
-  }
-
-  return resolved.join('/');
 }

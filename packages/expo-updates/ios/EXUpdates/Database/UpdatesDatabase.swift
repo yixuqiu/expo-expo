@@ -5,27 +5,54 @@
 // data compatibility.
 // swiftlint:disable legacy_objc_type
 // swiftlint:disable line_length
-// swiftlint:disable type_body_length
 // swiftlint:disable force_unwrapping
-// swiftlint:disable file_length
+// swiftlint:disable identifier_name
 
 import Foundation
+#if canImport(sqlite3)
 import sqlite3
+#else
+import SQLite3
+#endif
 import EXManifests
 
-internal enum UpdatesDatabaseError: Error {
-  case addExistingAssetMissingAssetKey
-  case addExistingAssetInsertError
-  case addExistingAssetAssetNotFoundError
-  case markMissingAssetsError
-  case deleteUpdatesError
-  case deleteUnusedAssetsError
-  case getUpdatesError
-  case setJsonDataError
+internal enum UpdatesDatabaseError: Error, Sendable, LocalizedError {
+  case addExistingAssetInsertOrReplaceIntoError(cause: Error)
+  case addExistingAssetUpdateLaunchAssetError(cause: Error)
+  case markMissingAssetsError(cause: Error)
+  case deleteUpdatesError(cause: Error)
+  case deleteUnusedAssetsError(cause: Error)
+  case setJsonDataError(cause: Error)
+  case transactionBeginError(resultCode: Int32)
+  case transactionCommitError(resultCode: Int32)
+  case finishedUpdateMissingLaunchAsset
+
+  var errorDescription: String? {
+    switch self {
+    case let .addExistingAssetInsertOrReplaceIntoError(cause):
+      return "Database error while inserting asset: \(cause.localizedDescription)"
+    case let .addExistingAssetUpdateLaunchAssetError(cause):
+      return "Database error while updating launch asset on update: \(cause.localizedDescription)"
+    case let .markMissingAssetsError(cause):
+      return "Database error while marking missing assets: \(cause.localizedDescription)"
+    case let .deleteUpdatesError(cause):
+      return "Database error while deleting updates: \(cause.localizedDescription)"
+    case let .deleteUnusedAssetsError(cause):
+      return "Database error while deleting unused assets: \(cause.localizedDescription)"
+    case let .setJsonDataError(cause):
+      return "Database error while setting JSON data: \(cause.localizedDescription)"
+    case let .transactionBeginError(resultCode):
+      return "Database error while starting a transaction. SQLite result code: \(resultCode)"
+    case let .transactionCommitError(resultCode):
+      return "Database error while committing a transaction. SQLite result code: \(resultCode)"
+    case .finishedUpdateMissingLaunchAsset:
+      return "The update finished registration without a launch asset. Refusing to mark it as ready."
+    }
+  }
 }
 
 enum UpdatesDatabaseHashType: Int {
-  case Sha1 = 0
+  case Sha256 = 0
 }
 
 /**
@@ -55,10 +82,12 @@ enum UpdatesDatabaseHashType: Int {
 @objc(EXUpdatesDatabase)
 @objcMembers
 public final class UpdatesDatabase: NSObject {
-  private static let ManifestFiltersKey = "manifestFilters"
-  private static let ServerDefinedHeadersKey = "serverDefinedHeaders"
-  private static let StaticBuildDataKey = "staticBuildData"
-  private static let ExtraParmasKey = "extraParams"
+  internal enum JSONDataKey: String {
+    case ManifestFiltersKey = "manifestFilters"
+    case ServerDefinedHeadersKey = "serverDefinedHeaders"
+    case StaticBuildDataKey = "staticBuildData"
+    case ExtraParmasKey = "extraParams"
+  }
 
   public let databaseQueue: DispatchQueue
   private var db: OpaquePointer?
@@ -71,9 +100,9 @@ public final class UpdatesDatabase: NSObject {
     closeDatabase()
   }
 
-  public func openDatabase(inDirectory directory: URL) throws {
+  public func openDatabase(inDirectory directory: URL, logger: UpdatesLogger) throws {
     dispatchPrecondition(condition: .onQueue(databaseQueue))
-    db = try UpdatesDatabaseInitialization.initializeDatabaseWithLatestSchema(inDirectory: directory)
+    db = try UpdatesDatabaseInitialization.initializeDatabaseWithLatestSchema(inDirectory: directory, logger: logger)
   }
 
   public func closeDatabase() {
@@ -86,14 +115,32 @@ public final class UpdatesDatabase: NSObject {
     return try UpdatesDatabaseUtils.execute(sql: sql, withArgs: args, onDatabase: db.require("Missing database handle"))
   }
 
+  private func withTransaction(_ block: () throws -> Void) throws {
+    let beginResult = sqlite3_exec(db, "BEGIN;", nil, nil, nil)
+    guard beginResult == SQLITE_OK else {
+      throw UpdatesDatabaseError.transactionBeginError(resultCode: beginResult)
+    }
+    do {
+      try block()
+    } catch {
+      sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+      throw error
+    }
+    let commitResult = sqlite3_exec(db, "COMMIT;", nil, nil, nil)
+    guard commitResult == SQLITE_OK else {
+      sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+      throw UpdatesDatabaseError.transactionCommitError(resultCode: commitResult)
+    }
+  }
+
   public func executeForObjC(sql: String, withArgs args: [Any]?) throws -> [Any] {
     return try execute(sql: sql, withArgs: args)
   }
 
-  public func addUpdate(_ update: Update) throws {
+  public func addUpdate(_ update: Update, config: UpdatesConfig) throws {
     let sql = """
-      INSERT INTO "updates" ("id", "scope_key", "commit_time", "runtime_version", "manifest", "status" , "keep", "last_accessed", "successful_launch_count", "failed_launch_count")
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?9);
+      INSERT INTO "updates" ("id", "scope_key", "commit_time", "runtime_version", "manifest", "status" , "keep", "last_accessed", "successful_launch_count", "failed_launch_count", "url", "headers")
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?9, ?10, ?11);
     """
     _ = try execute(
       sql: sql,
@@ -106,104 +153,114 @@ public final class UpdatesDatabase: NSObject {
         update.status.rawValue,
         update.lastAccessed,
         update.successfulLaunchCount,
-        update.failedLaunchCount
+        update.failedLaunchCount,
+        config.updateUrl.absoluteString,
+        Self.encodeRequestHeaders(config.requestHeaders)
       ]
     )
   }
 
   public func addNewAssets(_ assets: [UpdateAsset], toUpdateWithId updateId: UUID) throws {
-    sqlite3_exec(db, "BEGIN;", nil, nil, nil)
+    try withTransaction {
+      try addNewAssetsInternal(assets, toUpdateWithId: updateId)
+    }
+  }
 
+  private func addNewAssetsInternal(_ assets: [UpdateAsset], toUpdateWithId updateId: UUID) throws {
     let assetInsertSql = """
-      INSERT OR REPLACE INTO "assets" ("key", "url", "headers", "extra_request_headers", "type", "metadata", "download_time", "relative_path", "hash", "hash_type", "expected_hash", "marked_for_deletion")
+      INSERT INTO "assets" ("key", "url", "headers", "extra_request_headers", "type", "metadata", "download_time", "relative_path", "hash", "hash_type", "expected_hash", "marked_for_deletion")
       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0);
     """
     for asset in assets {
-      do {
-        _ = try execute(
-          sql: assetInsertSql,
-          withArgs: [
-            asset.key,
-            asset.url,
-            asset.headers,
-            asset.extraRequestHeaders,
-            asset.type,
-            asset.metadata,
-            asset.downloadTime.require("asset downloadTime should be nonnull"),
-            asset.filename,
-            asset.contentHash,
-            UpdatesDatabaseHashType.Sha1.rawValue,
-            asset.expectedHash
-          ]
-        )
-      } catch {
-        sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-        return
+      // A row with this key may have appeared since the caller classified the asset as new.
+      // Adopt it: replacing it would cascade-delete every update that references it.
+      if try addExistingAsset(asset, toUpdateWithId: updateId) {
+        continue
       }
+
+      _ = try execute(
+        sql: assetInsertSql,
+        withArgs: [
+          asset.key,
+          asset.url,
+          asset.headers,
+          asset.extraRequestHeaders,
+          asset.type,
+          asset.metadata,
+          asset.downloadTime.require("asset downloadTime should be nonnull"),
+          asset.filename,
+          asset.contentHash,
+          UpdatesDatabaseHashType.Sha256.rawValue,
+          asset.expectedHash
+        ]
+      )
 
       // statements must stay in precisely this order for last_insert_rowid() to work correctly
       if asset.isLaunchAsset {
         let updateSql = "UPDATE updates SET launch_asset_id = last_insert_rowid() WHERE id = ?1;"
-        do {
-          _ = try execute(sql: updateSql, withArgs: [updateId])
-        } catch {
-          sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-          return
-        }
+        _ = try execute(sql: updateSql, withArgs: [updateId])
       }
 
       let updateInsertSql = """
         INSERT OR REPLACE INTO updates_assets ("update_id", "asset_id") VALUES (?1, last_insert_rowid());
       """
-      do {
-        _ = try execute(sql: updateInsertSql, withArgs: [updateId])
-      } catch {
-        sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-        return
-      }
+      _ = try execute(sql: updateInsertSql, withArgs: [updateId])
     }
-
-    sqlite3_exec(db, "COMMIT;", nil, nil, nil)
   }
 
-  public func addExistingAsset(_ asset: UpdateAsset, toUpdateWithId updateId: UUID) throws -> Bool {
+  public func finishUpdateRegistration(_ update: Update, newAssets: [UpdateAsset], existingAssets: [UpdateAsset], markFinished: Bool) throws {
+    try withTransaction {
+      for asset in existingAssets {
+        _ = try addExistingAsset(asset, toUpdateWithId: update.updateId)
+      }
+      try addNewAssetsInternal(newAssets, toUpdateWithId: update.updateId)
+      if markFinished {
+        try markUpdateFinished(update)
+
+        // a ready update that cannot launch must never be committed
+        if update.status == UpdateStatus.StatusReady {
+          let launchAssetRows = try execute(
+            sql: "SELECT 1 FROM updates WHERE id = ?1 AND launch_asset_id IS NOT NULL;",
+            withArgs: [update.updateId]
+          )
+          if launchAssetRows.isEmpty {
+            throw UpdatesDatabaseError.finishedUpdateMissingLaunchAsset
+          }
+        }
+      }
+    }
+  }
+
+  private func addExistingAsset(_ asset: UpdateAsset, toUpdateWithId updateId: UUID) throws -> Bool {
     guard let key = asset.key else {
       return false
     }
-
-    sqlite3_exec(db, "BEGIN;", nil, nil, nil)
 
     let assetSelectSql = """
       SELECT id FROM assets WHERE "key" = ?1 LIMIT 1;
     """
     let rows = try execute(sql: assetSelectSql, withArgs: [key])
-    if !rows.isEmpty {
-      let assetId: NSNumber = rows[0].requiredValue(forKey: "id")
-      let insertSql = """
-        INSERT OR REPLACE INTO updates_assets ("update_id", "asset_id") VALUES (?1, ?2);
-      """
-      do {
-        _ = try execute(sql: insertSql, withArgs: [updateId, assetId.intValue])
-      } catch {
-        sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-        throw UpdatesDatabaseError.addExistingAssetInsertError
-      }
-
-      if asset.isLaunchAsset {
-        let updateSql = "UPDATE updates SET launch_asset_id = ?1 WHERE id = ?2;"
-        do {
-          _ = try execute(sql: updateSql, withArgs: [assetId.intValue, updateId])
-        } catch {
-          sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-          throw UpdatesDatabaseError.addExistingAssetInsertError
-        }
-      }
-    }
-
-    sqlite3_exec(db, "COMMIT;", nil, nil, nil)
-
     if rows.isEmpty {
       return false
+    }
+
+    let assetId: NSNumber = rows[0].requiredValue(forKey: "id")
+    let insertSql = """
+      INSERT OR REPLACE INTO updates_assets ("update_id", "asset_id") VALUES (?1, ?2);
+    """
+    do {
+      _ = try execute(sql: insertSql, withArgs: [updateId, assetId.intValue])
+    } catch {
+      throw UpdatesDatabaseError.addExistingAssetInsertOrReplaceIntoError(cause: error)
+    }
+
+    if asset.isLaunchAsset {
+      let updateSql = "UPDATE updates SET launch_asset_id = ?1 WHERE id = ?2;"
+      do {
+        _ = try execute(sql: updateSql, withArgs: [assetId.intValue, updateId])
+      } catch {
+        throw UpdatesDatabaseError.addExistingAssetUpdateLaunchAssetError(cause: error)
+      }
     }
 
     return true
@@ -258,7 +315,11 @@ public final class UpdatesDatabase: NSObject {
   }
 
   public func markUpdateFinished(_ update: Update) throws {
-    if update.status != UpdateStatus.StatusDevelopment {
+    // With copying off, embedded updates have no asset rows, so they must stay StatusEmbedded to keep
+    // launching from the bundle. Promoting to StatusReady would route launch through the database
+    // asset path, which has no rows for them.
+    let keepEmbedded = update.status == UpdateStatus.StatusEmbedded && !UpdatesUtils.shouldCopyEmbeddedAssets()
+    if update.status != UpdateStatus.StatusDevelopment && !keepEmbedded {
       update.status = UpdateStatus.StatusReady
     }
 
@@ -303,7 +364,7 @@ public final class UpdatesDatabase: NSObject {
         _ = try execute(sql: updateSql, withArgs: [UpdateStatus.StatusPending.rawValue, asset.assetId])
       } catch {
         sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-        throw UpdatesDatabaseError.markMissingAssetsError
+        throw UpdatesDatabaseError.markMissingAssetsError(cause: error)
       }
     }
 
@@ -319,7 +380,7 @@ public final class UpdatesDatabase: NSObject {
         _ = try execute(sql: updateSql, withArgs: [update.updateId])
       } catch {
         sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-        throw UpdatesDatabaseError.deleteUpdatesError
+        throw UpdatesDatabaseError.deleteUpdatesError(cause: error)
       }
     }
 
@@ -339,7 +400,7 @@ public final class UpdatesDatabase: NSObject {
       _ = try execute(sql: update1Sql, withArgs: nil)
     } catch {
       sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-      throw UpdatesDatabaseError.deleteUnusedAssetsError
+      throw UpdatesDatabaseError.deleteUnusedAssetsError(cause: error)
     }
 
     let update2Sql = "UPDATE assets SET marked_for_deletion = 0 WHERE id IN (SELECT asset_id FROM updates_assets INNER JOIN updates ON updates_assets.update_id = updates.id WHERE updates.keep = 1);"
@@ -347,7 +408,7 @@ public final class UpdatesDatabase: NSObject {
       _ = try execute(sql: update2Sql, withArgs: nil)
     } catch {
       sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-      throw UpdatesDatabaseError.deleteUnusedAssetsError
+      throw UpdatesDatabaseError.deleteUnusedAssetsError(cause: error)
     }
 
     // check for duplicate rows representing a single file on disk
@@ -356,7 +417,7 @@ public final class UpdatesDatabase: NSObject {
       _ = try execute(sql: update3Sql, withArgs: nil)
     } catch {
       sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-      throw UpdatesDatabaseError.deleteUnusedAssetsError
+      throw UpdatesDatabaseError.deleteUnusedAssetsError(cause: error)
     }
 
     var rows: [[String: Any?]]
@@ -365,7 +426,7 @@ public final class UpdatesDatabase: NSObject {
       rows = try execute(sql: selectSql, withArgs: nil)
     } catch {
       sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-      throw UpdatesDatabaseError.deleteUnusedAssetsError
+      throw UpdatesDatabaseError.deleteUnusedAssetsError(cause: error)
     }
 
     let assets = rows.map { row in
@@ -377,7 +438,7 @@ public final class UpdatesDatabase: NSObject {
       _ = try execute(sql: deleteSql, withArgs: nil)
     } catch {
       sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-      throw UpdatesDatabaseError.deleteUnusedAssetsError
+      throw UpdatesDatabaseError.deleteUnusedAssetsError(cause: error)
     }
 
     sqlite3_exec(db, "COMMIT;", nil, nil, nil)
@@ -418,7 +479,28 @@ public final class UpdatesDatabase: NSObject {
     )
 
     let rows = try execute(sql: sql, withArgs: [config.scopeKey])
-    return rows.map { row in
+
+    // A ready row with no launch asset is corrupt (e.g. from an interrupted registration) and
+    // would fail every launch. Demote it for the loader to retry instead of offering it.
+    var launchableRows: [[String: Any?]] = []
+    for row in rows {
+      let status: NSNumber = row.requiredValue(forKey: "status")
+      let launchAssetId: NSNumber? = row.optionalValue(forKey: "launch_asset_id")
+      if status.intValue == UpdateStatus.StatusReady.rawValue && launchAssetId == nil {
+        let updateId: UUID = row.requiredValue(forKey: "id")
+        UpdatesLogger().warn(
+          .localMissingLaunchAsset,
+          values: ["debugInfo": "id=\(updateId.uuidString), demoted to pending"],
+          updateId: updateId.uuidString
+        )
+        let demoteSql = "UPDATE updates SET status = ?1 WHERE id = ?2;"
+        _ = try execute(sql: demoteSql, withArgs: [UpdateStatus.StatusPending.rawValue, updateId])
+      } else {
+        launchableRows.append(row)
+      }
+    }
+
+    return launchableRows.map { row in
       update(withRow: row, config: config)
     }
   }
@@ -464,11 +546,11 @@ public final class UpdatesDatabase: NSObject {
     return asset(withRow: rows.first!)
   }
 
-  private func jsonData(withKey key: String, scopeKey: String) throws -> [String: Any]? {
+  private func jsonData(withKey key: JSONDataKey, scopeKey: String) throws -> [String: Any]? {
     let sql = """
       SELECT * FROM json_data WHERE "key" = ?1 AND "scope_key" = ?2
     """
-    let rows = try execute(sql: sql, withArgs: [key, scopeKey])
+    let rows = try execute(sql: sql, withArgs: [key.rawValue, scopeKey])
     guard let firstRow = rows.first,
       let value = firstRow["value"] as? String else {
       return nil
@@ -477,7 +559,7 @@ public final class UpdatesDatabase: NSObject {
     return try JSONSerialization.jsonObject(with: value.data(using: .utf8)!) as? [String: Any]
   }
 
-  private func setJsonData(_ data: [String: Any], withKey key: String, scopeKey: String, isInTransaction: Bool) throws {
+  private func setJsonData(_ data: [String: Any], withKey key: JSONDataKey, scopeKey: String, isInTransaction: Bool) throws {
     if !isInTransaction {
       sqlite3_exec(db, "BEGIN;", nil, nil, nil)
     }
@@ -486,24 +568,24 @@ public final class UpdatesDatabase: NSObject {
       DELETE FROM json_data WHERE "key" = ?1 AND "scope_key" = ?2;
     """
     do {
-      _ = try execute(sql: deleteSql, withArgs: [key, scopeKey])
+      _ = try execute(sql: deleteSql, withArgs: [key.rawValue, scopeKey])
     } catch {
       if !isInTransaction {
         sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
       }
-      throw UpdatesDatabaseError.setJsonDataError
+      throw UpdatesDatabaseError.setJsonDataError(cause: error)
     }
 
     let insertSql = """
       INSERT INTO json_data ("key", "value", "last_updated", "scope_key") VALUES (?1, ?2, ?3, ?4);
     """
     do {
-      _ = try execute(sql: insertSql, withArgs: [key, data, Date().timeIntervalSince1970 * 1000, scopeKey])
+      _ = try execute(sql: insertSql, withArgs: [key.rawValue, data, Date().timeIntervalSince1970 * 1000, scopeKey])
     } catch {
       if !isInTransaction {
         sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
       }
-      throw UpdatesDatabaseError.setJsonDataError
+      throw UpdatesDatabaseError.setJsonDataError(cause: error)
     }
 
     if !isInTransaction {
@@ -511,32 +593,47 @@ public final class UpdatesDatabase: NSObject {
     }
   }
 
+  internal func deleteJsonDataForAllScopeKeys(withKeys keys: [JSONDataKey]) throws {
+    sqlite3_exec(db, "BEGIN;", nil, nil, nil)
+    let placeholders = keys.indices.map { "?\($0 + 1)" }.joined(separator: ", ")
+    let deleteSql = """
+      DELETE FROM json_data WHERE "key" IN (\(placeholders));
+    """
+    do {
+      _ = try execute(sql: deleteSql, withArgs: keys.map { $0.rawValue })
+    } catch {
+      sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+      throw UpdatesDatabaseError.setJsonDataError(cause: error)
+    }
+    sqlite3_exec(db, "COMMIT;", nil, nil, nil)
+  }
+
   public func serverDefinedHeaders(withScopeKey scopeKey: String) throws -> [String: Any]? {
-    return try jsonData(withKey: UpdatesDatabase.ServerDefinedHeadersKey, scopeKey: scopeKey)
+    return try jsonData(withKey: JSONDataKey.ServerDefinedHeadersKey, scopeKey: scopeKey)
   }
 
   public func manifestFilters(withScopeKey scopeKey: String) throws -> [String: Any]? {
-    return try jsonData(withKey: UpdatesDatabase.ManifestFiltersKey, scopeKey: scopeKey)
+    return try jsonData(withKey: JSONDataKey.ManifestFiltersKey, scopeKey: scopeKey)
   }
 
   public func staticBuildData(withScopeKey scopeKey: String) throws -> [String: Any]? {
-    return try jsonData(withKey: UpdatesDatabase.StaticBuildDataKey, scopeKey: scopeKey)
+    return try jsonData(withKey: JSONDataKey.StaticBuildDataKey, scopeKey: scopeKey)
   }
 
   public func extraParams(withScopeKey scopeKey: String) throws -> [String: String]? {
-    return try jsonData(withKey: UpdatesDatabase.ExtraParmasKey, scopeKey: scopeKey) as? [String: String]
+    return try jsonData(withKey: JSONDataKey.ExtraParmasKey, scopeKey: scopeKey) as? [String: String]
   }
 
   public func setServerDefinedHeaders(_ serverDefinedHeaders: [String: Any], withScopeKey scopeKey: String) throws {
-    return try setJsonData(serverDefinedHeaders, withKey: UpdatesDatabase.ServerDefinedHeadersKey, scopeKey: scopeKey, isInTransaction: false)
+    return try setJsonData(serverDefinedHeaders, withKey: JSONDataKey.ServerDefinedHeadersKey, scopeKey: scopeKey, isInTransaction: false)
   }
 
   public func setManifestFilters(_ manifestFilters: [String: Any], withScopeKey scopeKey: String) throws {
-    return try setJsonData(manifestFilters, withKey: UpdatesDatabase.ManifestFiltersKey, scopeKey: scopeKey, isInTransaction: false)
+    return try setJsonData(manifestFilters, withKey: JSONDataKey.ManifestFiltersKey, scopeKey: scopeKey, isInTransaction: false)
   }
 
   public func setStaticBuildData(_ staticBuildData: [String: Any], withScopeKey scopeKey: String) throws {
-    return try setJsonData(staticBuildData, withKey: UpdatesDatabase.StaticBuildDataKey, scopeKey: scopeKey, isInTransaction: false)
+    return try setJsonData(staticBuildData, withKey: JSONDataKey.StaticBuildDataKey, scopeKey: scopeKey, isInTransaction: false)
   }
 
   public func setExtraParam(key: String, value: String?, withScopeKey scopeKey: String) throws {
@@ -556,7 +653,7 @@ public final class UpdatesDatabase: NSObject {
         try StringItem(value: value)
       }))
 
-      _ = try setJsonData(extraParamsToWrite, withKey: UpdatesDatabase.ExtraParmasKey, scopeKey: scopeKey, isInTransaction: true)
+      _ = try setJsonData(extraParamsToWrite, withKey: JSONDataKey.ExtraParmasKey, scopeKey: scopeKey, isInTransaction: true)
     } catch {
       sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
       throw error
@@ -570,19 +667,19 @@ public final class UpdatesDatabase: NSObject {
 
     if let serverDefinedHeaders = responseHeaderData.serverDefinedHeaders {
       do {
-        _ = try setJsonData(serverDefinedHeaders, withKey: UpdatesDatabase.ServerDefinedHeadersKey, scopeKey: scopeKey, isInTransaction: true)
+        _ = try setJsonData(serverDefinedHeaders, withKey: JSONDataKey.ServerDefinedHeadersKey, scopeKey: scopeKey, isInTransaction: true)
       } catch {
         sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-        throw UpdatesDatabaseError.setJsonDataError
+        throw UpdatesDatabaseError.setJsonDataError(cause: error)
       }
     }
 
     if let manifestFilters = responseHeaderData.manifestFilters {
       do {
-        _ = try setJsonData(manifestFilters, withKey: UpdatesDatabase.ManifestFiltersKey, scopeKey: scopeKey, isInTransaction: true)
+        _ = try setJsonData(manifestFilters, withKey: JSONDataKey.ManifestFiltersKey, scopeKey: scopeKey, isInTransaction: true)
       } catch {
         sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-        throw UpdatesDatabaseError.setJsonDataError
+        throw UpdatesDatabaseError.setJsonDataError(cause: error)
       }
     }
 
@@ -596,6 +693,8 @@ public final class UpdatesDatabase: NSObject {
     let status: NSNumber = row.requiredValue(forKey: "status")
     let successfulLaunchCount: NSNumber = row.requiredValue(forKey: "successful_launch_count")
     let failedLaunchCount: NSNumber = row.requiredValue(forKey: "failed_launch_count")
+    let url = row.optionalValue(forKey: "url").flatMap(URL.init(string:))
+    let requestHeaders: [String: String]? = Self.decodeRequestHeaders(row.optionalValue(forKey: "headers"))
 
     let update = Update(
       manifest: ManifestFactory.manifest(forManifestJSON: manifest),
@@ -608,7 +707,9 @@ public final class UpdatesDatabase: NSObject {
       keep: keep.intValue != 0,
       status: UpdateStatus.init(rawValue: status.intValue)!,
       isDevelopmentMode: false,
-      assetsFromManifest: nil
+      assetsFromManifest: nil,
+      url: url,
+      requestHeaders: requestHeaders
     )
     update.lastAccessed = UpdatesDatabaseUtils.date(fromUnixTimeMilliseconds: row.requiredValue(forKey: "last_accessed"))
     update.successfulLaunchCount = successfulLaunchCount.intValue
@@ -655,7 +756,7 @@ public final class UpdatesDatabase: NSObject {
     asset.metadata = metadata
 
     if let launchAssetId = launchAssetId?.intValue,
-       launchAssetId == assetId.intValue {
+      launchAssetId == assetId.intValue {
       asset.isLaunchAsset = true
     } else {
       asset.isLaunchAsset = false
@@ -663,4 +764,25 @@ public final class UpdatesDatabase: NSObject {
 
     return asset
   }
+
+  internal static func encodeRequestHeaders(_ requestHeader: [String: String]) -> String? {
+    let encoder = JSONEncoder()
+    guard let data = try? encoder.encode(requestHeader) else {
+      return nil
+    }
+    return String(data: data, encoding: .utf8)
+  }
+
+  internal static func decodeRequestHeaders(_ jsonString: String?) -> [String: String]? {
+    guard let data = jsonString?.data(using: .utf8) else {
+      return nil
+    }
+    let decoder = JSONDecoder()
+    return try? decoder.decode([String: String].self, from: data)
+  }
 }
+
+// swiftlint:enable legacy_objc_type
+// swiftlint:enable line_length
+// swiftlint:enable force_unwrapping
+// swiftlint:enable identifier_name

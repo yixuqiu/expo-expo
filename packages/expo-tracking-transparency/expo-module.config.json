@@ -1,10 +1,14 @@
 {
-  "name": "expo-tracking-transparency",
-  "platforms": ["ios", "android"],
-  "ios": {
-    "modulesClassNames": ["TrackingTransparencyModule"]
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["TrackingTransparencyModule"]
   },
   "android": {
-    "modulesClassNames": ["expo.modules.trackingtransparency.TrackingTransparencyModule"]
+    "modules": ["expo.modules.trackingtransparency.TrackingTransparencyModule"],
+    "publication": {
+      "groupId": "host.exp.exponent",
+      "artifactId": "expo.modules.trackingtransparency",
+      "repository": "local-maven-repo"
+    }
   }
 }

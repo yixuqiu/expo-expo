@@ -6,6 +6,8 @@ import { mountAndWaitFor as originalMountAndWaitFor } from './helpers';
 export const name = 'LinearGradient';
 const style = { width: 200, height: 200 };
 
+// This tests are excluded on Android because they frequently break the emulator on GitHub Actions, and we don't know why.
+// See TestModules.ts
 export async function test(
   { it, describe, beforeAll, jasmine, afterAll, expect, afterEach, beforeEach },
   { setPortalChild, cleanupPortal }

@@ -1,16 +1,17 @@
-import { mockConnection } from './testUtilts';
-import { NetworkResponseHandler } from '../NetworkResponse';
+import { mockConnection } from '../../__tests__/mockConnection';
+import { NetworkResponseHandler, NETWORK_RESPONSE_STORAGE } from '../NetworkResponse';
 
-it('is disabled when device capability includes `nativeNetworkInspection`', () => {
-  const connection = mockConnection({ page: { capabilities: { nativeNetworkInspection: true } } });
-  const handler = new NetworkResponseHandler(connection);
-  expect(handler.isEnabled()).toBe(false);
+afterEach(() => {
+  NETWORK_RESPONSE_STORAGE.clear();
+  delete process.env.EXPO_UNSTABLE_CORE_NETWORK_INSPECTOR;
 });
 
-it('is enabled when device capability is missing `nativeNetworkInspection`', () => {
+it('is disabled when EXPO_UNSTABLE_CORE_NETWORK_INSPECTOR is set', () => {
   const connection = mockConnection();
-  const handler = new NetworkResponseHandler(connection);
-  expect(handler.isEnabled()).toBe(true);
+  expect(new NetworkResponseHandler(connection).isEnabled()).toBe(true);
+
+  process.env.EXPO_UNSTABLE_CORE_NETWORK_INSPECTOR = '1';
+  expect(new NetworkResponseHandler(connection).isEnabled()).toBe(false);
 });
 
 it('responds to response body from device and debugger', () => {
@@ -39,7 +40,7 @@ it('responds to response body from device and debugger', () => {
   ).toBe(true);
 
   // Expect the proper response was sent
-  expect(connection.debugger.sendMessage).toBeCalledWith(
+  expect(connection.debugger.sendMessage).toHaveBeenCalledWith(
     expect.objectContaining({
       id: 420,
       result: {
@@ -63,5 +64,60 @@ it('does not respond to non-existing response', () => {
     })
   ).toBe(false);
 
-  expect(connection.debugger.sendMessage).not.toBeCalled();
+  expect(connection.debugger.sendMessage).not.toHaveBeenCalled();
+});
+
+it('evicts the oldest entry once the storage exceeds its cap', () => {
+  const connection = mockConnection();
+  const handler = new NetworkResponseHandler(connection);
+
+  // 512 is the cap; pushing 513 entries should drop the oldest.
+  for (let i = 0; i < 513; i++) {
+    handler.handleDeviceMessage({
+      method: 'Expo(Network.receivedResponseBody)',
+      params: { requestId: String(i), body: '', base64Encoded: false },
+    });
+  }
+
+  expect(NETWORK_RESPONSE_STORAGE.size).toBe(512);
+  expect(NETWORK_RESPONSE_STORAGE.has('0')).toBe(false);
+  expect(NETWORK_RESPONSE_STORAGE.has('512')).toBe(true);
+});
+
+// Known issue of the collision and will be resolved later
+it('known to have response collision from global `NETWORK_RESPONSE_STORAGE`', () => {
+  const connection = mockConnection();
+  const handler = new NetworkResponseHandler(connection);
+
+  // Expect the device message to be handled
+  expect(
+    handler.handleDeviceMessage({
+      method: 'Expo(Network.receivedResponseBody)',
+      params: {
+        requestId: '1337',
+        body: 'hello',
+        base64Encoded: false,
+      },
+    })
+  ).toBe(true);
+
+  // Expect the debugger message to be handled
+  expect(
+    handler.handleDebuggerMessage({
+      id: 420,
+      method: 'Network.getResponseBody',
+      params: { requestId: '1337' },
+    })
+  ).toBe(true);
+
+  const connection2 = mockConnection();
+  const handler2 = new NetworkResponseHandler(connection2);
+
+  expect(
+    handler2.handleDebuggerMessage({
+      id: 420,
+      method: 'Network.getResponseBody',
+      params: { requestId: '1337' },
+    })
+  ).toBe(true);
 });

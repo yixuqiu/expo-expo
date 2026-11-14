@@ -1,99 +1,224 @@
-// Copyright 2023-present 650 Industries. All rights reserved.
-
+import Foundation
 import ExpoModulesCore
 
-final class FileNotExistsException: GenericException<String> {
+internal final class CopyOrMoveDirectoryToFileException: Exception {
   override var reason: String {
-    "File '\(param)' does not exist"
+    "Unable to copy or move a directory to a file"
   }
 }
 
-final class FileAlreadyExistsException: GenericException<String> {
+internal final class UnableToDownloadException: GenericException<String> {
   override var reason: String {
-    "File '\(param)' already exists"
+    "Unable to download a file: \(param)"
   }
 }
 
-final class DirectoryNotExistsException: GenericException<String> {
+internal final class UnableToWriteBase64DataException: GenericException<String> {
   override var reason: String {
-    "Directory '\(param)' does not exist"
+    "Unable to write base64 data to a file: \(param)"
   }
 }
 
-final class FileNotReadableException: GenericException<String> {
+internal final class InvalidTypeFileException: Exception {
   override var reason: String {
-    "File '\(param)' is not readable"
+    "A folder with the same name already exists in the file location"
   }
 }
 
-final class FileNotWritableException: GenericException<String> {
+internal final class InvalidTypeDirectoryException: Exception {
   override var reason: String {
-    "File '\(param)' is not writable"
+    "A file with the same name already exists in the directory location"
   }
 }
 
-final class FileWriteFailedException: GenericException<String> {
+internal final class UnableToGetFileAttribute: GenericException<String> {
   override var reason: String {
-    "Writing to '\(param)' file has failed"
+    "Unable to get file attribute: \(param)"
   }
 }
 
-final class FileCannotDeleteException: GenericException<String> {
+internal final class UnableToGetSizeException: GenericException<String> {
   override var reason: String {
-    "File '\(param)' could not be deleted"
+    "Unable to get file or directory size: \(param)"
   }
 }
 
-final class InvalidFileUrlException: GenericException<URL> {
+internal final class UnableToDeleteException: GenericException<String> {
   override var reason: String {
-    "'\(param.absoluteString)' is not a file URL"
+    "Unable to delete file or directory: \(param)"
   }
 }
 
-final class UnsupportedSchemeException: GenericException<String?> {
+internal final class UnableToCreateException: GenericException<String> {
   override var reason: String {
-    "Unsupported URI scheme: '\(String(describing: param))'"
+    "Unable to create file or directory: \(param)"
   }
 }
 
-final class HeaderEncodingFailedException: GenericException<String> {
+internal final class UnableToReadHandleException: GenericException<String> {
   override var reason: String {
-    "Unable to encode headers for request '\(param)' to UTF8"
+    "Unable to read from a file handle: \(param)"
   }
 }
 
-final class DownloadTaskNotFoundException: GenericException<String> {
+internal final class UnableToWriteHandleException: GenericException<String> {
   override var reason: String {
-    "Cannot find a download task with id: '\(param)'"
+    "Unable to write to a file handle: \(param)"
   }
 }
 
-final class CannotDetermineDiskCapacity: Exception {
+internal final class UnableToGetInfoException: GenericException<String> {
   override var reason: String {
-    "Unable to determine free disk storage capacity"
+    "Unable to get info from a file: \(param)"
   }
 }
 
-final class FailedToCreateBodyException: Exception {
+internal final class DestinationAlreadyExistsException: Exception {
   override var reason: String {
-    "Unable to create multipart body"
+    "Destination already exists"
   }
 }
 
-final class FailedToAccessDirectoryException: Exception {
+internal final class MissingPermissionException: GenericException<String> {
   override var reason: String {
-    "Failed to access `Caches` directory"
+    "Missing permission for uri: \(param)"
   }
 }
 
-final class FailedToCopyAssetException: GenericException<String> {
+internal final class PickingInProgressException: Exception {
   override var reason: String {
-    "Failed to copy photo library asset: \(param)"
+    "File picking is already in progress"
   }
 }
 
-final class FailedToFindAssetException: GenericException<String> {
+internal final class MissingViewControllerException: Exception {
   override var reason: String {
-    "Failed to find photo library asset: \(param)"
+    "No view controller available for presenting file picker"
+  }
+}
+
+internal final class FilePickingCancelledException: Exception {
+  override var reason: String {
+    "File picking was cancelled by the user"
+  }
+}
+
+internal final class NotImplementedException: Exception {
+  override var reason: String {
+    "Not implemented"
+  }
+}
+
+internal final class FeatureNotAvailableOnPlatformException: Exception {
+  override var reason: String {
+    "This feature is not available on this platform"
+  }
+}
+
+internal final class UnableToUploadException: GenericException<String> {
+  override var reason: String {
+    "Unable to upload a file: \(param)"
+  }
+}
+
+internal final class InvalidUrlException: GenericException<String> {
+  override var reason: String {
+    "Invalid URL: \(param)"
+  }
+}
+
+internal final class InvalidResumeDataException: Exception {
+  override var reason: String {
+    "Invalid resume data provided"
+  }
+}
+
+internal final class DownloadCancelledException: Exception {
+  override var reason: String {
+    "Download was cancelled"
+  }
+}
+
+internal final class UploadCancelledException: Exception {
+  override var reason: String {
+    "Upload was cancelled"
+  }
+}
+
+internal final class UploadFailedToCreateBodyException: Exception {
+  override var reason: String {
+    "Failed to create multipart body"
+  }
+}
+
+internal final class UploadFailedToAccessCacheException: Exception {
+  override var reason: String {
+    "Failed to access cache directory for upload temp file"
+  }
+}
+
+internal final class WatcherSetupException: GenericException<String> {
+  override var reason: String {
+    "Cannot start watching path '\(param)'"
+  }
+}
+
+internal final class WatcherPermissionException: GenericException<String> {
+  override var reason: String {
+    "No permission to watch path '\(param)'"
+  }
+}
+
+internal final class WatcherPathNotFoundException: GenericException<String> {
+  override var reason: String {
+    "Path does not exist: '\(param)'"
+  }
+}
+
+internal final class WatcherUnsupportedPathException: GenericException<String> {
+  override var reason: String {
+    "Cannot watch path '\(param)'. Only local file:// paths are supported."
+  }
+}
+
+internal final class FilePreviewInProgressException: Exception, @unchecked Sendable {
+  override var reason: String {
+    "File preview is already in progress"
+  }
+}
+
+internal final class FilePreviewMissingViewControllerException: Exception, @unchecked Sendable {
+  override var reason: String {
+    "No view controller available for presenting file preview"
+  }
+}
+
+internal final class FilePreviewUnsupportedException: GenericException<URL>, @unchecked Sendable {
+  override var reason: String {
+    "The file cannot be previewed: \(param.absoluteString)"
+  }
+}
+
+internal final class FilePreviewFileNotFoundException: GenericException<URL>, @unchecked Sendable {
+  override var reason: String {
+    "File does not exist: \(param.absoluteString)"
+  }
+}
+
+internal final class FilePreviewInvalidInputException: GenericException<String>, @unchecked Sendable {
+  override var reason: String {
+    param
+  }
+}
+
+internal final class FilePreviewPresentationException: Exception, @unchecked Sendable {
+  override var reason: String {
+    "Unable to present file preview"
+  }
+}
+
+internal final class BackgroundDownloadNotFinishedException: Exception {
+  override var reason: String {
+    "Background completion can only be acknowledged after the download finishes"
   }
 }

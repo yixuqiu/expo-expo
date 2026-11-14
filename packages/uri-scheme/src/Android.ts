@@ -1,5 +1,5 @@
+import type { AndroidManifest } from '@expo/config-plugins/build/android/Manifest';
 import {
-  AndroidManifest,
   readAndroidManifestAsync,
   writeAndroidManifestAsync,
 } from '@expo/config-plugins/build/android/Manifest';
@@ -10,7 +10,9 @@ import chalk from 'chalk';
 import { existsSync } from 'fs';
 import path from 'path';
 
-import { CommandError, Options } from './Options';
+import type { Options } from './Options';
+import { CommandError } from './Options';
+import { escapeUriParams } from './URIScheme';
 
 const CANT_START_ACTIVITY_ERROR = 'Activity not started, unable to resolve Intent';
 const BEGINNING_OF_ADB_ERROR_MESSAGE = 'error: ';
@@ -185,4 +187,26 @@ async function readConfigAsync(path: string): Promise<any> {
 
 async function writeConfigAsync(path: string, result: any) {
   await writeAndroidManifestAsync(path, result);
+}
+
+/**
+ * ADB expects special characters in both the URI path and search parameters to be escaped.
+ *
+ * @example
+ *   - `myapp://(tabs)/explore` -> `myapp://\(tabs\)/explore`
+ *   - `myapp://(tabs)/explore?test=a|b|c` -> `myapp://\(tabs\)/explore?test=a%7Cb%7Cc`
+ */
+export function escapeUri(uri: string) {
+  const [protocol, uriWithoutProtocol] = uri.split('://', 2);
+  const [uriPath = '', uriParams] = uriWithoutProtocol?.split('?', 2) ?? '';
+
+  // Escape special characters in the URI path using a single backslash
+  // See: https://datatracker.ietf.org/doc/html/rfc1738#section-2.2
+  const escapedUriPath = uriPath.replace(/(^|[^\\])([$\-_.+!*'(),])/g, '$1\\$2');
+
+  if (uriParams?.length) {
+    return `${protocol}://${escapedUriPath}?${escapeUriParams(uriParams)}`;
+  }
+
+  return `${protocol}://${escapedUriPath}`;
 }

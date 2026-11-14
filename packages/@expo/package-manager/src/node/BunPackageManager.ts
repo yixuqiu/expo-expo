@@ -1,13 +1,19 @@
+import fs from 'fs';
+import path from 'path';
+
+import { resolveWorkspaceRoot, BUN_LOCK_FILE, BUN_TEXT_LOCK_FILE } from '../utils/nodeManagers';
 import { BasePackageManager } from './BasePackageManager';
-import { findYarnOrNpmWorkspaceRoot, BUN_LOCK_FILE } from '../utils/nodeWorkspaces';
 
 export class BunPackageManager extends BasePackageManager {
   readonly name = 'bun';
   readonly bin = 'bun';
-  readonly lockFile = BUN_LOCK_FILE;
+  get lockFile() {
+    const cwd = this.options.cwd?.toString() || process.cwd();
+    return fs.existsSync(path.join(cwd, BUN_LOCK_FILE)) ? BUN_LOCK_FILE : BUN_TEXT_LOCK_FILE;
+  }
 
   workspaceRoot() {
-    const root = findYarnOrNpmWorkspaceRoot(this.ensureCwdDefined('workspaceRoot'));
+    const root = resolveWorkspaceRoot(this.ensureCwdDefined('workspaceRoot'));
     if (root) {
       return new BunPackageManager({
         ...this.options,

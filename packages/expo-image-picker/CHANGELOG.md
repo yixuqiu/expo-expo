@@ -1,14 +1,490 @@
 # Changelog
 
-## Unpublished
+## 58.0.10
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50881](https://github.com/expo/expo/pull/50881))
+  - expo-image-loader@58.0.3
+
+## 58.0.9
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762))
+  - expo-image-loader@58.0.2
+
+## 58.0.8 — 2026-09-28
 
 ### 🐛 Bug fixes
 
+- [Android] Fix crop failing for large images ([#48019](https://github.com/expo/expo/pull/48019) by [@Wenszel](https://github.com/Wenszel))
+
+## 58.0.7 — 2026-09-25
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.6 — 2026-09-23
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.5 — 2026-09-22
+
+### 🐛 Bug fixes
+
+- [iOS] Anchored the picker popover on every regular-width display, not only iPad, so it presents correctly on iPhone Duo. ([#50434](https://github.com/expo/expo/pull/50434) by [@alanjhughes](https://github.com/alanjhughes))
+- [iOS] Fixed a crash when picking media on iOS 27.1, where checking live photo support through `canLoadObject` raised `NSInvalidArgumentException`. ([#50435](https://github.com/expo/expo/pull/50435) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 58.0.4 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.3 — 2026-09-16
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-15
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.1 — 2026-09-14
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+### 🎉 New features
+
+- [Android] Add `PhotographicSensitivity` to returned EXIF metadata. ([#47222](https://github.com/expo/expo/pull/47222) by [@Wenszel](https://github.com/Wenszel))
+
+### 🐛 Bug fixes
+
+- [ios] Fix broken bounds when cropping images when launching with `launchCameraAsync`. ([#45554](https://github.com/expo/expo/pull/45554) by [@behenate](https://github.com/behenate))
+- [Android] Grant the camera app explicit access to the output URI, so image capture keeps working as Android removes the implicit URI grant for `ACTION_IMAGE_CAPTURE`. ([#46954](https://github.com/expo/expo/pull/46954) by [@alanjhughes](https://github.com/alanjhughes))
+- [Android] Fix `videoMaxDuration` option ([#47504](https://github.com/expo/expo/pull/47504) by [@Wenszel](https://github.com/Wenszel))
+- [iOS] Fix `base64` returning original (non-JPEG) image data when `allowsEditing` is `false`. ([#48005](https://github.com/expo/expo/pull/48005) by [@barthap](https://github.com/barthap))
+- [iOS] Fixed crop square detection using the main screen's scale instead of the scale of the view being measured. ([#48172](https://github.com/expo/expo/pull/48172) by [@alanjhughes](https://github.com/alanjhughes))
+- [iOS] Fix a failed crop resolving with the uncropped original image instead of rejecting when `allowsEditing` is `true`. ([#48524](https://github.com/expo/expo/issues/48524) by [@aashishshrestha5532](https://github.com/aashishshrestha5532), [#48541](https://github.com/expo/expo/pull/48541) by [@intergalacticspacehighway](https://github.com/intergalacticspacehighway))
+- [iOS] Fix the video `PHAssetResourceManager` fast path rejecting instead of falling back to the slower path that can fetch iCloud assets, and pass `shouldDownloadFromNetwork` through when reading Live Photo resources. As a result, a video whose data is not stored locally is now downloaded through the fallback path even when `shouldDownloadFromNetwork` is `false` and `videoExportPreset` is `Passthrough`. ([#48658](https://github.com/expo/expo/issues/48658) by [@gcampoyf-cloud](https://github.com/gcampoyf-cloud), [#48794](https://github.com/expo/expo/pull/48794) by [@expo-bot](https://github.com/expo-bot))
+- [iOS] Fix picking a video terminating apps that ship no `NSPhotoLibraryUsageDescription` by only taking the `PHAssetResourceManager` fast path when photo library read access has already been granted. ([#49362](https://github.com/expo/expo/pull/49362) by [@OlegBezr](https://github.com/OlegBezr))
+
 ### 💡 Others
+
+- [Android] Migrate `ExpoCropImageActivity` away from `CropImageActivity` ([#47141](https://github.com/expo/expo/pull/47141) by [@Wenszel](https://github.com/Wenszel))
+
+## 57.0.7 - 2026-07-29
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.6 - 2026-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-17
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.18 - 2026-06-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.17 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.16 - 2026-06-05
+
+### 🎉 New features
+
+- [iOS] Allow `launchCameraAsync` to be invoked on the simulator. ([#45923](https://github.com/expo/expo/pull/45923) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 💡 Others
+
+- [Web] Drop dependency on `expo-modules-core` `Platform` in favor of inline `window`/`document` checks. ([#45923](https://github.com/expo/expo/pull/45923) by [@EvanBacon](https://github.com/EvanBacon))
+- Switch package entry to TypeScript source and emit declarations only. ([#45923](https://github.com/expo/expo/pull/45923) by [@EvanBacon](https://github.com/EvanBacon))
+
+## 56.0.15 - 2026-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.14 — 2026-05-26
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.13 — 2026-05-23
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.12 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.11 — 2026-05-20
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.10 — 2026-05-19
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.9 — 2026-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.7 — 2026-05-13
+
+### 🐛 Bug fixes
+
+- [Android] Follow system day/night theme in crop activity. ([#44944](https://github.com/expo/expo/pull/44944) by [@jeferson-sb](https://github.com/jeferson-sb))
+
+### 💡 Others
+
+- Updated permission hooks and permission type imports to be imported from `expo` instead of `expo-modules-core` ([#45565](https://github.com/expo/expo/pull/45565) by [@Wenszel](https://github.com/Wenszel))
+
+## 56.0.6 — 2026-05-11
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-07
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
+### 🐛 Bug fixes
+
+- [iOS] Fix `base64` result not being a JPEG data. ([#43806](https://github.com/expo/expo/pull/43806) by [@barthap](https://github.com/barthap))
+
+## 55.0.20 - 2026-05-05
+
+### 🐛 Bug fixes
+
+- [android] Fix potential vulnerability in `com.canhub.cropper.CropImageActivity` being exported. ([#45357](https://github.com/expo/expo/pull/45357) by [@behenate](https://github.com/behenate))
+
+## 55.0.19 - 2026-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.18 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.17 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.16 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-03-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-03-11
+
+### 🐛 Bug fixes
+
+- [android] Handle edge-to-edge display in crop activity. ([#44208](https://github.com/expo/expo/pull/44208) by [@zoontek](https://github.com/zoontek))
+- fix potential `null` mime type reported ([#43734](https://github.com/expo/expo/pull/43734) by [@vonovak](https://github.com/vonovak))
+
+## 55.0.11 - 2026-03-05
+
+### 🐛 Bug fixes
+
+- [android] fix cropper default colors in light mode ([#42437](https://github.com/expo/expo/pull/42437) by [@fobos531](https://github.com/fobos531))
+
+## 55.0.10 - 2026-02-26
+
+### 💡 Others
+
+- [iOS] Added explicit `import React` for xcframework compatibility. ([#44248](https://github.com/expo/expo/pull/44248) by [@chrfalch](https://github.com/chrfalch))
+- [android] bump Android-Image-Cropper dependency ([#43433](https://github.com/expo/expo/pull/43433) by [@vonovak](https://github.com/vonovak))
+
+## 55.0.9 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+### 💡 Others
+
+- [iOS] Improved MIME type resolution. ([#42889](https://github.com/expo/expo/pull/42889) by [@barthap](https://github.com/barthap))
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🎉 New features
+
+- [iOS] Add `shouldDownloadFromNetwork` option to fix iCloud video download ([#40697](https://github.com/expo/expo/pull/40697) by [@kosmydel](https://github.com/kosmydel))
+- [android] support colors configuration ([#40834](https://github.com/expo/expo/pull/40834) by [@kosmydel](https://github.com/kosmydel))
+
+### 🐛 Bug fixes
+
+- [web] fix error propagation in `launchImageLibraryAsync` function on web ([#42716](https://github.com/expo/expo/pull/42716) by [@HubertBer](https://github.com/HubertBer))
+- [android] fix `cropToolbarColor` default value ([#40834](https://github.com/expo/expo/pull/40834) by [@kosmydel](https://github.com/kosmydel))
+- [android] do not crash if `ContentProvider` doesn't provide mime type ([#41495](https://github.com/expo/expo/pull/41495) by [@vonovak](https://github.com/vonovak))
+
+### 💡 Others
+
+- [Android] Add `android:maxSdkVersion` annotation to `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` permissions. ([#40976](https://github.com/expo/expo/pull/40976) by [@behenate](https://github.com/behenate))
+
+## 17.0.9 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.8 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.7 — 2025-09-08
+
+### 🐛 Bug fixes
+
+- [ios] Avoid transcoding for .avif and .tiff like it works for .heic. This keeps the asset in its original container/codec (e.g. TIFF instead of JPEG) and is required for the new fast-path. Apps that relied on .automatic re-encoded output can pass preferredAssetRepresentationMode: '.automatic' to restore the old behaviour.([#39398](https://github.com/expo/expo/pull/39398) by [@chocky335](https://github.com/chocky335))
+
+## 17.0.6 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.5 — 2025-08-28
+
+### 🐛 Bug fixes
+
+- [iOS] Fix wrong dimensions reported for portrait images ([#39230](https://github.com/expo/expo/pull/39230) by [@hirbod](https://github.com/hirbod))
+
+## 17.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.0 — 2025-08-13
+
+### 🛠 Breaking changes
+
+- [Web] Changed web `uri` to use blob URLs instead of base64 data URLs for better performance. The `uri` property will now be a blob URL instead of a base64 data URL, while the `base64` property behavior remains unchanged. ([#37447](https://github.com/expo/expo/pull/37447) by [@hirbod](https://github.com/hirbod))
+- [ios] The default for `preferredAssetRepresentationMode` is now `.current` instead of `.automatic`. This keeps the asset in its original container/codec (e.g. HEIC instead of JPEG) and is required for the new fast-path. Apps that relied on `.automatic` re-encoded output can pass `preferredAssetRepresentationMode: '.automatic'` to restore the old behaviour. ([#37569](https://github.com/expo/expo/pull/37569) by [@hirbod](https://github.com/hirbod))
+
+### 🎉 New features
+
+- [android] Introduce customizable cropping UI with light and dark theme support ([#37573](https://github.com/expo/expo/pull/37573) by [@hirbod](https://github.com/hirbod))
+- [android] Add new `shape` option to customize the shape of the crop zone ([#38148](https://github.com/expo/expo/pull/38148)) by [@janicduplessis](https://github.com/janicduplessis)
+
+### 🐛 Bug fixes
+
+- Prevent external applications from accessing the CropImageActivity ([#37223](https://github.com/expo/expo/pull/37223) by [@aladine](https://github.com/aladine))
+- [Web] Corrected camera capture attributes on web where front camera was using 'environment' and back camera was using 'user'. Reversed the values to ensure proper camera selection. ([#37447](https://github.com/expo/expo/pull/37447) by [@hirbod](https://github.com/hirbod))
+- [ios]: Enhance image reading logic to prioritize cropped images and improve orientation handling ([#37846](https://github.com/expo/expo/pull/37846) by [@hirbod](https://github.com/hirbod))
+- [android] Adjust video metadata extraction to account for rotation ([#37849](https://github.com/expo/expo/pull/37849) by [@hirbod](https://github.com/hirbod))
+
+### 💡 Others
+
+- [ios] Images now use a _fast-path_ if possible: the original file is copied once and its size is read from the header (no full decode / re-encode). This requires `quality: 1`, `allowsEditing: false` and `preferredAssetRepresentationMode: .current` (new default) ([#37569](https://github.com/expo/expo/pull/37569) by [@hirbod](https://github.com/hirbod))
+- [ios] Videos picked with `VideoExportPreset.Passthrough` are no longer transcoded and are copied only once. ([#37569](https://github.com/expo/expo/pull/37569) by [@hirbod](https://github.com/hirbod))
+
+## 16.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 16.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 16.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 16.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 16.1.0 — 2025-04-04
+
+### 🎉 New features
+
+- Added support for ordered selection and default tab selection on Android. ([#34223](https://github.com/expo/expo/pull/34223) by [@fobos531](https://github.com/fobos531))
+- Add support for cameraType in web implementation ([#35221](https://github.com/expo/expo/pull/35221) by [@RyogaK](https://github.com/RyogaK))
+
+### 🐛 Bug fixes
+
+- [Android] Fix `getPendingResultAsync` incorrect return type ([#35791](https://github.com/expo/expo/pull/35791) by [@sorenfrederiksen](https://github.com/sorenfrederiksen))
+- [iOS] Use preferred representation mode to support heic ([#35840](https://github.com/expo/expo/pull/35840) by [@jakex7](https://github.com/jakex7))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+- [iOS] Fix warnings which will become errors in Swift 6. ([#35288](https://github.com/expo/expo/pull/35288) by [@behenate](https://github.com/behenate))
+
+## 16.0.6 - 2025-02-10
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.5 - 2025-01-31
+
+### 🐛 Bug fixes
+
+- [ios] fixed concurrency freeze on low-end iOS devices when selecting multiple images. ([#34585](https://github.com/expo/expo/pull/34585) by [@chrfalch](https://github.com/chrfalch))
+- [android] fixed removal of temporary file after picking image using camera ([#34797](https://github.com/expo/expo/pull/34797) by [@chrfalch](https://github.com/chrfalch))
+
+## 16.0.4 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.3 — 2024-11-22
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.2 — 2024-11-14
+
+_This version does not introduce any user-facing changes._
+
+## 16.0.1 — 2024-11-04
+
+### 🐛 Bug fixes
+
+- Fix incorrect width/height reported with EXIF tags 5 and 7 ([#32534](https://github.com/expo/expo/pull/32534) by [@gaearon](https://github.com/gaearon))
+
+## 16.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Remove `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` permissions. ([#31902](https://github.com/expo/expo/pull/31902) by [@aleqsio](https://github.com/aleqsio))
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+- The default value for `quality` option has been changed from `0.2` to `1.0` for better performance and to match the most common expectation. ([#30896](https://github.com/expo/expo/pull/30896) by [@tsapeta](https://github.com/tsapeta))
+- `ImagePicker.MediaTypeOptions` have been deprecated. Use a single MediaType or an array of MediaTypes instead. ([#30957](https://github.com/expo/expo/pull/30957) by [@behenate](https://github.com/behenate))
+
+### 🎉 New features
+
+- [web] Include `file` object from input for server uploads. ([#31788](https://github.com/expo/expo/pull/31788) by [@EvanBacon](https://github.com/EvanBacon))
+- [iOS] Add support for picking live photos from the library. ([#30957](https://github.com/expo/expo/pull/30957) by [@behenate](https://github.com/behenate))
+
+### 🐛 Bug fixes
+
+- [iOS] Provide more image metadata in the result object. ([#29648](https://github.com/expo/expo/pull/29648) by [@vonovak](https://github.com/vonovak))
+- Only import from `expo/config-plugins` to follow proper dependency chains. ([#30499](https://github.com/expo/expo/pull/30499) by [@byCedric](https://github.com/byCedric))
+- [web] Return missing values from video selection. ([#30966](https://github.com/expo/expo/pull/30966) by [@entiendoNull](https://github.com/entiendoNull))
+- [Android] Fix permissions on devices running Android 11 and 12. ([#31396](https://github.com/expo/expo/pull/31396) by [@alanjhughes](https://github.com/alanjhughes))
+
+### 💡 Others
+
+- Refactored the code on iOS and made promise resolution faster. ([#30896](https://github.com/expo/expo/pull/30896) by [@tsapeta](https://github.com/tsapeta))
+
+## 15.0.7 - 2024-07-03
+
+### 🐛 Bug fixes
+
+- [iOS] Fix an issue where the app will crash when using the popover presentation style on iPad. ([#29892](https://github.com/expo/expo/pull/29892) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 15.0.6 - 2024-06-20
+
+### 🐛 Bug fixes
+
+- Support removing microphone permissions through config plugin. ([#29749](https://github.com/expo/expo/pull/29749) by [@alanjhughes](https://github.com/alanjhughes))
+
+## 15.0.5 — 2024-05-15
+
+### 🐛 Bug fixes
+
+- [Android] Add support for granular permissions. ([#28897](https://github.com/expo/expo/pull/28897) by [@lukmccall](https://github.com/lukmccall))
 
 ## 15.0.4 — 2024-05-01
 
@@ -44,6 +520,7 @@ _This version does not introduce any user-facing changes._
 ### 🐛 Bug fixes
 
 - On Android `fileSize` was named `filesize` which did not match the docs & typescript definition. ([#27293](https://github.com/expo/expo/pull/27293) by [@WookieFPV](https://github.com/wookieFPV))
+- Fixed cancelled picker dialog not resolving with expected result on web. ([#11847](https://github.com/expo/expo/pull/27454) by [@raqso](https://github.com/raqso))
 
 ### 💡 Others
 

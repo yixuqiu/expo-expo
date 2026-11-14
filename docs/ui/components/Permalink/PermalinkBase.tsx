@@ -1,9 +1,10 @@
 import { mergeClasses } from '@expo/styleguide';
-import { cloneElement, PropsWithChildren } from 'react';
+import { cloneElement, PropsWithChildren, ReactElement } from 'react';
 
 type Props = PropsWithChildren<{
-  component: any;
+  component: ReactElement<{ className?: string }>;
   className?: string;
+  id?: string;
 }>;
 
 export function PermalinkBase({ component, children, className, ...rest }: Props) {

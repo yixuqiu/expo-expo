@@ -1,14 +1,17 @@
-import { withAndroidSplashScreen } from '@expo/prebuild-config/build/plugins/unversioned/expo-splash-screen/withAndroidSplashScreen';
-import { withIosSplashScreen } from '@expo/prebuild-config/build/plugins/unversioned/expo-splash-screen/withIosSplashScreen';
 import { ConfigPlugin, createRunOncePlugin } from 'expo/config-plugins';
 
-const pkg = require('expo-splash-screen/package.json');
+import { Props } from './types';
+import { withAndroidSplashScreen } from './withAndroidSplashScreen';
+import { withIosSplashScreen } from './withIosSplashScreen';
 
-const withSplashScreen: ConfigPlugin = (config) => {
-  // For simplicity, we'll version the unversioned code in expo-splash-screen.
-  // This adds more JS to the package overall, but the trade-off is less copying between expo-cli/expo.
-  config = withAndroidSplashScreen(config);
-  config = withIosSplashScreen(config);
+const pkg = require('../../package.json');
+
+const withSplashScreen: ConfigPlugin<Props | null> = (config, props) => {
+  if (props != null) {
+    config = withAndroidSplashScreen(config, props);
+    config = withIosSplashScreen(config, props);
+  }
+
   return config;
 };
 

@@ -4,8 +4,10 @@
 // swiftlint:disable unavailable_function
 
 import Foundation
-import UIKit
 
+#if os(iOS) || os(tvOS)
+import UIKit
+#endif
 /**
  Uses objective-c NSExceptions for field validation. This is to maintain
  backwards compatibility with the previous objective-c implementation so that we don't need to do
@@ -196,6 +198,10 @@ public class Manifest: NSObject {
     return expoClientConfigRootObject()?.optionalValue(forKey: "experiments")
   }
 
+  public func expoGoUsername() -> String? {
+    return expoGoConfigRootObject()?.optionalValue(forKey: "username")
+  }
+
   public func developer() -> [String: Any]? {
     return expoGoConfigRootObject()?.optionalValue(forKey: "developer")
   }
@@ -258,32 +264,9 @@ public class Manifest: NSObject {
     (expoClientConfigRootObject()?.optionalValue(forKey: "backgroundColor"))
   }
 
-  public func iosSplashBackgroundColor() -> String? {
+  public func iosAppIconUrl() -> String? {
     return expoClientConfigRootObject().let { it in
-      Manifest.string(fromManifest: it, atPaths: [
-        ["ios", "splash", "backgroundColor"],
-        ["splash", "backgroundColor"]
-      ])
-    }
-  }
-
-  public func iosSplashImageUrl() -> String? {
-    return expoClientConfigRootObject().let { it in
-      Manifest.string(fromManifest: it, atPaths: [
-        UIDevice.current.userInterfaceIdiom == UIUserInterfaceIdiom.pad
-          ? ["ios", "splash", "tabletImageUrl"] : [],
-        ["ios", "splash", "imageUrl"],
-        ["splash", "imageUrl"]
-      ])
-    }
-  }
-
-  public func iosSplashImageResizeMode() -> String? {
-    return expoClientConfigRootObject().let { it in
-      Manifest.string(fromManifest: it, atPaths: [
-        ["ios", "splash", "resizeMode"],
-        ["splash", "resizeMode"]
-      ])
+      Manifest.string(fromManifest: it, atPath: ["iconUrl"])
     }
   }
 
@@ -292,41 +275,13 @@ public class Manifest: NSObject {
   }
 
   public func supportsRTL() -> Bool {
-    guard let expoClientConfigRootObject = expoClientConfigRootObject(),
-      let extra: [String: Any]? = expoClientConfigRootObject.optionalValue(forKey: "extra"),
-      let supportsRTL: Bool = extra?.optionalValue(forKey: "supportsRTL") else {
-      return false
-    }
-
-    return supportsRTL
+    let extra: [String: Any]? = expoClientConfigRootObject()?.optionalValue(forKey: "extra")
+    return extra?.optionalValue(forKey: "supportsRTL") as Bool? ?? true
   }
 
   public func forcesRTL() -> Bool {
-    guard let expoClientConfigRootObject = expoClientConfigRootObject(),
-      let extra: [String: Any]? = expoClientConfigRootObject.optionalValue(forKey: "extra"),
-      let forcesRTL: Bool = extra?.optionalValue(forKey: "forcesRTL") else {
-      return false
-    }
-
-    return forcesRTL
-  }
-
-  public func jsEngine() -> String {
-    let jsEngine = expoClientConfigRootObject().let { it in
-      Manifest.string(fromManifest: it, atPaths: [
-        ["ios", "jsEngine"],
-        ["jsEngine"]
-      ])
-    }
-
-    guard let jsEngine = jsEngine else {
-      let sdkMajorVersion = expoGoSDKMajorVersion()
-      if sdkMajorVersion > 0 && sdkMajorVersion < 48 {
-        return "jsc"
-      }
-      return "hermes"
-    }
-    return jsEngine
+    let extra: [String: Any]? = expoClientConfigRootObject()?.optionalValue(forKey: "extra")
+    return extra?.optionalValue(forKey: "forcesRTL") as Bool? ?? false
   }
 
   /**

@@ -1,14 +1,409 @@
 # Changelog
 
-## Unpublished
+## 58.0.12
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- [android] Rename the Java package from `expo.modules.taskManager` to `expo.modules.taskmanager` to match the Gradle namespace. This fixes an R8 `BuildConfig` descriptor error on case-insensitive file systems. ([#51570](https://github.com/expo/expo/pull/51570) by [@Kudo](https://github.com/Kudo))
+
+## 58.0.11
+
+### Patch Changes
+
+- Bump precompiled artifacts due to ABI breakage in expo-modules-jsi@58.0.6. ([#50881](https://github.com/expo/expo/pull/50881) by [@kitten](https://github.com/kitten))
+- [Android] Fix `TaskService` losing its `Context` (it held a `WeakReference` to the creating `ReactContext`), after which registering or unregistering a task threw a `NullPointerException` from `SharedPreferences.getAll()`. ([#49498](https://github.com/expo/expo/pull/49498) by [@retu2libc](https://github.com/retu2libc))
+- Updated dependencies. ([#50881](https://github.com/expo/expo/pull/50881))
+  - unimodules-app-loader@58.0.2
+
+## 58.0.10
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762))
+  - unimodules-app-loader@58.0.1
+
+## 58.0.9 — 2026-09-28
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.8 — 2026-09-25
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.7 — 2026-09-23
 
 ### 🐛 Bug fixes
 
+- [iOS] Fix a data race on `EXTaskService`'s collections that could crash the app when one app context registered its task manager while another tore down, such as on a dev-client reload or `Updates.reloadAsync()`. ([#49558](https://github.com/expo/expo/pull/49558) by [@vonovak](https://github.com/vonovak))
+
+## 58.0.6 — 2026-09-22
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.5 — 2026-09-21
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.4 — 2026-09-16
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.3 — 2026-09-15
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.2 — 2026-09-14
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.1 — 2026-09-14
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+### 🎉 New features
+
+- Warn when defining tasks after the JavaScript bundle has finished loading. ([#49398](https://github.com/expo/expo/pull/49398) by [@HubertBer](https://github.com/HubertBer))
+
+### 🐛 Bug fixes
+
+- [Android] Clear headless task manager on context destroy ([#47958](https://github.com/expo/expo/pull/47958) by [@Wenszel](https://github.com/Wenszel))
+- [Android] Fix a crash on Android 9 when delivering a task event through `JobScheduler` (geofencing, background location), where the job was built without the scheduling constraint that `JobInfo.Builder.build()` requires. ([#48305](https://github.com/expo/expo/pull/48305) by [@rvaccone](https://github.com/rvaccone))
+
+## 57.0.7 - 2026-07-29
+
+### 🐛 Bug fixes
+
+- [Android] Fix `TaskService` leaking a `TaskExecutionCallback` (and the `JobService` it retains) for every executed background task. ([#47844](https://github.com/expo/expo/pull/47844) by [@chrfalch](https://github.com/chrfalch))
+
+## 57.0.6 - 2026-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-17
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-15
+
+### 🐛 Bug fixes
+
+- [iOS] Fix a crash when a task execution request is evaluated re-entrantly, by making its completion callback fire exactly once. ([#47594](https://github.com/expo/expo/pull/47594) by [@tsapeta](https://github.com/tsapeta))
+
+## 57.0.2 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.19 - 2026-06-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.18 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.17 - 2026-06-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.16 - 2026-05-29
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.15 — 2026-05-26
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.14 — 2026-05-23
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.13 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- [android] Apply bundled `proguard-rules.pro` via `consumerProguardFiles` so the `-keep class expo.modules.taskManager.**` rule is added to consumer apps' R8 pass. ([#46029](https://github.com/expo/expo/pull/46029) by [@jiunshinn](https://github.com/jiunshinn))
+
+## 56.0.12 — 2026-05-21
+
+### 🐛 Bug fixes
+
+- Fix an ES module import error in the typed config plugin. ([#46089](https://github.com/expo/expo/pull/46089) by [@zoontek](https://github.com/zoontek))
+
+## 56.0.11 — 2026-05-20
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.10 — 2026-05-19
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.9 — 2026-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.7 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-11
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-07
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Expose a typed config plugin function ([#44098](https://github.com/expo/expo/pull/44098) by [@zoontek](https://github.com/zoontek))
+
+## 55.0.15 - 2026-04-21
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.14 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-03-17
+
+### 🐛 Bug fixes
+
+- Fixed JS timers hanging during background task execution on Android by registering with `HeadlessJsTaskContext`. ([#43821](https://github.com/expo/expo/pull/43821) by [@janicduplessis](https://github.com/janicduplessis))
+
+## 55.0.9 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-01-27
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🐛 Bug fixes
+
+- [Android] Fix job scheduling ANR caused by cancel/reschedule pattern that prevented jobs from executing and accumulated data until exceeding Binder transaction limit. ([#41688](https://github.com/expo/expo/pull/41688) by [@tyrauber](https://github.com/tyrauber))
+
 ### 💡 Others
+
+- [iOS] Migrated the native module to Swift. ([#41911](https://github.com/expo/expo/pull/41911) by [@tsapeta](https://github.com/tsapeta))
+
+## 14.0.9 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.8 - 2025-10-20
+
+### 🐛 Bug fixes
+
+- [Android] Fix NPE in updateOrScheduleJob in task manager ([#40396](https://github.com/expo/expo/pull/40396) by [@SamuelBrucksch](https://github.com/SamuelBrucksch))
+
+## 14.0.7 — 2025-09-11
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.6 — 2025-09-02
+
+### 💡 Others
+
+- [Android] Change Constants to Constant/Property. ([#38926](https://github.com/expo/expo/pull/38926) by [@jakex7](https://github.com/jakex7))
+
+## 14.0.5 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.4 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.3 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 14.0.0 — 2025-08-13
+
+### 🎉 New features
+
+- [iOS] Add Apple TV support. ([#38513](https://github.com/expo/expo/pull/38513) by [@douglowder](https://github.com/douglowder))
+
+### 🐛 Bug fixes
+
+- [android] add missing proguard-rules for `expo-task-manager` ([#37833](https://github.com/expo/expo/pull/37833) by [@chrfalch](https://github.com/chrfalch))
+- [iOS] Rethrow obj-c exception as swift error. ([#38714](https://github.com/expo/expo/pull/38714) by [@jakex7](https://github.com/jakex7))
+
+## 13.1.6 - 2025-07-01
+
+### 💡 Others
+
+- Remove "Please" from warnings and errors ([#36862](https://github.com/expo/expo/pull/36862) by [@brentvatne](https://github.com/brentvatne))
+
+## 13.1.5 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.4 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.3 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.2 — 2025-04-11
+
+### 💡 Others
+
+- Removed warning about running on Expo Go. This is handled in packages using the Task Manager. ([#36038](https://github.com/expo/expo/pull/36038) by [@chrfalch](https://github.com/chrfalch))
+
+## 13.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 13.1.0 — 2025-04-04
+
+### 🐛 Bug fixes
+
+- [iOS] Added guards to avoid crashing the app if we try to write task results that contains NSNull values ([#35477](https://github.com/expo/expo/pull/35477) by [@chrfalch](https://github.com/chrfalch))
+
+### 💡 Others
+
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+- [apple] Migrate remaining `expo-module.config.json` to unified platform syntax. ([#34445](https://github.com/expo/expo/pull/34445) by [@reichhartd](https://github.com/reichhartd))
+
+## 13.0.0 — 2025-01-21
+
+### 💡 Others
+
+- [android][background-task] Added callback parameter to new executeTask method after adding package expo-background-task ([#33438](https://github.com/expo/expo/pull/33438) by [@chrfalch](https://github.com/chrfalch))
+
+## 12.0.3 — 2024-11-13
+
+### 💡 Others
+
+- [Android] Added implementation of `executeTask` method in `TaskManagerUtils` ([#32849](https://github.com/expo/expo/pull/32849) by [@chrfalch](https://github.com/chrfalch))
+
+## 12.0.2 — 2024-11-05
+
+### 💡 Others
+
+- Correct the return type of `TaskManagerTaskExecutor`. ([#32557](https://github.com/expo/expo/pull/32557) by [@Simek](https://github.com/Simek))
+
+## 12.0.1 — 2024-10-31
+
+### 💡 Others
+
+- [android] Added implementation in package to look up TaskService instance from expo-modules-core ([#32300](https://github.com/expo/expo/pull/32300) by [@chrfalch](https://github.com/chrfalch))
+
+## 12.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🐛 Bug fixes
+
+- `isAvailableAsync()` now returns `false` in Expo Go for Android. ([#29823](https://github.com/expo/expo/pull/29823)) by [@vonovak](https://github.com/vonovak)
+- Add missing `react-native` peer dependencies for isolated modules. ([#30486](https://github.com/expo/expo/pull/30486) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Keep using the legacy event emitter as the module is not fully migrated to Expo Modules API. ([#28946](https://github.com/expo/expo/pull/28946) by [@tsapeta](https://github.com/tsapeta))
+
+## 11.8.2 - 2024-05-29
+
+### 🐛 Bug fixes
+
+- [Android] Fix the task manager events not being sent to the JS side. ([#29024](https://github.com/expo/expo/pull/29024) by [@behenate](https://github.com/behenate))
 
 ## 11.8.1 — 2024-04-23
 

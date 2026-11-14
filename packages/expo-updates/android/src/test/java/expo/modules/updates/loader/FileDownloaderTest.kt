@@ -1,0 +1,812 @@
+package expo.modules.updates.loader
+
+import android.net.Uri
+import expo.modules.core.logging.localizedMessageWithCauseLocalizedMessage
+import expo.modules.updates.UpdatesConfiguration
+import expo.modules.updates.UpdatesUtils
+import expo.modules.updates.db.UpdatesDatabase
+import expo.modules.updates.db.entity.AssetEntity
+import expo.modules.updates.db.entity.UpdateEntity
+import expo.modules.updates.logging.UpdatesLogEntry
+import expo.modules.updates.logging.UpdatesLogReader
+import expo.modules.updates.logging.UpdatesLogger
+import expo.modules.updates.manifest.ManifestMetadata
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
+import io.mockk.verify
+import kotlinx.coroutines.test.runTest
+import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
+import okio.BufferedSource
+import org.json.JSONException
+import org.json.JSONObject
+import org.junit.Assert
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import java.io.File
+import java.util.Date
+import java.util.UUID
+
+@RunWith(RobolectricTestRunner::class)
+class FileDownloaderTest {
+  private lateinit var logger: UpdatesLogger
+  private lateinit var logsDirectory: File
+  private lateinit var database: UpdatesDatabase
+  private val startTime = Date()
+
+  @get:Rule
+  val temporaryFolder = TemporaryFolder()
+
+  companion object {
+    // base64url-encoded SHA-256 of the string "hello"
+    private const val HELLO_SHA256_BASE64URL = "LPJNul-wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ"
+  }
+
+  @Before
+  fun setup() {
+    logsDirectory = temporaryFolder.newFolder()
+    logger = UpdatesLogger(logsDirectory)
+    database = mockk(relaxed = true)
+  }
+
+  @Test
+  fun testCacheControl() {
+    val configMap = mapOf<String, Any>(
+      "updateUrl" to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      "runtimeVersion" to "1.0"
+    )
+    val config = UpdatesConfiguration(null, configMap)
+    val fileDownloader = createFileDownloader(config)
+    val actual = fileDownloader.createRequestForRemoteUpdate(null, config, logger)
+    Assert.assertNull(actual.header("Cache-Control"))
+  }
+
+  @Test
+  @Throws(JSONException::class)
+  fun testExtraHeaders_ObjectTypes() {
+    val configMap = mapOf<String, Any>(
+      "updateUrl" to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      "runtimeVersion" to "1.0"
+
+    )
+    val config = UpdatesConfiguration(null, configMap)
+    val extraHeaders = JSONObject().apply {
+      put("expo-string", "test")
+      put("expo-number", 47.5)
+      put("expo-boolean", true)
+      put("expo-null", JSONObject.NULL)
+    }
+
+    // manifest extraHeaders should have their values coerced to strings
+    val fileDownloader = createFileDownloader(config)
+    val actual = fileDownloader.createRequestForRemoteUpdate(extraHeaders, config, logger)
+    Assert.assertEquals("test", actual.header("expo-string"))
+    Assert.assertEquals("47.5", actual.header("expo-number"))
+    Assert.assertEquals("true", actual.header("expo-boolean"))
+    Assert.assertEquals("null", actual.header(("expo-null")))
+  }
+
+  @Test
+  @Throws(JSONException::class)
+  fun testExtraHeaders_OverrideOrder() {
+    // custom headers configured at build-time should be able to override preset headers
+    val headersMap = mapOf("expo-updates-environment" to "custom")
+    val configMap = mapOf<String, Any>(
+      "updateUrl" to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      "runtimeVersion" to "1.0",
+      "requestHeaders" to headersMap
+    )
+
+    val config = UpdatesConfiguration(null, configMap)
+
+    // serverDefinedHeaders should not be able to override preset headers
+    val extraHeaders = JSONObject()
+    extraHeaders.put("expo-platform", "ios")
+
+    val fileDownloader = createFileDownloader(config)
+    val actual = fileDownloader.createRequestForRemoteUpdate(extraHeaders, config, logger)
+    Assert.assertEquals("android", actual.header("expo-platform"))
+    Assert.assertEquals("custom", actual.header("expo-updates-environment"))
+  }
+
+  @Test
+  @Throws(JSONException::class)
+  fun testAssetExtraHeaders_OverrideOrder() {
+    // custom headers configured at build-time should be able to override preset headers
+    val headersMap = mapOf("expo-updates-environment" to "custom")
+    val configMap = mapOf<String, Any>(
+      "updateUrl" to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      "runtimeVersion" to "1.0",
+      "requestHeaders" to headersMap
+    )
+
+    val config = UpdatesConfiguration(null, configMap)
+
+    val assetEntity = AssetEntity("test", "jpg").apply {
+      url = Uri.parse("https://example.com")
+      isLaunchAsset = true
+      extraRequestHeaders = JSONObject().apply { put("expo-platform", "ios") }
+    }
+
+    // assetRequestHeaders should not be able to override preset headers
+    val fileDownloader = createFileDownloader(config)
+    val actual = fileDownloader.createRequestForAsset(assetEntity, JSONObject("{}"), config)
+    Assert.assertEquals("android", actual.header("expo-platform"))
+    Assert.assertEquals("custom", actual.header("expo-updates-environment"))
+    Assert.assertEquals("*/*", actual.header("Accept"))
+  }
+
+  @Test
+  @Throws(JSONException::class)
+  fun testAssetExtraHeaders_ObjectTypes() {
+    val configMap = mapOf<String, Any>(
+      "updateUrl" to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      "runtimeVersion" to "1.0"
+    )
+
+    val config = UpdatesConfiguration(null, configMap)
+
+    val extraHeaders = JSONObject().apply {
+      put("expo-string", "test")
+      put("expo-number", 47.5)
+      put("expo-boolean", true)
+      put("expo-null", JSONObject.NULL)
+    }
+
+    val assetEntity = AssetEntity("test", "jpg").apply {
+      url = Uri.parse("https://example.com")
+      isLaunchAsset = true
+      extraRequestHeaders = extraHeaders
+    }
+
+    // assetRequestHeaders should have their values coerced to strings
+    val actual = createFileDownloader(config).createRequestForAsset(assetEntity, JSONObject("{}"), config)
+    Assert.assertEquals("test", actual.header("expo-string"))
+    Assert.assertEquals("47.5", actual.header("expo-number"))
+    Assert.assertEquals("true", actual.header("expo-boolean"))
+    Assert.assertEquals("null", actual.header("expo-null"))
+    Assert.assertEquals("*/*", actual.header("Accept"))
+  }
+
+  @Test
+  fun testCreateRequestForAsset_ConfigAcceptOverrideRespected() {
+    val configMap = mapOf<String, Any>(
+      "updateUrl" to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      "runtimeVersion" to "1.0",
+      "requestHeaders" to mapOf("Accept" to "application/custom")
+    )
+
+    val config = UpdatesConfiguration(null, configMap)
+
+    val assetEntity = AssetEntity("test", "hbc").apply {
+      url = Uri.parse("https://example.com")
+      isLaunchAsset = true
+    }
+
+    val fileDownloader = createFileDownloader(config)
+    val actual = fileDownloader.createRequestForAsset(assetEntity, JSONObject("{}"), config)
+    Assert.assertEquals("application/custom", actual.header("Accept"))
+
+    val fallback = fileDownloader.createRequestForAsset(assetEntity, JSONObject("{}"), config, allowPatch = false)
+    Assert.assertEquals("application/custom", fallback.header("Accept"))
+  }
+
+  @Test
+  fun testCreateRequestForAsset_DisallowsPatchWhenRequested() {
+    val configMap = mapOf<String, Any>(
+      "updateUrl" to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      "runtimeVersion" to "1.0"
+    )
+
+    val config = UpdatesConfiguration(null, configMap)
+
+    val assetEntity = AssetEntity("test", "hbc").apply {
+      url = Uri.parse("https://example.com")
+      isLaunchAsset = true
+    }
+
+    val fileDownloader = createFileDownloader(config)
+    val fallback = fileDownloader.createRequestForAsset(assetEntity, JSONObject("{}"), config, allowPatch = false)
+    Assert.assertEquals("*/*", fallback.header("Accept"))
+  }
+
+  @Test
+  fun testCreateRequestForAsset_RequestsPatchOnlyWhenAssetHasExpectedHash() {
+    val configMap = mapOf<String, Any>(
+      "updateUrl" to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      "runtimeVersion" to "1.0"
+    )
+    val config = UpdatesConfiguration(null, configMap)
+    val fileDownloader = createFileDownloader(config)
+
+    val withoutHash = AssetEntity("test", "hbc").apply {
+      url = Uri.parse("https://example.com")
+      isLaunchAsset = true
+    }
+    Assert.assertNull(
+      fileDownloader.createRequestForAsset(withoutHash, JSONObject("{}"), config, allowPatch = true).header("A-IM")
+    )
+
+    val withHash = AssetEntity("test", "hbc").apply {
+      url = Uri.parse("https://example.com")
+      isLaunchAsset = true
+      expectedHash = "expected-hash"
+    }
+    Assert.assertEquals(
+      "bsdiff",
+      fileDownloader.createRequestForAsset(withHash, JSONObject("{}"), config, allowPatch = true).header("A-IM")
+    )
+  }
+
+  @Test
+  fun testCreateRequestForAsset_NonLaunchAssetDefaultAccept() {
+    val configMap = mapOf<String, Any>(
+      "updateUrl" to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      "runtimeVersion" to "1.0"
+    )
+
+    val config = UpdatesConfiguration(null, configMap)
+
+    val assetEntity = AssetEntity("test", "png").apply {
+      url = Uri.parse("https://example.com")
+      isLaunchAsset = false
+    }
+
+    val fileDownloader = createFileDownloader(config)
+    val request = fileDownloader.createRequestForAsset(assetEntity, JSONObject("{}"), config)
+    Assert.assertEquals("*/*", request.header("Accept"))
+  }
+
+  @Test
+  fun testCreateRequestForAsset_PatchDisabledConfiguration() {
+    val configMap = mapOf<String, Any>(
+      "updateUrl" to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      "runtimeVersion" to "1.0",
+      "enableBsdiffPatchSupport" to false
+    )
+
+    val config = UpdatesConfiguration(null, configMap)
+
+    val assetEntity = AssetEntity("launch", "hbc").apply {
+      url = Uri.parse("https://example.com")
+      isLaunchAsset = true
+    }
+
+    val fileDownloader = createFileDownloader(config)
+    val request = fileDownloader.createRequestForAsset(assetEntity, JSONObject("{}"), config)
+    Assert.assertEquals("*/*", request.header("Accept"))
+  }
+
+  @Test
+  fun testGetExtraHeaders() {
+    mockkObject(ManifestMetadata)
+    every { ManifestMetadata.getServerDefinedHeaders(any(), any(), any()) } returns null
+    every { ManifestMetadata.getExtraParams(any(), any(), any()) } returns mapOf("hello" to "world", "what" to "123")
+
+    val launchedUpdateUUIDString = "7c1d2bd0-f88b-454d-998c-7fa92a924dbf"
+    val launchedUpdate = UpdateEntity(UUID.fromString(launchedUpdateUUIDString), Date(), "1.0", "test", JSONObject("{}"), Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"), null)
+    val embeddedUpdateUUIDString = "9433b1ed-4006-46b8-8aa7-fdc7eeb203fd"
+    val embeddedUpdate = UpdateEntity(UUID.fromString(embeddedUpdateUUIDString), Date(), "1.0", "test", JSONObject("{}"), null, null)
+
+    val mockDatabase = mockk<UpdatesDatabase> {
+      every { updateDao() } returns mockk {
+        every { loadRecentUpdateIdsWithFailedLaunch() } returns listOf(
+          UUID.fromString("39242af2-7424-46cb-a89b-464bb9779dbd"),
+          UUID.fromString("905e8320-eb1d-4d18-b061-45bc3d3dd441")
+        )
+      }
+    }
+
+    val extraHeaders = FileDownloader.getExtraHeadersForRemoteUpdateRequest(mockDatabase, mockk(), launchedUpdate, embeddedUpdate, mockk(relaxed = true))
+
+    Assert.assertEquals(launchedUpdateUUIDString, extraHeaders.get("Expo-Current-Update-ID"))
+    Assert.assertEquals(embeddedUpdateUUIDString, extraHeaders.get("Expo-Embedded-Update-ID"))
+    Assert.assertEquals("hello=\"world\", what=\"123\"", extraHeaders.get("Expo-Extra-Params"))
+    Assert.assertEquals("\"39242af2-7424-46cb-a89b-464bb9779dbd\", \"905e8320-eb1d-4d18-b061-45bc3d3dd441\"", extraHeaders.get("Expo-Recent-Failed-Update-IDs"))
+
+    // cleanup
+    unmockkObject(ManifestMetadata)
+  }
+
+  @Test
+  fun testGetExtraHeaders_NoLaunchedOrEmbeddedUpdate() {
+    mockkObject(ManifestMetadata)
+    every { ManifestMetadata.getServerDefinedHeaders(any(), any(), any()) } returns null
+
+    val mockDatabase = mockk<UpdatesDatabase> {
+      every { updateDao() } returns mockk {
+        every { loadRecentUpdateIdsWithFailedLaunch() } returns listOf(
+          UUID.fromString("39242af2-7424-46cb-a89b-464bb9779dbd"),
+          UUID.fromString("905e8320-eb1d-4d18-b061-45bc3d3dd441")
+        )
+      }
+    }
+
+    val extraHeaders = FileDownloader.getExtraHeadersForRemoteUpdateRequest(mockDatabase, mockk(), null, null, mockk(relaxed = true))
+    Assert.assertFalse(extraHeaders.has("Expo-Current-Update-ID"))
+    Assert.assertFalse(extraHeaders.has("Expo-Embedded-Update-ID"))
+    Assert.assertFalse(extraHeaders.has("Expo-Extra-Params"))
+    Assert.assertEquals("\"39242af2-7424-46cb-a89b-464bb9779dbd\", \"905e8320-eb1d-4d18-b061-45bc3d3dd441\"", extraHeaders.get("Expo-Recent-Failed-Update-IDs"))
+
+    // cleanup
+    unmockkObject(ManifestMetadata)
+  }
+
+  @Test
+  fun testGetExtraHeadersForRemoteAssetRequest_includesPatchNegotiationHeaders() {
+    val launchedUpdateUUIDString = "7c1d2bd0-f88b-454d-998c-7fa92a924dbf"
+    val requestedUpdateUUIDString = "9433b1ed-4006-46b8-8aa7-fdc7eeb203fd"
+    val launchedUpdate = UpdateEntity(
+      UUID.fromString(launchedUpdateUUIDString),
+      Date(),
+      "1.0",
+      "test",
+      JSONObject("{}"),
+      Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      null
+    )
+    val requestedUpdate = UpdateEntity(
+      UUID.fromString(requestedUpdateUUIDString),
+      Date(),
+      "1.0",
+      "test",
+      JSONObject("{}"),
+      Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      null
+    )
+
+    val headers = FileDownloader.getExtraHeadersForRemoteAssetRequest(
+      launchedUpdate,
+      null,
+      requestedUpdate
+    )
+
+    Assert.assertEquals(launchedUpdateUUIDString, headers.get("Expo-Current-Update-ID"))
+    Assert.assertEquals(requestedUpdateUUIDString, headers.get("Expo-Requested-Update-ID"))
+  }
+
+  @Test
+  fun test_downloadAsset_mismatchedAssetHash() = runTest {
+    val configMap = mapOf<String, Any>(
+      UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      UpdatesConfiguration.UPDATES_CONFIGURATION_RUNTIME_VERSION_KEY to "1.0"
+    )
+
+    val config = UpdatesConfiguration(null, configMap)
+
+    val assetEntity = AssetEntity(UUID.randomUUID().toString(), "jpg").apply {
+      url = Uri.parse("https://example.com")
+      extraRequestHeaders = JSONObject().apply { put("expo-platform", "ios") }
+      expectedHash = "badhash"
+    }
+
+    val client = mockk<OkHttpClient> {
+      every { newCall(any()) } returns mockk {
+        every { execute() } returns Response.Builder()
+          .request(Request.Builder().url("https://example.com").build())
+          .protocol(Protocol.HTTP_2)
+          .code(200)
+          .message("OK")
+          .body("hello".toResponseBody("text/plain; charset=utf-8".toMediaTypeOrNull()))
+          .build()
+      }
+    }
+
+    try {
+      FileDownloader(temporaryFolder.newFolder(), "eas-client-id-test", config, logger, database, client).downloadAsset(
+        assetEntity,
+        temporaryFolder.newFolder(),
+        JSONObject("{}"),
+        null,
+        null
+      )
+      Assert.fail("Expected exception to be thrown")
+    } catch (e: Exception) {
+      Assert.assertTrue(e.localizedMessageWithCauseLocalizedMessage().contains("File download was successful but base64url-encoded SHA-256 did not match expected"))
+    }
+  }
+
+  @Test
+  fun test_downloadAsset_nullExpectedAssetHash() = runTest {
+    val configMap = mapOf<String, Any>(
+      UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      UpdatesConfiguration.UPDATES_CONFIGURATION_RUNTIME_VERSION_KEY to "1.0"
+    )
+
+    val config = UpdatesConfiguration(null, configMap)
+
+    val assetEntity = AssetEntity(UUID.randomUUID().toString(), "jpg").apply {
+      url = Uri.parse("https://example.com")
+      extraRequestHeaders = JSONObject().apply { put("expo-platform", "ios") }
+    }
+
+    val client = mockk<OkHttpClient> {
+      every { newCall(any()) } returns mockk {
+        every { execute() } returns Response.Builder()
+          .request(Request.Builder().url("https://example.com").build())
+          .protocol(Protocol.HTTP_2)
+          .code(200)
+          .message("OK")
+          .body("hello".toResponseBody("text/plain; charset=utf-8".toMediaTypeOrNull()))
+          .build()
+      }
+    }
+
+    val result = FileDownloader(temporaryFolder.newFolder(), "eas-test-client-id", config, logger, database, client).downloadAsset(
+      assetEntity,
+      temporaryFolder.newFolder(),
+      JSONObject("{}"),
+      null,
+      null
+    )
+
+    Assert.assertNotNull(result)
+    Assert.assertTrue(result.isNew)
+  }
+
+  @Test
+  fun test_downloadAsset_existingFileWithMatchingHash_isReusedWithoutDownloading() = runTest {
+    val config = UpdatesConfiguration(null, defaultConfigMap())
+    val assetEntity = AssetEntity("existing-asset", "jpg").apply {
+      url = Uri.parse("https://example.com")
+      expectedHash = HELLO_SHA256_BASE64URL
+    }
+    val destinationDirectory = temporaryFolder.newFolder()
+    File(destinationDirectory, UpdatesUtils.createFilenameForAsset(assetEntity)).writeText("hello")
+
+    val client = mockk<OkHttpClient>()
+
+    val result = FileDownloader(temporaryFolder.newFolder(), "eas-test-client-id", config, logger, database, client).downloadAsset(
+      assetEntity,
+      destinationDirectory,
+      JSONObject("{}"),
+      null,
+      null
+    )
+
+    Assert.assertFalse(result.isNew)
+    Assert.assertEquals("existing-asset.jpg", result.assetEntity.relativePath)
+    verify(exactly = 0) { client.newCall(any()) }
+  }
+
+  @Test
+  fun test_downloadAsset_existingTruncatedFile_isReplacedByFreshDownload() = runTest {
+    val config = UpdatesConfiguration(null, defaultConfigMap())
+    val assetEntity = AssetEntity("truncated-asset", "jpg").apply {
+      url = Uri.parse("https://example.com")
+      expectedHash = HELLO_SHA256_BASE64URL
+    }
+    val destinationDirectory = temporaryFolder.newFolder()
+    val destination = File(destinationDirectory, UpdatesUtils.createFilenameForAsset(assetEntity))
+    // simulate a file left behind by a process that was killed while writing it
+    destination.writeText("hel")
+
+    val client = mockHelloClient()
+
+    val result = FileDownloader(temporaryFolder.newFolder(), "eas-test-client-id", config, logger, database, client).downloadAsset(
+      assetEntity,
+      destinationDirectory,
+      JSONObject("{}"),
+      null,
+      null
+    )
+
+    Assert.assertTrue(result.isNew)
+    Assert.assertEquals("hello", destination.readText())
+    Assert.assertEquals(HELLO_SHA256_BASE64URL, UpdatesUtils.toBase64Url(result.assetEntity.hash!!))
+    verify(exactly = 1) { client.newCall(any()) }
+  }
+
+  @Test
+  fun test_downloadAsset_existingFileWithoutExpectedHash_isReusedAsIs() = runTest {
+    val config = UpdatesConfiguration(null, defaultConfigMap())
+    val assetEntity = AssetEntity("unverifiable-asset", "jpg").apply {
+      url = Uri.parse("https://example.com")
+    }
+    val destinationDirectory = temporaryFolder.newFolder()
+    val destination = File(destinationDirectory, UpdatesUtils.createFilenameForAsset(assetEntity))
+    destination.writeText("hel")
+
+    val client = mockk<OkHttpClient>()
+
+    val result = FileDownloader(temporaryFolder.newFolder(), "eas-test-client-id", config, logger, database, client).downloadAsset(
+      assetEntity,
+      destinationDirectory,
+      JSONObject("{}"),
+      null,
+      null
+    )
+
+    Assert.assertFalse(result.isNew)
+    Assert.assertEquals("hel", destination.readText())
+    verify(exactly = 0) { client.newCall(any()) }
+  }
+
+  @Test
+  fun test_downloadAsset_writesNoTemporaryFilesNextToDestination() = runTest {
+    val config = UpdatesConfiguration(null, defaultConfigMap())
+    val assetEntity = AssetEntity("fresh-asset", "jpg").apply {
+      url = Uri.parse("https://example.com")
+      expectedHash = HELLO_SHA256_BASE64URL
+    }
+    val destinationDirectory = temporaryFolder.newFolder()
+
+    val result = FileDownloader(temporaryFolder.newFolder(), "eas-test-client-id", config, logger, database, mockHelloClient()).downloadAsset(
+      assetEntity,
+      destinationDirectory,
+      JSONObject("{}"),
+      null,
+      null
+    )
+
+    Assert.assertTrue(result.isNew)
+    Assert.assertEquals(listOf("fresh-asset.jpg"), destinationDirectory.list()!!.toList())
+    Assert.assertEquals("hello", File(destinationDirectory, "fresh-asset.jpg").readText())
+  }
+
+  private fun defaultConfigMap() = mapOf<String, Any>(
+    UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+    UpdatesConfiguration.UPDATES_CONFIGURATION_RUNTIME_VERSION_KEY to "1.0"
+  )
+
+  private fun mockHelloClient(): OkHttpClient = mockk {
+    every { newCall(any()) } returns mockk {
+      every { execute() } returns Response.Builder()
+        .request(Request.Builder().url("https://example.com").build())
+        .protocol(Protocol.HTTP_2)
+        .code(200)
+        .message("OK")
+        .body("hello".toResponseBody("text/plain; charset=utf-8".toMediaTypeOrNull()))
+        .build()
+    }
+  }
+
+  @Test
+  fun test_downloadAsset_progressListener() = runTest {
+    val configMap = mapOf<String, Any>(
+      UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      UpdatesConfiguration.UPDATES_CONFIGURATION_RUNTIME_VERSION_KEY to "1.0"
+    )
+    val config = UpdatesConfiguration(null, configMap)
+
+    val assetEntity = AssetEntity(UUID.randomUUID().toString(), "jpg").apply {
+      url = Uri.parse("https://example.com")
+    }
+
+    val responseBodyContent = "hello world"
+    val client = mockk<OkHttpClient> {
+      every { newCall(any()) } returns mockk {
+        every { execute() } returns Response.Builder()
+          .request(Request.Builder().url("https://example.com").build())
+          .protocol(Protocol.HTTP_1_1)
+          .code(200)
+          .message("OK")
+          .body(responseBodyContent.toResponseBody("text/plain; charset=utf-8".toMediaTypeOrNull()))
+          .build()
+      }
+    }
+
+    val fileDownloader = FileDownloader(temporaryFolder.newFolder(), "eas-client-id-test", config, logger, database, client)
+
+    val progressValues = mutableListOf<Double>()
+    val assetLoadProgressListener: (Double) -> Unit = { progress: Double ->
+      progressValues.add(progress)
+    }
+
+    fileDownloader.downloadAsset(
+      assetEntity,
+      temporaryFolder.newFolder(),
+      JSONObject("{}"),
+      null,
+      null,
+      assetLoadProgressListener = assetLoadProgressListener
+    )
+
+    Assert.assertTrue("Progress listener should have been called", progressValues.isNotEmpty())
+    Assert.assertEquals("Last progress value should be 1.0", 1.0, progressValues.last(), 0.001)
+    // Check if values are increasing
+    for (i in 0 until progressValues.size - 1) {
+      Assert.assertTrue(progressValues[i] <= progressValues[i + 1])
+    }
+  }
+
+  @Test
+  fun test_downloadAsset_progressListener_noContentLength() = runTest {
+    val configMap = mapOf<String, Any>(
+      UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      UpdatesConfiguration.UPDATES_CONFIGURATION_RUNTIME_VERSION_KEY to "1.0"
+    )
+    val config = UpdatesConfiguration(null, configMap)
+
+    val assetEntity = AssetEntity(UUID.randomUUID().toString(), "jpg").apply {
+      url = Uri.parse("https://example.com")
+    }
+
+    val responseBodyContent = "hello world"
+    val responseBodyWithoutLength = object : ResponseBody() {
+      val buffer = Buffer().writeUtf8(responseBodyContent)
+      override fun contentLength(): Long = -1L
+      override fun contentType(): MediaType? = "text/plain; charset=utf-8".toMediaTypeOrNull()
+      override fun source(): BufferedSource = buffer
+    }
+
+    val client = mockk<OkHttpClient> {
+      every { newCall(any()) } returns mockk {
+        every { execute() } returns Response.Builder()
+          .request(Request.Builder().url("https://example.com").build())
+          .protocol(Protocol.HTTP_1_1)
+          .code(200)
+          .message("OK")
+          .body(responseBodyWithoutLength)
+          .build()
+      }
+    }
+
+    val fileDownloader = FileDownloader(temporaryFolder.newFolder(), "eas-client-id-test", config, logger, database, client)
+
+    val progressValues = mutableListOf<Double>()
+    val assetLoadProgressListener: (Double) -> Unit = { progress: Double ->
+      progressValues.add(progress)
+    }
+
+    fileDownloader.downloadAsset(
+      assetEntity,
+      temporaryFolder.newFolder(),
+      JSONObject("{}"),
+      null,
+      null,
+      assetLoadProgressListener = assetLoadProgressListener
+    )
+
+    Assert.assertTrue("Progress listener should not have been called", progressValues.isEmpty())
+  }
+
+  @Test
+  fun test_downloadRemoteUpdate_unsuccessfulResponseIncludesStatusCode() = runTest {
+    val config = createRemoteUpdateConfiguration()
+    val fileDownloader = createFileDownloader(
+      config,
+      createClientReturningManifestResponse(code = 500, body = "server exploded")
+    )
+
+    try {
+      fileDownloader.downloadRemoteUpdate(null)
+      Assert.fail("Expected exception to be thrown")
+    } catch (e: Exception) {
+      val message = e.localizedMessageWithCauseLocalizedMessage()
+      Assert.assertTrue("Expected HTTP status in: $message", message.contains("HTTP 500"))
+      Assert.assertTrue("Expected response body in: $message", message.contains("server exploded"))
+    }
+  }
+
+  @Test
+  fun test_downloadRemoteUpdate_unsuccessfulResponseBodyIsTruncated() = runTest {
+    val config = createRemoteUpdateConfiguration()
+    val fileDownloader = createFileDownloader(
+      config,
+      createClientReturningManifestResponse(code = 500, body = "x".repeat(10000))
+    )
+
+    try {
+      fileDownloader.downloadRemoteUpdate(null)
+      Assert.fail("Expected exception to be thrown")
+    } catch (e: Exception) {
+      val message = e.localizedMessageWithCauseLocalizedMessage()
+      Assert.assertTrue("Expected a truncation marker in: $message", message.contains("truncated"))
+      Assert.assertTrue(
+        "Expected a bounded message, got ${message.length} characters",
+        message.length < 1000
+      )
+    }
+  }
+
+  @Test
+  fun test_downloadRemoteUpdate_failureIsLeftToTheCallerToLog() = runTest {
+    val fileDownloader = createFileDownloader(
+      createRemoteUpdateConfiguration(),
+      createClientReturningManifestResponse(code = 500, body = "server exploded")
+    )
+
+    try {
+      fileDownloader.downloadRemoteUpdate(null)
+      Assert.fail("Expected exception to be thrown")
+    } catch (_: Exception) {
+    }
+
+    val errors = readErrorLogEntries()
+    Assert.assertTrue("Expected no error entries, got: $errors", errors.isEmpty())
+  }
+
+  @Test
+  fun test_downloadAsset_failureLogsOneWarningAndNoErrorWithTheAssetKey() = runTest {
+    val assetEntity = AssetEntity("asset-key", "jpg").apply {
+      url = Uri.parse("https://example.com/asset.jpg")
+    }
+    val fileDownloader = createFileDownloader(
+      createRemoteUpdateConfiguration(),
+      createClientReturningManifestResponse(code = 500, body = "server exploded")
+    )
+
+    try {
+      fileDownloader.downloadAsset(assetEntity, temporaryFolder.newFolder(), JSONObject("{}"), null, null)
+      Assert.fail("Expected exception to be thrown")
+    } catch (_: Exception) {
+    }
+
+    val entries = readLogEntries()
+    val errors = entries.filter { it.level == "error" }
+    val warnings = entries.filter { it.level == "warn" }
+    Assert.assertTrue("Expected no error entries, got: $errors", errors.isEmpty())
+    Assert.assertEquals("Expected one warning entry, got: $warnings", 1, warnings.size)
+    val warning = warnings.single()
+    Assert.assertEquals("AssetsFailedToLoad", warning.code)
+    Assert.assertEquals("asset-key", warning.assetId)
+    Assert.assertTrue("Expected the response body in: ${warning.message}", warning.message.contains("server exploded"))
+  }
+
+  private fun readErrorLogEntries(): List<UpdatesLogEntry> =
+    readLogEntries().filter { it.level == "error" }
+
+  private fun readLogEntries(): List<UpdatesLogEntry> {
+    // The persistent file log handler writes asynchronously.
+    Thread.sleep(500)
+    return UpdatesLogReader(logsDirectory)
+      .getLogEntries(Date(startTime.time - 5000))
+      .mapNotNull { UpdatesLogEntry.create(it) }
+  }
+
+  private fun createRemoteUpdateConfiguration(): UpdatesConfiguration {
+    val configMap = mapOf<String, Any>(
+      UpdatesConfiguration.UPDATES_CONFIGURATION_UPDATE_URL_KEY to Uri.parse("https://u.expo.dev/00000000-0000-0000-0000-000000000000"),
+      UpdatesConfiguration.UPDATES_CONFIGURATION_RUNTIME_VERSION_KEY to "1.0"
+    )
+    return UpdatesConfiguration(null, configMap)
+  }
+
+  private fun createClientReturningManifestResponse(code: Int, body: String) = mockk<OkHttpClient> {
+    every { newCall(any()) } returns mockk {
+      every { execute() } returns Response.Builder()
+        .request(Request.Builder().url("https://u.expo.dev/00000000-0000-0000-0000-000000000000").build())
+        .protocol(Protocol.HTTP_2)
+        .code(code)
+        .message("Server Error")
+        .body(body.toResponseBody("text/plain; charset=utf-8".toMediaTypeOrNull()))
+        .build()
+    }
+  }
+
+  private fun createFileDownloader(config: UpdatesConfiguration, client: OkHttpClient): FileDownloader {
+    return FileDownloader(
+      temporaryFolder.newFolder(),
+      easClientID = "test-eas-client-id",
+      configuration = config,
+      logger = logger,
+      database = database,
+      client = client
+    )
+  }
+
+  private fun createFileDownloader(config: UpdatesConfiguration): FileDownloader {
+    val filesDirectory = temporaryFolder.newFolder()
+    return FileDownloader(
+      filesDirectory,
+      easClientID = "test-eas-client-id",
+      configuration = config,
+      logger = logger,
+      database = database
+    )
+  }
+}

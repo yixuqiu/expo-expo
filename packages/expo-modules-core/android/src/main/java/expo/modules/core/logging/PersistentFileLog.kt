@@ -1,8 +1,8 @@
 package expo.modules.core.logging
 
-import android.content.Context
 import java.io.File
 import java.io.IOException
+import java.io.PrintWriter
 import java.nio.charset.Charset
 
 /**
@@ -24,8 +24,13 @@ import java.nio.charset.Charset
  */
 class PersistentFileLog(
   category: String,
-  context: Context
+  filesDirectory: File
 ) {
+  private val filePath = "${filesDirectory.path}/$FILE_NAME_PREFIX.$category"
+
+  init {
+    ensureFileExists()
+  }
 
   /**
    * Read entries from log file
@@ -44,7 +49,6 @@ class PersistentFileLog(
   fun appendEntry(entry: String, completionHandler: ((_: Error?) -> Unit) = { }) {
     queue.add {
       try {
-        this.ensureFileExists()
         val text = when (this.getFileSize()) {
           0L -> entry
           else -> {
@@ -64,16 +68,15 @@ class PersistentFileLog(
   /**
    * Filter existing entries and remove ones where filter(entry) == false
    */
-  fun purgeEntriesNotMatchingFilter(filter: (_: String) -> Boolean, completionHandler: (_: Error?) -> Unit) {
+  fun purgeEntriesNotMatchingFilter(filter: (_: String) -> Boolean, completionHandler: (_: Exception?) -> Unit) {
     queue.add {
       try {
-        this.ensureFileExists()
         val contents = this.readFileLinesSync()
         val reducedContents = contents.filter(filter)
         this.writeFileLinesSync(reducedContents)
         completionHandler.invoke(null)
       } catch (e: Throwable) {
-        completionHandler.invoke(Error(e))
+        completionHandler.invoke(Exception(e))
       }
     }
   }
@@ -84,7 +87,10 @@ class PersistentFileLog(
   fun clearEntries(completionHandler: (_: Error?) -> Unit) {
     queue.add {
       try {
-        this.deleteFileSync()
+        // Clearing the file can be done by writing an empty string to it
+        PrintWriter(File(filePath)).use { writer ->
+          writer.print("")
+        }
         completionHandler.invoke(null)
       } catch (e: Error) {
         completionHandler.invoke(e)
@@ -93,8 +99,6 @@ class PersistentFileLog(
   }
 
   // Private functions
-
-  private val filePath = "${context.filesDir.path}/$FILE_NAME_PREFIX.$category"
 
   private fun ensureFileExists() {
     val fd = File(filePath)
@@ -111,12 +115,10 @@ class PersistentFileLog(
     if (!file.exists()) {
       return 0L
     }
-    return try {
-      file.inputStream().use { it.channel.size() }
-    } catch (e: IOException) {
-      // File does not exist or is inaccessible
-      0L
-    }
+
+    return runCatching {
+      file.length()
+    }.getOrDefault(0L)
   }
 
   private fun appendTextToFile(text: String) {
@@ -129,13 +131,6 @@ class PersistentFileLog(
 
   private fun writeFileLinesSync(entries: List<String>) {
     File(filePath).writeText(entries.joinToString("\n"), Charset.defaultCharset())
-  }
-
-  private fun deleteFileSync() {
-    val fd = File(filePath)
-    if (fd.exists()) {
-      fd.delete()
-    }
   }
 
   companion object {

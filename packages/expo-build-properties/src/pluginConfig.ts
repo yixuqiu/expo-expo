@@ -1,4 +1,4 @@
-import Ajv, { JSONSchemaType } from 'ajv';
+import { validate, type JSONSchema } from '@expo/schema-utils';
 import semver from 'semver';
 
 /**
@@ -13,14 +13,62 @@ const EXPO_SDK_MINIMAL_SUPPORTED_VERSIONS = {
     kotlinVersion: '1.6.10',
   },
   ios: {
-    deploymentTarget: '13.4',
+    deploymentTarget: '16.4',
   },
 };
 
 /**
+ * Shared build configuration fields that can be set at the top level
+ * or overridden per-platform. Platform-specific values take precedence.
+ */
+export interface SharedBuildConfigFields {
+  /**
+   * Enable building React Native from source. Turning this on will significantly increase the build times.
+   *
+   * On iOS, this controls support for precompiled React Native iOS dependencies (`ReactNativeDependencies.xcframework`).
+   * Setting this value to `true` will enable building React Native from source and disable the use of precompiled xcframeworks.
+   * This feature is available from React Native 0.80 and later when using the new architecture.
+   * From React Native 0.81, this setting will also control the use of a precompiled React Native Core (`React.xcframework`).
+   *
+   * @default false
+   * @see [Precompiled React Native for iOS: Faster builds are coming in 0.81](https://expo.dev/blog/precompiled-react-native-for-ios) for more information.
+   */
+  buildReactNativeFromSource?: boolean;
+
+  /**
+   * The React Native release level to use for the project.
+   * This can be used to enable different sets of internal React Native feature flags.
+   *
+   * @default 'stable'
+   */
+  reactNativeReleaseLevel?: 'stable' | 'canary' | 'experimental';
+
+  /**
+   * Enable Hermes V1 engine.
+   *
+   * @deprecated React Native 0.88 and newer always use Hermes V1 and ignore this option.
+   * Remove it from your config.
+   * @default true
+   */
+  useHermesV1?: boolean;
+}
+
+/**
+ * Resolves a shared config value with platform-specific override.
+ * Platform-specific values take precedence over top-level values.
+ */
+export function resolveConfigValue<K extends keyof SharedBuildConfigFields>(
+  config: PluginConfigType,
+  platform: 'android' | 'ios',
+  key: K
+): SharedBuildConfigFields[K] {
+  return config[platform]?.[key] ?? config[key];
+}
+
+/**
  * Interface representing base build properties configuration.
  */
-export interface PluginConfigType {
+export interface PluginConfigType extends SharedBuildConfigFields {
   /**
    * Interface representing available configuration for Android native build properties.
    * @platform android
@@ -37,11 +85,7 @@ export interface PluginConfigType {
  * Interface representing available configuration for Android native build properties.
  * @platform android
  */
-export interface PluginConfigTypeAndroid {
-  /**
-   * Enable React Native new architecture for Android platform.
-   */
-  newArchEnabled?: boolean;
+export interface PluginConfigTypeAndroid extends SharedBuildConfigFields {
   /**
    * Override the default `minSdkVersion` version number in **build.gradle**.
    * */
@@ -59,24 +103,35 @@ export interface PluginConfigTypeAndroid {
    */
   buildToolsVersion?: string;
   /**
+   * Override the CMake version, applied to the app and all autolinked native modules.
+   */
+  cmakeVersion?: string;
+  /**
    * Override the Kotlin version used when building the app.
    */
   kotlinVersion?: string;
   /**
-   * Enable [Proguard or R8](https://developer.android.com/studio/build/shrink-code) in release builds to obfuscate Java code and reduce app size.
+   * Enable [R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization) in release builds to obfuscate Java code and reduce app size.
    */
-  enableProguardInReleaseBuilds?: boolean;
+  enableMinifyInReleaseBuilds?: boolean;
   /**
    * Enable [`shrinkResources`](https://developer.android.com/studio/build/shrink-code#shrink-resources) in release builds to remove unused resources from the app.
-   * This property should be used in combination with `enableProguardInReleaseBuilds`.
+   * This property should be used in combination with `enableMinifyInReleaseBuilds`.
    */
   enableShrinkResourcesInReleaseBuilds?: boolean;
+  /**
+   * Enable [`crunchPngs`](https://developer.android.com/topic/performance/reduce-apk-size#crunch) in release builds to optimize PNG files.
+   * This property is enabled by default, but "might inflate PNG files that are already compressed", so you may want to disable it if you do your own PNG optimization.
+   *
+   * @default true
+   */
+  enablePngCrunchInReleaseBuilds?: boolean;
   /**
    * Append custom [Proguard rules](https://www.guardsquare.com/manual/configuration/usage) to **android/app/proguard-rules.pro**.
    */
   extraProguardRules?: string;
   /**
-   * Interface representing available configuration for Android Gradle plugin [PackagingOptions](https://developer.android.com/reference/tools/gradle-api/7.0/com/android/build/api/dsl/PackagingOptions).
+   * Interface representing available configuration for Android Gradle plugin [`PackagingOptions`](https://developer.android.com/reference/tools/gradle-api/7.0/com/android/build/api/dsl/PackagingOptions).
    */
   packagingOptions?: PluginConfigTypeAndroidPackagingOptions;
 
@@ -87,9 +142,10 @@ export interface PluginConfigTypeAndroid {
    */
   networkInspector?: boolean;
 
+  // For the implementation details, this property is actually handled by `expo-modules-autolinking`
+  // not the config-plugins inside `expo-build-properties`
   /**
    * Add extra maven repositories to all gradle projects.
-   *
    *
    * Takes an array of objects or strings.
    * Strings are passed as the `url` property of the object with no credentials or authentication scheme.
@@ -105,7 +161,6 @@ export interface PluginConfigTypeAndroid {
    * ```
    *
    * By using an `AndroidMavenRepository` object, you can specify credentials and an authentication scheme.
-   *
    * ```groovy
    * allprojects {
    *   repositories {
@@ -124,15 +179,13 @@ export interface PluginConfigTypeAndroid {
    * ```
    *
    * @see [Gradle documentation](https://docs.gradle.org/current/userguide/declaring_repositories.html#sec:case-for-maven)
-   *
-   * @hide For the implementation details,
-   * this property is actually handled by `expo-modules-autolinking` not the config-plugins inside `expo-build-properties`
    */
   extraMavenRepos?: (AndroidMavenRepository | string)[];
   /**
    * Indicates whether the app intends to use cleartext network traffic.
    *
-   * @default false
+   * For Android 8 and below, the default platform-specific value is `true`.
+   * For Android 9 and above, the default platform-specific value is `false`.
    *
    * @see [Android documentation](https://developer.android.com/guide/topics/manifest/application-element#usesCleartextTraffic)
    */
@@ -152,8 +205,107 @@ export interface PluginConfigTypeAndroid {
    *  @see [Android documentation](https://developer.android.com/guide/topics/manifest/queries-element)
    */
   manifestQueries?: PluginConfigTypeAndroidQueries;
+  /**
+   * Changes the apps theme to a DayNight variant to correctly support dark mode.
+   *
+   * @see [Android documentation](https://developer.android.com/develop/ui/views/theming/darktheme)
+   */
+  useDayNightTheme?: boolean;
+
+  /**
+   * Enable JavaScript Bundle compression. Turning this on will result in a smaller APK size but may have slower app startup times.
+   *
+   * @see [Faster App Startup](https://reactnative.dev/blog/2025/04/08/react-native-0.79#android-faster-app-startup)
+   *
+   * @default false
+   */
+  enableBundleCompression?: boolean;
+
+  /**
+   * Enable precompiled headers (PCH) for Android native builds.
+   * When enabled, creates a custom CMakeLists.txt with PCH support for all autolinked
+   * native libraries, significantly speeding up C++ compilation by pre-compiling
+   * commonly used React Native headers.
+   *
+   * Can also be enabled by setting the `EXPO_USE_ANDROID_PRECOMPILED_HEADERS=1` environment variable.
+   *
+   * > **Note:** This feature is experimental and might not work with all native libraries.
+   *
+   * @default false
+   * @experimental
+   */
+  usePrecompiledHeaders?: boolean;
+
+  /**
+   * Enable GIF support in React Native's `<Image>` component. This property does not affect
+   * `expo-image`, which uses Glide on Android.
+   *
+   * @see [Optimizing app size](/distribution/app-size/)
+   *
+   * @default true
+   */
+  gifEnabled?: boolean;
+
+  /**
+   * Enable WebP support in React Native's `<Image>` component. This property does not affect
+   * `expo-image`, which uses Glide on Android.
+   *
+   * @see [Optimizing app size](/distribution/app-size/)
+   *
+   * @default true
+   */
+  webpEnabled?: boolean;
+
+  /**
+   * Enable animated WebP support in React Native's `<Image>` component. Requires `webpEnabled`
+   * to also be `true`. iOS does not support animated WebP via React Native's `<Image>`.
+   *
+   * @see [Optimizing app size](/distribution/app-size/)
+   *
+   * @default false
+   */
+  webpAnimated?: boolean;
+
+  /**
+   * Enable building React Native from source. Turning this on will significantly increase the build times.
+   * @deprecated Use `buildReactNativeFromSource` instead.
+   * @default false
+   */
+  buildFromSource?: boolean;
+  /**
+   * Override the default `reactNativeArchitectures` list of ABIs to build in **gradle.properties**.
+   *
+   * @see [Android documentation](https://developer.android.com/ndk/guides/abis) for more information.
+   *
+   * @example
+   * ```json
+   * ["arm64-v8a", "x86_64"]
+   * ```
+   *
+   * @default ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
+   */
+  buildArchs?: string[];
+  /**
+   * Specifies a single Maven repository to be used as an exclusive mirror for all dependency resolution.
+   * When set, all other Maven repositories will be ignored and only this repository will be used to fetch dependencies.
+   *
+   * @see [Using a Maven Mirror](https://reactnative.dev/docs/build-speed#using-a-maven-mirror-android-only)
+   */
+  exclusiveMavenMirror?: string;
+  /**
+   * Compile the `expo-modules-core` native libraries from source instead of using the precompiled
+   * libraries shipped with the package. Turning this on will increase the build times.
+   * Enable it when you modify the C++ sources of `expo-modules-core`.
+   *
+   * @default false
+   */
+  buildExpoModulesCoreFromSource?: boolean;
 }
 
+// @docsMissing
+/**
+ * @platform android
+ */
 export interface AndroidMavenRepository {
   /**
    * The URL of the Maven repository.
@@ -163,7 +315,7 @@ export interface AndroidMavenRepository {
    * The credentials to use when accessing the Maven repository.
    * May be of type PasswordCredentials, HttpHeaderCredentials, or AWSCredentials.
    *
-   * @see the authentication schemes section of [Gradle documentation](https://docs.gradle.org/current/userguide/declaring_repositories.html#sec:authentication_schemes) for more information.
+   * @see The authentication schemes section of [Gradle documentation](https://docs.gradle.org/current/userguide/declaring_repositories.html#sec:authentication_schemes) for more information.
    */
   credentials?: AndroidMavenRepositoryCredentials;
   /**
@@ -172,23 +324,64 @@ export interface AndroidMavenRepository {
   authentication?: 'basic' | 'digest' | 'header';
 }
 
-interface AndroidMavenRepositoryPasswordCredentials {
+/**
+ * The Android Maven repository credentials for basic authentication.
+ * @platform android
+ */
+export interface AndroidMavenRepositoryPasswordCredentials {
+  /**
+   * The credential value. You can also pass `"System.getenv('ENV_VAR_NAME')"` to get the value from an environment variable.
+   */
   username: string;
+
+  /**
+   * The credential value. You can also pass `"System.getenv('ENV_VAR_NAME')"` to get the value from an environment variable.
+   */
   password: string;
 }
 
-interface AndroidMavenRepositoryHttpHeaderCredentials {
+/**
+ * The Android Maven repository credentials that are passed as HTTP headers.
+ * @platform android
+ */
+export interface AndroidMavenRepositoryHttpHeaderCredentials {
+  /**
+   * The credential value. You can also pass `"System.getenv('ENV_VAR_NAME')"` to get the value from an environment variable.
+   */
   name: string;
+
+  /**
+   * The credential value. You can also pass `"System.getenv('ENV_VAR_NAME')"` to get the value from an environment variable.
+   */
   value: string;
 }
 
-interface AndroidMavenRepositoryAWSCredentials {
+/**
+ * The Android Maven repository credentials for AWS S3.
+ * @platform android
+ */
+export interface AndroidMavenRepositoryAWSCredentials {
+  /**
+   * The credential value. You can also pass `"System.getenv('ENV_VAR_NAME')"` to get the value from an environment variable.
+   */
   accessKey: string;
+
+  /**
+   * The credential value. You can also pass `"System.getenv('ENV_VAR_NAME')"` to get the value from an environment variable.
+   */
   secretKey: string;
+
+  /**
+   * The credential value. You can also pass `"System.getenv('ENV_VAR_NAME')"` to get the value from an environment variable.
+   */
   sessionToken?: string;
 }
 
-type AndroidMavenRepositoryCredentials =
+// @docsMissing
+/**
+ * @platform android
+ */
+export type AndroidMavenRepositoryCredentials =
   | AndroidMavenRepositoryPasswordCredentials
   | AndroidMavenRepositoryHttpHeaderCredentials
   | AndroidMavenRepositoryAWSCredentials;
@@ -197,15 +390,12 @@ type AndroidMavenRepositoryCredentials =
  * Interface representing available configuration for iOS native build properties.
  * @platform ios
  */
-export interface PluginConfigTypeIos {
-  /**
-   * Enable React Native new architecture for iOS platform.
-   */
-  newArchEnabled?: boolean;
+export interface PluginConfigTypeIos extends SharedBuildConfigFields {
   /**
    * Override the default iOS "Deployment Target" version in the following projects:
    *  - in CocoaPods projects,
    *  - `PBXNativeTarget` with "com.apple.product-type.application" `productType` in the app project.
+   * @deprecated use built-in `ios.deploymentTarget` property instead (SDK 56 and greater).
    */
   deploymentTarget?: string;
 
@@ -216,24 +406,46 @@ export interface PluginConfigTypeIos {
   useFrameworks?: 'static' | 'dynamic';
 
   /**
+   * List of CocoaPods that should be linked statically instead of as frameworks.
+   *
+   * This is only relevant when `use_frameworks!` is enabled. Some pods—
+   * especially React Native prebuilt binaries—can fail due to modular header
+   * issues when built as dynamic frameworks. Declaring them here ensures they
+   * are linked statically, avoiding those compatibility problems.
+   *
+   * This property is consumed by the `use_expo_modules` function in
+   * `expo-modules-autolinking`.
+   */
+  forceStaticLinking?: string[];
+
+  /**
    * Enable the Network Inspector.
    *
    * @default true
    */
   networkInspector?: boolean;
 
+  // For the implementation details, this property is actually handled by `expo-modules-autolinking`
+  // but not the config-plugins inside `expo-build-properties`.
   /**
    * Add extra CocoaPods dependencies for all targets.
    *
-   * This acts like to add the following code to **ios/Podfile**:
+   * This configuration is responsible for adding the new Pod entries to **ios/Podfile**.
+   *
+   * @example
+   * Creating entry in the configuration like below:
+   * ```json
+   * [
+   *   {
+   *     name: "Protobuf",
+   *     version: "~> 3.14.0",
+   *   }
+   * ]
    * ```
-   * pod '[EXTRA_POD_NAME]', '~> [EXTRA_POD_VERSION]'
-   * # e.g.
+   * Will produce the following entry in the generated **ios/Podfile**:
+   * ```ruby
    * pod 'Protobuf', '~> 3.14.0'
    * ```
-   *
-   * @hide For the implementation details,
-   * this property is actually handled by `expo-modules-autolinking` but not the config-plugins inside expo-build-properties.
    */
   extraPods?: ExtraIosPodDependency[];
 
@@ -242,8 +454,8 @@ export interface PluginConfigTypeIos {
    *
    * This speeds up compiling C++ code by caching the results of previous compilations.
    *
-   * @see https://reactnative.dev/docs/build-speed#local-caches
-   * @see https://ccache.dev/
+   * @see [React Native's documentation on local caches](https://reactnative.dev/docs/build-speed#local-caches) and
+   * [Ccache documentation](https://ccache.dev/).
    */
   ccacheEnabled?: boolean;
 
@@ -252,10 +464,30 @@ export interface PluginConfigTypeIos {
    * CocoaPods resource bundles. If enabled, the manifests will be merged into a
    * single file. If not enabled, developers will need to manually aggregate them.
    *
-   * @see https://docs.expo.dev/guides/apple-privacy/
-   * @see https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
+   * @see [Privacy manifests](https://docs.expo.dev/guides/apple-privacy/) guide
+   * and [Apple's documentation on Privacy manifest files](https://developer.apple.com/documentation/bundleresources/privacy_manifest_files).
    */
   privacyManifestAggregationEnabled?: boolean;
+
+  /**
+   * Enable using precompiled Expo modules (XCFrameworks) instead of building from source.
+   * When enabled, sets the `EXPO_USE_PRECOMPILED_MODULES` environment variable to `1`
+   * during `pod install`, which causes matching modules to be linked as vendored frameworks.
+   *
+   * @default true
+   */
+  usePrecompiledModules?: boolean;
+
+  /**
+   * Adopt the UIKit scene lifecycle in an Expo SDK 57 iOS project, as required by the iOS 27 SDK (Xcode 27).
+   * When `true`, the AppDelegate exposes its `ExpoReactNativeFactory`, React Native startup moves to Expo's
+   * scene delegate, and the scene manifest is added to **Info.plist**. When `false`, these changes are reverted.
+   *
+   * Only the standard SDK 57 Swift AppDelegate template is supported. Requires Expo SDK 57.0.23 or newer.
+   *
+   * Expo SDK 58 and newer include scene lifecycle support, so this property is no longer required and can be removed.
+   */
+  enableSceneSupport?: boolean;
 }
 
 /**
@@ -323,32 +555,37 @@ export interface ExtraIosPodDependency {
    * Use the bleeding edge version of a Pod.
    *
    * @example
-   * ```
-   * { "name": "AFNetworking", "git": "https://github.com/gowalla/AFNetworking.git", "tag": "0.7.0" }
+   * ```json
+   * {
+   *   "name": "AFNetworking",
+   *   "git": "https://github.com/gowalla/AFNetworking.git",
+   *   "tag": "0.7.0"
+   * }
    * ```
    *
    * This acts like to add this pod dependency statement:
-   * ```
+   *
+   * ```rb
    * pod 'AFNetworking', :git => 'https://github.com/gowalla/AFNetworking.git', :tag => '0.7.0'
    * ```
    */
   git?: string;
   /**
-   * The git branch to fetch. See the {@link git} property for more information.
+   * The git branch to fetch. See the `git` property for more information.
    */
   branch?: string;
   /**
-   * The git tag to fetch. See the {@link git} property for more information.
+   * The git tag to fetch. See the `git` property for more information.
    */
   tag?: string;
   /**
-   * The git commit to fetch. See the {@link git} property for more information.
+   * The git commit to fetch. See the `git` property for more information.
    */
   commit?: string;
 }
 
 /**
- * Interface representing available configuration for Android Gradle plugin [PackagingOptions](https://developer.android.com/reference/tools/gradle-api/7.0/com/android/build/api/dsl/PackagingOptions).
+ * Interface representing available configuration for Android Gradle plugin [`PackagingOptions`](https://developer.android.com/reference/tools/gradle-api/7.0/com/android/build/api/dsl/PackagingOptions).
  * @platform android
  */
 export interface PluginConfigTypeAndroidPackagingOptions {
@@ -370,28 +607,39 @@ export interface PluginConfigTypeAndroidPackagingOptions {
   doNotStrip?: string[];
 }
 
+// @docsMissing
+/**
+ * @platform android
+ */
 export interface PluginConfigTypeAndroidQueries {
   /**
-   * Specifies a single app that your app intends to access. This other app might integrate with your app, or your app might use services that the other app provides.
+   * Specifies one or more apps that your app intends to access. These other apps might integrate with your app, or your app might use services that these other apps provide.
    */
-  package: string[];
+  package?: string[];
   /**
-   * Specifies an intent filter signature. Your app can discover other apps that have matching <intent-filter> elements.
+   * Specifies an intent filter signature. Your app can discover other apps that have matching `<intent-filter>` elements.
    * These intents have restrictions compared to typical intent filter signatures.
    *
-   * @see [Android documentation](https://developer.android.com/training/package-visibility/declaring#intent-filter-signature) for details
+   * @see [Android documentation](https://developer.android.com/training/package-visibility/declaring#intent-filter-signature) for more information.
    */
   intent?: PluginConfigTypeAndroidQueriesIntent[];
   /**
    * Specifies one or more content provider authorities. Your app can discover other apps whose content providers use the specified authorities.
-   * There are some restrictions on the options that you can include in this <provider> element, compared to a typical <provider> manifest element. You may only specify the android:authorities attribute.
+   * There are some restrictions on the options that you can include in this `<provider>` element, compared to a typical `<provider>` manifest element.
+   * You may only specify the `android:authorities` attribute.
    */
   provider?: string[];
 }
 
+// @docsMissing
+/**
+ * @platform android
+ */
 export interface PluginConfigTypeAndroidQueriesIntent {
   /**
-   * A string naming the action to perform. Usually one of the platform-defined values, such as ACTION_SEND or ACTION_VIEW
+   * A string naming the action to perform. Usually one of the platform-defined values, such as `SEND` or `VIEW`.
+   *
+   * @see [Android documentation](https://developer.android.com/guide/topics/manifest/action-element) for more information.
    */
   action?: string;
   /**
@@ -405,6 +653,10 @@ export interface PluginConfigTypeAndroidQueriesIntent {
   category?: string | string[];
 }
 
+// @docsMissing
+/**
+ * @platform android
+ */
 export interface PluginConfigTypeAndroidQueriesData {
   /**
    * Specify a URI scheme that is handled
@@ -420,21 +672,30 @@ export interface PluginConfigTypeAndroidQueriesData {
   mimeType?: string;
 }
 
-const schema: JSONSchemaType<PluginConfigType> = {
+const schema: JSONSchema<PluginConfigType> = {
+  title: 'expo-build-properties',
   type: 'object',
   properties: {
+    buildReactNativeFromSource: { type: 'boolean', nullable: true },
+    reactNativeReleaseLevel: {
+      type: 'string',
+      enum: ['stable', 'canary', 'experimental'],
+      nullable: true,
+    },
+    useHermesV1: { type: 'boolean', nullable: true },
     android: {
       type: 'object',
       properties: {
-        newArchEnabled: { type: 'boolean', nullable: true },
         minSdkVersion: { type: 'integer', nullable: true },
         compileSdkVersion: { type: 'integer', nullable: true },
         targetSdkVersion: { type: 'integer', nullable: true },
         buildToolsVersion: { type: 'string', nullable: true },
+        cmakeVersion: { type: 'string', nullable: true },
         kotlinVersion: { type: 'string', nullable: true },
 
-        enableProguardInReleaseBuilds: { type: 'boolean', nullable: true },
+        enableMinifyInReleaseBuilds: { type: 'boolean', nullable: true },
         enableShrinkResourcesInReleaseBuilds: { type: 'boolean', nullable: true },
+        enablePngCrunchInReleaseBuilds: { type: 'boolean', nullable: true },
         extraProguardRules: { type: 'string', nullable: true },
 
         packagingOptions: {
@@ -512,11 +773,12 @@ const schema: JSONSchemaType<PluginConfigType> = {
 
         useLegacyPackaging: { type: 'boolean', nullable: true },
 
+        useDayNightTheme: { type: 'boolean', nullable: true },
+
         manifestQueries: {
-          required: ['package'],
           type: 'object',
           properties: {
-            package: { type: 'array', items: { type: 'string' }, minItems: 1, nullable: false },
+            package: { type: 'array', items: { type: 'string' }, minItems: 1, nullable: true },
             intent: {
               type: 'array',
               items: {
@@ -537,19 +799,35 @@ const schema: JSONSchemaType<PluginConfigType> = {
               },
               nullable: true,
             },
-            provider: { type: 'array', items: { type: 'string' }, nullable: true },
+            provider: { type: 'array', items: { type: 'string' }, minItems: 1, nullable: true },
           },
           nullable: true,
         },
+        enableBundleCompression: { type: 'boolean', nullable: true },
+        usePrecompiledHeaders: { type: 'boolean', nullable: true },
+        gifEnabled: { type: 'boolean', nullable: true },
+        webpEnabled: { type: 'boolean', nullable: true },
+        webpAnimated: { type: 'boolean', nullable: true },
+        buildFromSource: { type: 'boolean', nullable: true },
+        buildReactNativeFromSource: { type: 'boolean', nullable: true },
+        buildArchs: { type: 'array', items: { type: 'string' }, nullable: true },
+        exclusiveMavenMirror: { type: 'string', nullable: true },
+        buildExpoModulesCoreFromSource: { type: 'boolean', nullable: true },
+        reactNativeReleaseLevel: {
+          type: 'string',
+          enum: ['stable', 'canary', 'experimental'],
+          nullable: true,
+        },
+        useHermesV1: { type: 'boolean', nullable: true },
       },
       nullable: true,
     },
     ios: {
       type: 'object',
       properties: {
-        newArchEnabled: { type: 'boolean', nullable: true },
         deploymentTarget: { type: 'string', pattern: '\\d+\\.\\d+', nullable: true },
         useFrameworks: { type: 'string', enum: ['static', 'dynamic'], nullable: true },
+        forceStaticLinking: { type: 'array', items: { type: 'string' }, nullable: true },
 
         networkInspector: { type: 'boolean', nullable: true },
         ccacheEnabled: { type: 'boolean', nullable: true },
@@ -577,6 +855,15 @@ const schema: JSONSchemaType<PluginConfigType> = {
           },
           nullable: true,
         },
+        buildReactNativeFromSource: { type: 'boolean', nullable: true },
+        reactNativeReleaseLevel: {
+          type: 'string',
+          enum: ['stable', 'canary', 'experimental'],
+          nullable: true,
+        },
+        useHermesV1: { type: 'boolean', nullable: true },
+        usePrecompiledModules: { type: 'boolean', nullable: true },
+        enableSceneSupport: { type: 'boolean', nullable: true },
       },
       nullable: true,
     },
@@ -638,23 +925,38 @@ function maybeThrowInvalidVersions(config: PluginConfigType) {
   }
 }
 
+/** Handle deprecated enableProguardInReleaseBuilds */
+const fixupDeprecatedEnableProguardInReleaseBuilds = (config: unknown) => {
+  if (
+    config &&
+    typeof config === 'object' &&
+    'android' in config &&
+    config.android &&
+    typeof config.android === 'object'
+  ) {
+    const androidConfig = config.android as PluginConfigTypeAndroid & Record<string, unknown>;
+    if (androidConfig.enableProguardInReleaseBuilds != null) {
+      if (androidConfig.enableMinifyInReleaseBuilds === undefined) {
+        androidConfig.enableMinifyInReleaseBuilds = !!androidConfig.enableProguardInReleaseBuilds;
+      }
+    }
+  }
+};
+
 /**
  * @ignore
  */
-export function validateConfig(config: any): PluginConfigType {
-  const validate = new Ajv({ allowUnionTypes: true }).compile(schema);
-  if (!validate(config)) {
-    throw new Error('Invalid expo-build-properties config: ' + JSON.stringify(validate.errors));
-  }
-
+export function validateConfig(config: unknown): PluginConfigType {
+  fixupDeprecatedEnableProguardInReleaseBuilds(config);
+  validate(schema, config);
   maybeThrowInvalidVersions(config);
 
   if (
     config.android?.enableShrinkResourcesInReleaseBuilds === true &&
-    config.android?.enableProguardInReleaseBuilds !== true
+    config.android?.enableMinifyInReleaseBuilds !== true
   ) {
     throw new Error(
-      '`android.enableShrinkResourcesInReleaseBuilds` requires `android.enableProguardInReleaseBuilds` to be enabled.'
+      '`android.enableShrinkResourcesInReleaseBuilds` requires `android.enableMinifyInReleaseBuilds` to be enabled.'
     );
   }
 

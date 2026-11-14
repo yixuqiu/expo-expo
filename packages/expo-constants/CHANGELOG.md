@@ -1,14 +1,443 @@
 # Changelog
 
-## Unpublished
+## 58.0.13
 
-### 🛠 Breaking changes
+### Patch Changes
 
-### 🎉 New features
+- Updated dependencies. ([#51946](https://github.com/expo/expo/pull/51946))
+  - @expo/env@2.5.3
+
+## 58.0.12
+
+### Patch Changes
+
+- Updated dependencies. ([#51535](https://github.com/expo/expo/pull/51535))
+  - @expo/require-utils@58.0.4
+
+## 58.0.11
+
+### Patch Changes
+
+- Updated dependencies. ([#51321](https://github.com/expo/expo/pull/51321))
+  - @expo/env@2.5.2
+
+## 58.0.10
+
+### Patch Changes
+
+- Updated dependencies. ([#51076](https://github.com/expo/expo/pull/51076), [#51080](https://github.com/expo/expo/pull/51080), [#51089](https://github.com/expo/expo/pull/51089))
+  - @expo/require-utils@58.0.3
+
+## 58.0.9
+
+### Patch Changes
+
+- Force-bump all packages, due to migration to changesets. ([#50762](https://github.com/expo/expo/pull/50762) by [@kitten](https://github.com/kitten))
+- [iOS] Load app config and `.env` files in the build's mode: development for configurations containing `Debug`, production otherwise. ([#49511](https://github.com/expo/expo/pull/49511) by [@ramonclaudio](https://github.com/ramonclaudio))
+- [Android] Load app config and `.env` files in each build variant's mode: development for `debug` and `debugOptimized` build types, production otherwise. ([#50661](https://github.com/expo/expo/pull/50661) by [@ramonclaudio](https://github.com/ramonclaudio))
+- Updated dependencies. ([#50762](https://github.com/expo/expo/pull/50762))
+  - @expo/env@2.5.1
+  - @expo/require-utils@58.0.2
+
+## 58.0.8 — 2026-09-28
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.7 — 2026-09-25
 
 ### 🐛 Bug fixes
 
+- [iOS] Generate the embedded `app.config` in apps built with SwiftPM instead of CocoaPods, fixing the "Unable to find the embedded app config" warning there. The generator no longer requires the Pods project, can be pointed at another destination, and creates `EXConstants.bundle` itself rather than relying on CocoaPods' `resource_bundles`. ([#50084](https://github.com/expo/expo/pull/50084) by [@chrfalch](https://github.com/chrfalch))
+- [iOS] Fix `with-node.sh` ignoring the app's `NODE_BINARY` and `.xcode.env` when building without CocoaPods. ([#50084](https://github.com/expo/expo/pull/50084) by [@chrfalch](https://github.com/chrfalch))
+
+## 58.0.6 — 2026-09-23
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.5 — 2026-09-22
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.4 — 2026-09-21
+
+### 🎉 New features
+
+- Embed the project fingerprint (`app.fingerprint`) in debug builds, next to the embedded app config. ([#49905](https://github.com/expo/expo/pull/49905) by [@vonovak](https://github.com/vonovak))
+
+## 58.0.3 — 2026-09-16
+
 ### 💡 Others
+
+- [iOS] Ship `PrivacyInfo.xcprivacy` from the `EXConstants` target so apps built with Swift Package Manager carry the privacy manifest, as CocoaPods builds already do. ([#49823](https://github.com/expo/expo/pull/49823) by [@chrfalch](https://github.com/chrfalch))
+
+## 58.0.2 — 2026-09-15
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.1 — 2026-09-14
+
+_This version does not introduce any user-facing changes._
+
+## 58.0.0 — 2026-09-10
+
+### 🐛 Bug fixes
+
+- [iOS] Quote script-phase paths so iOS builds work from a project path containing a space. ([#48747](https://github.com/expo/expo/pull/48747) by [@expo-bot](https://github.com/expo-bot))
+
+### 💡 Others
+
+- [iOS] Split the mixed Swift/Objective-C sources into `EXConstants` and `EXConstantsObjC` so the module can be built with Swift Package Manager, and add a `Package.swift` describing them. ([#47649](https://github.com/expo/expo/pull/47649) by [@chrfalch](https://github.com/chrfalch))
+
+## 57.0.8 - 2026-07-29
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.7 - 2026-07-22
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.6 - 2026-07-17
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.5 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.4 - 2026-07-15
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.3 - 2026-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.2 - 2026-06-30
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.1 - 2026-06-27
+
+_This version does not introduce any user-facing changes._
+
+## 57.0.0 - 2026-06-25
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.18 - 2026-06-10
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.17 - 2026-06-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.16 — 2026-05-26
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.15 — 2026-05-23
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.14 — 2026-05-21
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.13 — 2026-05-20
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.12 — 2026-05-19
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.11 — 2026-05-15
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.10 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.9 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.8 — 2026-05-13
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.7 — 2026-05-11
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.6 — 2026-05-08
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.5 — 2026-05-07
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.4 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.3 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.2 — 2026-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.1 — 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 56.0.0 — 2026-05-05
+
+### 🛠 Breaking changes
+
+- Bumped minimum iOS/tvOS version to 16.4, macOS to 13.4. ([#43296](https://github.com/expo/expo/pull/43296) by [@tsapeta](https://github.com/tsapeta))
+
+## 55.0.16 - 2026-05-05
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.15 - 2026-04-21
+
+### 💡 Others
+
+- Switch app config generation from `@expo/config` to `expo/config` public API ([#44721](https://github.com/expo/expo/pull/44721) by [@kitten](https://github.com/kitten))
+
+## 55.0.14 - 2026-04-13
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.13 - 2026-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.12 - 2026-04-07
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.11 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.10 - 2026-04-02
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.9 - 2026-03-19
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.8 - 2026-03-17
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.7 — 2026-02-25
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.6 — 2026-02-20
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.5 — 2026-02-16
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.4 — 2026-02-08
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.3 — 2026-02-03
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.2 — 2026-01-26
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.1 — 2026-01-22
+
+_This version does not introduce any user-facing changes._
+
+## 55.0.0 — 2026-01-21
+
+### 🎉 New features
+
+- [android] Read projectRoot from expo-autolinking ([#40666](https://github.com/expo/expo/pull/40666) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 🐛 Bug fixes
+
+- Fixed empty `expoConfig` on Android. ([#41259](https://github.com/expo/expo/pull/41259) by [@kudo](https://github.com/kudo))
+
+### 💡 Others
+
+- [Android] Removed unused native dependencies. ([#39763](https://github.com/expo/expo/pull/39763) by [@lukmccall](https://github.com/lukmccall))
+- [Android] Removed references to legacy native modules API. ([#41855](https://github.com/expo/expo/pull/41855) by [@lukmccall](https://github.com/lukmccall))
+
+## 18.0.11 - 2025-12-05
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.10 - 2025-10-21
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.9 — 2025-09-16
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.8 — 2025-09-10
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.7 — 2025-09-02
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.6 — 2025-08-31
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.5 — 2025-08-27
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.4 — 2025-08-25
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.3 — 2025-08-21
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.2 — 2025-08-16
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.1 — 2025-08-15
+
+_This version does not introduce any user-facing changes._
+
+## 18.0.0 — 2025-08-13
+
+### 🐛 Bug fixes
+
+- Remove invalid import from expo-dev-launcher. ([#37558](https://github.com/expo/expo/pull/37558) by [@douglowder](https://github.com/douglowder))
+- Fix check-packages warning. ([#37570](https://github.com/expo/expo/pull/37570) by [@douglowder](https://github.com/douglowder))
+
+### 💡 Others
+
+- [iOS] forward PROJECT_ROOT env var to app config script ([#38208](https://github.com/expo/expo/pull/38208) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 17.1.7 - 2025-07-03
+
+_This version does not introduce any user-facing changes._
+
+## 17.1.6 — 2025-05-06
+
+_This version does not introduce any user-facing changes._
+
+## 17.1.5 — 2025-05-01
+
+_This version does not introduce any user-facing changes._
+
+## 17.1.4 — 2025-04-30
+
+_This version does not introduce any user-facing changes._
+
+## 17.1.3 — 2025-04-25
+
+_This version does not introduce any user-facing changes._
+
+## 17.1.2 — 2025-04-14
+
+_This version does not introduce any user-facing changes._
+
+## 17.1.1 — 2025-04-09
+
+_This version does not introduce any user-facing changes._
+
+## 17.1.0 — 2025-04-04
+
+### 🛠 Breaking changes
+
+- Bump minimum macOS version to 11.0. ([#34980](https://github.com/expo/expo/pull/34980) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+### 🐛 Bug fixes
+
+- Add missing types to package exports ([#35223](https://github.com/expo/expo/pull/35223) by [@timostroehlein](https://github.com/timostroehlein))
+
+### 💡 Others
+
+- [android][ios] Updated Gradle build and Podspec files to ensure app.json/app.config.js values are correctly updated during each native build. ([#34228](https://github.com/expo/expo/pull/34228) by [@chrfalch](https://github.com/chrfalch))
+- [Android] Started using expo modules gradle plugin. ([#34176](https://github.com/expo/expo/pull/34176) by [@lukmccall](https://github.com/lukmccall))
+
+## 17.0.8 - 2025-03-11
+
+### 🐛 Bug fixes
+
+- [iOS] Fix pod install in older CocoaPods versions ([#35181](https://github.com/expo/expo/pull/35181) by [@gabrieldonadel](https://github.com/gabrieldonadel))
+
+## 17.0.7 - 2025-02-19
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.6 - 2025-02-14
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.4 - 2025-01-10
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.3 — 2024-11-14
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.2 — 2024-10-28
+
+_This version does not introduce any user-facing changes._
+
+## 17.0.1 — 2024-10-22
+
+### 💡 Others
+
+- Fixed check-package test errors. ([#32232](https://github.com/expo/expo/pull/32232) by [@kudo](https://github.com/kudo))
+
+## 17.0.0 — 2024-10-22
+
+### 🛠 Breaking changes
+
+- Bumped iOS and tvOS deployment target to 15.1. ([#30840](https://github.com/expo/expo/pull/30840) by [@tsapeta](https://github.com/tsapeta))
+
+### 🎉 New features
+
+- Add support for React Server environments. ([#30586](https://github.com/expo/expo/pull/30586) by [@EvanBacon](https://github.com/EvanBacon))
+
+### 🐛 Bug fixes
+
+- Add missing `react-native` peer dependencies for isolated modules. ([#30464](https://github.com/expo/expo/pull/30464) by [@byCedric](https://github.com/byCedric))
+- Only import from `expo/config` to follow proper dependency chains. ([#30501](https://github.com/expo/expo/pull/30501) by [@byCedric](https://github.com/byCedric))
+
+### 💡 Others
+
+- Deprecate `Constants.appOwnership`. ([#30021](https://github.com/expo/expo/pull/30021) by [@amandeepmittal](https://github.com/amandeepmittal))
+- Removed all `NativeModulesProxy` occurrences. ([#31496](https://github.com/expo/expo/pull/31496) by [@reichhartd](https://github.com/reichhartd))
+
+## 16.0.2 - 2024-05-29
+
+### 🐛 Bug fixes
+
+- Source env when creating app config. ([#29099](https://github.com/expo/expo/pull/29099) by [@brentvatne](https://github.com/brentvatne))
 
 ## 16.0.1 — 2024-04-23
 

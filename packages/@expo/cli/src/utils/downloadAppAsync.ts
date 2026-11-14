@@ -1,18 +1,16 @@
 import fs from 'fs';
 import path from 'path';
-import { Stream } from 'stream';
-import temporary from 'tempy';
+import { Readable, Stream } from 'stream';
+import type { ReadableStream } from 'stream/web';
 import { promisify } from 'util';
 
+import { debugEvent, event } from '../api/events';
+import { createCachedFetch, fetchAsync } from '../api/rest/client';
+import type { FetchLike, ProgressCallback } from '../api/rest/client.types';
+import { createTempFilePath } from './createTempPath';
 import { ensureDirectoryAsync } from './dir';
 import { CommandError } from './errors';
 import { extractAsync } from './tar';
-import { createCachedFetch, fetchAsync } from '../api/rest/client';
-import { FetchLike, ProgressCallback } from '../api/rest/client.types';
-
-const debug = require('debug')('expo:utils:downloadAppAsync') as typeof console.log;
-
-const TIMER_DURATION = 30000;
 
 const pipeline = promisify(Stream.pipeline);
 
@@ -38,18 +36,23 @@ async function downloadAsync({
     });
   }
 
-  debug(`Downloading ${url} to ${outputPath}`);
+  debugEvent('download_started', { url, output: outputPath });
+  const startedAt = Date.now();
   const res = await fetchInstance(url, {
-    timeout: TIMER_DURATION,
     onProgress,
   });
-  if (!res.ok) {
+  if (!res.ok || !res.body) {
     throw new CommandError(
       'FILE_DOWNLOAD',
       `Unexpected response: ${res.statusText}. From url: ${url}`
     );
   }
-  return pipeline(res.body, fs.createWriteStream(outputPath));
+  await pipeline(Readable.fromWeb(res.body as ReadableStream), fs.createWriteStream(outputPath));
+  event('download', {
+    url,
+    bytes: fs.statSync(outputPath).size,
+    ms: Date.now() - startedAt,
+  });
 }
 
 export async function downloadAppAsync({
@@ -70,9 +73,9 @@ export async function downloadAppAsync({
     // In the future we should just pipe the `res.body -> tar.extract` directly.
     // I tried this and it created some weird errors where observing the data stream
     // would corrupt the file causing tar to fail with `TAR_BAD_ARCHIVE`.
-    const tmpPath = temporary.file({ name: path.basename(outputPath) });
+    const tmpPath = createTempFilePath(path.basename(outputPath));
     await downloadAsync({ url, outputPath: tmpPath, cacheDirectory, onProgress });
-    debug(`Extracting ${tmpPath} to ${outputPath}`);
+    debugEvent('extract_started', { input: tmpPath, output: outputPath });
     await ensureDirectoryAsync(outputPath);
     await extractAsync(tmpPath, outputPath);
   } else {

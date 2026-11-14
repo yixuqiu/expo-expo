@@ -1,14 +1,14 @@
 import ExpoModulesCore
 
 /**
- A registry of font family aliases mapped to their real font family names.
+ Maps each alias to its registered faces, in order. The default face is kept first.
  */
-private var fontFamilyAliases = [String: String]()
+private var fontFamilyAliases = [String: [(url: URL, names: [String])]]()
 
 /**
- A flag that is set to `true` when the ``UIFont.fontNames(forFamilyName:)`` is already swizzled.
+ Queue to protect shared resources.
  */
-private var hasSwizzled = false
+private let queue = DispatchQueue(label: "expo.fontfamilyaliasmanager", attributes: .concurrent)
 
 /**
  Manages the font family aliases and swizzles the `UIFont` class.
@@ -18,41 +18,78 @@ internal struct FontFamilyAliasManager {
    Whether the given alias has already been set.
    */
   internal static func hasAlias(_ familyNameAlias: String) -> Bool {
-    return fontFamilyAliases[familyNameAlias] != nil
+    return queue.sync {
+      !(fontFamilyAliases[familyNameAlias]?.isEmpty ?? true)
+    }
+  }
+
+  internal static func hasRegisteredUrl(_ url: URL, forAlias familyNameAlias: String) -> Bool {
+    return queue.sync {
+      fontFamilyAliases[familyNameAlias]?.contains { $0.url == url } ?? false
+    }
   }
 
   /**
-   Sets the alias for the given family name.
-   If the alias has already been set, its family name will be overriden.
+   Whether any alias references the URL. CoreText registration is process-wide and URL-keyed,
+   so a URL that another alias still references must not be unregistered.
    */
-  internal static func setAlias(_ familyNameAlias: String, forFamilyName familyName: String) {
+  internal static func hasRegisteredUrl(_ url: URL) -> Bool {
+    return queue.sync {
+      fontFamilyAliases.values.contains { faces in
+        faces.contains { $0.url == url }
+      }
+    }
+  }
+
+  /**
+   Full replacement, in order — `loadFontFamilyAsync`'s "last call wins" contract.
+   */
+  internal static func setFaces(_ faces: [(url: URL, names: [String])], alias familyNameAlias: String) {
     maybeSwizzleUIFont()
-    fontFamilyAliases[familyNameAlias] = familyName
+    queue.sync(flags: .barrier) {
+      fontFamilyAliases[familyNameAlias] = faces
+    }
   }
 
   /**
-   Returns the family name for the given alias or `nil` when it's not set yet.
+   Replaces the alias's whole entry with this one font — `loadAsync`'s "last call wins" contract.
    */
-  internal static func familyName(forAlias familyNameAlias: String) -> String? {
-    return fontFamilyAliases[familyNameAlias]
+  internal static func setAlias(
+    _ familyNameAlias: String,
+    forPostScriptNames postScriptNames: [String],
+    url: URL
+  ) {
+    setFaces([(url: url, names: postScriptNames)], alias: familyNameAlias)
+  }
+
+  internal static func postScriptNames(forAlias familyNameAlias: String) -> [String] {
+    return queue.sync {
+      fontFamilyAliases[familyNameAlias]?.flatMap { $0.names } ?? []
+    }
+  }
+
+  internal static func registeredUrls(forAlias familyNameAlias: String) -> [URL] {
+    return queue.sync {
+      fontFamilyAliases[familyNameAlias]?.map { $0.url } ?? []
+    }
+  }
+
+  internal static func hasSingleFace(forAlias familyNameAlias: String) -> Bool {
+    return queue.sync {
+      fontFamilyAliases[familyNameAlias]?.count == 1
+    }
   }
 }
 
 /**
- Swizzles ``UIFont.fontNames(forFamilyName:)`` and ``UIFont(name:size:)`` to support font family aliases.
- This is necessary because the user provides a custom family name that is then used in stylesheets,
- however the font usually has a different name encoded in the binary, thus the system may use a different name.
+ Swizzles ``UIFont.fontNames(forFamilyName:)`` to support font family aliases. RN core asks for a family's font faces (postScript names) to pick from:
+ https://github.com/react/react-native/blob/v0.86.0/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/RCTFontUtils.mm#L359
 
- ``UIFont(name:size:)`` covers cases where there the font family has variants. For example, the ``CGFont fullName``
- value for "Helvetica-Light-Oblique.ttf" would be something like "Helvetica Light Oblique", which
- ``UIFont.fullNames`` won't recognize, because that is a font name rather than a font family name. We have to use
- ``UIFont(name:size:)`` instead, because it accepts a font name. React Native does this looking up / falling back
- for us, we just need to ensure both methods are swizzled so they both support aliasing.
+ A top-level `let` initializes at most once even under concurrent access, so the swizzle can't
+ run twice.
  */
-private func maybeSwizzleUIFont() {
-  if hasSwizzled {
-    return
-  }
+private let swizzleUIFontOnce: Void = {
+#if !os(macOS)
   let originalFontNamesMethod = class_getClassMethod(UIFont.self, #selector(UIFont.fontNames(forFamilyName:)))
   let newFontNamesMethod = class_getClassMethod(UIFont.self, #selector(UIFont._expo_fontNames(forFamilyName:)))
 
@@ -61,13 +98,9 @@ private func maybeSwizzleUIFont() {
   } else {
     log.error("expo-font is unable to swizzle `UIFont.fontNames(forFamilyName:)`")
   }
-  let originalInitMethod = class_getClassMethod(UIFont.self, #selector(UIFont.init(name:size:)))
-  let newInitMethod = class_getClassMethod(UIFont.self, #selector(UIFont._expo_init(name:size:)))
+#endif
+}()
 
-  if let originalInitMethod, let newInitMethod {
-    method_exchangeImplementations(originalInitMethod, newInitMethod)
-  } else {
-    log.error("expo-font is unable to swizzle `UIFont.init(name:size:)`")
-  }
-  hasSwizzled = true
+private func maybeSwizzleUIFont() {
+  _ = swizzleUIFontOnce
 }

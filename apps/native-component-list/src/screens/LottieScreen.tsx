@@ -2,16 +2,9 @@ import Slider from '@react-native-community/slider';
 import { Picker } from '@react-native-picker/picker';
 import LottieView from 'lottie-react-native';
 import React from 'react';
-import {
-  Animated,
-  Button,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import { Animated, Button, Platform, ScrollView, StyleSheet, Switch, View } from 'react-native';
+
+import { BodyText } from '../components/BodyText';
 
 const AnimatedLottieView = Animated.createAnimatedComponent(LottieView);
 
@@ -43,7 +36,7 @@ const ExamplePicker: React.FunctionComponent<{
 }> = ({ value, onChange }) => (
   <Picker selectedValue={value} onValueChange={onChange} style={styles.examplePicker}>
     {Object.values(EXAMPLES).map(({ name }) => (
-      <Picker.Item key={name} label={name} value={name} />
+      <Picker.Item key={name} label={name} value={name} color="black" />
     ))}
   </Picker>
 );
@@ -69,7 +62,7 @@ const PlayerControls: React.FunctionComponent<{
         justifyContent: 'space-between',
         paddingBottom: 10,
       }}>
-      <Text>Use Imperative API:</Text>
+      <BodyText>Use Imperative API:</BodyText>
       <View />
       <Switch
         onValueChange={(imperative) => onConfigChange({ ...config, imperative })}
@@ -79,7 +72,7 @@ const PlayerControls: React.FunctionComponent<{
     {!config.imperative && (
       <View style={{ paddingBottom: 10 }}>
         <View>
-          <Text>Progress:</Text>
+          <BodyText>Progress:</BodyText>
         </View>
         <Slider
           minimumValue={0}
@@ -92,7 +85,7 @@ const PlayerControls: React.FunctionComponent<{
     )}
     <View>
       <View>
-        <Text>Duration: ({Math.round(config.duration)}ms)</Text>
+        <BodyText>Duration: ({Math.round(config.duration)}ms)</BodyText>
       </View>
       <Slider
         minimumValue={50}
@@ -115,9 +108,7 @@ interface State {
   config: Config;
 }
 
-// See: https://github.com/expo/expo/pull/10229#discussion_r490961694
-// eslint-disable-next-line @typescript-eslint/ban-types
-export default class LottieScreen extends React.Component<{}, State> {
+export default class LottieScreen extends React.Component<object, State> {
   static navigationOptions = {
     title: '<Lottie />',
   };

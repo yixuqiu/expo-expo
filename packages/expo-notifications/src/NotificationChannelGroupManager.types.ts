@@ -1,9 +1,9 @@
-import { ProxyNativeModule } from 'expo-modules-core';
+import type { ProxyNativeModule } from 'expo-modules-core';
 
-import { NotificationChannel } from './NotificationChannelManager.types';
+import type { NotificationChannel } from './NotificationChannelManager.types';
 
 /**
- * An object represents a notification channel group.
+ * An object which represents a notification channel group.
  * @platform android
  */
 export interface NotificationChannelGroup {
@@ -15,7 +15,7 @@ export interface NotificationChannelGroup {
 }
 
 /**
- * An object represents a notification channel group to be set.
+ * An object which represents a notification channel group to be set.
  * @platform android
  */
 export interface NotificationChannelGroupInput {

@@ -28,7 +28,12 @@ type ManifestData = {
   $: {
     [key: string]: string | undefined;
     'android:host'?: string;
+    'android:port'?: string;
+    'android:mimeType'?: string;
+    'android:pathPattern'?: string;
     'android:pathPrefix'?: string;
+    'android:pathSuffix'?: string;
+    'android:pathAdvancedPattern'?: string;
     'android:scheme'?: string;
   };
 };
@@ -51,6 +56,21 @@ export type ManifestIntentFilter = {
   category?: ManifestCategory[];
 };
 
+// https://developer.android.com/guide/topics/manifest/activity-alias-element
+export type ManifestActivityAlias = {
+  $?: {
+    'android:name': string;
+    'android:enabled'?: StringBoolean;
+    'android:exported'?: StringBoolean;
+    'android:label'?: string;
+    'android:permission'?: string;
+    'android:icon'?: string;
+    'android:targetActivity': string;
+  };
+  'intent-filter'?: ManifestIntentFilter[];
+  'meta-data'?: ManifestMetaData[];
+};
+
 export type ManifestMetaData = {
   $: ManifestMetaDataAttributes;
 };
@@ -59,6 +79,7 @@ type ManifestServiceAttributes = AndroidManifestAttributes & {
   'android:enabled'?: StringBoolean;
   'android:exported'?: StringBoolean;
   'android:permission'?: string;
+  'android:foregroundServiceType'?: string;
   // ...
 };
 
@@ -77,6 +98,7 @@ type ManifestApplicationAttributes = {
   'android:requestLegacyExternalStorage'?: StringBoolean;
   'android:supportsPictureInPicture'?: StringBoolean;
   'android:usesCleartextTraffic'?: StringBoolean;
+  'android:enableOnBackInvokedCallback'?: StringBoolean;
   [key: string]: string | undefined;
 };
 
@@ -115,6 +137,7 @@ export type ManifestApplication = {
   receiver?: ManifestReceiver[];
   'meta-data'?: ManifestMetaData[];
   'uses-library'?: ManifestUsesLibrary[];
+  'activity-alias'?: ManifestActivityAlias[];
   // ...
 };
 
@@ -156,7 +179,7 @@ export type AndroidManifest = {
 type ManifestQueryIntent = Omit<ManifestIntentFilter, '$'>;
 
 export type ManifestQuery = {
-  package: {
+  package?: {
     $: {
       'android:name': string;
     };
@@ -166,7 +189,7 @@ export type ManifestQuery = {
     $: {
       'android:authorities': string;
     };
-  };
+  }[];
 };
 
 export async function writeAndroidManifestAsync(
@@ -213,8 +236,14 @@ export function getMainActivityOrThrow(androidManifest: AndroidManifest): Manife
 }
 
 export function getRunnableActivity(androidManifest: AndroidManifest): ManifestActivity | null {
+  const firstApplication =
+    androidManifest?.manifest?.application?.[0] ?? getMainApplication(androidManifest);
+  if (!firstApplication) {
+    return null;
+  }
+
   // Get enabled activities
-  const enabledActivities = androidManifest?.manifest?.application?.[0]?.activity?.filter?.(
+  const enabledActivities = firstApplication.activity?.filter?.(
     (e: any) => e.$['android:enabled'] !== 'false' && e.$['android:enabled'] !== false
   );
 
@@ -222,19 +251,48 @@ export function getRunnableActivity(androidManifest: AndroidManifest): ManifestA
     return null;
   }
 
+  const isIntentFilterRunnable = (intentFilter: ManifestIntentFilter): boolean => {
+    return (
+      !!intentFilter.action?.some(
+        (action) => action.$['android:name'] === 'android.intent.action.MAIN'
+      ) &&
+      !!intentFilter.category?.some(
+        (category) => category.$['android:name'] === 'android.intent.category.LAUNCHER'
+      )
+    );
+  };
+
   // Get the activity that has a runnable intent-filter
   for (const activity of enabledActivities) {
     if (Array.isArray(activity['intent-filter'])) {
       for (const intentFilter of activity['intent-filter']) {
-        if (
-          intentFilter.action?.find(
-            (action) => action.$['android:name'] === 'android.intent.action.MAIN'
-          ) &&
-          intentFilter.category?.find(
-            (category) => category.$['android:name'] === 'android.intent.category.LAUNCHER'
-          )
-        ) {
+        if (isIntentFilterRunnable(intentFilter)) {
           return activity;
+        }
+      }
+    }
+  }
+
+  const enabledActivityNames = enabledActivities.map((e) => e.$['android:name']);
+  // If no runnable activity is found, check for matching activity-alias that may be runnable
+  const aliases = (firstApplication['activity-alias'] ?? []).filter(
+    // https://developer.android.com/guide/topics/manifest/activity-alias-element
+    (e: any) =>
+      e.$['android:enabled'] !== 'false' &&
+      enabledActivityNames.includes(e.$['android:targetActivity'])
+  );
+  if (aliases.length) {
+    for (const alias of aliases) {
+      if (Array.isArray(alias['intent-filter'])) {
+        for (const intentFilter of alias['intent-filter']) {
+          if (isIntentFilterRunnable(intentFilter)) {
+            const matchingActivity = enabledActivities.find(
+              (e) => e.$['android:name'] === alias.$!['android:targetActivity']
+            );
+            if (matchingActivity) {
+              return matchingActivity;
+            }
+          }
         }
       }
     }
@@ -264,7 +322,7 @@ export function addMetaDataItemToMainApplication(
     existingMetaDataItem = mainApplication['meta-data'].filter(
       (e: any) => e.$['android:name'] === itemName
     );
-    if (existingMetaDataItem.length) {
+    if (existingMetaDataItem[0] != null) {
       existingMetaDataItem[0].$[`android:${itemType}` as keyof ManifestMetaDataAttributes] =
         itemValue;
     } else {
@@ -333,7 +391,7 @@ export function addUsesLibraryItemToMainApplication(
     existingMetaDataItem = mainApplication['uses-library'].filter(
       (e) => e.$['android:name'] === item.name
     );
-    if (existingMetaDataItem.length) {
+    if (existingMetaDataItem[0] != null) {
       existingMetaDataItem[0].$ = newItem.$;
     } else {
       mainApplication['uses-library'].push(newItem);

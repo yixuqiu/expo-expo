@@ -1,4 +1,5 @@
 import { getResourceXMLPathAsync } from './Paths';
+import type { ResourceGroupXML, ResourceItemXML, ResourceKind, ResourceXML } from './Resources';
 import {
   buildResourceGroup,
   buildResourceItem,
@@ -6,10 +7,6 @@ import {
   findResourceGroup,
   getResourceItemsAsObject,
   readResourcesXMLAsync,
-  ResourceGroupXML,
-  ResourceItemXML,
-  ResourceKind,
-  ResourceXML,
 } from './Resources';
 
 // Adds support for `tools:x`
@@ -82,14 +79,18 @@ export function setStylesItem({
 }: {
   item: ResourceItemXML;
   xml: ResourceXML;
-  parent: { name: string; parent: string };
+  parent: { name: string; parent?: string };
 }): ResourceXML {
   xml = ensureDefaultStyleResourceXML(xml);
 
   let appTheme = getStyleParent(xml, parent);
 
   if (!appTheme) {
-    appTheme = buildResourceGroup(parent);
+    appTheme = buildResourceGroup({
+      parent: 'Theme.AppCompat.Light.NoActionBar', // Default AppTheme parent
+      ...parent,
+    });
+
     xml.resources!.style!.push(appTheme);
   }
 
@@ -116,7 +117,7 @@ export function removeStylesItem({
 }: {
   name: string;
   xml: ResourceXML;
-  parent: { name: string; parent: string };
+  parent: { name: string; parent?: string };
 }): ResourceXML {
   xml = ensureDefaultStyleResourceXML(xml);
   const appTheme = getStyleParent(xml, parent);
@@ -129,9 +130,18 @@ export function removeStylesItem({
   return xml;
 }
 
-// This is a very common theme so make it reusable.
+/**
+ * @deprecated Use `getAppThemeGroup` instead.
+ * Matching on both style name and parent leads to prebuild issues, as `AppTheme`
+ * style parent might be changed (when edge-to-edge is enabled, for example).
+ */
 export function getAppThemeLightNoActionBarGroup() {
   return { name: 'AppTheme', parent: 'Theme.AppCompat.Light.NoActionBar' };
+}
+
+// This is a very common theme so make it reusable.
+export function getAppThemeGroup() {
+  return { name: 'AppTheme' };
 }
 
 export function assignStylesValue(
@@ -147,7 +157,7 @@ export function assignStylesValue(
     value: string;
     targetApi?: string;
     name: string;
-    parent: { name: string; parent: string };
+    parent: { name: string; parent?: string };
   }
 ): ResourceXML {
   if (add) {

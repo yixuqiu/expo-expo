@@ -25,7 +25,7 @@ public class EXDevLauncherUncaughtExceptionHandler: NSObject {
     NSSetUncaughtExceptionHandler { exception in
       NSLog("DevLauncher tries to handle uncaught exception: %@", exception)
       NSLog("Stack Trace: %@", exception.callStackSymbols)
-      
+
       EXDevLauncherUncaughtExceptionHandler.tryToSaveException(exception)
       EXDevLauncherUncaughtExceptionHandler.tryToSendExceptionToBundler(exception)
       EXDevLauncherUncaughtExceptionHandler.defaultHandler?(exception)
@@ -35,15 +35,14 @@ public class EXDevLauncherUncaughtExceptionHandler: NSObject {
   static func uninstallHandler() {
     NSSetUncaughtExceptionHandler(defaultHandler)
   }
-  
-  
+
   static func tryToSendExceptionToBundler(_ exception: NSException) {
     let controller = EXDevLauncherController.sharedInstance()
-    if (controller.isAppRunning()) {
+    if controller.isAppRunning() {
       guard let url = getWebSocketUrl(controller) else {
         return
       }
-      
+
       let logsManager = EXDevLauncherRemoteLogsManager(withUrl: url)
       logsManager.deferError(message: "Your app just crashed. See the error below.")
       logsManager.deferError(exception: exception)
@@ -52,22 +51,12 @@ public class EXDevLauncherUncaughtExceptionHandler: NSObject {
   }
 
   static func getWebSocketUrl(_ controller: EXDevLauncherController) -> URL? {
-    // URL structure replicates
-    // https://github.com/facebook/react-native/blob/0.69-stable/Libraries/Utilities/HMRClient.js#L164
-    // but URLSessionWebSocketTask will crash if the scheme is not `ws` or `wss`
-    guard let appUrl = controller.appBridge?.bundleURL else {
+    guard let appUrl = controller.sourceUrl() else {
       return nil
     }
-    guard let socketUrl = URL.init(string: "hot", relativeTo: appUrl) else {
-      return nil
-    }
-    guard var components = URLComponents(url: socketUrl, resolvingAgainstBaseURL: true) else {
-      return nil
-    }
-    components.scheme = "ws"
-    return components.url
+    return EXDevLauncherRemoteLogsManager.webSocketUrl(forServerUrl: appUrl)
   }
-  
+
   static func tryToSaveException(_ exception: NSException) {
     let registry = EXDevLauncherErrorRegistry()
     registry.storeException(exception)

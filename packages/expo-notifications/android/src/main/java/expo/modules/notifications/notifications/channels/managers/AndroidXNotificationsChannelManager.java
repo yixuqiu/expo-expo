@@ -80,7 +80,10 @@ public class AndroidXNotificationsChannelManager implements NotificationsChannel
     NotificationChannel channel = new NotificationChannel(channelId, name, importance);
     configureChannelWithOptions(channel, channelOptions);
     mNotificationManager.createNotificationChannel(channel);
-    return channel;
+    // We return the channel given by mNotificationManager, not the one we created.
+    // see "Note that the created channel may differ from this value." ("this value" = the one we provided)
+    // https://developer.android.com/reference/android/app/NotificationManager#createNotificationChannel(android.app.NotificationChannel)
+    return mNotificationManager.getNotificationChannel(channelId);
   }
 
   // Processing options
@@ -133,6 +136,17 @@ public class AndroidXNotificationsChannelManager implements NotificationsChannel
     if (args.containsKey(ENABLE_VIBRATE_KEY)) {
       channel.enableVibration(args.getBoolean(ENABLE_VIBRATE_KEY));
     }
+  }
+
+  public boolean customSoundExists(ReadableArguments args) {
+    if (!args.containsKey(SOUND_KEY)) {
+      return true;
+    }
+    String filename = args.getString(SOUND_KEY);
+    if (filename == null) {
+      return true;
+    }
+    return mSoundResolver.resourceExists(filename);
   }
 
   @Nullable

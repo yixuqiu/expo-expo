@@ -1,0 +1,284 @@
+// Copyright 2015-present 650 Industries. All rights reserved.
+
+import Foundation
+
+struct GraphQLResponse<T: Codable>: Codable {
+  let data: T?
+  let errors: [GraphQLError]?
+}
+
+struct GraphQLError: Codable {
+  let message: String
+  let locations: [GraphQLErrorLocation]?
+  let path: [String]?
+}
+
+struct GraphQLErrorLocation: Codable {
+  let line: Int
+  let column: Int
+}
+
+struct MeActorResponse: Codable {
+  let data: MeActorData
+  let errors: [GraphQLError]?
+
+  var isRevokedSession: Bool {
+    data.meActor == nil && (errors ?? []).isEmpty
+  }
+}
+
+struct MeActorData: Codable {
+  /// Null for an unauthenticated request.
+  let meActor: UserActor?
+}
+
+struct HomeScreenDataResponse: Codable {
+  let data: HomeScreenData
+}
+
+struct HomeScreenData: Codable {
+  let account: AccountQuery
+}
+
+struct AccountQuery: Codable {
+  let byName: AccountByName
+}
+
+struct AccountByName: Codable {
+  let id: String
+  let name: String
+  let appsPaginated: AppsConnection
+  let snacksPaginated: SnacksConnection
+  let appCount: Int
+}
+
+struct PageInfo: Codable {
+  let hasNextPage: Bool
+  let endCursor: String?
+}
+
+struct AppsConnection: Codable {
+  let pageInfo: PageInfo?
+  let edges: [AppEdge]
+}
+
+struct AppEdge: Codable {
+  let node: App
+}
+
+struct SnacksConnection: Codable {
+  let pageInfo: PageInfo?
+  let edges: [SnackEdge]
+}
+
+struct SnackEdge: Codable {
+  let node: Snack
+}
+
+struct UserActor: Codable {
+  let typename: String
+  let id: String
+  let username: String
+  let firstName: String?
+  let lastName: String?
+  let primaryAccountProfileImageUrl: String?
+  let bestContactEmail: String?
+  let accounts: [Account]
+  let fullName: String?
+
+  enum CodingKeys: String, CodingKey {
+    case typename = "__typename"
+    case id
+    case username
+    case firstName
+    case lastName
+    case primaryAccountProfileImageUrl
+    case bestContactEmail
+    case accounts
+    case fullName
+  }
+}
+
+struct Account: Codable, Equatable {
+  let id: String
+  let name: String
+  let profileImageUrl: String?
+  let ownerUserActor: UserActorSimple?
+
+  enum CodingKeys: String, CodingKey {
+    case id
+    case name
+    case profileImageUrl
+    case ownerUserActor
+  }
+}
+
+struct UserActorSimple: Codable, Equatable {
+  let id: String
+  let username: String
+  let primaryAccountProfileImageUrl: String?
+  let firstName: String?
+  let fullName: String?
+  let lastName: String?
+}
+
+struct App: Codable {
+  let id: String
+  let name: String
+  let fullName: String
+  let ownerAccount: OwnerAccount
+  let firstTwoBranches: [Branch]
+
+  enum CodingKeys: String, CodingKey {
+    case id
+    case name
+    case fullName
+    case ownerAccount
+    case firstTwoBranches
+  }
+}
+
+struct OwnerAccount: Codable {
+  let name: String
+}
+
+struct Branch: Codable, Equatable {
+  let id: String
+  let name: String
+  let updates: [AppUpdate]
+}
+
+struct AppUpdate: Identifiable, Codable, Equatable {
+  let id: String
+  let group: String?
+  let message: String?
+  let createdAt: String
+  let expoGoSDKVersion: String?
+  let platform: String
+  let manifestPermalink: String
+}
+
+struct Snack: Identifiable, Codable, Equatable {
+  let id: String
+  let name: String
+  let description: String?
+  let fullName: String
+  let slug: String
+  let isDraft: Bool
+  let sdkVersion: String
+}
+
+struct ProjectsListResponse: Codable {
+  let data: ProjectsListData
+}
+
+struct ProjectsListData: Codable {
+  let account: ProjectsListAccount
+}
+
+struct ProjectsListAccount: Codable {
+  let byName: ProjectsListByName
+}
+
+struct ProjectsListByName: Codable {
+  let id: String
+  let name: String
+  let appsPaginated: AppsConnection
+}
+
+struct ProjectDetailsResponse: Codable {
+  let data: ProjectDetailsData
+}
+
+struct ProjectDetailsData: Codable {
+  let app: AppContainer
+}
+
+struct AppContainer: Codable {
+  let byId: ProjectDetail
+}
+
+struct ProjectDetail: Codable {
+  let id: String
+  let name: String
+  let slug: String
+  let fullName: String
+  let ownerAccount: OwnerAccount
+  let updateBranches: [BranchDetail]
+}
+
+struct BranchesListResponse: Codable {
+  let data: BranchesListData
+}
+
+struct BranchesListData: Codable {
+  let app: BranchesListApp
+}
+
+struct BranchesListApp: Codable {
+  let byId: BranchesListProject
+}
+
+struct BranchesListProject: Codable {
+  let id: String
+  let name: String
+  let updateBranches: [BranchDetail]
+  let updateBranchesCount: Int
+}
+
+struct BranchDetailsResponse: Codable {
+  let data: BranchDetailsData
+}
+
+struct BranchDetailsData: Codable {
+  let app: BranchDetailsApp
+}
+
+struct BranchDetailsApp: Codable {
+  let byId: BranchDetailsProject
+}
+
+struct BranchDetailsProject: Codable {
+  let id: String
+  let name: String
+  let updateBranchByName: BranchDetail?
+}
+
+struct BranchDetail: Identifiable, Codable {
+  let id: String
+  let name: String
+  let updates: [AppUpdate]
+}
+
+struct SnacksListResponse: Codable {
+  let data: SnacksListData
+}
+
+struct SnacksListData: Codable {
+  let account: SnacksListAccount
+}
+
+struct SnacksListAccount: Codable {
+  let byName: SnacksListByName
+}
+
+struct SnacksListByName: Codable {
+  let id: String
+  let name: String
+  let snacksPaginated: SnacksConnection
+}
+
+extension App {
+  func toExpoProject() -> ExpoProject {
+    let latestUpdateUrl = firstTwoBranches.first?.updates.first?.manifestPermalink
+
+    return ExpoProject(
+      id: id,
+      name: name,
+      fullName: fullName,
+      description: nil,
+      latestUpdateUrl: latestUpdateUrl,
+      firstTwoBranches: firstTwoBranches
+    )
+  }
+}

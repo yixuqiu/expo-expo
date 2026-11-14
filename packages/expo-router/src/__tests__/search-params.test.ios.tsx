@@ -1,6 +1,8 @@
-import { store } from '../global-state/router-store';
+import { screen, act } from '@testing-library/react-native';
+
+import { navigationRef } from '../global-state/navigationRef';
 import { router } from '../imperative-api';
-import { screen, testRouter, renderRouter, act } from '../testing-library';
+import { renderRouter, testRouter } from '../testing-library';
 
 describe('push', () => {
   /*
@@ -8,92 +10,121 @@ describe('push', () => {
    * @see: https://reactnavigation.org/docs/navigating/#navigate-to-a-route-multiple-times
    */
   it('can handle navigation between routes', async () => {
-    renderRouter(
+    await renderRouter(
       {
         page: () => null,
       },
       {
-        initialUrl: 'page',
+        initialUrl: '/page',
       }
     );
 
-    testRouter.push('/page?a=true'); // New params always push
-    testRouter.push('/page?b=true');
-    testRouter.push('/page'); // This pushes the a new '/page'
-    testRouter.push('/page'); // Duplicate pushes are allowed pushes the new '/page'
-    testRouter.push('/page?c=true');
+    await testRouter.push('/page?a=true'); // New params always push
+    await testRouter.push('/page?b=true');
+    await testRouter.push('/page'); // This pushes the a new '/page'
+    await testRouter.push('/page'); // Duplicate pushes are allowed pushes the new '/page'
+    await testRouter.push('/page?c=true');
 
-    expect(store.rootState).toStrictEqual({
-      index: 5,
+    expect(navigationRef.getRootState()).toStrictEqual({
+      index: 0,
       key: expect.any(String),
-      routeNames: ['page', '_sitemap', '+not-found'],
+      routeNames: ['__root', '+not-found', '_sitemap'],
       routes: [
         {
           key: expect.any(String),
-          name: 'page',
-          params: undefined,
-          path: '/page',
-        },
-        {
-          key: expect.any(String),
-          name: 'page',
-          params: {
-            a: 'true',
+          name: '__root',
+          state: {
+            index: 5,
+            key: expect.any(String),
+            routeNames: ['page'],
+            routes: [
+              {
+                key: expect.any(String),
+                name: 'page',
+                path: '/page',
+              },
+              {
+                key: expect.any(String),
+                name: 'page',
+                params: {
+                  a: 'true',
+                },
+                path: undefined,
+              },
+              {
+                key: expect.any(String),
+                name: 'page',
+                params: {
+                  b: 'true',
+                },
+                path: undefined,
+              },
+              {
+                key: expect.any(String),
+                name: 'page',
+                params: {},
+                path: undefined,
+              },
+              {
+                key: expect.any(String),
+                name: 'page',
+                params: {},
+                path: undefined,
+              },
+              {
+                key: expect.any(String),
+                name: 'page',
+                params: {
+                  c: 'true',
+                },
+                path: undefined,
+              },
+            ],
+            stale: false,
+            routeKeySeq: expect.any(Number),
+            type: 'stack',
           },
-          path: undefined,
-        },
-        {
-          key: expect.any(String),
-          name: 'page',
-          params: {
-            b: 'true',
-          },
-          path: undefined,
-        },
-        {
-          key: expect.any(String),
-          name: 'page',
-          params: {},
-          path: undefined,
-        },
-        {
-          key: expect.any(String),
-          name: 'page',
-          params: {},
-          path: undefined,
-        },
-        {
-          key: expect.any(String),
-          name: 'page',
-          params: {
-            c: 'true',
-          },
-          path: undefined,
         },
       ],
       stale: false,
+      routeKeySeq: expect.any(Number),
       type: 'stack',
     });
 
-    testRouter.back();
-    testRouter.back();
-    testRouter.back();
-    testRouter.back();
-    testRouter.back();
+    await testRouter.back();
+    await testRouter.back();
+    await testRouter.back();
+    await testRouter.back();
+    await testRouter.back();
 
-    expect(store.rootState).toEqual({
+    expect(navigationRef.getRootState()).toEqual({
       index: 0,
       key: expect.any(String),
-      routeNames: ['page', '_sitemap', '+not-found'],
+      routeNames: ['__root', '+not-found', '_sitemap'],
       routes: [
         {
           key: expect.any(String),
-          name: 'page',
-          params: undefined,
-          path: '/page',
+          name: '__root',
+          state: {
+            index: 0,
+            key: expect.any(String),
+            routeNames: ['page'],
+            routes: [
+              {
+                key: expect.any(String),
+                name: 'page',
+                params: undefined,
+                path: '/page',
+              },
+            ],
+            stale: false,
+            routeKeySeq: expect.any(Number),
+            type: 'stack',
+          },
         },
       ],
       stale: false,
+      routeKeySeq: expect.any(Number),
       type: 'stack',
     });
 
@@ -107,7 +138,7 @@ describe('navigate', () => {
     /*
      * This test is currently incorrect. See #27285
      */
-    renderRouter(
+    await renderRouter(
       {
         page: () => null,
       },
@@ -116,27 +147,42 @@ describe('navigate', () => {
       }
     );
 
-    testRouter.navigate('/page?a=true');
-    testRouter.navigate('/page?b=true');
-    testRouter.navigate('/page'); // We are still on page. This will search the search params but not navigate
-    testRouter.navigate('/page'); // Will not create new screen are we are already on page
-    testRouter.navigate('/page?c=true');
+    await testRouter.navigate('/page?a=true');
+    await testRouter.navigate('/page?b=true');
+    await testRouter.navigate('/page'); // We are still on page. This will search the search params but not navigate
+    await testRouter.navigate('/page'); // Will not create new screen are we are already on page
+    await testRouter.navigate('/page?c=true');
 
-    expect(store.rootState).toStrictEqual({
+    expect(navigationRef.getRootState()).toStrictEqual({
       index: 0,
       key: expect.any(String),
-      routeNames: ['page', '_sitemap', '+not-found'],
+      routeNames: ['__root', '+not-found', '_sitemap'],
       routes: [
         {
           key: expect.any(String),
-          name: 'page',
-          params: {
-            c: 'true',
+          name: '__root',
+          state: {
+            index: 0,
+            key: expect.any(String),
+            routeNames: ['page'],
+            routes: [
+              {
+                key: expect.any(String),
+                name: 'page',
+                params: {
+                  c: 'true',
+                },
+                path: '/page?c=true',
+              },
+            ],
+            stale: false,
+            routeKeySeq: expect.any(Number),
+            type: 'stack',
           },
-          path: '/page',
         },
       ],
       stale: false,
+      routeKeySeq: expect.any(Number),
       type: 'stack',
     });
 
@@ -146,70 +192,98 @@ describe('navigate', () => {
 
   it('handles dismissAll', async () => {
     // TODO: add popToTop to the router
-    renderRouter({
+    await renderRouter({
       index: () => null,
       '[page]': () => null,
     });
 
-    testRouter.navigate('/a');
-    testRouter.navigate('/b');
-    testRouter.navigate('/c');
+    await testRouter.navigate('/a');
+    await testRouter.navigate('/b');
+    await testRouter.navigate('/c');
 
-    expect(store.rootState).toStrictEqual({
-      index: 3,
+    expect(navigationRef.getRootState()).toStrictEqual({
+      index: 0,
       key: expect.any(String),
-      routeNames: ['index', '_sitemap', '[page]', '+not-found'],
+      routeNames: ['__root', '+not-found', '_sitemap'],
       routes: [
         {
           key: expect.any(String),
-          name: 'index',
-          params: undefined,
-          path: '/',
-        },
-        {
-          key: expect.any(String),
-          name: '[page]',
-          params: {
-            page: 'a',
+          name: '__root',
+          state: {
+            index: 3,
+            key: expect.any(String),
+            routeNames: ['index', '[page]'],
+            routes: [
+              {
+                key: expect.any(String),
+                name: 'index',
+                path: '/',
+              },
+              {
+                key: expect.any(String),
+                name: '[page]',
+                params: {
+                  page: 'a',
+                },
+                path: '/a',
+              },
+              {
+                key: expect.any(String),
+                name: '[page]',
+                params: {
+                  page: 'b',
+                },
+                path: '/b',
+              },
+              {
+                key: expect.any(String),
+                name: '[page]',
+                params: {
+                  page: 'c',
+                },
+                path: '/c',
+              },
+            ],
+            stale: false,
+            routeKeySeq: expect.any(Number),
+            type: 'stack',
           },
-          path: undefined,
-        },
-        {
-          key: expect.any(String),
-          name: '[page]',
-          params: {
-            page: 'b',
-          },
-          path: undefined,
-        },
-        {
-          key: expect.any(String),
-          name: '[page]',
-          params: {
-            page: 'c',
-          },
-          path: undefined,
         },
       ],
       stale: false,
+      routeKeySeq: expect.any(Number),
       type: 'stack',
     });
 
-    testRouter.dismissAll();
+    await testRouter.dismissAll();
 
-    expect(store.rootState).toStrictEqual({
+    expect(navigationRef.getRootState()).toStrictEqual({
       index: 0,
       key: expect.any(String),
-      routeNames: ['index', '_sitemap', '[page]', '+not-found'],
+      routeNames: ['__root', '+not-found', '_sitemap'],
       routes: [
         {
           key: expect.any(String),
-          name: 'index',
-          params: undefined,
-          path: '/',
+          name: '__root',
+          state: {
+            index: 0,
+            key: expect.any(String),
+            routeNames: ['index', '[page]'],
+            routes: [
+              {
+                key: expect.any(String),
+                name: 'index',
+                path: '/',
+              },
+            ],
+            stale: false,
+            routeKeySeq: expect.any(Number),
+            type: 'stack',
+          },
         },
       ],
       stale: false,
+      routeKeySeq: expect.any(Number),
       type: 'stack',
     });
 
@@ -219,7 +293,7 @@ describe('navigate', () => {
 
 describe('replace', () => {
   it('can handle navigation between routes', async () => {
-    renderRouter(
+    await renderRouter(
       {
         page: () => null,
       },
@@ -228,65 +302,90 @@ describe('replace', () => {
       }
     );
 
-    testRouter.push('/page?a=true');
-    testRouter.push('/page?b=true');
-    testRouter.replace('/page?a=true'); // This will clear the previous route
-    testRouter.push('/page?c=true');
+    await testRouter.push('/page?a=true');
+    await testRouter.push('/page?b=true');
+    await testRouter.replace('/page?a=true'); // This will clear the previous route
+    await testRouter.push('/page?c=true');
 
-    expect(store.rootState).toStrictEqual({
-      index: 3,
+    expect(navigationRef.getRootState()).toStrictEqual({
+      index: 0,
       key: expect.any(String),
-      routeNames: ['page', '_sitemap', '+not-found'],
+      routeNames: ['__root', '+not-found', '_sitemap'],
       routes: [
         {
           key: expect.any(String),
-          name: 'page',
-          params: undefined,
-          path: '/page',
-        },
-        {
-          key: expect.any(String),
-          name: 'page',
-          params: {
-            a: 'true',
+          name: '__root',
+          state: {
+            index: 3,
+            key: expect.any(String),
+            routeNames: ['page'],
+            routes: [
+              {
+                key: expect.any(String),
+                name: 'page',
+                path: '/page',
+              },
+              {
+                key: expect.any(String),
+                name: 'page',
+                params: {
+                  a: 'true',
+                },
+                path: undefined,
+              },
+              {
+                key: expect.any(String),
+                name: 'page',
+                params: {
+                  a: 'true',
+                },
+              },
+              {
+                key: expect.any(String),
+                name: 'page',
+                params: {
+                  c: 'true',
+                },
+                path: undefined,
+              },
+            ],
+            stale: false,
+            routeKeySeq: expect.any(Number),
+            type: 'stack',
           },
-          path: undefined,
-        },
-        {
-          key: expect.any(String),
-          name: 'page',
-          params: {
-            a: 'true',
-          },
-        },
-        {
-          key: expect.any(String),
-          name: 'page',
-          params: {
-            c: 'true',
-          },
-          path: undefined,
         },
       ],
       stale: false,
+      routeKeySeq: expect.any(Number),
       type: 'stack',
     });
 
-    testRouter.back('/page?a=true');
-    testRouter.back('/page?a=true'); // It will be present twice
-    testRouter.back('/page');
+    await testRouter.back('/page?a=true');
+    await testRouter.back('/page?a=true'); // It will be present twice
+    await testRouter.back('/page');
 
     expect(testRouter.canGoBack()).toBe(false);
   });
 });
 
 it('can handle search params with special characters', async () => {
-  renderRouter({
+  await renderRouter({
     index: () => null,
   });
 
-  act(() => router.push('/?a=(param)'));
+  await act(() => router.push('/?a=(param)'));
 
   expect(screen).toHavePathnameWithParams('/?a=%28param%29');
   expect(screen).toHaveSearchParams({ a: '(param)' });
+});
+
+it('can handle array search params', async () => {
+  await renderRouter({
+    index: () => null,
+  });
+
+  await act(() => router.push('/?array=1&array=2'));
+
+  expect(screen).toHavePathnameWithParams('/?array=1&array=2');
+  expect(screen).toHaveSearchParams({ array: ['1', '2'] });
 });

@@ -1,12 +1,17 @@
 package expo.modules.updates.loader
 
 import android.content.Context
+import expo.modules.updates.BuildConfig
 import expo.modules.updates.UpdatesConfiguration
 import expo.modules.updates.db.entity.AssetEntity
 import expo.modules.updates.db.UpdatesDatabase
-import expo.modules.updates.loader.FileDownloader.AssetDownloadCallback
-import expo.modules.updates.loader.FileDownloader.RemoteUpdateDownloadCallback
 import expo.modules.updates.UpdatesUtils
+import expo.modules.updates.db.entity.UpdateEntity
+import expo.modules.updates.logging.UpdatesLogger
+import expo.modules.updates.utils.AndroidResourceAssetUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import java.io.File
 import java.io.FileNotFoundException
 import java.lang.AssertionError
@@ -14,91 +19,100 @@ import java.lang.Exception
 import java.util.*
 
 /**
- * Subclass of [Loader] which handles copying the embedded update's assets into the
- * expo-updates cache location.
+ * Subclass of [Loader] which handles embedded update assets
  *
- * Rather than launching the embedded update directly from its location in the app bundle/apk, we
- * first try to read it into the expo-updates cache and database and launch it like any other
- * update. The benefits of this include (a) a single code path for launching most updates and (b)
- * assets included in embedded updates and copied into the cache in this way do not need to be
- * redownloaded if included in future updates.
+ * @param shouldCopyEmbeddedAssets if true, copying the embedded update's assets into the expo-updates cache location.
+ *   Rather than launching the embedded update directly from its location in the app bundle/apk, we
+ *   first try to read it into the expo-updates cache and database and launch it like any other
+ *   update. The benefits of this include (a) a single code path for launching most updates and (b)
+ *   assets included in embedded updates and copied into the cache in this way do not need to be
+ *   re-downloaded if included in future updates.
  */
 class EmbeddedLoader internal constructor(
-  private val context: Context,
+  context: Context,
   private val configuration: UpdatesConfiguration,
+  logger: UpdatesLogger,
   database: UpdatesDatabase,
   updatesDirectory: File,
-  private val loaderFiles: LoaderFiles
+  private val loaderFiles: LoaderFiles,
+  private val shouldCopyEmbeddedAssets: Boolean = BuildConfig.EX_UPDATES_COPY_EMBEDDED_ASSETS,
+  scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) : Loader(
   context,
   configuration,
+  logger,
   database,
   updatesDirectory,
-  loaderFiles
+  loaderFiles,
+  scope
 ) {
 
   constructor(
     context: Context,
     configuration: UpdatesConfiguration,
+    logger: UpdatesLogger,
     database: UpdatesDatabase,
-    updatesDirectory: File
-  ) : this(context, configuration, database, updatesDirectory, LoaderFiles()) {
-  }
+    updatesDirectory: File,
+    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+  ) : this(context, configuration, logger, database, updatesDirectory, LoaderFiles(), scope = scope)
 
-  override fun loadRemoteUpdate(
-    context: Context,
+  override suspend fun loadRemoteUpdate(
     database: UpdatesDatabase,
-    configuration: UpdatesConfiguration,
-    callback: RemoteUpdateDownloadCallback
-  ) {
+    configuration: UpdatesConfiguration
+  ): UpdateResponse {
     val update = loaderFiles.readEmbeddedUpdate(this.context, this.configuration)
-    if (update != null) {
-      callback.onSuccess(
-        UpdateResponse(
-          responseHeaderData = null,
-          manifestUpdateResponsePart = UpdateResponsePart.ManifestUpdateResponsePart(update),
-          directiveUpdateResponsePart = null
-        )
+    return if (update != null) {
+      UpdateResponse(
+        responseHeaderData = null,
+        manifestUpdateResponsePart = UpdateResponsePart.ManifestUpdateResponsePart(update),
+        directiveUpdateResponsePart = null
       )
     } else {
-      val message = "Embedded manifest is null"
-      callback.onFailure(message, Exception(message))
+      throw Exception("Embedded manifest is null")
     }
   }
 
-  override fun loadAsset(
-    context: Context,
+  override suspend fun loadAsset(
     assetEntity: AssetEntity,
-    updatesDirectory: File?,
+    updatesDirectory: File,
     configuration: UpdatesConfiguration,
-    callback: AssetDownloadCallback
-  ) {
+    requestedUpdate: UpdateEntity?,
+    embeddedUpdate: UpdateEntity?
+  ): FileDownloader.AssetDownloadResult {
+    if (!shouldCopyEmbeddedAssets) {
+      assetEntity.downloadTime = Date()
+      assetEntity.relativePath = AndroidResourceAssetUtils.createEmbeddedFilenameForAsset(assetEntity)
+      // Passing `isNew=true` aka `AssetLoadResult.FINISHED` to the callback,
+      // because we assume embedded asset is always existed without filesystem out of sync.
+      return FileDownloader.AssetDownloadResult(assetEntity, true)
+    }
+
     val filename = UpdatesUtils.createFilenameForAsset(assetEntity)
     val destination = File(updatesDirectory, filename)
 
-    if (loaderFiles.fileExists(destination)) {
+    if (loaderFiles.fileExists(context, updatesDirectory, filename)) {
       assetEntity.relativePath = filename
-      callback.onSuccess(assetEntity, false)
+      return FileDownloader.AssetDownloadResult(assetEntity, false)
     } else {
       try {
         assetEntity.hash = loaderFiles.copyAssetAndGetHash(assetEntity, destination, context)
         assetEntity.downloadTime = Date()
         assetEntity.relativePath = filename
-        callback.onSuccess(assetEntity, true)
+        return FileDownloader.AssetDownloadResult(assetEntity, true)
       } catch (e: FileNotFoundException) {
         throw AssertionError(
           "APK bundle must contain the expected embedded asset " +
-            if (assetEntity.embeddedAssetFilename != null) assetEntity.embeddedAssetFilename else assetEntity.resourcesFilename
+            if (assetEntity.embeddedAssetFilename != null) {
+              assetEntity.embeddedAssetFilename
+            } else {
+              assetEntity.resourcesFilename
+            }
         )
-      } catch (e: Exception) {
-        callback.onFailure(e, assetEntity)
       }
     }
   }
 
   companion object {
-    private val TAG = EmbeddedLoader::class.java.simpleName
-
     const val BUNDLE_FILENAME = "app.bundle"
     const val BARE_BUNDLE_FILENAME = "index.android.bundle"
   }

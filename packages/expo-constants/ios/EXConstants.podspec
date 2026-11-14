@@ -11,11 +11,11 @@ Pod::Spec.new do |s|
   s.author         = package['author']
   s.homepage       = package['homepage']
   s.platforms       = {
-    :ios => '13.4',
-    :osx => '10.15',
-    :tvos => '13.4'
+    :ios => '16.4',
+    :osx => '13.4',
+    :tvos => '16.4'
   }
-  s.swift_version  = '5.4'
+  s.swift_version  = '5.9'
   s.source         = { git: 'https://github.com/expo/expo.git' }
   s.static_framework = true
 
@@ -34,11 +34,21 @@ Pod::Spec.new do |s|
     s.source_files = "**/*.{h,m,swift}"
   end
 
-  s.script_phase = {
+  # `bash -l -c` re-parses its argument as a fresh command line, so the script path and the
+  # PROJECT_ROOT value have to stay quoted through that second round of parsing - otherwise a
+  # project path containing a space is word-split and the phase fails.
+  env_vars = ENV['PROJECT_ROOT'] ? "PROJECT_ROOT=\\\"#{ENV['PROJECT_ROOT']}\\\" " : ""
+  script_phase = {
     :name => 'Generate app.config for prebuilt Constants.manifest',
-    :script => 'bash -l -c "$PODS_TARGET_SRCROOT/../scripts/get-app-config-ios.sh"',
+    :script => "bash -l -c \"#{env_vars}\\\"$PODS_TARGET_SRCROOT/../scripts/get-app-config-ios.sh\\\"\"",
     :execution_position => :before_compile
   }
+  # :always_out_of_date is only available in CocoaPods 1.13.0 and later
+  if Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.13.0')
+    # always run the script without warning
+    script_phase[:always_out_of_date] = "1"
+  end
+  s.script_phase = script_phase
 
   # Generate EXConstants.bundle without existing resources
   # `get-app-config-ios.sh` will generate app.config in EXConstants.bundle

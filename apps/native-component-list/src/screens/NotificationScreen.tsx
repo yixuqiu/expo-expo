@@ -1,28 +1,24 @@
+import { EventSubscription } from 'expo';
 import * as Device from 'expo-device';
-import { Subscription } from 'expo-modules-core';
 import * as Notifications from 'expo-notifications';
-import * as TaskManager from 'expo-task-manager';
+import { getAllScheduledNotificationsAsync } from 'expo-notifications';
 import React from 'react';
-import { Alert, Text, Platform, ScrollView, View } from 'react-native';
+import { Alert, ScrollView, View, Platform } from 'react-native';
 
-import registerForPushNotificationsAsync from '../api/registerForPushNotificationsAsync';
+import { sendPushNotificationsAsync } from '../api/sendPushNotificationsAsync';
+import { BodyText } from '../components/BodyText';
 import HeadingText from '../components/HeadingText';
 import ListButton from '../components/ListButton';
 import MonoText from '../components/MonoText';
 
-const BACKGROUND_NOTIFICATION_TASK = 'BACKGROUND-NOTIFICATION-TASK';
-const BACKGROUND_TASK_SUCCESSFUL = 'Background task successfully ran!';
-const BACKGROUND_TEST_INFO = `To test background notification handling:\n(1) Background the app.\n(2) Send a push notification from your terminal. The push token can be found in your logs, and the command to send a notification can be found at https://docs.expo.dev/push-notifications/sending-notifications/#http2-api. On iOS, you need to include "_contentAvailable": "true" in your payload.\n(3) After receiving the notification, check your terminal for:\n"${BACKGROUND_TASK_SUCCESSFUL}"`;
-
-TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, (_data) => {
-  console.log(BACKGROUND_TASK_SUCCESSFUL);
-});
+const BACKGROUND_TEST_INFO = `[notification-tester app only]: To test background notification handling:\n(1) Background the app.\n(2) Send a push notification from your terminal. The push token can be found in your logs, and the command to send a notification can be found at https://docs.expo.dev/push-notifications/sending-notifications/#http2-api. On iOS, you need to include "_contentAvailable": "true" in your payload.\n(3) After receiving the notification, check the "persisted data" presented in the notification-tester app`;
 
 const remotePushSupported = Device.isDevice;
+
+const welcomeCategoryId = 'welcome';
+
 export default class NotificationScreen extends React.Component<
-  // See: https://github.com/expo/expo/pull/10229#discussion_r490961694
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  {},
+  void,
   {
     lastNotifications?: Notifications.Notification;
   }
@@ -31,53 +27,55 @@ export default class NotificationScreen extends React.Component<
     title: 'Notifications',
   };
 
-  private _onReceivedListener: Subscription | undefined;
-  private _onResponseReceivedListener: Subscription | undefined;
-
-  // See: https://github.com/expo/expo/pull/10229#discussion_r490961694
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  constructor(props: {}) {
+  constructor(props: void) {
     super(props);
     this.state = {};
   }
 
+  private _onReceivedListener: EventSubscription | undefined;
+  private _onResponseReceivedListener: EventSubscription | undefined;
+
   componentDidMount() {
-    if (Platform.OS !== 'web') {
-      this._onReceivedListener = Notifications.addNotificationReceivedListener(
-        this._handelReceivedNotification
-      );
-      this._onResponseReceivedListener = Notifications.addNotificationResponseReceivedListener(
-        this._handelNotificationResponseReceived
-      );
-      Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
-      // Using the same category as in `registerForPushNotificationsAsync`
-      Notifications.setNotificationCategoryAsync('welcome', [
-        {
-          buttonTitle: `Don't open app`,
-          identifier: 'first-button',
-          options: {
-            opensAppToForeground: false,
-          },
-        },
-        {
-          buttonTitle: 'Respond with text',
-          identifier: 'second-button-with-text',
-          textInput: {
-            submitButtonTitle: 'Submit button',
-            placeholder: 'Placeholder text',
-          },
-        },
-        {
-          buttonTitle: 'Open app',
-          identifier: 'third-button',
-          options: {
-            opensAppToForeground: true,
-          },
-        },
-      ])
-        .then((_category) => {})
-        .catch((error) => console.warn('Could not have set notification category', error));
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+      return;
     }
+    // Using the same category as in `sendPushNotificationsAsync`
+    Notifications.setNotificationCategoryAsync(welcomeCategoryId, [
+      {
+        buttonTitle: `Don't open app`,
+        identifier: 'first-button',
+        options: {
+          opensAppToForeground: false,
+        },
+      },
+      {
+        buttonTitle: 'Respond with text',
+        identifier: 'second-button-with-text',
+        textInput: {
+          submitButtonTitle: 'Submit button',
+          placeholder: 'Placeholder text',
+        },
+        options: {
+          opensAppToForeground: false,
+        },
+      },
+      {
+        buttonTitle: 'Open app',
+        identifier: 'third-button',
+        options: {
+          opensAppToForeground: true,
+        },
+      },
+    ])
+      .then((_category) => {})
+      .catch((error) => console.warn('Could not have set notification category', error));
+
+    this._onReceivedListener = Notifications.addNotificationReceivedListener(
+      this._handleReceivedNotification
+    );
+    this._onResponseReceivedListener = Notifications.addNotificationResponseReceivedListener(
+      this._handleNotificationResponseReceived
+    );
   }
 
   componentWillUnmount() {
@@ -94,8 +92,46 @@ export default class NotificationScreen extends React.Component<
           title="Present a notification immediately"
         />
         <ListButton
+          title="getAllScheduledNotificationsAsync()"
+          onPress={() => {
+            getAllScheduledNotificationsAsync()
+              .then((notificationRequests) => {
+                const text = JSON.stringify(notificationRequests, null, 2);
+                console.log(`scheduledNotificationRequests = ${text}`);
+                alert(text);
+              })
+              .catch(console.error);
+          }}
+        />
+        <ListButton
+          onPress={async () => {
+            await this._obtainUserFacingNotifPermissionsAsync();
+            await Notifications.setNotificationChannelAsync('high-importance', {
+              name: 'important notification',
+              importance: Notifications.AndroidImportance.MAX,
+              bypassDnd: true,
+            });
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                categoryIdentifier: welcomeCategoryId,
+                title: 'Here is a notification!',
+                body: 'This one has buttons!',
+                autoDismiss: true,
+              },
+              trigger: {
+                channelId: 'high-importance',
+              },
+            });
+          }}
+          title="Present a notification with action buttons"
+        />
+        <ListButton
           onPress={this._scheduleLocalNotificationAsync}
           title="Schedule notification for 10 seconds from now"
+        />
+        <ListButton
+          onPress={this._scheduleAlarmClockNotificationAsync}
+          title="Schedule alarm-clock notification for 60 seconds from now (Android)"
         />
         <ListButton
           onPress={this._scheduleLocalNotificationWithCustomSoundAsync}
@@ -112,15 +148,25 @@ export default class NotificationScreen extends React.Component<
 
         <HeadingText>Push Notifications</HeadingText>
         {!remotePushSupported && (
-          <Text>
+          <BodyText>
             ⚠️ Remote push notifications are not supported in the simulator, the following tests
             should warn accordingly.
-          </Text>
+          </BodyText>
         )}
-        <ListButton onPress={this._sendNotificationAsync} title="Send me a push notification" />
+        <ListButton
+          onPress={this._sendNotificationAsync}
+          title="Send me a push notification with action buttons"
+        />
         <ListButton
           onPress={this._unregisterForNotificationsAsync}
           title="Unregister for push notifications"
+        />
+        <ListButton
+          onPress={async () => {
+            const token = await Notifications.getDevicePushTokenAsync();
+            Alert.alert('Push token received', JSON.stringify(token));
+          }}
+          title="Get push token after unregistering"
         />
         <BackgroundNotificationHandlingSection />
         <HeadingText>Badge Number</HeadingText>
@@ -148,22 +194,31 @@ export default class NotificationScreen extends React.Component<
         <HeadingText>Notification Permissions</HeadingText>
         <ListButton onPress={this.getPermissionsAsync} title="Get permissions" />
         <ListButton onPress={this.requestPermissionsAsync} title="Request permissions" />
+        <ListButton
+          onPress={this.getExactAlarmPermissionsAsync}
+          title="Get exact alarm permissions"
+        />
+        <ListButton
+          onPress={this.requestExactAlarmPermissionsAsync}
+          title="Request exact alarm permissions"
+        />
 
         <HeadingText>Notification triggers debugging</HeadingText>
         <ListButton
           onPress={() =>
-            Notifications.getNextTriggerDateAsync({ seconds: 10 }).then((timestamp) =>
-              alert(new Date(timestamp!))
-            )
+            Notifications.getNextTriggerDateAsync({
+              type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+              seconds: 10,
+            }).then((timestamp) => alert(new Date(timestamp!)))
           }
           title="Get next date for time interval + 10 seconds"
         />
         <ListButton
           onPress={() =>
             Notifications.getNextTriggerDateAsync({
+              type: Notifications.SchedulableTriggerInputTypes.DAILY,
               hour: 9,
               minute: 0,
-              repeats: true,
             }).then((timestamp) => alert(new Date(timestamp!)))
           }
           title="Get next date for 9 AM"
@@ -171,10 +226,10 @@ export default class NotificationScreen extends React.Component<
         <ListButton
           onPress={() =>
             Notifications.getNextTriggerDateAsync({
+              type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
               hour: 9,
               minute: 0,
               weekday: 1,
-              repeats: true,
             }).then((timestamp) => alert(new Date(timestamp!)))
           }
           title="Get next date for Sunday, 9 AM"
@@ -183,21 +238,32 @@ export default class NotificationScreen extends React.Component<
     );
   }
 
-  _handelReceivedNotification = (notification: Notifications.Notification) => {
+  _handleReceivedNotification = (notification: Notifications.Notification) => {
     this.setState({
       lastNotifications: notification,
     });
   };
 
-  _handelNotificationResponseReceived = (
+  _handleNotificationResponseReceived = (
     notificationResponse: Notifications.NotificationResponse
   ) => {
-    console.log({ notificationResponse });
+    console.log('NCL', { notificationResponse });
 
     // Calling alert(message) immediately fails to show the alert on Android
     // if after backgrounding the app and then clicking on a notification
     // to foreground the app
-    setTimeout(() => Alert.alert('You clicked on the notification 🥇'), 1000);
+    setTimeout(
+      () =>
+        Alert.alert(
+          'You clicked on the notification 🥇',
+          JSON.stringify({
+            actionIdentifier: notificationResponse.actionIdentifier,
+            userText: notificationResponse.userText,
+          })
+        ),
+      1000
+    );
+    Notifications.dismissNotificationAsync(notificationResponse.notification.request.identifier);
   };
 
   private getPermissionsAsync = async () => {
@@ -208,6 +274,16 @@ export default class NotificationScreen extends React.Component<
 
   private requestPermissionsAsync = async () => {
     const permission = await Notifications.requestPermissionsAsync();
+    alert(`Status: ${permission.status}`);
+  };
+
+  private getExactAlarmPermissionsAsync = async () => {
+    const permission = await Notifications.getExactAlarmPermissionsAsync();
+    alert(`Status: ${permission.status}`);
+  };
+
+  private requestExactAlarmPermissionsAsync = async () => {
+    const permission = await Notifications.requestExactAlarmPermissionsAsync();
     alert(`Status: ${permission.status}`);
   };
 
@@ -262,7 +338,24 @@ export default class NotificationScreen extends React.Component<
         sound: true,
       },
       trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: 10,
+      },
+    });
+  };
+
+  _scheduleAlarmClockNotificationAsync = async () => {
+    await this._obtainUserFacingNotifPermissionsAsync();
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Alarm-clock notification',
+        body: "Scheduled with delivery: 'alarmClock'",
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: Date.now() + 60_000,
+        delivery: 'alarmClock',
       },
     });
   };
@@ -286,6 +379,7 @@ export default class NotificationScreen extends React.Component<
         sound: 'cat.wav',
       },
       trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         channelId: 'custom-sound',
         seconds: 1,
       },
@@ -301,6 +395,7 @@ export default class NotificationScreen extends React.Component<
         sound: true,
       },
       trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: 10,
       },
     });
@@ -308,10 +403,13 @@ export default class NotificationScreen extends React.Component<
   };
 
   _incrementIconBadgeNumberAsync = async () => {
-    const currentNumber = await Notifications.getBadgeCountAsync();
-    await Notifications.setBadgeCountAsync(currentNumber + 1);
+    const previousNumber = await Notifications.getBadgeCountAsync();
+    const didIncrement = await Notifications.setBadgeCountAsync(previousNumber + 1);
     const actualNumber = await Notifications.getBadgeCountAsync();
-    Alert.alert(`Set the badge number to ${actualNumber}`);
+    const message = didIncrement
+      ? `Incremented from ${previousNumber} to ${actualNumber} (expected: ${previousNumber + 1}).`
+      : 'Could not update the badge. The launcher may not support badge counts, or badge permissions may be disabled.';
+    Alert.alert(message);
   };
 
   _clearIconBadgeAsync = async () => {
@@ -322,7 +420,9 @@ export default class NotificationScreen extends React.Component<
   _sendNotificationAsync = async () => {
     const permission = await this._obtainRemoteNotifPermissionsAsync();
     if (permission.status === 'granted') {
-      registerForPushNotificationsAsync();
+      sendPushNotificationsAsync({
+        categoryId: 'welcome',
+      }).catch(console.error);
     }
   };
 

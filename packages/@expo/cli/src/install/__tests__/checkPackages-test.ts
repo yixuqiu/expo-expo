@@ -35,33 +35,111 @@ jest.mock('@expo/config', () => ({
 }));
 
 describe(checkPackagesAsync, () => {
-  it(`checks packages and exits when packages are invalid`, async () => {
-    jest.mocked(confirmAsync).mockResolvedValueOnce(false);
-    jest.mocked(getVersionedDependenciesAsync).mockResolvedValueOnce([
+  let mockConsoleLog: jest.Spied<typeof console.log>;
+  let mockProcessExit: jest.Spied<typeof process.exit>;
+
+  beforeEach(() => {
+    mockConsoleLog = jest.spyOn(console, 'log').mockImplementation(() => {});
+    mockProcessExit = jest.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('MOCK_EXIT');
+    });
+  });
+
+  afterEach(() => {
+    mockConsoleLog.mockRestore();
+    mockProcessExit.mockRestore();
+  });
+
+  it(`reports all invalid packages without mutating dependencies`, async () => {
+    const packages = ['expo-sms', 'expo-auth-session'];
+    const packageManager = {
+      addAsync: jest.fn(),
+      addDevAsync: jest.fn(),
+    };
+    const issues: Awaited<ReturnType<typeof getVersionedDependenciesAsync>> = [
       {
-        packageName: 'react-native',
+        packageName: 'expo-sms',
         packageType: 'dependencies',
-        expectedVersionOrRange: '^1.0.0',
-        actualVersion: '0.69.0',
+        expectedVersionOrRange: '~14.0.0',
+        actualVersion: '1.0.0',
       },
-    ]);
+      {
+        packageName: 'expo-auth-session',
+        packageType: 'dependencies',
+        expectedVersionOrRange: '~7.0.0',
+        actualVersion: '1.0.0',
+      },
+    ];
+    jest.mocked(confirmAsync).mockResolvedValueOnce(false);
+    jest.mocked(getVersionedDependenciesAsync).mockResolvedValueOnce(issues);
+
     await expect(
       checkPackagesAsync('/', {
-        packages: ['react-native'],
+        packages,
         options: { fix: false },
         // @ts-expect-error
-        packageManager: {},
-        packageManagerArguments: [],
+        packageManager,
+        packageManagerArguments: ['--ignore-scripts'],
       })
-    ).rejects.toThrowError(/EXIT/);
+    ).rejects.toThrow(/EXIT/);
 
-    expect(logIncorrectDependencies).toBeCalledTimes(1);
-
-    expect(Log.exit).toBeCalledWith(
+    expect(getVersionedDependenciesAsync).toHaveBeenCalledWith(
+      '/',
+      expect.objectContaining({ sdkVersion: '45.0.0' }),
+      {},
+      packages
+    );
+    expect(logIncorrectDependencies).toHaveBeenCalledWith(issues);
+    expect(Log.exit).toHaveBeenCalledWith(
       // Because of ansi
       expect.stringContaining('Found outdated dependencies'),
       1
     );
+    expect(fixPackagesAsync).not.toHaveBeenCalled();
+    expect(packageManager.addAsync).not.toHaveBeenCalled();
+    expect(packageManager.addDevAsync).not.toHaveBeenCalled();
+  });
+
+  it(`checks and reports only the requested package without mutating dependencies`, async () => {
+    const packages = ['expo-sms'];
+    const packageManager = {
+      addAsync: jest.fn(),
+      addDevAsync: jest.fn(),
+    };
+    const selectedIssue: Awaited<ReturnType<typeof getVersionedDependenciesAsync>> = [
+      {
+        packageName: 'expo-sms',
+        packageType: 'dependencies',
+        expectedVersionOrRange: '~14.0.0',
+        actualVersion: '1.0.0',
+      },
+    ];
+    jest.mocked(confirmAsync).mockResolvedValueOnce(false);
+    jest.mocked(getVersionedDependenciesAsync).mockResolvedValueOnce(selectedIssue);
+
+    await expect(
+      checkPackagesAsync('/', {
+        packages,
+        options: { fix: false },
+        // @ts-expect-error
+        packageManager,
+        packageManagerArguments: [],
+      })
+    ).rejects.toThrow(/EXIT/);
+
+    expect(getVersionedDependenciesAsync).toHaveBeenCalledWith(
+      '/',
+      expect.objectContaining({ sdkVersion: '45.0.0' }),
+      {},
+      packages
+    );
+    expect(logIncorrectDependencies).toHaveBeenCalledWith(selectedIssue);
+    expect(logIncorrectDependencies).not.toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ packageName: 'expo-auth-session' })])
+    );
+    expect(fixPackagesAsync).not.toHaveBeenCalled();
+    expect(packageManager.addAsync).not.toHaveBeenCalled();
+    expect(packageManager.addDevAsync).not.toHaveBeenCalled();
   });
 
   it(`notifies when dependencies are on exclude list`, async () => {
@@ -71,7 +149,7 @@ describe(checkPackagesAsync, () => {
       pkg: {
         expo: {
           install: {
-            exclude: ['expo-av', 'expo-blur'],
+            exclude: ['expo-audio', 'expo-blur'],
           },
         },
       },
@@ -83,22 +161,22 @@ describe(checkPackagesAsync, () => {
     });
     jest.mocked(getVersionedDependenciesAsync).mockResolvedValueOnce([
       {
-        packageName: 'expo-av',
+        packageName: 'expo-audio',
         packageType: 'dependencies',
         expectedVersionOrRange: '^2.0.0',
         actualVersion: '1.0.0',
       },
     ]);
     await checkPackagesAsync('/', {
-      packages: ['expo-av'],
+      packages: ['expo-audio'],
       options: { fix: true },
       // @ts-expect-error
       packageManager: {},
       packageManagerArguments: [],
     });
 
-    expect(Log.log).toBeCalledWith(
-      expect.stringContaining('Skipped fixing dependencies: expo-av and expo-blur')
+    expect(Log.log).toHaveBeenCalledWith(
+      expect.stringContaining('Skipped fixing dependencies: expo-audio and expo-blur')
     );
   });
 
@@ -113,49 +191,252 @@ describe(checkPackagesAsync, () => {
         packageManager: {},
         packageManagerArguments: [],
       })
-    ).rejects.toThrowError(/EXIT/);
+    ).rejects.toThrow(/EXIT/);
 
-    expect(logIncorrectDependencies).toBeCalledTimes(0);
+    expect(logIncorrectDependencies).toHaveBeenCalledTimes(0);
 
-    expect(Log.exit).toBeCalledWith(
+    expect(Log.exit).toHaveBeenCalledWith(
       // Because of ansi
       expect.stringContaining('Dependencies are up to date'),
       0
     );
   });
 
-  it(`fixes invalid packages`, async () => {
+  it(`delegates all invalid packages when fixing all dependencies`, async () => {
     const issues: Awaited<ReturnType<typeof getVersionedDependenciesAsync>> = [
       {
-        packageName: 'react-native',
+        packageName: 'expo-sms',
         packageType: 'dependencies',
-        expectedVersionOrRange: '^1.0.0',
-        actualVersion: '0.69.0',
+        expectedVersionOrRange: '~14.0.0',
+        actualVersion: '9.0.0',
       },
       {
-        packageName: 'expo',
+        packageName: 'expo-auth-session',
         packageType: 'dependencies',
-        expectedVersionOrRange: '^1.0.0',
-        actualVersion: '0.69.0',
+        expectedVersionOrRange: '~7.0.0',
+        actualVersion: '4.0.0',
       },
     ];
+    const packageManagerArguments = ['--ignore-scripts'];
 
     jest.mocked(getVersionedDependenciesAsync).mockResolvedValueOnce(issues);
 
     await checkPackagesAsync('/', {
-      packages: ['react-native', 'expo'],
+      packages: [],
       options: { fix: true },
+      // @ts-expect-error
+      packageManager: {},
+      packageManagerArguments,
+    });
+
+    expect(fixPackagesAsync).toHaveBeenCalledWith('/', {
+      packageManager: {},
+      packageManagerArguments,
+      packages: issues,
+      sdkVersion: '45.0.0',
+    });
+    expect(logIncorrectDependencies).toHaveBeenCalledWith(issues);
+  });
+
+  it(`delegates only the selected invalid package when fixing`, async () => {
+    const selectedIssue: Awaited<ReturnType<typeof getVersionedDependenciesAsync>> = [
+      {
+        packageName: 'expo-sms',
+        packageType: 'dependencies',
+        expectedVersionOrRange: '~14.0.0',
+        actualVersion: '9.0.0',
+      },
+    ];
+    const packageManager = {};
+    const packageManagerArguments = ['--ignore-scripts'];
+
+    jest.mocked(getVersionedDependenciesAsync).mockResolvedValueOnce(selectedIssue);
+
+    await checkPackagesAsync('/', {
+      packages: ['expo-sms'],
+      options: { fix: true },
+      // @ts-expect-error
+      packageManager,
+      packageManagerArguments,
+    });
+
+    expect(getVersionedDependenciesAsync).toHaveBeenCalledWith(
+      '/',
+      expect.objectContaining({ sdkVersion: '45.0.0' }),
+      {},
+      ['expo-sms']
+    );
+    expect(fixPackagesAsync).toHaveBeenCalledWith('/', {
+      packageManager,
+      packageManagerArguments,
+      packages: selectedIssue,
+      sdkVersion: '45.0.0',
+    });
+    expect(fixPackagesAsync).not.toHaveBeenCalledWith(
+      '/',
+      expect.objectContaining({
+        packages: expect.arrayContaining([
+          expect.objectContaining({ packageName: 'expo-auth-session' }),
+        ]),
+      })
+    );
+  });
+
+  it(`outputs JSON when --json flag is used with up-to-date dependencies`, async () => {
+    jest.mocked(getVersionedDependenciesAsync).mockResolvedValueOnce([]);
+
+    await checkPackagesAsync('/', {
+      packages: ['react-native'],
+      options: { fix: false, json: true },
       // @ts-expect-error
       packageManager: {},
       packageManagerArguments: [],
     });
 
-    expect(fixPackagesAsync).toBeCalledWith('/', {
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      JSON.stringify({ dependencies: [], upToDate: true })
+    );
+  });
+
+  it(`outputs JSON when --json flag is used with outdated dependencies`, async () => {
+    const outdatedDeps = [
+      {
+        packageName: 'react-native',
+        packageType: 'dependencies' as const,
+        expectedVersionOrRange: '^1.0.0',
+        actualVersion: '0.69.0',
+      },
+      {
+        packageName: 'expo-audio',
+        packageType: 'devDependencies' as const,
+        expectedVersionOrRange: '^2.0.0',
+        actualVersion: '1.5.0',
+      },
+    ];
+
+    jest.mocked(getVersionedDependenciesAsync).mockResolvedValueOnce(outdatedDeps);
+
+    await expect(
+      checkPackagesAsync('/', {
+        packages: ['react-native', 'expo-audio'],
+        options: { fix: false, json: true },
+        // @ts-expect-error
+        packageManager: {},
+        packageManagerArguments: [],
+      })
+    ).rejects.toThrow(/MOCK_EXIT/);
+
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      JSON.stringify({ dependencies: outdatedDeps, upToDate: false }, null, 2)
+    );
+  });
+
+  it(`suppresses exclude list message when --json flag is used`, async () => {
+    // @ts-expect-error
+    jest.mocked(getConfig).mockReturnValueOnce({
+      pkg: {
+        expo: {
+          install: {
+            exclude: ['expo-audio'],
+          },
+        },
+      },
+      exp: {
+        sdkVersion: '53.0.0',
+        name: 'my-app',
+        slug: 'my-app',
+      },
+    });
+    jest.mocked(getVersionedDependenciesAsync).mockResolvedValueOnce([]);
+
+    await checkPackagesAsync('/', {
+      packages: ['expo-audio'],
+      options: { fix: false, json: true },
+      // @ts-expect-error
       packageManager: {},
       packageManagerArguments: [],
-      packages: issues,
-      sdkVersion: '45.0.0',
     });
-    expect(logIncorrectDependencies).toBeCalledTimes(1);
+
+    expect(Log.log).not.toHaveBeenCalled();
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      JSON.stringify({ dependencies: [], upToDate: true })
+    );
+  });
+
+  it(`parses and validates JSON output structure with outdated dependencies`, async () => {
+    const outdatedDeps = [
+      {
+        packageName: 'react-native',
+        packageType: 'dependencies' as const,
+        expectedVersionOrRange: '^0.72.0',
+        actualVersion: '0.71.8',
+      },
+      {
+        packageName: 'expo-audio',
+        packageType: 'devDependencies' as const,
+        expectedVersionOrRange: '~13.4.0',
+        actualVersion: '13.3.1',
+      },
+      {
+        packageName: '@expo/vector-icons',
+        packageType: 'dependencies' as const,
+        expectedVersionOrRange: '^13.0.0',
+        actualVersion: '12.0.1',
+      },
+    ];
+
+    jest.mocked(getVersionedDependenciesAsync).mockResolvedValueOnce(outdatedDeps);
+
+    await expect(
+      checkPackagesAsync('/', {
+        packages: ['react-native', 'expo-audio', '@expo/vector-icons'],
+        options: { fix: false, json: true },
+        // @ts-expect-error
+        packageManager: {},
+        packageManagerArguments: [],
+      })
+    ).rejects.toThrow(/MOCK_EXIT/);
+
+    // Get the JSON output
+    expect(mockConsoleLog).toHaveBeenCalledTimes(1);
+    const jsonOutput = mockConsoleLog.mock.calls[0]![0];
+
+    // Parse and validate the JSON structure
+    expect(() => JSON.parse(jsonOutput)).not.toThrow();
+    const parsedOutput = JSON.parse(jsonOutput);
+
+    // Validate top-level structure
+    expect(parsedOutput).toHaveProperty('dependencies');
+    expect(Array.isArray(parsedOutput.dependencies)).toBe(true);
+    expect(parsedOutput.dependencies).toHaveLength(3);
+
+    // Validate each dependency object structure and content
+    const expectedPackageNames = ['react-native', 'expo-audio', '@expo/vector-icons'];
+    const expectedPackageTypes = ['dependencies', 'devDependencies', 'dependencies'];
+    const expectedVersions = ['^0.72.0', '~13.4.0', '^13.0.0'];
+    const actualVersions = ['0.71.8', '13.3.1', '12.0.1'];
+
+    parsedOutput.dependencies.forEach((dep: any, index: number) => {
+      // Validate all required fields are present
+      expect(dep).toHaveProperty('packageName');
+      expect(dep).toHaveProperty('packageType');
+      expect(dep).toHaveProperty('expectedVersionOrRange');
+      expect(dep).toHaveProperty('actualVersion');
+
+      // Validate field types
+      expect(typeof dep.packageName).toBe('string');
+      expect(typeof dep.packageType).toBe('string');
+      expect(typeof dep.expectedVersionOrRange).toBe('string');
+      expect(typeof dep.actualVersion).toBe('string');
+
+      // Validate specific values
+      expect(dep.packageName).toBe(expectedPackageNames[index]);
+      expect(dep.packageType).toBe(expectedPackageTypes[index]);
+      expect(dep.expectedVersionOrRange).toBe(expectedVersions[index]);
+      expect(dep.actualVersion).toBe(actualVersions[index]);
+    });
+
+    // Validate exit code
+    expect(mockProcessExit).toHaveBeenCalledWith(1);
   });
 });

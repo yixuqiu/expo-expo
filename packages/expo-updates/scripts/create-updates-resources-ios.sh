@@ -26,7 +26,7 @@ RCT_METRO_PORT=${RCT_METRO_PORT:=8081}
 # `$PROJECT_DIR` is passed by Xcode as the directory to the xcodeproj file.
 # in classic main project setup it is something like /path/to/app/ios
 # in new style pod project setup it is something like /path/to/app/ios/Pods
-PROJECT_DIR_BASENAME=$(basename $PROJECT_DIR)
+PROJECT_DIR_BASENAME=$(basename "$PROJECT_DIR")
 if [ "x$PROJECT_DIR_BASENAME" != "xPods" ]; then
   exit 0
 fi
@@ -39,5 +39,18 @@ cd "$PROJECT_ROOT" || exit
 # We should get the physical path (/var/folders -> /private/var/folders) for metro to resolve correct files
 PROJECT_ROOT="$(pwd -P)"
 
-"${EXPO_UPDATES_PACKAGE_DIR}/scripts/with-node.sh" "${EXPO_UPDATES_PACKAGE_DIR}/utils/build/createUpdatesResources.js" ios "$PROJECT_ROOT" "$DEST/$RESOURCE_BUNDLE_NAME" "$CREATE_UPDATES_RESOURCES_MODE" "$ENTRY_FILE"
+if [ "$BUNDLE_FORMAT" == "shallow" ]; then
+  RESOURCE_DEST="$DEST/$RESOURCE_BUNDLE_NAME"
+  mkdir -p "$RESOURCE_DEST"
+elif [ "$BUNDLE_FORMAT" == "deep" ]; then
+  RESOURCE_DEST="$DEST/$RESOURCE_BUNDLE_NAME/Contents/Resources"
+  mkdir -p "$RESOURCE_DEST"
+else
+  echo "Unsupported bundle format: $BUNDLE_FORMAT"
+  exit 1
+fi
+
+CONFIG_MODE=$([[ "$CONFIGURATION" == *Debug* ]] && echo development || echo production)
+
+"${EXPO_UPDATES_PACKAGE_DIR}/scripts/with-node.sh" "${EXPO_UPDATES_PACKAGE_DIR}/utils/build/createUpdatesResources.js" ios "$PROJECT_ROOT" "$RESOURCE_DEST" "$CREATE_UPDATES_RESOURCES_MODE" "$ENTRY_FILE" "$CONFIG_MODE"
 

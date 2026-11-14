@@ -1,12 +1,13 @@
 require_relative 'constants'
 require_relative 'package'
+require_relative 'packages_config'
+require_relative 'precompiled_modules'
 
 # Require extensions to CocoaPods' classes
-require_relative 'cocoapods/pod_target'
 require_relative 'cocoapods/sandbox'
 require_relative 'cocoapods/target_definition'
-require_relative 'cocoapods/umbrella_header_generator'
 require_relative 'cocoapods/user_project_integrator'
+require_relative 'cocoapods/installer'
 
 module Expo
   class AutolinkingManager
@@ -17,12 +18,29 @@ module Expo
       @podfile = podfile
       @target_definition = target_definition
       @options = options
+      @podfile_properties_path = File.join(Pod::Config.instance.project_root, 'Podfile.properties.json')
 
       validate_target_definition()
+
       resolve_result = resolve()
+
+      Expo::PackagesConfig.instance.coreFeatures = resolve_result['coreFeatures']
+
+      configuration = resolve_result['configuration'] || {}
+      Expo::PrecompiledModules.configure(
+        target_platform: @target_definition.platform,
+        build_from_source: configuration['buildFromSource'] || []
+      )
+
+      # Clear stale CocoaPods download cache for precompiled pods.
+      Expo::PrecompiledModules.clear_cocoapods_cache
 
       @packages = resolve_result['modules'].map { |json_package| Package.new(json_package) }
       @extraPods = resolve_result['extraDependencies']
+    end
+
+    public def get_podfile_properties_path
+      return @podfile_properties_path
     end
 
     public def use_expo_modules!
@@ -30,9 +48,20 @@ module Expo
         return
       end
 
+      Expo::PrecompiledModules.record_spm_dependency_pods
+
       global_flags = @options.fetch(:flags, {})
       tests_only = @options.fetch(:testsOnly, false)
       include_tests = @options.fetch(:includeTests, false)
+
+      # Add any additional framework modules to patch using the patched Podfile class in installer.rb
+      # We'll be reading from Podfile.properties.json and optionally parameters passed to use_expo_modules!
+      podfile_properties = JSON.parse(File.read(File.join(Pod::Config.instance.project_root, 'Podfile.properties.json'))) rescue {}
+      additional_framework_modules_to_patch = @options.fetch(:additionalFrameworkModulesToPatch, []) +
+        JSON.parse(podfile_properties['ios.forceStaticLinking'] || "[]")
+
+      Pod::UI.puts("Forcing static linking for pods: #{additional_framework_modules_to_patch}") if !additional_framework_modules_to_patch.empty?
+      @podfile.expo_add_modules_to_patch(additional_framework_modules_to_patch) if !additional_framework_modules_to_patch.empty?
 
       project_directory = Pod::Config.instance.project_root
 
@@ -46,9 +75,10 @@ module Expo
               next
             end
 
-            # Skip if the podspec doesn't include the platform for the current target.
+            # Skip if the podspec doesn't include the platform for the current target or if deployment targets are incompatible.
             unless pod.supports_platform?(@target_definition.platform)
-              UI.message '- ' << package.name.green << " doesn't support #{@target_definition.platform.string_name} platform".yellow
+              reason = pod.platform_skip_reason(@target_definition.platform)
+              UI.warn "[Expo] ".blue << package.name.green << " was not linked: #{reason}".yellow
               next
             end
 
@@ -56,20 +86,17 @@ module Expo
             # `pod install` may fail if there is no `use_modular_headers!` declaration or
             # `:modular_headers => true` is not used for this particular dependency.
             # The latter require adding transitive dependencies to user's Podfile that we'd rather like to avoid.
-            if package.has_something_to_link?
-              use_modular_headers_for_dependencies(pod.spec.all_dependencies)
-            end
-
-            podspec_dir_path = Pathname.new(pod.podspec_dir).relative_path_from(project_directory).to_path
+            # Not gated on having something to link: scanned classes are only known when the
+            # provider is generated.
+            use_modular_headers_for_dependencies(pod.spec.all_dependencies)
 
             debug_configurations = @target_definition.build_configurations ? @target_definition.build_configurations.select { |config| config.include?('Debug') }.keys : ['Debug']
 
-            pod_options = {
-              :path => podspec_dir_path,
-              :configuration => package.debugOnly ? debug_configurations : [] # An empty array means all configurations
-            }.merge(global_flags, package.flags)
+            pod_options = Expo::PrecompiledModules.pod_registration_options(
+              pod, project_directory, debug_configurations, package, global_flags
+            )
 
-            if tests_only || include_tests
+            if (tests_only || include_tests) && Expo::PrecompiledModules.should_include_test_specs?(pod.pod_name)
               test_specs_names = pod.spec.test_specs.map { |test_spec|
                 test_spec.name.delete_prefix(pod.spec.name + "/")
               }
@@ -83,6 +110,7 @@ module Expo
 
             # Install the pod.
             @podfile.pod(pod.pod_name, pod_options)
+            @podfile.expo_autolinked_pod_names << pod.pod_name
 
             # TODO: Can remove this once we move all the interfaces into the core.
             next if pod.pod_name.end_with?('Interface')
@@ -110,12 +138,16 @@ module Expo
         requirements << options
         @podfile.pod(pod['name'], *requirements)
       }
+
+      Expo::PrecompiledModules.register_external_pods(@podfile, @target_definition, project_directory)
+      Expo::PrecompiledModules.register_companion_pods(@podfile, @target_definition, project_directory, tests_only: tests_only)
+
       self
     end
 
     # Spawns `expo-module-autolinking generate-modules-provider` command.
     public def generate_modules_provider(target_name, target_path)
-      Process.wait IO.popen(generate_modules_provider_command_args(target_path)).pid
+      Process.wait IO.popen(generate_modules_provider_command_args(target_name, target_path)).pid
     end
 
     # If there is any package to autolink.
@@ -128,9 +160,9 @@ module Expo
       platform = @target_definition.platform
 
       @packages.select do |package|
-        # Check whether the package has any module to autolink
-        # and if there is any pod that supports target's platform.
-        package.has_something_to_link? && package.pods.any? { |pod| pod.supports_platform?(platform) }
+        # Not gated on having something to link: scanned classes are only known when the
+        # provider is generated.
+        package.pods.any? { |pod| pod.supports_platform?(platform) }
       end
     end
 
@@ -155,9 +187,13 @@ module Expo
       return @target_definition.platform&.string_name
     end
 
-    # privates
+    # Returns the app project root if provided in the options.
+    public def custom_app_root
+      # TODO: Follow up on renaming `:projectRoot` and migrate to `appRoot`
+      return @options.fetch(:appRoot, @options.fetch(:projectRoot, nil))
+    end
 
-    private def resolve
+    public def resolve
       json = []
 
       IO.popen(resolve_command_args) do |data|
@@ -199,7 +235,8 @@ module Expo
         'node',
         '--no-warnings',
         '--eval',
-        'require(require.resolve(\'expo-modules-autolinking\', { paths: [\'' +  __dir__ + '\'] }))(process.argv.slice(1))',
+        'require(\'expo/bin/autolinking\')',
+        'expo-modules-autolinking',
         command_name,
         '--platform',
         'apple'
@@ -208,16 +245,27 @@ module Expo
     end
 
     private def resolve_command_args
-      node_command_args('resolve').concat(['--json'])
+      resolve_command_args = ['--json']
+
+      project_root = @options.fetch(:projectRoot, nil)
+      if project_root
+        resolve_command_args.concat(['--project-root', project_root])
+      end
+
+      node_command_args('resolve').concat(resolve_command_args)
     end
 
-    public def generate_modules_provider_command_args(target_path)
+    public def generate_modules_provider_command_args(target_name, target_path)
+      command_args = ['--target', target_path, '--target-name', target_name, "--podfile-properties-file-path", "\"#{@podfile_properties_path}\""]
+      command_args.concat(['--target-platform', platform_name.downcase])
+
+      if !custom_app_root.nil?
+        command_args.concat(['--app-root', custom_app_root])
+      end
+
       node_command_args('generate-modules-provider').concat(
-        [
-          '--target',
-          target_path,
-          '--packages'
-        ],
+        command_args,
+        ['--packages'],
         packages_to_generate.map(&:name)
       )
     end

@@ -1,20 +1,20 @@
-apply plugin: 'com.android.library'
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
 
 group = 'host.exp.exponent'
-version = '5.9.1'
+version = '58.1.2'
 
-def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
-apply from: expoModulesCorePlugin
-applyKotlinExpoModulesCorePlugin()
-useCoreDependencies()
-useDefaultAndroidSdkVersions()
-useExpoPublishing()
+expoModule {
+  v2 true
+}
 
 android {
   namespace "expo.modules.application"
   defaultConfig {
     versionCode 12
-    versionName '5.9.1'
+    versionName '58.1.2'
   }
 }
 
@@ -24,6 +24,7 @@ dependencies {
   if (project.findProject(':expo-modules-test-core')) {
     testImplementation project(':expo-modules-test-core')
   }
-  testImplementation "org.robolectric:robolectric:4.10"
+  testImplementation "org.robolectric:robolectric:4.16"
+  testImplementation 'com.facebook.react:react-android'
   testImplementation 'junit:junit:4.13.2'
 }

@@ -2,22 +2,17 @@ import * as Application from 'expo-application';
 import { useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 
-import { ProviderAuthRequestConfig } from './Provider.types';
-import { applyRequiredScopes, invariantClientId } from './ProviderUtils';
+import { AuthRequest } from '../AuthRequest';
+import type { AuthRequestConfig, AuthRequestPromptOptions } from '../AuthRequest.types';
+import { Prompt, ResponseType } from '../AuthRequest.types';
 import { useAuthRequestResult, useLoadedAuthRequest } from '../AuthRequestHooks';
-import {
-  AuthRequest,
-  AuthRequestConfig,
-  AuthRequestPromptOptions,
-  AuthSessionRedirectUriOptions,
-  AuthSessionResult,
-  DiscoveryDocument,
-  generateHexStringAsync,
-  makeRedirectUri,
-  Prompt,
-  ResponseType,
-} from '../AuthSession';
+import { makeRedirectUri } from '../AuthSession';
+import type { AuthSessionRedirectUriOptions, AuthSessionResult } from '../AuthSession.types';
+import type { DiscoveryDocument } from '../Discovery';
+import { generateHexStringAsync } from '../PKCE';
 import { AccessTokenRequest } from '../TokenRequest';
+import type { ProviderAuthRequestConfig } from './Provider.types';
+import { applyRequiredScopes, invariantClientId } from './ProviderUtils';
 
 const settings = {
   windowFeatures: { width: 515, height: 680 },
@@ -39,7 +34,7 @@ export const discovery: DiscoveryDocument = {
 /**
  * @deprecated See [Google authentication](/guides/google-authentication/).
  */
-export interface GoogleAuthRequestConfig extends ProviderAuthRequestConfig {
+export type GoogleAuthRequestConfig = ProviderAuthRequestConfig & {
   /**
    * If the user's email address is known ahead of time, it can be supplied to be the default option.
    * If the user has approved access for this app in the past then auth may return without any further interaction.
@@ -55,11 +50,11 @@ export interface GoogleAuthRequestConfig extends ProviderAuthRequestConfig {
    */
   webClientId?: string;
   /**
-   * iOS native client ID for use in standalone, bare workflow, and custom clients.
+   * iOS native client ID for use in production builds, existing React Native projects, and development builds.
    */
   iosClientId?: string;
   /**
-   * Android native client ID for use in standalone, and bare workflow.
+   * Android native client ID for use in production builds and existing React Native projects.
    */
   androidClientId?: string;
   /**
@@ -72,7 +67,7 @@ export interface GoogleAuthRequestConfig extends ProviderAuthRequestConfig {
    * Language code ISO 3166-1 alpha-2 region code, such as 'it' or 'pt-PT'.
    */
   language?: string;
-}
+};
 
 // @needsAudit
 /**
@@ -192,14 +187,13 @@ export function useAuthRequest(
   AuthSessionResult | null,
   (options?: AuthRequestPromptOptions) => Promise<AuthSessionResult>,
 ] {
-  const clientId = useMemo((): string => {
+  const clientId = useMemo(() => {
     const propertyName = Platform.select({
       ios: 'iosClientId',
       android: 'androidClientId',
       default: 'webClientId',
-    });
-
-    const clientId = config[propertyName as any] ?? config.clientId;
+    } as const);
+    const clientId = config[propertyName] ?? config.clientId;
     invariantClientId(propertyName, clientId, 'Google');
     return clientId;
   }, [config.iosClientId, config.androidClientId, config.webClientId, config.clientId]);
@@ -236,10 +230,10 @@ export function useAuthRequest(
     const output = config.extraParams ? { ...config.extraParams } : {};
 
     if (config.language) {
-      output.hl = output.language;
+      output.hl = config.language;
     }
     if (config.loginHint) {
-      output.login_hint = output.loginHint;
+      output.login_hint = config.loginHint;
     }
     if (config.selectAccount) {
       output.prompt = Prompt.SelectAccount;
@@ -283,7 +277,7 @@ export function useAuthRequest(
         clientSecret: config.clientSecret,
         redirectUri,
         scopes: config.scopes,
-        code: result.params.code,
+        code: result.params.code ?? '',
         extraParams: {
           code_verifier: request?.codeVerifier || '',
         },
